@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Inter-Bold.ttf</string>
+		<string>Inter-Medium.ttf</string>
+		<string>Inter-SemiBold.ttf</string>
+		<string>Inter-Regular.ttf</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>your-api-endpoint.com</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSExceptionMinimumTLSVersion</key>
+				<string>TLSv1.2</string>
+			</dict>
+		</dict>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>This app requires access to devices on your local network.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>This app needs Bluetooth access for device communication.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>This app requires camera access for video calls.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app requires microphone access for voice communication.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app requires location access to provide better services.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>This app requires location access even when running in the background.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>This app requires access to your contacts to help you connect with your friends.
+</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app requires access to your photo library to allow you to upload and share images.
+</string>
+</dict>
+</plist>
