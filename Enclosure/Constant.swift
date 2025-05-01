@@ -19,34 +19,77 @@ struct Constant{
     static let loggedInKey = "loggedInKey"
     static let sleepKey = "sleepKey"
     static let sleepKeyCheckOFF = "sleepKeyCheckOFF"
+    static let chatView = "chatView"
+    static let callView = "callView"
+    static let videoCallView = "videoCallView"
+    static let groupMsgView = "groupMsgView"
+    static let messageLmtView = "messageLmtView"
+    static let youView = "youView"
 
 
     static func showToast(message: String) {
         guard let window = UIApplication.shared.windows.first else { return }
 
-        let toastView = UIView(frame: CGRect(x: 20, y: -60, width: window.frame.width - 40, height: 60))
+        let toastHeight: CGFloat = 50
+        let padding: CGFloat = 12
+        let logoSize: CGFloat = 20
+        let toastWidth: CGFloat = window.frame.width - 80 // Adjust width for better centering
+
+        // Center toast horizontally
+        let toastView = UIView(frame: CGRect(x: (window.frame.width - toastWidth) / 2,
+                                             y: -toastHeight,
+                                             width: toastWidth,
+                                             height: toastHeight))
 
         // Set background color from asset
-        if let cardColor = UIColor(named: "cardBackgroundColornew") {
-            toastView.backgroundColor = cardColor
-        } else {
-            toastView.backgroundColor = UIColor.red // Fallback color
-        }
-
+        toastView.backgroundColor = UIColor(named: "cardBackgroundColornew") ?? UIColor.red // Fallback color
         toastView.alpha = 0
-        toastView.layer.cornerRadius = 20
+        toastView.layer.cornerRadius = 25
         toastView.layer.shadowColor = UIColor.black.cgColor
-        toastView.layer.shadowOpacity = 0.2
+        toastView.layer.shadowOpacity = 0.1
         toastView.layer.shadowOffset = CGSize(width: 2, height: 2)
 
-        let messageLabel = UILabel(frame: CGRect(x: 10, y: 10, width: toastView.frame.width - 20, height: 40))
+        // Logo ImageView (Aligned Left with 5px Left Margin)
+        let logoImageView = UIImageView()
+        logoImageView.image = UIImage(named: "ec_modern") // Replace with your asset name
+        logoImageView.contentMode = .scaleAspectFit
+        logoImageView.translatesAutoresizingMaskIntoConstraints = false
+        logoImageView.widthAnchor.constraint(equalToConstant: logoSize).isActive = true
+        logoImageView.heightAnchor.constraint(equalToConstant: logoSize).isActive = true
+
+        // Message Label (Centered)
+        let messageLabel = UILabel()
         messageLabel.text = message
         messageLabel.textColor = UIColor(named: "TextColor")
         messageLabel.textAlignment = .center
-        messageLabel.font =  UIFont(name: "Inter18pt-Medium", size: 16)
+        messageLabel.font = UIFont(name: "Inter18pt-Medium", size: 16)
+        messageLabel.numberOfLines = 1
+        messageLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        toastView.addSubview(messageLabel)
+        // Container StackView for positioning
+        let containerStackView = UIStackView()
+        containerStackView.axis = .horizontal
+        containerStackView.alignment = .center
+        containerStackView.spacing = 8
+        containerStackView.distribution = .fill
+        containerStackView.translatesAutoresizingMaskIntoConstraints = false
+
+        // Add logo first, then message
+        containerStackView.addArrangedSubview(logoImageView)
+        containerStackView.addArrangedSubview(messageLabel)
+
+        toastView.addSubview(containerStackView)
         window.addSubview(toastView)
+
+        // Constraints for StackView inside toast
+        NSLayoutConstraint.activate([
+            containerStackView.leadingAnchor.constraint(equalTo: toastView.leadingAnchor, constant: padding + 5), // 5px margin left for logo
+            containerStackView.trailingAnchor.constraint(equalTo: toastView.trailingAnchor, constant: -padding),
+            containerStackView.centerYAnchor.constraint(equalTo: toastView.centerYAnchor),
+
+            // Ensure messageLabel takes available space
+            messageLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 50)
+        ])
 
         // Animate slide down
         UIView.animate(withDuration: 0.4, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 1, options: .curveEaseOut, animations: {
@@ -61,6 +104,12 @@ struct Constant{
             }
         }
     }
+
+
+
+
+
+
 
 
     

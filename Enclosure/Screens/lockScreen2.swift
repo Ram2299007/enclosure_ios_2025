@@ -7,6 +7,7 @@ struct LockScreen2View: View {
     @State private var isTapped = false
     @State private var isRippleActive = false
     @State private var showDialog = false
+    @State  var isNavigating = false
     var body: some View {
         NavigationStack{
             ZStack {
@@ -110,9 +111,29 @@ struct LockScreen2View: View {
 
                     .padding(.bottom, 90)
                 }
+
+
+                NavigationLink(
+                    destination: MainActivityOld(),
+                    isActive: $isNavigating
+                ) {
+                    EmptyView()
+                }
+                .hidden()
+
             }
 
             .onAppear {
+                let sleepkey = UserDefaults.standard.string(forKey: Constant.sleepKey)
+                let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY)
+                let sleepKeyCheckOFF = UserDefaults.standard.string(forKey: "sleepKeyCheckOFF") ?? ""
+                if sleepKeyCheckOFF != "on" {
+
+                    self.isNavigating = true
+                }
+
+
+
                 prepareHaptics()
             }
         }

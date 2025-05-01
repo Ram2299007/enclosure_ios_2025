@@ -8,13 +8,14 @@
 import SwiftUI
 
 struct ContentView: View {
+    @State var isNavigating = false
+
     var body: some View {
         NavigationStack {
             ZStack {
                 Color("BackgroundColor")
                     .edgesIgnoringSafeArea(.all)
                 VStack(alignment: .center, spacing: 20) {
-
                     // App Logo
                     Image("ec_modern")
                         .resizable()
@@ -51,8 +52,6 @@ struct ContentView: View {
                     Spacer()
                     HStack {
                         Spacer()
-                        /// LockScreen2View
-                        /// whatsYourNumber
                         NavigationLink(destination: whatsYourNumber()) {
                             HStack {
                                 Text("Next")
@@ -70,6 +69,18 @@ struct ContentView: View {
                         }
                     }
                     .padding(20)
+                }
+            }
+            .background(
+                NavigationLink(destination: LockScreen2View(), isActive: $isNavigating) {
+                    EmptyView()
+                }
+                .hidden()
+            )
+            .onAppear {
+                let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? "0"
+                if uid != "0" {
+                    isNavigating = true
                 }
             }
         }

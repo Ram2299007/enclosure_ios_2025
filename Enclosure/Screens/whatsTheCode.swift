@@ -40,7 +40,6 @@ struct whatsTheCode: View {
 
     var body: some View {
 
-
         NavigationStack {
             ZStack { // Use ZStack to overlay content
                 VStack {

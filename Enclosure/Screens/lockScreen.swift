@@ -2,9 +2,13 @@ import SwiftUI
 import CoreHaptics
 
 struct LockScreenView: View {
-    @State private var progress: CGFloat = 0.0 // Progress in degrees (0 - 360)
+    @State private var progress: CGFloat = 0.0
     @State private var hapticEngine: CHHapticEngine?
     @State private var isTapped = false
+    @State private var isDropdownVisible = false
+    @State private var selectedValue = "0°" // Default value
+    @Environment(\.dismiss) var dismiss
+    let dropdownOptions = ["0°", "90°", "180°", "360°"]
 
     var body: some View {
         NavigationStack {
@@ -13,12 +17,13 @@ struct LockScreenView: View {
                     .ignoresSafeArea()
 
                 VStack {
-
-
                     VStack(spacing: 40) {
                         ZStack {
-                            CircularSeekBars(progress: $progress, hapticEngine: hapticEngine)
-                                .frame(width: 250, height: 250)
+                            CircularSeekBars(
+                                progress: $progress,
+                                hapticEngine: hapticEngine
+                            )
+                            .frame(width: 250, height: 250)
 
                             Image("elipse")
                                 .resizable()
@@ -26,17 +31,25 @@ struct LockScreenView: View {
 
                             Text("\(Int(progress))°")
                                 .font(.custom("Inter18pt-SemiBold", size: 45))
-                                .foregroundColor(isTapped ? Color("cs_circle_color") : .white)
+                                .foregroundColor(
+                                    isTapped ? Color("cs_circle_color") : .white
+                                )
                                 .scaleEffect(isTapped ? 1.05 : 1.0)
-                                .animation(.easeOut(duration: 0.2), value: isTapped)
+                                .animation(
+                                    .easeOut(duration: 0.2),
+                                    value: isTapped
+                                )
                                 .onTapGesture {
                                     if progress < 360 {
                                         progress += 1
                                         simpleSuccess()
                                         isTapped = true
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                                            isTapped = false
-                                        }
+                                        DispatchQueue.main
+                                            .asyncAfter(
+                                                deadline: .now() + 0.2
+                                            ) {
+                                                isTapped = false
+                                            }
                                     }
                                 }
                         }
@@ -46,51 +59,107 @@ struct LockScreenView: View {
                             .foregroundColor(Color("blue"))
 
 
+                        // Dropdown Button using Menu
+                        Menu {
+                            ForEach(dropdownOptions, id: \.self) { option in
+                                Button(option) {
+                                    selectedValue = option
+                                    if let value = Int(option.replacingOccurrences(of: "°", with: "")) {
+                                                   progress = CGFloat(value) // Update progress with selected value
+                                               }
 
-                        // First Circular Button
-                        ZStack {
-                            Circle()
-                                .fill(Color("blue"))
-                                .frame(width: 77, height: 77)
-                                .overlay(
-                                    Circle()
-                                        .stroke(Color("blue"), lineWidth: 2) // Equivalent to lockcircle drawable
-                                )
+                                }
 
-                            HStack(spacing: 4) {
-                                Text("360°")
-                                    .font(.custom("Inter18pt-SemiBold", size: 16))
-                                    .foregroundColor(.white)
+                            }
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .fill(Color("blue"))
+                                    .frame(width: 77, height: 77)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color("blue"), lineWidth: 2)
+                                    )
 
+                                HStack(spacing: 4) {
+                                    Text(selectedValue)
+                                        .font(
+                                            .custom(
+                                                "Inter18pt-SemiBold",
+                                                size: 16
+                                            )
+                                        )
+                                        .foregroundColor(.white)
 
-                                Image("downvector") // Replace with actual SF Symbol or asset
-                                    .resizable()
-                                    .renderingMode(.template)
-                                    .frame(width: 12, height: 12)
-                                    .foregroundColor(.white)
-                                    .padding(.leading,2)
-
-
-
+                                    Image("downvector")
+                                        .resizable()
+                                        .renderingMode(.template)
+                                        .frame(width: 12, height: 12)
+                                        .foregroundColor(.white)
+                                        .padding(.leading, 2)
+                                }
                             }
                         }
 
-                        // Second Circular Button
-                        ZStack {
-                            Circle()
-                                .fill(Color("cs_circle_color")) // Use Color Set in Assets
-                                .frame(width: 77, height: 77)
 
-                            Image("tick") // Replace with actual SF Symbol or asset
-                                .resizable()
-                                .renderingMode(.template)
-                                .frame(width: 45, height: 45)
-                                .foregroundColor(Color("TextColor"))
-                        }
+
+                        // Tick Button
+
+                        Button(
+                            action: {
+                                if Int(progress) == 0 {
+                                    Constant
+                                        .showToast(
+                                            message: "Please set degree first"
+                                        )
+                                }else{
+                                    UserDefaults.standard
+                                        .set(
+                                            "off",
+                                            forKey: Constant.sleepKeyCheckOFF
+                                        )
+                                    let UID_KEY = UserDefaults.standard.string(
+                                        forKey: Constant.UID_KEY
+                                    )
+
+
+
+                                    ApiService.shared
+                                        .lockScreen(
+                                            uid: UID_KEY ?? "0",
+                                            lockScreen: "1",
+                                            lockScreenPin: "\(Int(progress))",
+                                            lock3: "") { success, msg in
+                                                if success {
+                                                    Constant.showToast(message: msg)
+                                                    dismiss()
+                                                }   else{
+                                                    Constant.showToast(message: msg)
+                                                }
+                                            }
+
+
+                                }
+
+
+                            },
+                            label: {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color("cs_circle_color"))
+                                        .frame(width: 77, height: 77)
+
+                                    Image("tick")
+                                        .resizable()
+                                        .renderingMode(.template)
+                                        .frame(width: 45, height: 45)
+                                        .foregroundColor(Color("TextColor"))
+                                }
+                            })
+
 
 
                     }
-
                 }
             }
             .onAppear {
@@ -100,6 +169,7 @@ struct LockScreenView: View {
         .navigationBarHidden(true)
     }
 
+    // ... (prepareHaptics, simpleSuccess, CircularSeekBars, and toRadians() functions remain the same)
     private func prepareHaptics() {
         do {
             hapticEngine = try CHHapticEngine()
@@ -110,11 +180,22 @@ struct LockScreenView: View {
     }
 
     private func simpleSuccess() {
-        guard let engine = hapticEngine, CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
+        guard let engine = hapticEngine, CHHapticEngine
+            .capabilitiesForHardware().supportsHaptics else { return }
 
-        let intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 1)
-        let sharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: 1)
-        let event = CHHapticEvent(eventType: .hapticTransient, parameters: [intensity, sharpness], relativeTime: 0)
+        let intensity = CHHapticEventParameter(
+            parameterID: .hapticIntensity,
+            value: 1
+        )
+        let sharpness = CHHapticEventParameter(
+            parameterID: .hapticSharpness,
+            value: 1
+        )
+        let event = CHHapticEvent(
+            eventType: .hapticTransient,
+            parameters: [intensity, sharpness],
+            relativeTime: 0
+        )
 
         do {
             let pattern = try CHHapticPattern(events: [event], parameters: [])
@@ -124,6 +205,7 @@ struct LockScreenView: View {
             print("Failed to play haptic: \(error.localizedDescription)")
         }
     }
+
 }
 
 struct CircularSeekBars: View {
@@ -139,7 +221,10 @@ struct CircularSeekBars: View {
 
             Circle()
                 .trim(from: 0.0, to: progress / 360)
-                .stroke(Color("blue"), style: StrokeStyle(lineWidth: 18, lineCap: .round))
+                .stroke(
+                    Color("blue"),
+                    style: StrokeStyle(lineWidth: 18, lineCap: .round)
+                )
                 .frame(width: 210, height: 210)
                 .rotationEffect(.degrees(-90))
 
@@ -147,7 +232,10 @@ struct CircularSeekBars: View {
                 .fill(Color.white)
                 .frame(width: 24, height: 24)
                 .shadow(color: .black.opacity(0.3), radius: 6, x: 0, y: 4)
-                .offset(x: 108 * cos((progress - 90).toRadians()), y: 108 * sin((progress - 90).toRadians()))
+                .offset(
+                    x: 108 * cos((progress - 90).toRadianss()),
+                    y: 108 * sin((progress - 90).toRadianss())
+                )
                 .gesture(
                     DragGesture()
                         .onChanged { value in
@@ -176,11 +264,22 @@ struct CircularSeekBars: View {
     }
 
     private func simpleSuccess() {
-        guard let engine = hapticEngine, CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
+        guard let engine = hapticEngine, CHHapticEngine
+            .capabilitiesForHardware().supportsHaptics else { return }
 
-        let intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 1)
-        let sharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: 1)
-        let event = CHHapticEvent(eventType: .hapticTransient, parameters: [intensity, sharpness], relativeTime: 0)
+        let intensity = CHHapticEventParameter(
+            parameterID: .hapticIntensity,
+            value: 1
+        )
+        let sharpness = CHHapticEventParameter(
+            parameterID: .hapticSharpness,
+            value: 1
+        )
+        let event = CHHapticEvent(
+            eventType: .hapticTransient,
+            parameters: [intensity, sharpness],
+            relativeTime: 0
+        )
 
         do {
             let pattern = try CHHapticPattern(events: [event], parameters: [])
