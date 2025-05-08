@@ -65,6 +65,7 @@ struct callView: View {
                 )
 
                 .padding(.leading, 20)
+                .padding(.bottom,30)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
@@ -75,6 +76,7 @@ struct callView: View {
 
 
         }
+        .padding(.top,15)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.clear.contentShape(Rectangle())) // Make whole area touchable
         .gesture(
@@ -92,18 +94,19 @@ struct callView: View {
                             print("Stretched upward!")
                             isButtonVisible = true
                         } else if value.translation.height > 50 {
-                            // Stretched downward
-                            isStretchedUp = false
-                            isMainContentVisible = true
-                            // isTopHeaderVisible = false
-                            print("Stretched downward!")
+                            withAnimation {
+                                isPressed = true
+                                isStretchedUp = false
+                                isMainContentVisible = true
 
 
-                            withAnimation(.easeInOut(duration: 0.30)){
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    isButtonVisible = false
-                                    isPressed = false
+                                 withAnimation(.easeInOut(duration: 0.30)){
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        isButtonVisible = false
+                                        isPressed = false
+                                    }
                                 }
+
                             }
 
                         }

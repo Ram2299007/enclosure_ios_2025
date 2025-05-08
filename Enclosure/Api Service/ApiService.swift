@@ -213,7 +213,6 @@ class ApiService {
             "mobile_no": mobile_no,
 
         ]
-
         print("Request URL: \(url)")
         print("Parameters: \(parameters)")
 
@@ -384,10 +383,99 @@ class ApiService {
                     completion(false, error.localizedDescription, nil)
                 }
             }
+
     }
 
 
 
+
+    static func get_user_active_chat_list(uid: String, completion: @escaping (Bool, String, [UserActiveContactModel]?) -> Void) {
+        let url = Constant.baseURL+"get_user_active_chat_list"
+        let parameters: [String: Any] = ["uid": uid]
+        
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    do {
+                        let decoded = try JSONDecoder().decode(UserContactResponse.self, from: data)
+                        if decoded.errorCode == "200" {
+                            completion(true, decoded.message, decoded.data)
+                        } else {
+                            completion(false, decoded.message, decoded.data)
+                        }
+                    } catch {
+                        print("Decoding error: \(error.localizedDescription)")
+                        completion(false, "Decoding failed", nil)
+                    }
+
+                case .failure(let error):
+                    print("Request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription, nil)
+                }
+            }
+    }
+
+
+
+    static func get_profile_YouFragment(uid: String, completion: @escaping (Bool, String, [GetProfileModel]?) -> Void) {
+        let url = Constant.baseURL+"get_profile"
+        let parameters: [String: Any] = ["uid": uid]
+
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    do {
+                        let decoded = try JSONDecoder().decode(GetProfileResponse.self, from: data)
+                        if decoded.error_code == "200" {
+                            completion(true, decoded.message, decoded.data)
+                        } else {
+                            completion(false, decoded.message, decoded.data)
+                        }
+                    } catch {
+                        print("Decoding error: \(error.localizedDescription)")
+                        completion(false, "Decoding failed", nil)
+                    }
+
+                case .failure(let error):
+                    print("Request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription, nil)
+                }
+            }
+    }
+
+
+
+    static func get_user_profile_images_youFragment(uid: String, completion: @escaping (Bool, String, [GetUserProfileImagesModel]?) -> Void) {
+        let url = Constant.baseURL+"get_user_profile_images"
+        let parameters: [String: Any] = ["uid": uid]
+
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    do {
+                        let decoded = try JSONDecoder().decode(GetUserProfileImagesResponse.self, from: data)
+                        if decoded.error_code == "200" {
+                            completion(true, decoded.message, decoded.data)
+                        } else {
+                            completion(false, decoded.message, decoded.data)
+                        }
+                    } catch {
+                        print("Decoding error: \(error.localizedDescription)")
+                        completion(false, "Decoding failed", nil)
+                    }
+
+                case .failure(let error):
+                    print("Request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription, nil)
+                }
+            }
+    }
 
 
 }

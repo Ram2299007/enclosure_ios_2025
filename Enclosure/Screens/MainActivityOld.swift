@@ -475,7 +475,7 @@ struct MainActivityOld: View {
 
                         youView(isMainContentVisible: $isMainContentVisible)
                     }
-                }.padding(.top,15)
+                }
 
 
 

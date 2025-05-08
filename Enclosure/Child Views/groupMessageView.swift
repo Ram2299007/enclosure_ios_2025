@@ -66,6 +66,7 @@ struct groupMessageView: View {
                 )
 
                 .padding(.leading, 20)
+                .padding(.bottom,30)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
@@ -76,6 +77,7 @@ struct groupMessageView: View {
 
 
         }
+        .padding(.top,15)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.clear.contentShape(Rectangle())) // Make whole area touchable
         .gesture(
@@ -93,18 +95,19 @@ struct groupMessageView: View {
                             print("Stretched upward!")
                             groupMessageView = true
                         } else if value.translation.height > 50 {
-                            // Stretched downward
-                            isStretchedUp = false
-                            isMainContentVisible = true
-                            // isTopHeaderVisible = false
-                            print("Stretched downward!")
+                            withAnimation {
+                                isPressed = true
+                                isStretchedUp = false
+                                isMainContentVisible = true
 
 
-                            withAnimation(.easeInOut(duration: 0.30)){
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    groupMessageView = false
-                                    isPressed = false
+                                 withAnimation(.easeInOut(duration: 0.30)){
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        groupMessageView = false
+                                        isPressed = false
+                                    }
                                 }
+
                             }
 
                         }

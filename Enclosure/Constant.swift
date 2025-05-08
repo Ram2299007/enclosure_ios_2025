@@ -25,6 +25,15 @@ struct Constant{
     static let groupMsgView = "groupMsgView"
     static let messageLmtView = "messageLmtView"
     static let youView = "youView"
+    static let profilePic = "profilePic"
+    static let full_name = "full_name"
+
+
+    static var SenderIdMy: String {
+        return UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? "0"
+    }
+
+
 
 
     static func showToast(message: String) {

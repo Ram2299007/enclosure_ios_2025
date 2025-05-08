@@ -6,10 +6,12 @@
       "scale" : "1x"
     },
     {
+      "filename" : "ec_modern 1.png",
       "idiom" : "universal",
       "scale" : "2x"
     },
     {
+      "filename" : "ec_modern 2.png",
       "idiom" : "universal",
       "scale" : "3x"
     }
