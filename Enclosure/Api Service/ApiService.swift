@@ -392,7 +392,7 @@ class ApiService {
     static func get_user_active_chat_list(uid: String, completion: @escaping (Bool, String, [UserActiveContactModel]?) -> Void) {
         let url = Constant.baseURL+"get_user_active_chat_list"
         let parameters: [String: Any] = ["uid": uid]
-        
+
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseData { response in
@@ -473,6 +473,195 @@ class ApiService {
                 case .failure(let error):
                     print("Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, nil)
+                }
+            }
+    }
+
+
+    static func get_user_profile_images_EditProfile(uid: String, completion: @escaping (Bool, String, [GetUserProfileImagesModel]?) -> Void) {
+        let url = Constant.baseURL+"get_user_profile_images"
+        let parameters: [String: Any] = ["uid": uid]
+
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    do {
+                        let decoded = try JSONDecoder().decode(GetUserProfileImagesResponse.self, from: data)
+                        if decoded.error_code == "200" {
+                            completion(true, decoded.message, decoded.data)
+                        } else {
+                            completion(false, decoded.message, decoded.data)
+                        }
+                    } catch {
+                        print("Decoding error: \(error.localizedDescription)")
+                        completion(false, "Decoding failed", nil)
+                    }
+
+                case .failure(let error):
+                    print("Request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription, nil)
+                }
+            }
+    }
+
+
+
+
+    static func profile_update(uid: String, full_name: String, caption: String, photo: Data?, completion: @escaping (Bool, String) -> Void) {
+        let url = Constant.baseURL + "profile_update"
+
+        AF.upload(multipartFormData: { formData in
+            formData.append(Data(uid.utf8), withName: "uid")
+            formData.append(Data(full_name.utf8), withName: "full_name")
+            formData.append(Data(caption.utf8), withName: "caption")
+
+            // Attach image if provided
+            if let imageData = photo {
+                formData.append(imageData, withName: "photo", fileName: "profile.jpg", mimeType: "image/jpeg")
+            }
+
+        }, to: url)
+        .validate()
+        .responseData { response in
+            switch response.result {
+            case .success(let data):
+                do {
+                    let decoded = try JSONDecoder().decode(GlobalResponse.self, from: data)
+                    completion(decoded.error_code == "200", decoded.message)
+                } catch {
+                    print("Decoding error:", error)
+                    completion(false, "Decoding failed")
+                }
+            case .failure(let error):
+                print("Request error:", error)
+                completion(false, error.localizedDescription)
+            }
+        }
+    }
+
+
+    static func get_profile_EditProfile(uid: String, completion: @escaping (Bool, String, [GetProfileModel]?) -> Void) {
+        let url = Constant.baseURL+"get_profile"
+        let parameters: [String: Any] = ["uid": uid]
+
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    do {
+                        let decoded = try JSONDecoder().decode(GetProfileResponse.self, from: data)
+                        if decoded.error_code == "200" {
+                            completion(true, decoded.message, decoded.data)
+                        } else {
+                            completion(false, decoded.message, decoded.data)
+                        }
+                    } catch {
+                        print("Decoding error: \(error.localizedDescription)")
+                        completion(false, "Decoding failed", nil)
+                    }
+
+                case .failure(let error):
+                    print("Request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription, nil)
+                }
+            }
+    }
+
+
+
+    static func upload_user_profile_images(uid: String, photo: Data?, completion: @escaping (Bool, String) -> Void) {
+        let url = Constant.baseURL + "upload_user_profile_images"
+
+        AF.upload(multipartFormData: { formData in
+            formData.append(Data(uid.utf8), withName: "uid")
+            // Attach image if provided
+            if let imageData = photo {
+                formData.append(imageData, withName: "photo", fileName: "profile.jpg", mimeType: "image/jpeg")
+            }
+
+        }, to: url)
+        .validate()
+        .responseData { response in
+            switch response.result {
+            case .success(let data):
+                do {
+                    let decoded = try JSONDecoder().decode(GlobalResponse.self, from: data)
+                    completion(decoded.error_code == "200", decoded.message)
+                } catch {
+                    print("Decoding error:", error)
+                    completion(false, "Decoding failed")
+                }
+            case .failure(let error):
+                print("Request error:", error)
+                completion(false, error.localizedDescription)
+            }
+        }
+    }
+
+
+
+    static func delete_user_profile_image(uid: String, completion: @escaping (Bool, String) -> Void) {
+        let url = Constant.baseURL+"delete_user_profile_image"
+        let parameters: [String: Any] = ["uid": uid]
+
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    do {
+                        let decoded = try JSONDecoder().decode(
+                            GlobalResponse.self,
+                            from: data
+                        )
+                        if decoded.error_code == "200" {
+                            completion(true, decoded.message)
+                        } else {
+                            completion(false, decoded.message)
+                        }
+                    } catch {
+                        print("Decoding error: \(error.localizedDescription)")
+                        completion(false, "Decoding failed")
+                    }
+
+                case .failure(let error):
+                    print("Request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription)
+                }
+            }
+    }
+
+
+    static func delete_user_single_status_image(uid: String,id: String ,completion: @escaping (Bool, String) -> Void) {
+        let url = Constant.baseURL+"delete_user_single_status_image"
+        let parameters: [String: Any] = ["uid": uid,"id": id]
+
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    do {
+                        let decoded = try JSONDecoder().decode(
+                            GlobalResponse.self,
+                            from: data
+                        )
+                        if decoded.error_code == "200" {
+                            completion(true, decoded.message)
+                        } else {
+                            completion(false, decoded.message)
+                        }
+                    } catch {
+                        print("Decoding error: \(error.localizedDescription)")
+                        completion(false, "Decoding failed")
+                    }
+
+                case .failure(let error):
+                    print("Request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription)
                 }
             }
     }

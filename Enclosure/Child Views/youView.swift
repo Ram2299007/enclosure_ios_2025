@@ -209,7 +209,7 @@ struct youView: View {
                         }
                         .padding(.horizontal, 15)
                     }.fixedSize()
-                    .allowsHitTesting(false)
+                        .allowsHitTesting(false)
 
 
 
@@ -240,19 +240,20 @@ struct youView: View {
                     .padding(.bottom,50)
 
 
-                Text(profile?.caption ?? "First Begin to believe\nthen believe to begin")
-                    .font(.custom("Inter18pt-Medium", size: 16))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(10)
-                    .padding(.vertical, 20)
-                    .frame(maxWidth: .infinity)
-                    .background(
-                        GeometryReader { geometry in
-                            Color("appThemeColrBackground")
-                                .frame(width: geometry.size.width, height: geometry.size.height)
-                        }
-                    ).padding(.bottom,50)
+                VStack{
+                    Text(profile?.caption ?? "First Begin to believe\nthen believe to begin")
+                        .font(.custom("Inter18pt-Medium", size: 16))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(10)
+                        .frame(width: 300)
+                        .padding(.vertical, 20)
+
+                }
+                .frame(maxWidth: .infinity)
+                .background( Color("appThemeColrBackground"))
+                .padding(.bottom, 50)
+
 
 
 
