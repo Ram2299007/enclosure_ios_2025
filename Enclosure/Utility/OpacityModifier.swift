@@ -5,7 +5,7 @@
 //  Created by Ram Lohar on 30/04/25.
 //
 
-import SwiftUICore
+import SwiftUI
 
 
 struct OpacityModifier: ViewModifier {

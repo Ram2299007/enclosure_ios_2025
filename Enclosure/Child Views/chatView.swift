@@ -5,6 +5,8 @@ struct chatView: View {
     @StateObject private var viewModel = ChatViewModel()
     @State private var tappedIndex: Int? = nil
 
+
+
     var body: some View {
         VStack {
             // Show loading indicator while fetching data
@@ -48,7 +50,7 @@ struct chatView: View {
                     .padding(.trailing,16)
                     .padding(.leading,16)
 
-                VStack(alignment: .leading) {
+                VStack(alignment: .leading,spacing:0) {
                     // Name and Time
                     HStack {
                         Text(chat.fullName)
@@ -57,7 +59,7 @@ struct chatView: View {
                         Spacer()
                         Text(chat.sentTime)
                             .font(.custom("Inter18pt-Medium", size: 12))
-                            .foregroundColor(Color("Gray3"))
+                            .foregroundColor(chat.notification > 0 ? Color("blue"): Color("Gray3"))
                             .padding(.trailing,8)
                     }
 
@@ -69,15 +71,19 @@ struct chatView: View {
                             .font(.custom("Inter18pt-Medium", size: 13))
                             .foregroundColor(Color("Gray3"))
                             .lineLimit(1)
+                            .padding(.vertical, chat.notification > 0 ? 0 : 5)
 
                         Spacer()
 
 
                         // Notification Badge
                         if chat.notification > 0 {
+
                             NotificationBadge(count: chat.notification)
                         }
                     }
+
+
 
 
                 }

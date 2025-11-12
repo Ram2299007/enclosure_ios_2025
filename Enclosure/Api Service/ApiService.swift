@@ -667,4 +667,68 @@ class ApiService {
     }
 
 
+
+    static func get_user_active_chat_list_for_msgLmt(uid: String, completion: @escaping (Bool, String, [UserActiveContactModel]?) -> Void) {
+        let url = Constant.baseURL+"get_user_active_chat_list"
+        let parameters: [String: Any] = ["uid": uid]
+
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    do {
+                        let decoded = try JSONDecoder().decode(UserContactResponse.self, from: data)
+                        if decoded.errorCode == "200" {
+                            completion(true, decoded.message, decoded.data)
+                        } else {
+                            completion(false, decoded.message, decoded.data)
+                        }
+                    } catch {
+                        print("Decoding error: \(error.localizedDescription)")
+                        completion(false, "Decoding failed", nil)
+                    }
+
+                case .failure(let error):
+                    print("Request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription, nil)
+                }
+            }
+    }
+
+
+    static func get_message_limit_for_all_users(uid: String, completion: @escaping (Bool, String, [GetMessageLimitForAllUsersModel]?) -> Void) {
+        let url = Constant.baseURL+"get_message_limit_for_all_users"
+        let parameters: [String: Any] = ["uid": uid]
+
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    do {
+                        let decoded = try JSONDecoder().decode(GetMessageLimitForAllUsersResponse.self, from: data)
+                        if decoded.errorCode == "200" {
+                            completion(true, decoded.message, decoded.data)
+                        } else {
+                            completion(false, decoded.message, decoded.data)
+                        }
+                    } catch {
+                        print("Decoding error: \(error.localizedDescription)")
+                        completion(false, "Decoding failed", nil)
+                    }
+
+                case .failure(let error):
+                    print("Request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription, nil)
+                }
+            }
+    }
+
+
+
+
+
+
+
 }

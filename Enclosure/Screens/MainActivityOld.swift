@@ -456,6 +456,7 @@ struct MainActivityOld: View {
 
                         chatView()
 
+
                     }else if(viewValue == Constant.callView){
 
                         callView(isMainContentVisible: $isMainContentVisible)
@@ -471,6 +472,8 @@ struct MainActivityOld: View {
 
                         messageLmtView(isMainContentVisible: $isMainContentVisible)
 
+
+
                     }else if(viewValue == Constant.youView){
 
                         youView(isMainContentVisible: $isMainContentVisible)
@@ -483,8 +486,8 @@ struct MainActivityOld: View {
 
 
             }
-            .background(Color("BackgroundColor"))
-            Spacer() // Pushes content to the top
+            .background(Color("background_color"))
+           
         }
 
         .navigationBarHidden(true)

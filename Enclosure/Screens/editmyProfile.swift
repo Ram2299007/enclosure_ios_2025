@@ -16,6 +16,7 @@ struct EditmyProfile: View {
     @State private var selectedImageStatus: [UIImage] = []
 
     @State private var showDialog = false
+    
 
     @Environment(\.presentationMode) var presentationMode
     @FocusState private var isFullNameFocused: Bool
@@ -611,7 +612,7 @@ struct ImageDialogView: View {
     var body: some View {
         ZStack {
             // Blurred background
-            Color.black.opacity(0.3)
+            Color.black.opacity(0.0)
                 .background(.ultraThinMaterial)
                 .ignoresSafeArea()
                 .onTapGesture {
