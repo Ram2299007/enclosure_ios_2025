@@ -12,39 +12,22 @@ struct FlagRowView: View {
     let model: FlagModel
 
     var body: some View {
-        VStack {
-            HStack(spacing: 10) { // 🔹 `spacing` कमी केला
-                Text(model.country_code)
-                    .font(.custom("Inter18pt-SemiBold", size: 15))
-                    .frame(width: 50)
-                    .foregroundColor(Color("TextColor"))
-                    .multilineTextAlignment(.center)
-
-                Text(model.country_name)
-                    .font(.custom("Inter18pt-Medium", size: 15))
-                    .frame(maxWidth: .infinity)
-                    .foregroundColor(Color("TextColor"))
-                    .multilineTextAlignment(.center)
-
-
-
-                Text("( +\(model.country_c_code) )")
-                    .font(.custom("Inter18pt-Medium", size: 15))
-                    .frame(width: 80)
-                    .foregroundColor(Color("TextColor"))
-                    .multilineTextAlignment(.center)
-
-            }
-            .padding()
-                   .background(
-                       RoundedRectangle(cornerRadius: 2)
-                           .fill(Color("BackgroundColor"))
-                           .overlay(
-                               RoundedRectangle(cornerRadius: 2)
-                                   .stroke(Color("gray"), lineWidth: 1)
-                           )
-                   )
-
+        HStack(spacing: 0) {
+            // Country Code (like "+91") - 80dp width matching Android
+            Text("+\(model.country_c_code)")
+                .font(.custom("Inter18pt-Medium", size: 14))
+                .frame(width: 80, alignment: .leading)
+                .foregroundColor(Color("TextColor"))
+                .padding(.leading, 10)
+            
+            // Country Name - takes remaining space
+            Text(model.country_name)
+                .font(.custom("Inter18pt-Medium", size: 15))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .foregroundColor(Color("TextColor"))
         }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.bottom, 5)
     }
 }

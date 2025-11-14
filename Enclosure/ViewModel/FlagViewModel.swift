@@ -40,7 +40,18 @@ class FlagViewModel: ObservableObject {
         if searchText.isEmpty {
             return flags
         } else {
-            return flags.filter { $0.country_name.localizedCaseInsensitiveContains(searchText) }
+            let searchTextLower = searchText.lowercased()
+            // Android filtering logic: first character must match, then contains check
+            if searchTextLower.count >= 1 {
+                return flags.filter { flag in
+                    let nameLower = flag.country_name.lowercased()
+                    if nameLower.count >= 1 && nameLower.prefix(1) == searchTextLower.prefix(1) {
+                        return nameLower.contains(searchTextLower)
+                    }
+                    return false
+                }
+            }
+            return []
         }
     }
 }

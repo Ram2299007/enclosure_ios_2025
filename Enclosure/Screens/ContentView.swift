@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State var isNavigating = false
+    @State var isNavigatingToMain = false
 
     var body: some View {
         NavigationStack {
@@ -77,10 +78,27 @@ struct ContentView: View {
                 }
                 .hidden()
             )
+            .background(
+                NavigationLink(destination: MainActivityOld(), isActive: $isNavigatingToMain) {
+                    EmptyView()
+                }
+                .hidden()
+            )
             .onAppear {
                 let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? "0"
-                if uid != "0" {
-                    isNavigating = true
+                let sleepKeyCheckOFF = UserDefaults.standard.string(forKey: Constant.sleepKeyCheckOFF) ?? ""
+                let loggedInKey = UserDefaults.standard.string(forKey: Constant.loggedInKey) ?? ""
+                
+                // Only navigate if user has completed registration (has UID and loggedInKey)
+                // This prevents navigation when user is in the middle of registration flow
+                if uid != "0" && loggedInKey == Constant.loggedInKey {
+                    // If lock screen is already set up, go directly to MainActivityOld
+                    if sleepKeyCheckOFF == "on" {
+                        isNavigatingToMain = true
+                    } else {
+                        // Otherwise, go to LockScreen2View to set up lock screen
+                        isNavigating = true
+                    }
                 }
             }
         }

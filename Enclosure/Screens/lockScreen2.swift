@@ -126,13 +126,18 @@ struct LockScreen2View: View {
             .onAppear {
                 let sleepkey = UserDefaults.standard.string(forKey: Constant.sleepKey)
                 let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY)
-                let sleepKeyCheckOFF = UserDefaults.standard.string(forKey: "sleepKeyCheckOFF") ?? ""
-                if sleepKeyCheckOFF != "on" {
-
+                let sleepKeyCheckOFF = UserDefaults.standard.string(forKey: Constant.sleepKeyCheckOFF) ?? ""
+                let loggedInKey = UserDefaults.standard.string(forKey: Constant.loggedInKey) ?? ""
+                
+                // Only auto-navigate if:
+                // 1. Lock screen is not set up yet (sleepKeyCheckOFF != "on")
+                // 2. User has completed registration (has UID and loggedInKey)
+                // This prevents navigation when user is in the middle of registration
+                if sleepKeyCheckOFF != "on" && 
+                   uid != nil && uid != "0" && 
+                   loggedInKey == Constant.loggedInKey {
                     self.isNavigating = true
                 }
-
-
 
                 prepareHaptics()
             }
