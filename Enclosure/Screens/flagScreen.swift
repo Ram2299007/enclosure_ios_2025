@@ -21,11 +21,13 @@ struct flagScreen: View {
     @Binding var selectedCountryID: String
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
+        VStack(spacing: 0) {
                 // Back Arrow Above Title
                 HStack(alignment: .center) {
                     Button(action: {
+                        // Dismiss keyboard first (like Android does on back press)
+                        isSearchFocused = false
+                        
                         withAnimation {
                             isPressed = true
                         }
@@ -110,17 +112,34 @@ struct flagScreen: View {
                 } else {
                     ScrollView {
                         VStack(spacing: 0) {
+                            // Debug: Print count of flags
+                            let _ = print("📊 Total flags to display: \(viewModel.filteredFlags.count)")
+                            
                             ForEach(viewModel.filteredFlags) { flag in
-                                Button(action: {
-                                    selectedCountryCode = "+\(flag.country_c_code)"
-                                    selectedCountryShortCode = flag.country_code
-                                    selectedCountryID = flag.c_id
-                                    dismiss()
-                                }) {
-                                    FlagRowView(model: flag)
-                                        .pressEffect()
-                                }
-                                .buttonStyle(PlainButtonStyle())
+                                FlagRowView(model: flag)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        print("🔵 Row tapped for country: \(flag.country_name)")
+                                        
+                                        // Dismiss keyboard first (like Android does when activity finishes)
+                                        isSearchFocused = false
+                                        
+                                        // Update selected country details (matching Android: countrycode, flagFinal, c_id)
+                                        selectedCountryCode = "+\(flag.country_c_code)"
+                                        selectedCountryShortCode = flag.country_code  // Short code like "IN", "US"
+                                        selectedCountryID = flag.c_id
+                                        
+                                        // Print for debugging
+                                        print("✅ Selected country: \(flag.country_code), Code: +\(flag.country_c_code), ID: \(flag.c_id)")
+                                        
+                                        // Dismiss keyboard and wait before navigating back
+                                        // This ensures keyboard is fully dismissed before returning to whatsYourNumber
+                                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                                        
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                            dismiss()
+                                        }
+                                    }
                             }
                         }
                         .padding(.horizontal, 10)
@@ -134,8 +153,7 @@ struct flagScreen: View {
                     isSearchFocused = true
                 }
             }
-        }
-        .navigationBarHidden(true)
+            .navigationBarHidden(true)
     }
 }
 

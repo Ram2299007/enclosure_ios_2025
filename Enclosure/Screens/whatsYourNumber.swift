@@ -204,6 +204,23 @@ struct whatsYourNumber: View {
                 .padding(.bottom, 80)
             }
             .navigationBarHidden(true)
+            .onChange(of: selectedCountryShortCode) { newValue in
+                print("Country short code updated in whatsYourNumber: \(newValue)")
+                // Dismiss keyboard when country is selected (returning from flagScreen)
+                // This prevents keyboard from opening when returning from flagScreen
+                DispatchQueue.main.async {
+                    isFocused = false
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+            }
+            .onChange(of: selectedCountryCode) { newValue in
+                print("Country code updated in whatsYourNumber: \(newValue)")
+                // Dismiss keyboard when country code is selected (returning from flagScreen)
+                DispatchQueue.main.async {
+                    isFocused = false
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+            }
         }
     }
 }
