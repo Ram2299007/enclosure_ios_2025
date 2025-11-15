@@ -9,10 +9,10 @@
 import SwiftUI
 
 struct UserContactResponse: Codable {
-    let success: String
+    let success: String?
     let errorCode: String
     let message: String
-    let data: [UserActiveContactModel]
+    let data: [UserActiveContactModel]?
 
     enum CodingKeys: String, CodingKey {
         case success

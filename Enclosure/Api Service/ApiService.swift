@@ -400,14 +400,34 @@ class ApiService {
                 case .success(let data):
                     do {
                         let decoded = try JSONDecoder().decode(UserContactResponse.self, from: data)
-                        if decoded.errorCode == "200" {
-                            completion(true, decoded.message, decoded.data)
+                        let chatList = decoded.data ?? []
+                        let message = decoded.message.lowercased()
+                        
+                        // Treat "Data not found" as success with empty data, not an error
+                        if decoded.errorCode == "200" || message.contains("data not found") || message.contains("no data") {
+                            // Success case: return empty array if no data
+                            completion(true, "", chatList)
                         } else {
-                            completion(false, decoded.message, decoded.data)
+                            // Actual error case
+                            completion(false, decoded.message, chatList)
                         }
                     } catch {
                         print("Decoding error: \(error.localizedDescription)")
-                        completion(false, "Decoding failed", nil)
+                        // Try to extract message from raw response if decoding fails
+                        if let rawString = String(data: data, encoding: .utf8),
+                           let jsonData = rawString.data(using: .utf8),
+                           let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                           let message = json["message"] as? String {
+                            let lowerMessage = message.lowercased()
+                            // If message is "Data not found", treat as success with empty data
+                            if lowerMessage.contains("data not found") || lowerMessage.contains("no data") {
+                                completion(true, "", [])
+                            } else {
+                                completion(false, message, nil)
+                            }
+                        } else {
+                            completion(false, "Decoding failed: \(error.localizedDescription)", nil)
+                        }
                     }
 
                 case .failure(let error):
@@ -679,14 +699,34 @@ class ApiService {
                 case .success(let data):
                     do {
                         let decoded = try JSONDecoder().decode(UserContactResponse.self, from: data)
-                        if decoded.errorCode == "200" {
-                            completion(true, decoded.message, decoded.data)
+                        let chatList = decoded.data ?? []
+                        let message = decoded.message.lowercased()
+                        
+                        // Treat "Data not found" as success with empty data, not an error
+                        if decoded.errorCode == "200" || message.contains("data not found") || message.contains("no data") {
+                            // Success case: return empty array if no data
+                            completion(true, "", chatList)
                         } else {
-                            completion(false, decoded.message, decoded.data)
+                            // Actual error case
+                            completion(false, decoded.message, chatList)
                         }
                     } catch {
                         print("Decoding error: \(error.localizedDescription)")
-                        completion(false, "Decoding failed", nil)
+                        // Try to extract message from raw response if decoding fails
+                        if let rawString = String(data: data, encoding: .utf8),
+                           let jsonData = rawString.data(using: .utf8),
+                           let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                           let message = json["message"] as? String {
+                            let lowerMessage = message.lowercased()
+                            // If message is "Data not found", treat as success with empty data
+                            if lowerMessage.contains("data not found") || lowerMessage.contains("no data") {
+                                completion(true, "", [])
+                            } else {
+                                completion(false, message, nil)
+                            }
+                        } else {
+                            completion(false, "Decoding failed: \(error.localizedDescription)", nil)
+                        }
                     }
 
                 case .failure(let error):

@@ -11,32 +11,46 @@ struct chatView: View {
         VStack {
             // Show loading indicator while fetching data
             if viewModel.isLoading {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle())
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            }else
-
-            if let errorMessage = viewModel.errorMessage {
-                Text("Error: \(errorMessage)")
-                    .foregroundColor(.red)
-            }
-            // Show chat list if data is fetched successfully
-            else {
+                ZStack {
+                    Color("BackgroundColor")
+                    HorizontalProgressBar()
+                        .frame(width: 40, height: 2)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            } else if let errorMessage = viewModel.errorMessage {
+                // Show error message
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 48))
+                        .foregroundColor(.red.opacity(0.6))
+                    Text(errorMessage)
+                        .font(.custom("Inter18pt-Medium", size: 16))
+                        .foregroundColor(Color("TextColor"))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            } else if viewModel.chatList.isEmpty {
+                // Show placeholder contact card when no chats are available
+                List {
+                    PlaceholderContactCardView()
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
+                }
+                .listStyle(PlainListStyle())
+            } else {
+                // Show chat list if data is fetched successfully
                 List(viewModel.chatList, id: \.uid) { chat in
                     ContactCardView(chat: chat)
-
                         .listRowInsets(EdgeInsets())
                         .listRowSeparator(.hidden) // Hides the separator
                 }
                 .listStyle(PlainListStyle()) // Optional for clean appearance
             }
-
-
         }
         .onAppear {
             viewModel.fetchChatList(uid: Constant.SenderIdMy)
         }
-
     }
 
 
@@ -166,9 +180,78 @@ struct chatView: View {
             .frame(width: 32, height: 32)
         }
     }
+    
+    struct PlaceholderContactCardView: View {
+        @State private var isPressed = false
+        
+        // Computed property to get current time in "11:00 am" format
+        private var currentTime: String {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "h:mm a"
+            return formatter.string(from: Date())
+        }
+        
+        var body: some View {
+            HStack(spacing: 0) {
+                // Contact Image - using ec_modern as placeholder
+                Image("ec_modern")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 48, height: 48)
+                    .cornerRadius(6)
+                    .padding(.trailing, 16)
+                    .padding(.leading, 16)
+                
+                VStack(alignment: .leading, spacing: 0) {
+                    // Name and Time
+                    HStack {
+                        Text("@Enclosureforworld")
+                            .font(.custom("Inter18pt-SemiBold", size: 16))
+                            .foregroundColor(Color("TextColor"))
+                        Spacer()
+                        Text(currentTime)
+                            .font(.custom("Inter18pt-Medium", size: 12))
+                            .foregroundColor(Color("blue"))
+                            .padding(.trailing, 8)
+                    }
+                    
+                    HStack {
+                        // Caption
+                        Text("Welcome to Enclosure Messagi...")
+                            .font(.custom("Inter18pt-Medium", size: 13))
+                            .foregroundColor(Color("Gray3"))
+                            .lineLimit(1)
+                            .padding(.vertical, 5)
+                        
+                        Spacer()
+                        
+                        // Notification Badge
+                        NotificationBadge(count: 1)
+                    }
+                }
+            }
+            .padding(.vertical, 16)
+            .contentShape(Rectangle())
+            .background(isPressed ? Color.gray.opacity(0.1) : Color.clear)
+            .scaleEffect(isPressed ? 0.98 : 1.0)
+            .animation(.easeInOut(duration: 0.15), value: isPressed)
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in isPressed = true }
+                    .onEnded { _ in
+                        isPressed = false
+                        // Placeholder card - no action needed
+                    }
+            )
+            .onLongPressGesture(minimumDuration: 0.01, pressing: { pressing in
+                isPressed = pressing
+            }, perform: {
+                // Optional: Handle tap if needed
+            })
+        }
+    }
 
 }
-
 
 #Preview {
     chatView( )
