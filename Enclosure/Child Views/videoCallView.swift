@@ -7,115 +7,478 @@
 
 import Foundation
 import SwiftUI
-import SwiftUI
-
 
 struct videoCallView: View {
+    @StateObject private var viewModel = CallViewModel()
     @State private var dragOffset: CGSize = .zero
     @State private var isStretchedUp = false
-    @State private var videoCallView = false
+    @State private var isButtonVisible = false
     @Binding var isMainContentVisible: Bool
     @State private var isPressed = false
-
+    
+    // Tab state
+    @State private var selectedTab: VideoCallTab = .log
+    @State private var isSearchVisible = false
+    @State private var searchText = ""
+    @State private var isBackLayoutVisible = false
+    @State private var isContactLayoutVisible = false
+    @State private var isBottomCallerVisible = false
+    
+    enum VideoCallTab {
+        case log, contact
+    }
+    
     var body: some View {
-        VStack(spacing: 0) {
-
-
-            if(videoCallView){
-                Button(action: {
-                    withAnimation {
-                        isPressed = true
-                        isStretchedUp = false
-                        isMainContentVisible = true
-
-
-                         withAnimation(.easeInOut(duration: 0.30)){
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                videoCallView = false
-                                isPressed = false
+        ZStack {
+            Color("background_color")
+                .ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // Back arrow layout (backlyt) - initially hidden
+                if isBackLayoutVisible {
+                    HStack(spacing: 0) {
+                        // Back arrow button
+                        Button(action: {
+                            withAnimation {
+                                isBackLayoutVisible = false
+                                isMainContentVisible = true
+                            }
+                        }) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.clear)
+                                    .frame(width: 40, height: 40)
+                                
+                                Image("leftvector")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 25, height: 18)
+                                    .foregroundColor(Color("icontintGlobal"))
                             }
                         }
-
-                    }
-
-                }) {
-                    ZStack {
-                        if isPressed {
-                            Circle()
-                                .fill(Color.gray.opacity(0.3))
-                                .frame(width: 40, height: 40)
-                                .scaleEffect(isPressed ? 1.2 : 1.0)
-                                .animation(.easeOut(duration: 0.1), value: isPressed)
+                        .frame(width: 40, height: 40)
+                        .padding(.leading, 20)
+                        .padding(.trailing, 5)
+                        
+                        Spacer()
+                        
+                        // Menu button (3 dots)
+                        Button(action: {
+                            // Menu action
+                        }) {
+                            VStack(spacing: 3) {
+                                Circle()
+                                    .fill(Color("menuPointColor"))
+                                    .frame(width: 4, height: 4)
+                                Circle()
+                                    .fill(Color("blue"))
+                                    .frame(width: 4, height: 4)
+                                Circle()
+                                    .fill(Color("Gray3"))
+                                    .frame(width: 4, height: 4)
+                            }
+                            .frame(width: 40, height: 40)
                         }
-
-                        Image("leftvector")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 25, height: 18)
-                            .foregroundColor(Color("icontintGlobal"))
+                        .frame(width: 40, height: 40)
+                        .padding(.trailing, 10)
+                    }
+                    .frame(height: 50)
+                    .padding(.top, 15)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+                
+                // Search section (searchData) - matching MainActivityOld.swift pattern and Android spacing
+                // Search icon always visible when on contact tab, search bar slides in/out
+                if selectedTab == .contact {
+                    VStack(spacing: 0) {
+                        HStack(spacing: 0) {
+                            // Search bar - slides in from trailing edge when visible (matching MainActivityOld.swift)
+                            if isSearchVisible {
+                                HStack(spacing: 0) {
+                                    Rectangle()
+                                        .fill(Color("blue"))
+                                        .frame(width: 1, height: 19.24)
+                                        .padding(.leading, 23)
+                                    
+                                    TextField("Search Name or Number", text: $searchText)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .foregroundColor(Color("TextColor"))
+                                        .padding(.leading, 13)
+                                        .textFieldStyle(PlainTextFieldStyle())
+                                }
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                            }
+                            
+                            Spacer() // Push search icon to end
+                            
+                            // Search icon button - always visible at end (matching MainActivityOld.swift)
+                            Button(action: {
+                                withAnimation {
+                                    isSearchVisible.toggle()
+                                }
+                            }) {
+                                Image("search")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 20, height: 20)
+                            }
+                            .frame(width: 40, height: 40)
+                        }
+                        .padding(.top, 10) // marginTop="10dp" from Android searchData inner layout
+                    }
+                    .padding(.top, 2) // marginTop="2dp" from searchData layout
+                    .padding(.trailing, 18) // marginEnd="18dp" for search icon
+                }
+                
+                // Tabs section (label) - matching Android design with exact spacing
+                HStack(spacing: 0) {
+                    // Last/Log tab - matching Android radius_black_6dp when selected, radius_6dp_transp when not
+                    VStack(spacing: 5) {
+                        Button(action: {
+                            withAnimation {
+                                selectedTab = .log
+                                // Hide search layout when Last tab is clicked (matching Android)
+                                isSearchVisible = false
+                            }
+                        }) {
+                            Text("Last")
+                                .font(.custom("Inter18pt-Medium", size: 12))
+                                .fontWeight(.bold)
+                                .foregroundColor(selectedTab == .log ? .white : .black) // White when selected, black when not (matching Android)
+                                .frame(width: 70, height: 30)
+                                .background(
+                                    selectedTab == .log 
+                                        ? Color("buttonColorTheme") // radius_black_6dp equivalent
+                                        : Color("gray2") // radius_6dp_transp equivalent (atoz = gray2)
+                                )
+                                .cornerRadius(20) // 20dp corner radius as per Android
+                        }
+                    }
+                    
+                    // A-Z/Contact tab - matching Android radius_black_6dp when selected, radius_6dp_transp when not
+                    VStack(spacing: 5) {
+                        Button(action: {
+                            withAnimation {
+                                selectedTab = .contact
+                            }
+                            // Fetch contact list when A-Z tab is clicked (matching Android)
+                            viewModel.fetchContactList(uid: Constant.SenderIdMy)
+                            // Don't show search automatically - only show when search icon is clicked
+                        }) {
+                            Text("A - Z")
+                                .font(.custom("Inter18pt-Medium", size: 12))
+                                .fontWeight(.bold)
+                                .foregroundColor(selectedTab == .contact ? .white : .black) // White when selected, black when not (matching Android)
+                                .frame(width: 70, height: 30)
+                                .background(
+                                    selectedTab == .contact 
+                                        ? Color("buttonColorTheme") // radius_black_6dp equivalent
+                                        : Color("gray2") // radius_6dp_transp equivalent (atoz = gray2)
+                                )
+                                .cornerRadius(20) // 20dp corner radius as per Android
+                        }
+                    }
+                    .padding(.leading, 15) // marginStart="15dp" from Android
+                    
+                    Spacer()
+                    
+                    // Menu button (3 dots) - visible when on log tab
+                    if selectedTab == .log {
+                        Button(action: {
+                            // Show clear log dialog
+                        }) {
+                            VStack(spacing: 3) {
+                                Circle()
+                                    .fill(Color("menuPointColor"))
+                                    .frame(width: 4, height: 4)
+                                Circle()
+                                    .fill(Color("blue"))
+                                    .frame(width: 4, height: 4)
+                                Circle()
+                                    .fill(Color("Gray3"))
+                                    .frame(width: 4, height: 4)
+                            }
+                            .frame(width: 40, height: 40)
+                        }
+                        .frame(width: 40, height: 40)
+                        .padding(.trailing, 15) // marginEnd="15dp" from Android
                     }
                 }
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 0)
-                        .onEnded { _ in
-                            withAnimation {
-                                isPressed = false
+                .padding(.leading, 20) // marginStart="20dp" from Android label layout
+                .padding(.top, 15) // marginTop="15dp" from Android
+                
+                // Content area - RecyclerViews
+                ZStack {
+                    // Log RecyclerView (recyclerviewLast)
+                    if selectedTab == .log {
+                        ScrollView {
+                            VStack(spacing: 0) {
+                                // Video call log items will go here
+                                Text("Video Call Log")
+                                    .font(.custom("Inter18pt-Medium", size: 16))
+                                    .foregroundColor(Color("TextColor"))
+                                    .padding()
+                                
+                                // Placeholder for video call log items
+                                ForEach(0..<10) { index in
+                                    VideoCallLogRowView()
+                                }
                             }
                         }
-                )
-
-                .padding(.leading, 20)
-                .padding(.bottom,30)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                        .transition(.opacity)
+                    }
+                    
+                    // Contact RecyclerView (recyclerviewAZ)
+                    if selectedTab == .contact {
+                        ZStack {
+                            if viewModel.isLoading {
+                                // Progress bar - matching Android
+                                ProgressView()
+                                    .progressViewStyle(LinearProgressViewStyle(tint: Color("TextColor")))
+                                    .frame(width: 40, height: 2)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            } else if viewModel.contactList.isEmpty {
+                                let _ = print("📹 [videoCallView] Showing empty state - contactList count: \(viewModel.contactList.count), isLoading: \(viewModel.isLoading)")
+                                // Empty state card - matching Android noData card
+                                HStack(spacing: 0) {
+                                    Text("Press")
+                                        .font(.custom("Inter18pt-Medium", size: 14))
+                                        .foregroundColor(Color("TextColor"))
+                                    Text("  A - Z  ")
+                                        .font(.custom("Inter18pt-Medium", size: 14))
+                                        .foregroundColor(Color("TextColor"))
+                                    Text("for contact")
+                                        .font(.custom("Inter18pt-Medium", size: 14))
+                                        .foregroundColor(Color("TextColor"))
+                                }
+                                .padding(12)
+                                .background(Color("cardBackgroundColornew"))
+                                .cornerRadius(20)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            } else {
+                                let _ = print("📹 [videoCallView] Showing contact list - contactList count: \(viewModel.contactList.count)")
+                                // Contact list
+                                ScrollView {
+                                    VStack(spacing: 0) {
+                                        ForEach(viewModel.contactList, id: \.uid) { contact in
+                                            VideoCallingContactRowView(contact: contact)
+                                        }
+                                    }
+                                }
+                                .transition(.opacity)
+                            }
+                        }
+                        .transition(.opacity)
+                    }
+                }
+                .padding(.top, 5) // 5dp spacing between tabs and list view
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                
+                // Bottom caller section (bottomcaller2) - initially hidden
+                if isBottomCallerVisible {
+                    HStack(spacing: 0) {
+                        // Contact info and video call button will go here
+                        Text("Bottom Caller Section")
+                            .font(.custom("Inter18pt-Medium", size: 16))
+                            .foregroundColor(.white)
+                            .padding()
+                    }
+                    .frame(height: 78)
+                    .frame(maxWidth: .infinity)
+                    .background(Color("dxPatti"))
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
-
-
-
-            Text("This is the videoCallView")
-            Spacer()
-
-
         }
-        .padding(.top,15)
+        .padding(.top, 15)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.clear.contentShape(Rectangle())) // Make whole area touchable
         .gesture(
             DragGesture()
                 .onChanged { value in
                     dragOffset = value.translation
                 }
                 .onEnded { value in
-                    withAnimation(.easeInOut(duration: 0.30)) {
+                    withAnimation(.easeInOut(duration: 0.45)) {
                         if value.translation.height < -50 {
                             // Stretched upward
                             isStretchedUp = true
                             isMainContentVisible = false
-                            // isTopHeaderVisible = true
-                            print("Stretched upward!")
-                            videoCallView = true
+                            isBackLayoutVisible = true
+                            isButtonVisible = true
                         } else if value.translation.height > 50 {
-                            withAnimation {
-                                isPressed = true
-                                isStretchedUp = false
-                                isMainContentVisible = true
-
-
-                                 withAnimation(.easeInOut(duration: 0.30)){
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                        videoCallView = false
-                                        isPressed = false
-                                    }
-                                }
-
-                            }
+                            // Stretched downward
+                            isStretchedUp = false
+                            isMainContentVisible = true
+                            isBackLayoutVisible = false
+                            isButtonVisible = false
                         }
                         dragOffset = .zero
                     }
                 }
         )
-        .animation(.spring(), value: dragOffset)
+        .overlay(
+            // Back button overlay when stretched up
+            Group {
+                if isButtonVisible {
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.45)) {
+                            isPressed = true
+                            isStretchedUp = false
+                            isMainContentVisible = true
+                            isBackLayoutVisible = false
+                            
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                isButtonVisible = false
+                                isPressed = false
+                            }
+                        }
+                    }) {
+                        ZStack {
+                            if isPressed {
+                                Circle()
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(width: 40, height: 40)
+                                    .scaleEffect(isPressed ? 1.2 : 1.0)
+                                    .animation(.easeOut(duration: 0.1), value: isPressed)
+                            }
+                            
+                            Image("leftvector")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 25, height: 18)
+                                .foregroundColor(Color("icontintGlobal"))
+                        }
+                    }
+                    .padding(.leading, 20)
+                    .padding(.bottom, 30)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .transition(.opacity)
+                }
+            },
+            alignment: .bottomLeading
+        )
     }
 }
 
+// Placeholder views for video call log and contact rows
+struct VideoCallLogRowView: View {
+    var body: some View {
+        HStack {
+            Image("inviteimg")
+                .resizable()
+                .scaledToFill()
+                .frame(width: 50, height: 50)
+                .clipShape(Circle())
+                .padding(.leading, 20)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Contact Name")
+                    .font(.custom("Inter18pt-SemiBold", size: 16))
+                    .foregroundColor(Color("TextColor"))
+                
+                Text("Mobile Number")
+                    .font(.custom("Inter18pt-Medium", size: 13))
+                    .foregroundColor(Color("Gray3"))
+            }
+            .padding(.leading, 16)
+            
+            Spacer()
+            
+            Text("10:30 AM")
+                .font(.custom("Inter18pt-Medium", size: 12))
+                .foregroundColor(Color("Gray3"))
+                .padding(.trailing, 20)
+        }
+        .padding(.vertical, 12)
+        .background(Color("background_color"))
+    }
+}
 
+// Video call contact row view matching Android get_calling_contact_list_row.xml
+struct VideoCallingContactRowView: View {
+    let contact: CallingContactModel
+    @State private var isExpanded = false
+    
+    // Truncate name to 22 characters like Android
+    private var displayName: String {
+        if contact.fullName.count > 22 {
+            return String(contact.fullName.prefix(22)) + "..."
+        }
+        return contact.fullName
+    }
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            // Main content area - matching Android call1 LinearLayout with marginTop="10dp" and marginBottom="10dp"
+            HStack(spacing: 0) {
+                // Profile image with theme border - matching chatView CardView design
+                // Android: marginLeft="20dp", marginRight="20dp" on themeBorder FrameLayout
+                CallingContactCardView(image: contact.photo, themeColor: contact.themeColor)
+                    .padding(.leading, 20) // marginLeft="20dp"
+                    .padding(.trailing, 20) // marginRight="20dp"
+                
+                // Name and video icon - matching Android LinearLayout
+                HStack(spacing: 0) {
+                    Text(displayName)
+                        .font(.custom("Inter18pt-Bold", size: 16))
+                        .foregroundColor(Color("TextColor"))
+                        .lineLimit(1)
+                    
+                    Spacer()
+                    
+                    // Video icon - matching Android videosvgnew2 with marginEnd="22dp"
+                    // Android: 26dp width, 16dp height, with polysvg inside
+                    ZStack {
+                        // Video icon background (videosvgnew2 equivalent)
+                        Image("videosvgnew2")
+                            .resizable()
+                            .renderingMode(.template)
+                            .foregroundColor(Color("blue"))
+                            .scaledToFit()
+                            .frame(width: 26, height: 16)
+                        
+                        // Poly icon inside (polysvg equivalent)
+                        Image("polysvg")
+                            .resizable()
+                            .renderingMode(.template)
+                            .foregroundColor(.white)
+                            .scaledToFit()
+                            .frame(width: 5, height: 5)
+                    }
+                    .padding(.trailing, 22) // marginEnd="22dp"
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .padding(.top, 10) // marginTop="10dp" from Android call1 LinearLayout
+            .padding(.bottom, 10) // marginBottom="10dp" from Android call1 LinearLayout
+            
+            // Expandable call button (initially hidden, expands on click)
+            if isExpanded {
+                HStack {
+                    Spacer()
+                    Text("Call")
+                        .font(.custom("Inter18pt-Bold", size: 16))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(
+                            Image("curve_left_bg")
+                                .resizable()
+                                .renderingMode(.template)
+                                .foregroundColor(Color(hex: contact.themeColor.isEmpty ? "#00A3E9" : contact.themeColor))
+                        )
+                }
+                .frame(width: 200)
+                .transition(.move(edge: .trailing))
+            }
+        }
+        .background(Color("background_color"))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.4)) {
+                isExpanded.toggle()
+            }
+        }
+    }
+}

@@ -392,46 +392,94 @@ class ApiService {
     static func get_user_active_chat_list(uid: String, completion: @escaping (Bool, String, [UserActiveContactModel]?) -> Void) {
         let url = Constant.baseURL+"get_user_active_chat_list"
         let parameters: [String: Any] = ["uid": uid]
+        
+        print("🟢 [ApiService] get_user_active_chat_list - URL: \(url)")
+        print("🟢 [ApiService] get_user_active_chat_list - Parameters: \(parameters)")
 
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseData { response in
+                print("🟢 [ApiService] Response received - Status: \(response.response?.statusCode ?? 0)")
+                
                 switch response.result {
                 case .success(let data):
+                    print("🟢 [ApiService] Response success - Data size: \(data.count) bytes")
+                    if let rawString = String(data: data, encoding: .utf8) {
+                        print("🟢 [ApiService] Raw response: \(rawString)")
+                    }
+                    
                     do {
                         let decoded = try JSONDecoder().decode(UserContactResponse.self, from: data)
                         let chatList = decoded.data ?? []
                         let message = decoded.message.lowercased()
                         
+                        print("🟢 [ApiService] Decoded - errorCode: '\(decoded.errorCode)', message: '\(decoded.message)', data count: \(chatList.count)")
+                        
                         // Treat "Data not found" as success with empty data, not an error
                         if decoded.errorCode == "200" || message.contains("data not found") || message.contains("no data") {
                             // Success case: return empty array if no data
+                            print("🟢 [ApiService] Treating as SUCCESS - calling completion(true, \"\", \(chatList.count) items)")
                             completion(true, "", chatList)
                         } else {
                             // Actual error case
+                            print("🟢 [ApiService] Treating as ERROR - calling completion(false, '\(decoded.message)', \(chatList.count) items)")
                             completion(false, decoded.message, chatList)
                         }
                     } catch {
-                        print("Decoding error: \(error.localizedDescription)")
-                        // Try to extract message from raw response if decoding fails
+                        print("🔴 [ApiService] Decoding error: \(error.localizedDescription)")
+                        print("🔴 [ApiService] Decoding error details: \(error)")
+                        
+                        // Try to extract data from raw response if decoding fails
                         if let rawString = String(data: data, encoding: .utf8),
                            let jsonData = rawString.data(using: .utf8),
-                           let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-                           let message = json["message"] as? String {
+                           let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                            
+                            let errorCode = json["error_code"] as? String ?? ""
+                            let message = json["message"] as? String ?? ""
                             let lowerMessage = message.lowercased()
-                            // If message is "Data not found", treat as success with empty data
-                            if lowerMessage.contains("data not found") || lowerMessage.contains("no data") {
+                            
+                            print("🟢 [ApiService] Extracted from raw response - errorCode: '\(errorCode)', message: '\(message)'")
+                            
+                            // If error_code is "200" and message is "Success", treat as success even if decoding failed
+                            if errorCode == "200" && (lowerMessage == "success" || lowerMessage.contains("success")) {
+                                print("🟢 [ApiService] error_code is 200 and message is Success - treating as SUCCESS")
+                                
+                                // Try to manually parse the data array
+                                var parsedChatList: [UserActiveContactModel] = []
+                                if let dataArray = json["data"] as? [[String: Any]] {
+                                    print("🟢 [ApiService] Found data array with \(dataArray.count) items, attempting manual parsing")
+                                    
+                                    for item in dataArray {
+                                        do {
+                                            let itemData = try JSONSerialization.data(withJSONObject: item)
+                                            let chatItem = try JSONDecoder().decode(UserActiveContactModel.self, from: itemData)
+                                            parsedChatList.append(chatItem)
+                                        } catch {
+                                            print("🔴 [ApiService] Failed to parse individual item: \(error)")
+                                        }
+                                    }
+                                    
+                                    print("🟢 [ApiService] Successfully parsed \(parsedChatList.count) items")
+                                    completion(true, "", parsedChatList)
+                                } else {
+                                    print("🟢 [ApiService] No data array found or empty - treating as SUCCESS with empty array")
+                                    completion(true, "", [])
+                                }
+                            } else if lowerMessage.contains("data not found") || lowerMessage.contains("no data") {
+                                print("🟢 [ApiService] Message contains 'data not found' - treating as SUCCESS")
                                 completion(true, "", [])
                             } else {
-                                completion(false, message, nil)
+                                print("🟢 [ApiService] Treating as ERROR - errorCode: '\(errorCode)', message: '\(message)'")
+                                completion(false, message.isEmpty ? "Decoding failed: \(error.localizedDescription)" : message, nil)
                             }
                         } else {
+                            print("🔴 [ApiService] Could not extract data from raw response")
                             completion(false, "Decoding failed: \(error.localizedDescription)", nil)
                         }
                     }
 
                 case .failure(let error):
-                    print("Request error: \(error.localizedDescription)")
+                    print("🔴 [ApiService] Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, nil)
                 }
             }
@@ -769,6 +817,111 @@ class ApiService {
 
 
 
-
-
+    static func get_calling_contact_list(uid: String, completion: @escaping (Bool, String, [CallingContactModel]?) -> Void) {
+        let url = Constant.baseURL + "get_calling_contact_list"
+        let parameters: [String: Any] = ["uid": uid]
+        
+        print("📞 [ApiService] get_calling_contact_list - URL: \(url), uid: \(uid)")
+        
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseData { response in
+                print("📞 [ApiService] Response received - Status: \(response.response?.statusCode ?? 0)")
+                
+                switch response.result {
+                case .success(let data):
+                    print("📞 [ApiService] Response success - Data size: \(data.count) bytes")
+                    if let rawString = String(data: data, encoding: .utf8) {
+                        print("📞 [ApiService] Raw response: \(rawString)")
+                    }
+                    
+                    do {
+                        let decoded = try JSONDecoder().decode(CallingContactResponse.self, from: data)
+                        let contactList = decoded.data ?? []
+                        let message = decoded.message.lowercased()
+                        
+                        print("📞 [ApiService] Decoded - success: '\(decoded.success ?? "nil")', errorCode: '\(decoded.errorCode)', message: '\(decoded.message)', data count: \(contactList.count)")
+                        print("📞 [ApiService] Contact list details: \(contactList)")
+                        
+                        // Check if we have data or if error code is 200
+                        // Even if error_code is 404 but we have data, return it
+                        if contactList.count > 0 {
+                            print("📞 [ApiService] Has data (\(contactList.count) items) - calling completion(true, \"\", \(contactList.count) items)")
+                            completion(true, "", contactList)
+                        } else if decoded.errorCode == "200" {
+                            print("📞 [ApiService] errorCode is 200 - calling completion(true, \"\", \(contactList.count) items)")
+                            completion(true, "", contactList)
+                        } else if message.contains("data not found") || message.contains("no data") || message.contains("no contacts found") {
+                            print("📞 [ApiService] No data message - calling completion(true, \"\", 0 items)")
+                            completion(true, "", [])
+                        } else {
+                            print("📞 [ApiService] Other error - calling completion(true, '\(decoded.message)', \(contactList.count) items)")
+                            // Still return the data (even if empty) so UI can show empty state
+                            completion(true, decoded.message, contactList)
+                        }
+                    } catch {
+                        print("🔴 [ApiService] Decoding error: \(error.localizedDescription)")
+                        
+                        if let rawString = String(data: data, encoding: .utf8),
+                           let jsonData = rawString.data(using: .utf8),
+                           let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                            
+                            // Handle error_code as String or Int
+                            var errorCode = ""
+                            if let errorCodeStr = json["error_code"] as? String {
+                                errorCode = errorCodeStr
+                            } else if let errorCodeInt = json["error_code"] as? Int {
+                                errorCode = String(errorCodeInt)
+                            }
+                            
+                            let message = json["message"] as? String ?? ""
+                            let lowerMessage = message.lowercased()
+                            
+                            print("📞 [ApiService] Extracted from raw response - errorCode: '\(errorCode)', message: '\(message)'")
+                            
+                            // Always try to parse data array if it exists
+                            var parsedContactList: [CallingContactModel] = []
+                            if let dataArray = json["data"] as? [[String: Any]] {
+                                print("📞 [ApiService] Found data array with \(dataArray.count) items, attempting manual parsing")
+                                
+                                for item in dataArray {
+                                    do {
+                                        let itemData = try JSONSerialization.data(withJSONObject: item)
+                                        let contactItem = try JSONDecoder().decode(CallingContactModel.self, from: itemData)
+                                        parsedContactList.append(contactItem)
+                                    } catch {
+                                        print("🔴 [ApiService] Failed to parse individual item: \(error)")
+                                        print("🔴 [ApiService] Item data: \(item)")
+                                    }
+                                }
+                                
+                                print("📞 [ApiService] Successfully parsed \(parsedContactList.count) items")
+                            }
+                            
+                            // If we have data, always return it as success
+                            if parsedContactList.count > 0 {
+                                print("📞 [ApiService] Has parsed data (\(parsedContactList.count) items) - returning as success")
+                                completion(true, "", parsedContactList)
+                            } else if errorCode == "200" || (lowerMessage == "success" || lowerMessage.contains("success")) {
+                                print("📞 [ApiService] errorCode is 200 or success message - treating as SUCCESS with empty array")
+                                completion(true, "", [])
+                            } else if lowerMessage.contains("data not found") || lowerMessage.contains("no data") || lowerMessage.contains("no contacts found") {
+                                print("📞 [ApiService] Message contains 'no data' - treating as SUCCESS with empty array")
+                                completion(true, "", [])
+                            } else {
+                                print("📞 [ApiService] Other case - returning empty array as success")
+                                completion(true, message, [])
+                            }
+                        } else {
+                            print("🔴 [ApiService] Could not extract data from raw response")
+                            completion(false, "Decoding failed: \(error.localizedDescription)", nil)
+                        }
+                    }
+                    
+                case .failure(let error):
+                    print("🔴 [ApiService] Request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription, nil)
+                }
+            }
+    }
 }
