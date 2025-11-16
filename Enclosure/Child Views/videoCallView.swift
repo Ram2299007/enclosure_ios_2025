@@ -27,7 +27,7 @@ struct videoCallView: View {
     enum VideoCallTab {
         case log, contact
     }
-    
+
     var body: some View {
         ZStack {
             Color("background_color")
@@ -91,7 +91,7 @@ struct videoCallView: View {
                 // Search section (searchData) - matching MainActivityOld.swift pattern and Android spacing
                 // Search icon always visible when on contact tab, search bar slides in/out
                 if selectedTab == .contact {
-                    VStack(spacing: 0) {
+        VStack(spacing: 0) {
                         HStack(spacing: 0) {
                             // Search bar - slides in from trailing edge when visible (matching MainActivityOld.swift)
                             if isSearchVisible {
@@ -158,8 +158,8 @@ struct videoCallView: View {
                     
                     // A-Z/Contact tab - matching Android radius_black_6dp when selected, radius_6dp_transp when not
                     VStack(spacing: 5) {
-                        Button(action: {
-                            withAnimation {
+                Button(action: {
+                    withAnimation {
                                 selectedTab = .contact
                             }
                             // Fetch contact list when A-Z tab is clicked (matching Android)
@@ -323,34 +323,34 @@ struct videoCallView: View {
                 if isButtonVisible {
                     Button(action: {
                         withAnimation(.easeInOut(duration: 0.45)) {
-                            isPressed = true
-                            isStretchedUp = false
-                            isMainContentVisible = true
+                        isPressed = true
+                        isStretchedUp = false
+                        isMainContentVisible = true
                             isBackLayoutVisible = false
-                            
+
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                 isButtonVisible = false
                                 isPressed = false
                             }
                         }
-                    }) {
-                        ZStack {
-                            if isPressed {
-                                Circle()
-                                    .fill(Color.gray.opacity(0.3))
-                                    .frame(width: 40, height: 40)
-                                    .scaleEffect(isPressed ? 1.2 : 1.0)
-                                    .animation(.easeOut(duration: 0.1), value: isPressed)
-                            }
-                            
-                            Image("leftvector")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 25, height: 18)
-                                .foregroundColor(Color("icontintGlobal"))
+                }) {
+                    ZStack {
+                        if isPressed {
+                            Circle()
+                                .fill(Color.gray.opacity(0.3))
+                                .frame(width: 40, height: 40)
+                                .scaleEffect(isPressed ? 1.2 : 1.0)
+                                .animation(.easeOut(duration: 0.1), value: isPressed)
                         }
+
+                        Image("leftvector")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 25, height: 18)
+                            .foregroundColor(Color("icontintGlobal"))
                     }
+                }
                     .padding(.leading, 20)
                     .padding(.bottom, 30)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -385,7 +385,7 @@ struct VideoCallLogRowView: View {
             .padding(.leading, 16)
             
             Spacer()
-            
+
             Text("10:30 AM")
                 .font(.custom("Inter18pt-Medium", size: 12))
                 .foregroundColor(Color("Gray3"))
@@ -400,6 +400,7 @@ struct VideoCallLogRowView: View {
 struct VideoCallingContactRowView: View {
     let contact: CallingContactModel
     @State private var isExpanded = false
+    @State private var callButtonWidth: CGFloat = 0
     
     // Truncate name to 22 characters like Android
     private var displayName: String {
@@ -430,22 +431,27 @@ struct VideoCallingContactRowView: View {
                     
                     // Video icon - matching Android videosvgnew2 with marginEnd="22dp"
                     // Android: 26dp width, 16dp height, with polysvg inside
-                    ZStack {
-                        // Video icon background (videosvgnew2 equivalent)
-                        Image("videosvgnew2")
-                            .resizable()
-                            .renderingMode(.template)
-                            .foregroundColor(Color("blue"))
-                            .scaledToFit()
-                            .frame(width: 26, height: 16)
-                        
-                        // Poly icon inside (polysvg equivalent)
-                        Image("polysvg")
-                            .resizable()
-                            .renderingMode(.template)
-                            .foregroundColor(.white)
-                            .scaledToFit()
-                            .frame(width: 5, height: 5)
+                    // Video icon is clickable and triggers expansion
+                    Button(action: {
+                        expandCallButton()
+                    }) {
+                        ZStack {
+                            // Video icon background (videosvgnew2 equivalent)
+                            Image("videosvgnew2")
+                                .resizable()
+                                .renderingMode(.template)
+                                .foregroundColor(Color("blue"))
+                                .scaledToFit()
+                                .frame(width: 26, height: 16)
+                            
+                            // Poly icon inside (polysvg equivalent)
+                            Image("polysvg")
+                                .resizable()
+                                .renderingMode(.template)
+                                .foregroundColor(.white)
+                                .scaledToFit()
+                                .frame(width: 5, height: 5)
+                        }
                     }
                     .padding(.trailing, 22) // marginEnd="22dp"
                 }
@@ -454,31 +460,64 @@ struct VideoCallingContactRowView: View {
             .padding(.top, 10) // marginTop="10dp" from Android call1 LinearLayout
             .padding(.bottom, 10) // marginBottom="10dp" from Android call1 LinearLayout
             
-            // Expandable call button (initially hidden, expands on click)
+            // Expandable call button (clickView) - expands from left when visible
+            // Matching Android: layout_weight="4", marginVertical="11dp", background="@drawable/curve_left_bg"
+            // Android animation: expands width from 0 to targetWidth (400dp max, 200dp min) over 400ms
             if isExpanded {
-                HStack {
-                    Spacer()
-                    Text("Call")
-                        .font(.custom("Inter18pt-Bold", size: 16))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(
-                            Image("curve_left_bg")
-                                .resizable()
-                                .renderingMode(.template)
-                                .foregroundColor(Color(hex: contact.themeColor.isEmpty ? "#00A3E9" : contact.themeColor))
+                Button(action: {
+                    // Call action - matching Android clickView onClick
+                    print("📹 Video Calling: \(contact.fullName)")
+                    // TODO: Implement actual video call functionality
+                }) {
+                    // Call button with curve_left_bg - rounded left corners (100dp), straight right
+                    // Matching Android curve_left_bg.xml shape
+                    // Android: gravity="center", layout_gravity="center" - centers text both horizontally and vertically
+                    ZStack {
+                        // curve_left_bg: rounded left (100dp), straight right
+                        UnevenRoundedRectangle(
+                            cornerRadii: .init(
+                                topLeading: 100,
+                                bottomLeading: 100,
+                                bottomTrailing: 0,
+                                topTrailing: 0
+                            )
                         )
+                        .fill(Color(hex: contact.themeColor.isEmpty ? "#00A3E9" : contact.themeColor))
+                        
+                        // Centered text matching Android gravity="center"
+                        Text("Call")
+                            .font(.custom("Inter18pt-Bold", size: 16))
+                            .foregroundColor(.white)
+                    }
+                    .frame(width: callButtonWidth)
+                    .frame(maxHeight: .infinity)
+                    .padding(.vertical, 11) // marginVertical="11dp"
                 }
-                .frame(width: 200)
-                .transition(.move(edge: .trailing))
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .background(Color("background_color"))
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.easeInOut(duration: 0.4)) {
-                isExpanded.toggle()
+            // Clicking on row expands the call button (matching Android itemView onClick)
+            if !isExpanded {
+                expandCallButton()
             }
+        }
+    }
+    
+    // Expand call button animation matching Android expandViewFromLeft
+    private func expandCallButton() {
+        isExpanded = true
+        // Android: targetWidth = max(400dp, 200dp) = 400dp, duration = 400ms
+        // iOS: Use 200-300 points as reasonable width (400dp Android ≈ 300 points iOS on most devices)
+        let targetWidth: CGFloat = 300 // Max width
+        let minWidth: CGFloat = 200 // Min width
+        let finalWidth = max(targetWidth, minWidth)
+        
+        // Animate width from 0 to finalWidth over 0.4 seconds (400ms)
+        withAnimation(.easeInOut(duration: 0.4)) {
+            callButtonWidth = finalWidth
         }
     }
 }
