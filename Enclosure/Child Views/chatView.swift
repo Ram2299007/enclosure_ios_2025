@@ -8,9 +8,12 @@ struct chatView: View {
 
 
     var body: some View {
-        VStack {
+        let _ = print("🟡 [chatView] Rendering - isLoading: \(viewModel.isLoading), errorMessage: '\(viewModel.errorMessage ?? "nil")', chatList count: \(viewModel.chatList.count)")
+        
+        return VStack {
             // Show loading indicator while fetching data
             if viewModel.isLoading {
+                let _ = print("🟡 [chatView] Showing LOADING state")
                 ZStack {
                     Color("BackgroundColor")
                     HorizontalProgressBar()
@@ -18,6 +21,7 @@ struct chatView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else if let errorMessage = viewModel.errorMessage {
+                let _ = print("🟡 [chatView] Showing ERROR state - message: '\(errorMessage)'")
                 // Show error message
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
@@ -31,6 +35,7 @@ struct chatView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             } else if viewModel.chatList.isEmpty {
+                let _ = print("🟡 [chatView] Showing EMPTY state - showing placeholder")
                 // Show placeholder contact card when no chats are available
                 List {
                     PlaceholderContactCardView()
@@ -39,6 +44,7 @@ struct chatView: View {
                 }
                 .listStyle(PlainListStyle())
             } else {
+                let _ = print("🟡 [chatView] Showing DATA state - \(viewModel.chatList.count) items")
                 // Show chat list if data is fetched successfully
                 List(viewModel.chatList, id: \.uid) { chat in
                     ContactCardView(chat: chat)
@@ -49,6 +55,7 @@ struct chatView: View {
             }
         }
         .onAppear {
+            print("🟡 [chatView] onAppear - fetching chat list for uid: \(Constant.SenderIdMy)")
             viewModel.fetchChatList(uid: Constant.SenderIdMy)
         }
     }
@@ -58,51 +65,51 @@ struct chatView: View {
         var chat: UserActiveContactModel
         @State private var isPressed = false
         var body: some View {
-            HStack {
-                // Contact Image
+            HStack(alignment: .center, spacing: 0) {
+                // Contact Image with border - matching Android layout
+                // FrameLayout equivalent: marginStart="1dp", layout_gravity="center_vertical"
                 CardView(image: chat.photo)
-                    .padding(.trailing,16)
-                    .padding(.leading,16)
+                    .padding(.leading, 1) // marginStart="1dp" for FrameLayout
+                    .padding(.trailing, 16) // marginEnd="16dp" for FrameLayout
 
-                VStack(alignment: .leading,spacing:0) {
-                    // Name and Time
-                    HStack {
+                // Vertical LinearLayout - layout_gravity="center_vertical"
+                VStack(alignment: .leading, spacing: 0) {
+                    // First horizontal LinearLayout (Name and Time)
+                    HStack(spacing: 0) {
                         Text(chat.fullName)
                             .font(.custom("Inter18pt-SemiBold", size: 16))
                             .foregroundColor(Color("TextColor"))
+                            .lineLimit(1) // singleLine="true" equivalent
+                        
                         Spacer()
+                        
                         Text(chat.sentTime)
                             .font(.custom("Inter18pt-Medium", size: 12))
                             .foregroundColor(chat.notification > 0 ? Color("blue"): Color("Gray3"))
-                            .padding(.trailing,8)
+                            .padding(.trailing, 8) // layout_marginEnd="8dp"
                     }
 
-
-
-                    HStack{
-                        // Caption
-                        Text(chat.message.isEmpty ? chat.caption : chat.message)
-                            .font(.custom("Inter18pt-Medium", size: 13))
-                            .foregroundColor(Color("Gray3"))
-                            .lineLimit(1)
-                            .padding(.vertical, chat.notification > 0 ? 0 : 5)
+                    // Second horizontal LinearLayout (Caption and Notification)
+                    HStack(alignment: .center, spacing: 0) {
+                        // Caption TextView - matching Android adapter logic
+                        CaptionTextView(chat: chat)
+                            .padding(.top, 2) // layout_marginTop="2dp"
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
                         Spacer()
 
-
-                        // Notification Badge
+                        // Notification Badge LinearLayout - layout_gravity="end", marginTop="5dp"
                         if chat.notification > 0 {
-
                             NotificationBadge(count: chat.notification)
+                                .padding(.top, 5) // layout_marginTop="5dp"
                         }
                     }
-
-
-
-
                 }
-
-            } .padding(.vertical, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.leading, 10) // marginStart="10dp" for LinearLayout
+            .padding(.top, 16) // marginTop="16dp" for LinearLayout
+            .padding(.bottom, 16) // marginTop="16dp" for divider View (effective bottom spacing)
                 .contentShape(Rectangle())
                 .background(isPressed ? Color.gray.opacity(0.1) : Color.clear)
                 .scaleEffect(isPressed ? 0.98 : 1.0)
@@ -127,39 +134,54 @@ struct chatView: View {
         var image: String?
 
         var body: some View {
-            // Using AsyncImage to fetch the image from the URL
-            AsyncImage(url: URL(string: image ?? "")) { phase in
-                switch phase {
-                case .empty:
-                    // Placeholder image while the image is loading
-                    Image("inviteimg")
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 48, height: 48)
-                        .cornerRadius(6)
-                case .success(let image):
-                    // Loaded image
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 48, height: 48)
-                        .cornerRadius(6)
-                case .failure:
-                    // Fallback image if the network image loading fails
-                    Image("inviteimg")
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 48, height: 48)
-                        .cornerRadius(6)
-                @unknown default:
-                    // Default case
-                    Image("inviteimg")
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 48, height: 48)
-                        .cornerRadius(6)
+            // FrameLayout with border - matching Android card_border
+            // FrameLayout: padding="2dp", background="@drawable/card_border"
+            // CardView inside: cardCornerRadius="360dp" (fully circular)
+            // Image: 50dp x 50dp, scaleType="centerCrop"
+            ZStack {
+                // Border background (card_border equivalent)
+                // The border is 2dp wide, so outer circle is 54dp (50 + 2*2)
+                Circle()
+                    .stroke(Color("blue"), lineWidth: 2) // 2dp border stroke
+                    .frame(width: 54, height: 54)
+                
+                // Inner circular image - 50dp x 50dp
+                // Using AsyncImage to fetch the image from the URL
+                AsyncImage(url: URL(string: image ?? "")) { phase in
+                    switch phase {
+                    case .empty:
+                        // Placeholder image while the image is loading
+                        Image("inviteimg")
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 50, height: 50)
+                            .clipShape(Circle())
+                    case .success(let image):
+                        // Loaded image - centerCrop equivalent
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 50, height: 50)
+                            .clipShape(Circle())
+                    case .failure:
+                        // Fallback image if the network image loading fails
+                        Image("inviteimg")
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 50, height: 50)
+                            .clipShape(Circle())
+                    @unknown default:
+                        // Default case
+                        Image("inviteimg")
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 50, height: 50)
+                            .clipShape(Circle())
+                    }
                 }
+                .frame(width: 50, height: 50) // 50dp x 50dp as per Android
             }
+            .frame(width: 54, height: 54) // Total FrameLayout size: 54dp x 54dp (50dp image + 2dp border on each side)
         }
     }
 
@@ -177,7 +199,80 @@ struct chatView: View {
                     .foregroundColor(.white)
                     .font(.custom("Inter18pt-Regular", size: 12))
             }
-            .frame(width: 32, height: 32)
+            .frame(width: 32, height: 20) // Matching Android: 32dp width, 20dp height
+        }
+    }
+    
+    struct CaptionTextView: View {
+        var chat: UserActiveContactModel
+        
+        // Computed property to get caption text and image icon based on dataType
+        // Matching Android adapter logic: lines 305-422
+        // Android drawables: gallery, videopng, mike, contact, documentsvg
+        private var captionContent: (text: String, imageName: String?) {
+            // If message is empty, show dataType-specific text and image icon
+            if chat.message.isEmpty {
+                switch chat.dataType {
+                case "img":
+                    return ("Photo", "gallery") // R.drawable.gallery
+                case "video":
+                    return ("Video", "videopng") // R.drawable.videopng
+                case "voiceAudio":
+                    return ("Mic", "mike") // R.drawable.mike
+                case "contact":
+                    return ("Contact", "contact") // R.drawable.contact
+                case "Text":
+                    return ("", nil) // No icon for text, clear drawables
+                case "doc":
+                    // For documents, Android checks message field for filename
+                    // If message is empty or equals "doc", show "Document"
+                    // Since we're in message.isEmpty block, show "Document"
+                    return ("Document", "documentsvg") // R.drawable.documentsvg
+                default:
+                    return ("File", "documentsvg") // R.drawable.documentsvg for file
+                }
+            } else {
+                // If message is not empty, show the message text (truncated to 25 chars)
+                // Android: lines 416-421
+                // For doc type with message, it might be a filename
+                if chat.dataType == "doc" && chat.message != "doc" {
+                    // Show filename from message field
+                    let fileName = chat.message
+                    if fileName.count > 25 {
+                        return (String(fileName.prefix(25)) + "...", "documentsvg")
+                    } else {
+                        return (fileName, "documentsvg")
+                    }
+                } else {
+                    // Regular message text
+                    let messageText = chat.message
+                    if messageText.count > 25 {
+                        return (String(messageText.prefix(25)) + "...", nil)
+                    } else {
+                        return (messageText, nil)
+                    }
+                }
+            }
+        }
+        
+        var body: some View {
+            HStack(spacing: 5) { // 5dp spacing between icon and text (matching Android drawablePadding)
+                // Image icon (if available) - matching Android drawable resources
+                if let imageName = captionContent.imageName {
+                    Image(imageName)
+                        .renderingMode(.template) // Required for tint color to work
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 16, height: 16) // 16dp size matching Android
+                        .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0)) // Exact Android tint color #78787A
+                }
+                
+                // Text
+                Text(captionContent.text)
+                    .font(.custom("Inter18pt-Medium", size: 13))
+                    .foregroundColor(Color("Gray3"))
+                    .lineLimit(1) // singleLine="true" equivalent
+            }
         }
     }
     
