@@ -10,6 +10,7 @@ import SwiftUI
 
 struct callView: View {
     @StateObject private var viewModel = CallViewModel()
+    @StateObject private var callLogViewModel = CallLogViewModel()
     @State private var dragOffset: CGSize = .zero
     @State private var isStretchedUp = false
     @State private var isButtonVisible = false
@@ -136,11 +137,7 @@ struct callView: View {
                     // Last/Log tab - matching Android radius_black_6dp when selected, radius_6dp_transp when not
                     VStack(spacing: 5) {
                         Button(action: {
-                            withAnimation {
-                                selectedTab = .log
-                                // Hide search layout when Last tab is clicked (matching Android)
-                                isSearchVisible = false
-                            }
+                            handleLogTabClick()
                         }) {
                             Text("Last")
                                 .font(.custom("Inter18pt-Medium", size: 12))
@@ -159,12 +156,7 @@ struct callView: View {
                     // A-Z/Contact tab - matching Android radius_black_6dp when selected, radius_6dp_transp when not
                     VStack(spacing: 5) {
                 Button(action: {
-                    withAnimation {
-                                selectedTab = .contact
-                            }
-                            // Fetch contact list when A-Z tab is clicked
-                            viewModel.fetchContactList(uid: Constant.SenderIdMy)
-                            // Don't show search automatically - only show when search icon is clicked
+                    handleContactTabClick()
                         }) {
                             Text("A - Z")
                                 .font(.custom("Inter18pt-Medium", size: 12))
@@ -212,18 +204,22 @@ struct callView: View {
                 ZStack {
                     // Log RecyclerView (recyclerviewLast)
                     if selectedTab == .log {
-                        ScrollView {
-                            VStack(spacing: 0) {
-                                // Call log items will go here
-                                Text("Call Log")
-                                    .font(.custom("Inter18pt-Medium", size: 16))
-                                    .foregroundColor(Color("TextColor"))
-                                    .padding()
-                                
-                                // Placeholder for call log items
-                                ForEach(0..<10) { index in
-                                    CallLogRowView()
+                        ZStack {
+                            if callLogViewModel.isLoading {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: Color("buttonColorTheme")))
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            } else if let errorMessage = callLogViewModel.errorMessage,
+                                      !errorMessage.isEmpty,
+                                      callLogViewModel.sections.isEmpty {
+                                logEmptyStateView(text: errorMessage)
+                            } else if callLogViewModel.sections.isEmpty {
+                                logEmptyStateView(text: "No call history yet")
+                            } else {
+                                ScrollView {
+                                    CallLogListView(sections: callLogViewModel.sections, logType: .voice)
                                 }
+                                .transition(.opacity)
                             }
                         }
                         .transition(.opacity)
@@ -359,40 +355,45 @@ struct callView: View {
             },
             alignment: .bottomLeading
         )
+        .onAppear {
+            callLogViewModel.fetchCallLogs(uid: Constant.SenderIdMy, force: true)
+        }
     }
 }
 
-// Placeholder views for call log and contact rows
-struct CallLogRowView: View {
-    var body: some View {
-        HStack {
-            Image("inviteimg")
-                .resizable()
-                .scaledToFill()
-                .frame(width: 50, height: 50)
-                .clipShape(Circle())
-                .padding(.leading, 20)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Contact Name")
-                    .font(.custom("Inter18pt-SemiBold", size: 16))
-                    .foregroundColor(Color("TextColor"))
-                
-                Text("Mobile Number")
-                    .font(.custom("Inter18pt-Medium", size: 13))
-                    .foregroundColor(Color("Gray3"))
-            }
-            .padding(.leading, 16)
-            
-            Spacer()
-
-            Text("10:30 AM")
-                .font(.custom("Inter18pt-Medium", size: 12))
-                .foregroundColor(Color("Gray3"))
-                .padding(.trailing, 20)
+// MARK: - Tab handling helpers
+extension callView {
+    private func handleLogTabClick() {
+        withAnimation {
+            selectedTab = .log
+            isSearchVisible = false
         }
-        .padding(.vertical, 12)
-        .background(Color("background_color"))
+        searchText = ""
+        callLogViewModel.fetchCallLogs(uid: Constant.SenderIdMy, force: true)
+    }
+    
+    private func handleContactTabClick() {
+        withAnimation {
+            selectedTab = .contact
+        }
+        if viewModel.contactList.isEmpty {
+            viewModel.fetchContactList(uid: Constant.SenderIdMy)
+        }
+    }
+    
+    @ViewBuilder
+    private func logEmptyStateView(text: String) -> some View {
+        VStack {
+            HStack {
+                Text(text)
+                    .font(.custom("Inter18pt-Medium", size: 14))
+                    .foregroundColor(Color("TextColor"))
+            }
+            .padding(12)
+            .background(Color("cardBackgroundColornew"))
+            .cornerRadius(20)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -429,7 +430,7 @@ struct CallingContactRowView: View {
                     
                     Spacer()
                     
-                    HStack(spacing: 6) {
+                    HStack(spacing: isExpanded ? 0 : 6) {
                         // Call icon - matching Android callIcon with marginEnd="22dp"
                         // Call icon is clickable and triggers expansion
                         Button(action: {
@@ -489,7 +490,7 @@ struct CallingContactRowView: View {
     private func expandCallButton() {
         isExpanded = true
         // Android request: keep bg_rect width to 60dp (≈ 60pt in iOS)
-        let finalWidth: CGFloat = 80
+        let finalWidth: CGFloat = 70
         
         // Animate width from 0 to finalWidth over 0.4 seconds (400ms)
         callButtonWidth = 0
