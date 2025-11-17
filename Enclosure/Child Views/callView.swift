@@ -420,7 +420,7 @@ struct CallingContactRowView: View {
                     .padding(.leading, 20) // marginLeft="20dp"
                     .padding(.trailing, 20) // marginRight="20dp"
                 
-                // Name and call icon - matching Android LinearLayout
+                // Name and call icon/button stack - matching Android LinearLayout
                 HStack(spacing: 0) {
                     Text(displayName)
                         .font(.custom("Inter18pt-Bold", size: 16))
@@ -429,60 +429,52 @@ struct CallingContactRowView: View {
                     
                     Spacer()
                     
-                    // Call icon - matching Android callIcon with marginEnd="22dp"
-                    // Call icon is clickable and triggers expansion
-                    Button(action: {
-                        expandCallButton()
-                    }) {
-                        Image("cllingnewpng")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 22, height: 22)
-                            .foregroundColor(Color(hex: contact.themeColor.isEmpty ? "#00A3E9" : contact.themeColor))
+                    HStack(spacing: 6) {
+                        // Call icon - matching Android callIcon with marginEnd="22dp"
+                        // Call icon is clickable and triggers expansion
+                        Button(action: {
+                            expandCallButton()
+                        }) {
+                            Image("cllingnewpng")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 22, height: 22)
+                                .foregroundColor(Color(hex: contact.themeColor.isEmpty ? "#00A3E9" : contact.themeColor))
+                        }
+                        
+                        if isExpanded {
+                            Button(action: {
+                                // Call action - matching Android clickView onClick
+                                print("📞 Calling: \(contact.fullName)")
+                                // TODO: Implement actual call functionality
+                            }) {
+                                ZStack {
+                                    UnevenRoundedRectangle(
+                                        cornerRadii: .init(
+                                            topLeading: 100,
+                                            bottomLeading: 100,
+                                            bottomTrailing: 0,
+                                            topTrailing: 0
+                                        )
+                                    )
+                                    .fill(Color(hex: contact.themeColor.isEmpty ? "#00A3E9" : contact.themeColor))
+                                    
+                                    Text("Call")
+                                        .font(.custom("Inter18pt-Bold", size: 16))
+                                        .foregroundColor(.white)
+                                }
+                                .frame(width: callButtonWidth, height: 40, alignment: .center)
+                            }
+                        }
                     }
-                    .padding(.trailing, 22) // marginEnd="22dp"
+                    .padding(.trailing, isExpanded ? 0 : 22) // remove spacing when expanded so button touches edge
                 }
                 .frame(maxWidth: .infinity)
             }
             .padding(.top, 10) // marginTop="10dp" from Android call1 LinearLayout
             .padding(.bottom, 10) // marginBottom="10dp" from Android call1 LinearLayout
-            
-            // Expandable call button (clickView) - expands from left when visible
-            // Matching Android: layout_weight="4", marginVertical="11dp", background="@drawable/curve_left_bg"
-            // Android animation: expands width from 0 to targetWidth (400dp max, 200dp min) over 400ms
-            if isExpanded {
-                Button(action: {
-                    // Call action - matching Android clickView onClick
-                    print("📞 Calling: \(contact.fullName)")
-                    // TODO: Implement actual call functionality
-                }) {
-                    // Call button with curve_left_bg - rounded left corners (100dp), straight right
-                    // Matching Android curve_left_bg.xml shape
-                    // Android: gravity="center", layout_gravity="center" - centers text both horizontally and vertically
-                    ZStack {
-                        // curve_left_bg: rounded left (100dp), straight right
-                        UnevenRoundedRectangle(
-                            cornerRadii: .init(
-                                topLeading: 100,
-                                bottomLeading: 100,
-                                bottomTrailing: 0,
-                                topTrailing: 0
-                            )
-                        )
-                        .fill(Color(hex: contact.themeColor.isEmpty ? "#00A3E9" : contact.themeColor))
-                        
-                        // Centered text matching Android gravity="center"
-                        Text("Call")
-                            .font(.custom("Inter18pt-Bold", size: 16))
-                            .foregroundColor(.white)
-                    }
-                    .frame(width: callButtonWidth)
-                    .frame(maxHeight: .infinity)
-                    .padding(.vertical, 11) // marginVertical="11dp"
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color("background_color"))
         .contentShape(Rectangle())
         .onTapGesture {
@@ -496,15 +488,15 @@ struct CallingContactRowView: View {
     // Expand call button animation matching Android expandViewFromLeft
     private func expandCallButton() {
         isExpanded = true
-        // Android: targetWidth = max(400dp, 200dp) = 400dp, duration = 400ms
-        // iOS: Use 200-300 points as reasonable width (400dp Android ≈ 300 points iOS on most devices)
-        let targetWidth: CGFloat = 300 // Max width
-        let minWidth: CGFloat = 200 // Min width
-        let finalWidth = max(targetWidth, minWidth)
+        // Android request: keep bg_rect width to 60dp (≈ 60pt in iOS)
+        let finalWidth: CGFloat = 80
         
         // Animate width from 0 to finalWidth over 0.4 seconds (400ms)
-        withAnimation(.easeInOut(duration: 0.4)) {
-            callButtonWidth = finalWidth
+        callButtonWidth = 0
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.4)) {
+                self.callButtonWidth = finalWidth
+            }
         }
     }
 }
