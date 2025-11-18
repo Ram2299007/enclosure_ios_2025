@@ -515,6 +515,37 @@ class ApiService {
             }
     }
 
+    static func get_group_list(uid: String, completion: @escaping (Bool, String, [GroupListItem]) -> Void) {
+        let url = Constant.baseURL + "get_group_list"
+        let parameters: [String: Any] = ["uid": uid]
+        
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    if let raw = String(data: data, encoding: .utf8) {
+                        print("[get_group_list] raw response -> \(raw)")
+                    }
+                    do {
+                        let decoded = try JSONDecoder().decode(GroupListResponse.self, from: data)
+                        if decoded.error_code == "200" {
+                            completion(true, decoded.message, decoded.data ?? [])
+                        } else {
+                            completion(false, decoded.message, decoded.data ?? [])
+                        }
+                    } catch {
+                        print("Decoding error: \(error.localizedDescription)")
+                        completion(false, "Decoding failed", [])
+                    }
+                    
+                case .failure(let error):
+                    print("Request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription, [])
+                }
+            }
+    }
+
 
 
     static func get_user_profile_images_youFragment(uid: String, completion: @escaping (Bool, String, [GetUserProfileImagesModel]?) -> Void) {

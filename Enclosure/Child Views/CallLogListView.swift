@@ -87,12 +87,12 @@ struct CallLogUserRowView: View {
     
     private var callStatusColor: Color {
         switch entry.callingFlag {
-        case "0":
-            return Color(hex: "#27AE60")
-        case "1":
-            return Color(hex: "#00A3E9")
+        case "0", "1":
+            // Matches Android green_call (#0FA430)
+            return Color(hex: "#0FA430")
         case "2":
-            return Color.red
+            // Matches Android miss_call color (#EC0000)
+            return Color(hex: "#EC0000")
         default:
             return Color("TextColor")
         }
@@ -138,26 +138,25 @@ struct CallLogUserRowView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         // Name TextView - matching Android: 16sp, Inter Bold, lineHeight="18dp"
                         Text(displayName)
-                            .font(.custom("Inter18pt-Bold", size: 16))
+                            .font(.custom("Inter18pt-SemiBold", size: 16))
                             .foregroundColor(Color("TextColor"))
                             .lineLimit(1)
                             .lineSpacing(0)
                             .frame(height: 18) // lineHeight="18dp"
                         
                         // Time row - matching Android LinearLayout with marginTop="4dp"
-                        HStack(spacing: 0) {
+                        HStack(spacing: 8) {
                             // Calling flag icon - matching Android: 15dp height, weight 4
                             Image(systemName: callStatusIconName)
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(callStatusColor)
-                                .frame(height: 15) // 15dp height
-                                .frame(maxWidth: .infinity) // weight 4 equivalent
+                                .frame(width: 18, height: 15, alignment: .leading) // Fixed width similar to vector size
                             
                             // Time TextView - matching Android: 13sp, Inter Medium, weight 1
                             Text(formattedTime)
                                 .font(.custom("Inter18pt-Medium", size: 13))
                                 .foregroundColor(Color("Gray3"))
-                                .frame(maxWidth: .infinity) // weight 1 equivalent
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .padding(.top, 4) // marginTop="4dp"
                     }
