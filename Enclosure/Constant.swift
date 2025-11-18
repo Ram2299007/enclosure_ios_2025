@@ -27,6 +27,7 @@ struct Constant{
     static let youView = "youView"
     static let profilePic = "profilePic"
     static let full_name = "full_name"
+    static let ThemeColorKey = "ThemeColorKey"
 
 
     static var SenderIdMy: String {

@@ -55,7 +55,7 @@ struct ContentView: View {
     private func setupSplashScreen() {
         // Get theme color from UserDefaults (if available)
         // For now, using default logo. Can be extended to support theme colors
-        let themeColor = UserDefaults.standard.string(forKey: "ThemeColorKey") ?? "#00A3E9"
+        let themeColor = UserDefaults.standard.string(forKey: Constant.ThemeColorKey) ?? "#00A3E9"
         
         // Map theme colors to logos (matching Android logic)
         switch themeColor {

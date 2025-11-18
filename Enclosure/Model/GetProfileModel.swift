@@ -15,6 +15,7 @@ struct GetProfileModel: Codable {
     let status: String
     let f_token: String
     let device_type: String
+    let themeColor: String?
 
     enum CodingKeys: String, CodingKey {
         case full_name = "full_name"
@@ -24,5 +25,6 @@ struct GetProfileModel: Codable {
         case status = "status"
         case f_token = "f_token"
         case device_type = "device_type"
+        case themeColor = "themeColor"
     }
 }
