@@ -51,7 +51,8 @@ struct groupMessageView: View {
                 print("Create group tapped")
             }
             .padding(.trailing, 20)
-            .padding(.bottom, 50)
+            .padding(.bottom, 0)
+            .ignoresSafeArea(edges: .bottom)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.clear.contentShape(Rectangle()))
