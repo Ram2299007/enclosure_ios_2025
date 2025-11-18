@@ -39,28 +39,9 @@ struct callView: View {
                 if isBackLayoutVisible {
                     HStack(spacing: 0) {
                         // Back arrow button
-                        Button(action: {
-                            withAnimation {
-                                isBackLayoutVisible = false
-                                isMainContentVisible = true
-                            }
-                        }) {
-                            ZStack {
-                                Circle()
-                                    .fill(Color.clear)
-                                    .frame(width: 40, height: 40)
-                                
-                                Image("leftvector")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 25, height: 18)
-                                    .foregroundColor(Color("icontintGlobal"))
-                            }
-                        }
-                        .frame(width: 40, height: 40)
-                        .padding(.leading, 20)
-                        .padding(.trailing, 5)
+                        backArrowButton()
+                            .padding(.leading, 20)
+                            .padding(.trailing, 5)
                         
                         Spacer()
                         
@@ -176,7 +157,7 @@ struct callView: View {
                     Spacer()
                     
                     // Menu button (3 dots) - visible when on log tab
-                    if selectedTab == .log {
+                    if selectedTab == .log && !isBackLayoutVisible {
                         Button(action: {
                             // Show clear log dialog
                         }) {
@@ -206,9 +187,13 @@ struct callView: View {
                     if selectedTab == .log {
                         ZStack {
                             if callLogViewModel.isLoading {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: Color("buttonColorTheme")))
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                ZStack {
+                                    Color("background_color")
+                                        .ignoresSafeArea()
+                                    HorizontalProgressBar()
+                                        .frame(width: 40, height: 2)
+                                }
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                             } else if let errorMessage = callLogViewModel.errorMessage,
                                       !errorMessage.isEmpty,
                                       callLogViewModel.sections.isEmpty {
@@ -295,62 +280,29 @@ struct callView: View {
                     dragOffset = value.translation
                 }
                 .onEnded { value in
-                    withAnimation(.easeInOut(duration: 0.45)) {
-                        if value.translation.height < -50 {
+                    if value.translation.height < -50 {
+                        withAnimation(.easeInOut(duration: 0.45)) {
                             // Stretched upward
                             isStretchedUp = true
                             isMainContentVisible = false
                             isBackLayoutVisible = true
                             isButtonVisible = true
-                        } else if value.translation.height > 50 {
-                            // Stretched downward
-                            isStretchedUp = false
-                            isMainContentVisible = true
-                            isBackLayoutVisible = false
-                            isButtonVisible = false
                         }
-                        dragOffset = .zero
+                    } else if value.translation.height > 50 {
+                        handleSwipeDown()
                     }
+                    dragOffset = .zero
                 }
         )
         .overlay(
             // Back button overlay when stretched up
             Group {
-                if isButtonVisible {
-                    Button(action: {
-                        withAnimation(.easeInOut(duration: 0.45)) {
-                        isPressed = true
-                        isStretchedUp = false
-                        isMainContentVisible = true
-                            isBackLayoutVisible = false
-
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                isButtonVisible = false
-                                isPressed = false
-                            }
-                        }
-                }) {
-                    ZStack {
-                        if isPressed {
-                            Circle()
-                                .fill(Color.gray.opacity(0.3))
-                                .frame(width: 40, height: 40)
-                                .scaleEffect(isPressed ? 1.2 : 1.0)
-                                .animation(.easeOut(duration: 0.1), value: isPressed)
-                        }
-
-                        Image("leftvector")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 25, height: 18)
-                            .foregroundColor(Color("icontintGlobal"))
-                    }
-                }
-                    .padding(.leading, 20)
-                    .padding(.bottom, 30)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .transition(.opacity)
+                if isButtonVisible && !isBackLayoutVisible {
+                    backArrowButton()
+                        .padding(.leading, 20)
+                        .padding(.bottom, 30)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .transition(.opacity)
                 }
             },
             alignment: .bottomLeading
@@ -395,6 +347,57 @@ extension callView {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+
+    private func handleBackArrowTap() {
+        handleSwipeDown()
+    }
+    
+    private func handleSwipeDown() {
+        withAnimation(.easeInOut(duration: 0.45)) {
+            isPressed = true
+            isStretchedUp = false
+            isMainContentVisible = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            withAnimation(.easeInOut(duration: 0.45)) {
+                isBackLayoutVisible = false
+                isButtonVisible = false
+                isPressed = false
+            }
+        }
+    }
+    
+    private func backArrowButton() -> some View {
+        Button(action: {
+            handleBackArrowTap()
+        }) {
+            ZStack {
+                if isPressed {
+                    Circle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 40, height: 40)
+                        .scaleEffect(isPressed ? 1.2 : 1.0)
+                        .animation(.easeOut(duration: 0.1), value: isPressed)
+                }
+                
+                Image("leftvector")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 25, height: 18)
+                    .foregroundColor(Color("icontintGlobal"))
+            }
+        }
+        .frame(width: 40, height: 40)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onEnded { _ in
+                    withAnimation {
+                        isPressed = false
+                    }
+                }
+        )
+    }
 }
 
 // Contact row view matching Android get_calling_contact_voice_row.xml
@@ -424,7 +427,7 @@ struct CallingContactRowView: View {
                 // Name and call icon/button stack - matching Android LinearLayout
                 HStack(spacing: 0) {
                     Text(displayName)
-                        .font(.custom("Inter18pt-Bold", size: 16))
+                        .font(.custom("Inter18pt-SemiBold", size: 16))
                         .foregroundColor(Color("TextColor"))
                         .lineLimit(1)
                     

@@ -30,23 +30,9 @@ struct youView: View {
             VStack(spacing: 0) {
 
 
-                if(youView){
+                if youView {
                     Button(action: {
-                        withAnimation {
-                            isPressed = true
-                            isStretchedUp = false
-                            isMainContentVisible = true
-
-
-                            withAnimation(.easeInOut(duration: 0.30)){
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                    youView = false
-                                    isPressed = false
-                                }
-                            }
-
-                        }
-
+                        handleBackArrowTap()
                     }) {
                         ZStack {
                             if isPressed {
@@ -185,32 +171,18 @@ struct youView: View {
                         dragOffset = value.translation
                     }
                     .onEnded { value in
-                        withAnimation(.easeInOut(duration: 0.30)) {
-                            if value.translation.height < -50 {
+                        if value.translation.height < -50 {
+                            withAnimation(.easeInOut(duration: 0.45)) {
                                 // Stretched upward
                                 isStretchedUp = true
                                 isMainContentVisible = false
-                                // isTopHeaderVisible = true
                                 print("Stretched upward!")
                                 youView = true
-                            } else if value.translation.height > 50 {
-                                // Stretched downward
-                                withAnimation {
-                                    isPressed = true
-                                    isStretchedUp = false
-                                    isMainContentVisible = true
-                                    withAnimation(.easeInOut(duration: 0.30)){
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                            youView = false
-                                            isPressed = false
-                                        }
-                                    }
-
-                                }
-
                             }
-                            dragOffset = .zero
+                        } else if value.translation.height > 50 {
+                            handleSwipeDown()
                         }
+                        dragOffset = .zero
                     }
             )
             .animation(.spring(), value: dragOffset)
@@ -236,6 +208,26 @@ struct youView: View {
 
     }
 
+}
+
+extension youView {
+    private func handleBackArrowTap() {
+        handleSwipeDown()
+    }
+    
+    private func handleSwipeDown() {
+        withAnimation(.easeInOut(duration: 0.45)) {
+            isPressed = true
+            isStretchedUp = false
+            isMainContentVisible = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            withAnimation(.easeInOut(duration: 0.45)) {
+                youView = false
+                isPressed = false
+            }
+        }
+    }
 }
 
 
