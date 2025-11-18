@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 class VerifyMobileOTPViewModel: ObservableObject {
     @Published var isNavigating = false
@@ -21,14 +22,21 @@ class VerifyMobileOTPViewModel: ObservableObject {
             return
         }
 
+        // Get phone_id (equivalent to Android's Settings.Secure.ANDROID_ID)
+        let phoneId = UIDevice.current.identifierForVendor?.uuidString ?? "unknown"
+        print("📱 Phone ID: \(phoneId)")
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
 
-        let bodyString = "uid=\(uid)&mob_otp=\(otp)&f_token=\(token)&device_id=\(deviceId)"
+        // Matching Android parameters: uid, mob_otp, f_token, device_id, phone_id
+        let bodyString = "uid=\(uid)&mob_otp=\(otp)&f_token=\(token)&device_id=\(deviceId)&phone_id=\(phoneId)"
         request.httpBody = bodyString.data(using: .utf8)
 
-        print("📤 Sending Request: \(bodyString)")
+        print("📤 API: verify_mobile_otp")
+        print("📤 Parameters: uid=\(uid), mob_otp=\(otp), f_token=\(token), device_id=\(deviceId), phone_id=\(phoneId)")
+        print("📤 Full Request Body: \(bodyString)")
 
         URLSession.shared.dataTask(with: request) {
             data,
@@ -68,25 +76,24 @@ class VerifyMobileOTPViewModel: ObservableObject {
                         let phone = firstObject["mobile_no"] as? String ?? ""
                         let fcmToken = firstObject["f_token"] as? String ?? ""
 
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            print("🔹 Storing user data...\(cCode)")
+                        DispatchQueue.main.async {
+                            // ✅ Start Loader immediately (matching Android - no delay)
+                            print("🚀 Starting Loader...")
+                            self.isLoading = true
+                            self.loadingMessage = "Your contacts are synchronizing..."
+                            
+                            // Store user data (matching Android - country_codeKey stored later)
+                            print("🔹 Storing user data...")
                             self.phone = phone
                             UserDefaults.standard.set(phone, forKey: Constant.PHONE_NUMBERKEY)
                             UserDefaults.standard.set(uid, forKey: Constant.UID_KEY)
-                            UserDefaults.standard.set(cCode,forKey: Constant.country_Code)
                             UserDefaults.standard.set(fcmToken, forKey: Constant.FCM_TOKEN)
                             self.errorMessage = nil
-
-                            DispatchQueue.main.async {
-                                // ✅ Start Loader after storing data
-                                print("🚀 Starting Loader...")
-                                self.isLoading = true
-                                self.loadingMessage = "Your contacts are synchronizing..."
-                            }
-                            // ✅ Call another API here
+                            
+                            // ✅ Call upload_user_contact_list immediately (matching Android)
                             print("📂 Current fileURL: \(self.fileURL?.absoluteString ?? "nil")")
-                            print("📂File name \(self.fileName)");
-                            print("📂countryCodeKey name \(self.countryCodeKey)");
+                            print("📂File name \(self.fileName ?? "nil")")
+                            print("📂countryCodeKey name \(self.countryCodeKey ?? "nil")")
 
                             ApiService.shared
                                 .uploadUserContactList(
@@ -96,9 +103,6 @@ class VerifyMobileOTPViewModel: ObservableObject {
                                 ){
                                     success,
                                     message in
-                                    DispatchQueue.main.async {
-
-                                    }
                                     if success {
                                         print("✅ Success: \(message)")
                                         ApiService.shared
@@ -106,36 +110,36 @@ class VerifyMobileOTPViewModel: ObservableObject {
                                                 fileName: self.fileName ?? "contact_.json"
                                             ) {
                                                 success,
-                                                message in DispatchQueue.main.async {
+                                                message in
+                                                DispatchQueue.main.async {
+                                                    // Dismiss loader (matching Android progressBar.dismiss())
                                                     self.isLoading = false
-                                                }
-                                                if success {
-                                                    print("✅ Success2: \(message)")
-                                                    /// here we need to send go to lockscreen
-                                                    ///Here we need to store local data here
-                                                    UserDefaults.standard.set(
-                                                        Constant.loggedInKey,
-                                                        forKey: Constant.loggedInKey
-                                                    )
-                                                    UserDefaults.standard.set(
-                                                        cCode,
-                                                        forKey: Constant.country_Code
-                                                    )
+                                                    
+                                                    if success {
+                                                        print("✅ Success2: \(message)")
+                                                        // Store data and navigate (matching Android)
+                                                        UserDefaults.standard.set(
+                                                            Constant.loggedInKey,
+                                                            forKey: Constant.loggedInKey
+                                                        )
+                                                        UserDefaults.standard.set(
+                                                            cCode,
+                                                            forKey: Constant.country_Code
+                                                        )
 
-                                                    self.isNavigating = true
-
-
-                                                } else {
-                                                    print("❌ Error: \(message)")
+                                                        self.isNavigating = true
+                                                    } else {
+                                                        print("❌ Error: \(message)")
+                                                    }
                                                 }
                                             }
-
-
                                     } else {
                                         print("❌ Failure: \(message)")
+                                        DispatchQueue.main.async {
+                                            self.isLoading = false
+                                        }
                                     }
                                 }
-
                         }
 
                         print("✅ Verification Success: Phone = \(phone), FCM Token = NEED TO ADD FIREBASE NOW, UID = \(uid)")

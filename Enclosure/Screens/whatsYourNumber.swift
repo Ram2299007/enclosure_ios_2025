@@ -25,7 +25,7 @@ struct whatsYourNumber: View {
             VStack(alignment: .leading) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("What’s your\nnumber?")
+                        Text("What's your\nnumber?")
                             .font(.custom("Inter18pt-SemiBold", size: 40))
                             .foregroundColor(Color("TextColor"))
                             .padding(.top, 35)
@@ -59,9 +59,11 @@ struct whatsYourNumber: View {
                                     )
                                     .onChange(of: phoneNumber) { newValue in
                                         phoneError = nil
-                                        if selectedCountryCode == "+91" && phoneNumber.count > 10 {
-                                            phoneNumber = String(phoneNumber.prefix(10))
+                                        // Only limit length for India (+91) to 10 digits
+                                        if selectedCountryCode == "+91" && newValue.count > 10 {
+                                            phoneNumber = String(newValue.prefix(10))
                                         }
+                                        // For other country codes, no length limit
                                     }
                                     .focused($isFocused)
 
@@ -99,55 +101,65 @@ struct whatsYourNumber: View {
                     .padding(.horizontal, 20)
                 }
 
-                VStack(spacing: 10) {
-                    HStack(spacing: 5) {
+                VStack(spacing: 5) {
+                    HStack(spacing: 0) {
+                        // Checkbox with "I agree to the " text (matching Android checkbox structure)
                         Button(action: {
                             isChecked.toggle()
                         }) {
-                            Image(systemName: isChecked ? "checkmark.square.fill" : "square")
-                                .resizable()
-                                .frame(width: 16, height: 16)
-                                .foregroundColor(Color("TextColor"))
-                                .padding(.trailing, 2)
-                                .offset(x: shakeOffset)
-                        }
-
-                        Text("I have read and agree to the")
-                            .lineLimit(1)
-                            .font(.custom("Inter18pt-Regular", size: 12))
-                            .foregroundColor(Color("TextColor"))
-
-                        Button(action: {
-                            let urlString = (colorScheme == .dark) ?
-                            "https://enclosureapp.com/black_policy" :
-                            "https://enclosureapp.com/white_policy"
-
-                            if let url = URL(string: urlString) {
-                                UIApplication.shared.open(url)
+                            HStack(spacing: 0) {
+                                Image(systemName: isChecked ? "checkmark.square.fill" : "square")
+                                    .resizable()
+                                    .frame(width: 16, height: 16)
+                                    .foregroundColor(Color("TextColor"))
+                                    .padding(.leading, 10) // paddingStart="10dp"
+                                    .padding(.trailing, 2) // paddingEnd="2dp"
+                                
+                                Text(" I agree to the ")
+                                    .lineLimit(1)
+                                    .font(.custom("Inter18pt-Regular", size: 12))
+                                    .foregroundColor(Color("black_white_cross"))
                             }
-                        }) {
-                            Text("Privacy Policy")
-                                .font(.custom("Inter18pt-Regular", size: 12))
-                                .foregroundColor(Color("blue"))
-                                .underline()
+                            .offset(x: shakeOffset)
                         }
 
-                        Text("&")
-                            .font(.custom("Inter18pt-Regular", size: 12))
-                            .foregroundColor(Color("TextColor"))
-
-                        Button(action: {
-                            let urlString = "https://enclosureapp.com/terms_and_conditions"
-                            if let url = URL(string: urlString) {
-                                UIApplication.shared.open(url)
+                        // Terms & Privacy Policy in a flexible container (layout_weight=1, center_vertical gravity)
+                        HStack(spacing: 0) {
+                            Button(action: {
+                                let urlString = "https://enclosureapp.com/terms_and_conditions"
+                                if let url = URL(string: urlString) {
+                                    UIApplication.shared.open(url)
+                                }
+                            }) {
+                                Text(" Terms")
+                                    .font(.custom("Inter18pt-SemiBold", size: 12)) // textStyle="bold"
+                                    .foregroundColor(Color("blue")) // Using blue color asset
                             }
-                        }) {
-                            Text("Terms of Service")
+
+                            Text(" & ") // Matching Android spacing
                                 .font(.custom("Inter18pt-Regular", size: 12))
-                                .foregroundColor(Color("blue"))
-                                .underline()
+                                .foregroundColor(Color("black_white_cross"))
+
+                            Button(action: {
+                                let urlString = (colorScheme == .dark) ?
+                                "https://enclosureapp.com/black_policy" :
+                                "https://enclosureapp.com/white_policy"
+
+                                if let url = URL(string: urlString) {
+                                    UIApplication.shared.open(url)
+                                }
+                            }) {
+                                Text("Privacy Policy.")
+                                    .font(.custom("Inter18pt-SemiBold", size: 12)) // textStyle="bold"
+                                    .foregroundColor(Color("blue")) // Using blue color asset
+                            }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading) // layout_weight=1, start gravity
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading) // Start gravity for entire HStack
+                    .padding(.horizontal, 20) // marginStart="20dp"
+                    .padding(.top, 4) // marginTop="4dp"
+                    .padding(.bottom, 4) // marginBottom="4dp"
 
                     NavigationLink(
                         destination: whatsTheCode(

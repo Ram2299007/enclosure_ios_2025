@@ -162,9 +162,12 @@ struct messageLmtView: View {
                 .padding(.bottom, 10)
 
                 if viewModel.isLoading {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle())
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    ZStack {
+                        Color("BackgroundColor")
+                        HorizontalProgressBar()
+                            .frame(width: 40, height: 2)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 } else if let errorMessage = viewModel.errorMessage {
                     Text("Error: \(errorMessage)")
                         .foregroundColor(.red)

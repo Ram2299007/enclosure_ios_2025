@@ -9,7 +9,7 @@ struct MainActivityOld: View {
     @State private var isVStackVisible = false
     @State private var isTopHeaderVisible = false
     @State private var isMainContentVisible = true
-
+    @State private var showNameDialog = false
     @State private var currentBackgroundImage = "bg"
     @State private var currentBackgroundSizeHeight = 140
     @State private var opacity = 0.1
@@ -112,17 +112,18 @@ struct MainActivityOld: View {
                             Spacer()
                             Button(action: {
 
-                                withAnimation(.easeInOut(duration: 0.30)) {
+                                withAnimation(.easeInOut(duration: 0.45)) {
                                     isVStackVisible.toggle()
                                     currentBackgroundImage = isVStackVisible ? "mainvector" : "bg"
                                     currentBackgroundSizeHeight = isVStackVisible ? 390 : 140
                                     if isVStackVisible {
-                                        viewValue = Constant.callView
+                                        // Don't set viewValue immediately - wait for animation to complete
+                                        // viewValue will be set after animation completes (see below)
 
 
                                         // Delay opacity to 1 when showing
-                                        withAnimation(.easeInOut(duration: 0.30)){
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
+                                        withAnimation(.easeInOut(duration: 0.45)){
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
                                                 isTopHeaderVisible = true
                                             }
 
@@ -142,11 +143,13 @@ struct MainActivityOld: View {
                                     //isTopHeaderVisible = true
                                     selected = .call
 
-                                    // Delay opacity to 1 when showing
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                                    // Delay opacity to 1 when showing and set viewValue after expansion completes
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
                                         withAnimation {
                                             opacity = 1
                                         }
+                                        // Set viewValue only after expansion animation completes
+                                        viewValue = Constant.callView
                                     }
 
 
@@ -480,14 +483,25 @@ struct MainActivityOld: View {
                     }
                 }
 
-
-
-
-
-
             }
             .background(Color("background_color"))
-           
+//            .overlay(
+//                WhatsYourNameDialog(isShowing: $showNameDialog) {
+//                    // On success callback
+//                    print("✅ Name dialog completed")
+//                }
+//                .zIndex(1000) // Ensure dialog is on top of everything
+//            )
+//            .onAppear {
+//                // Check if name dialog should be shown (matching Android logic)
+//                let nameSaved = UserDefaults.standard.string(forKey: "nameSAved") ?? "0"
+//                if nameSaved != "nameSAved" {
+//                    // Show dialog on first visit
+//                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+//                        showNameDialog = true
+//                    }
+//                }
+//            }
         }
 
         .navigationBarHidden(true)

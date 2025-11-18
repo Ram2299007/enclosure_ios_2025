@@ -106,7 +106,7 @@ class ApiService {
         print("Parameters: \(parameters)")
 
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
-            .validate()
+            .validate(statusCode: 200..<500)
             .responseJSON { response in
                 print("Response received: \(response)")
 
@@ -814,6 +814,164 @@ class ApiService {
     }
 
 
+
+
+
+    static func get_voice_call_log(uid: String, completion: @escaping (Bool, String, [CallLogSection]?) -> Void) {
+        let url = Constant.baseURL + "get_voice_call_log"
+        let parameters: [String: Any] = ["uid": uid]
+        
+        print("📞 [ApiService] get_voice_call_log - URL: \(url), uid: \(uid)")
+        
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate(statusCode: 200..<500)
+            .responseData { response in
+                print("📞 [ApiService] Call log response status: \(response.response?.statusCode ?? 0)")
+                
+                switch response.result {
+                case .success(let data):
+                    if let rawString = String(data: data, encoding: .utf8) {
+                        print("📞 [ApiService] Call log raw response: \(rawString)")
+                    }
+                    
+                    do {
+                        let decoded = try JSONDecoder().decode(CallLogResponse.self, from: data)
+                        let sections = decoded.data
+                        let message = decoded.message
+                        let lowerMessage = message.lowercased()
+                        
+                        if sections.count > 0 {
+                            completion(true, message, sections)
+                        } else if decoded.errorCode == "200" || lowerMessage.contains("success") || lowerMessage.contains("no data") {
+                            completion(true, message, [])
+                        } else {
+                            completion(false, message, nil)
+                        }
+                    } catch {
+                        print("🔴 [ApiService] Call log decoding error: \(error.localizedDescription)")
+                        
+                        guard let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                            completion(false, "Decoding failed: \(error.localizedDescription)", nil)
+                            return
+                        }
+                        
+                        var errorCode = ""
+                        if let codeString = jsonObject["error_code"] as? String {
+                            errorCode = codeString
+                        } else if let codeInt = jsonObject["error_code"] as? Int {
+                            errorCode = String(codeInt)
+                        }
+                        
+                        let message = (jsonObject["message"] as? String) ?? ""
+                        let lowerMessage = message.lowercased()
+                        
+                        var parsedSections: [CallLogSection] = []
+                        if let dataArray = jsonObject["data"] as? [[String: Any]] {
+                            for item in dataArray {
+                                do {
+                                    let itemData = try JSONSerialization.data(withJSONObject: item)
+                                    let section = try JSONDecoder().decode(CallLogSection.self, from: itemData)
+                                    parsedSections.append(section)
+                                } catch {
+                                    print("🔴 [ApiService] Failed to parse call log section: \(error.localizedDescription)")
+                                }
+                            }
+                        }
+                        
+                        if parsedSections.count > 0 {
+                            completion(true, message, parsedSections)
+                        } else if errorCode == "200" || lowerMessage.contains("success") || lowerMessage.contains("no data") {
+                            completion(true, message, [])
+                        } else {
+                            completion(false, message.isEmpty ? "Unknown error" : message, nil)
+                        }
+                    }
+                    
+                case .failure(let error):
+                    print("🔴 [ApiService] Call log request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription, nil)
+                }
+            }
+    }
+
+
+
+    static func get_video_call_log(uid: String, completion: @escaping (Bool, String, [CallLogSection]?) -> Void) {
+        let url = Constant.baseURL + "get_call_log_1"
+        let parameters: [String: Any] = ["uid": uid]
+        
+        print("📹 [ApiService] get_call_log_1 (video) - URL: \(url), uid: \(uid)")
+        
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate(statusCode: 200..<500)
+            .responseData { response in
+                print("📹 [ApiService] Video call log response status: \(response.response?.statusCode ?? 0)")
+                
+                switch response.result {
+                case .success(let data):
+                    if let rawString = String(data: data, encoding: .utf8) {
+                        print("📹 [ApiService] Video call log raw response: \(rawString)")
+                    }
+                    
+                    do {
+                        let decoded = try JSONDecoder().decode(CallLogResponse.self, from: data)
+                        let sections = decoded.data
+                        let message = decoded.message
+                        let lowerMessage = message.lowercased()
+                        
+                        if sections.count > 0 {
+                            completion(true, message, sections)
+                        } else if decoded.errorCode == "200" || lowerMessage.contains("success") || lowerMessage.contains("no data") {
+                            completion(true, message, [])
+                        } else {
+                            completion(false, message, nil)
+                        }
+                    } catch {
+                        print("🔴 [ApiService] Video call log decoding error: \(error.localizedDescription)")
+                        
+                        guard let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                            completion(false, "Decoding failed: \(error.localizedDescription)", nil)
+                            return
+                        }
+                        
+                        var errorCode = ""
+                        if let codeString = jsonObject["error_code"] as? String {
+                            errorCode = codeString
+                        } else if let codeInt = jsonObject["error_code"] as? Int {
+                            errorCode = String(codeInt)
+                        }
+                        
+                        let message = (jsonObject["message"] as? String) ?? ""
+                        let lowerMessage = message.lowercased()
+                        
+                        var parsedSections: [CallLogSection] = []
+                        if let dataArray = jsonObject["data"] as? [[String: Any]] {
+                            for item in dataArray {
+                                do {
+                                    let itemData = try JSONSerialization.data(withJSONObject: item)
+                                    let section = try JSONDecoder().decode(CallLogSection.self, from: itemData)
+                                    parsedSections.append(section)
+                                } catch {
+                                    print("🔴 [ApiService] Failed to parse video call log section: \(error.localizedDescription)")
+                                }
+                            }
+                        }
+                        
+                        if parsedSections.count > 0 {
+                            completion(true, message, parsedSections)
+                        } else if errorCode == "200" || lowerMessage.contains("success") || lowerMessage.contains("no data") {
+                            completion(true, message, [])
+                        } else {
+                            completion(false, message.isEmpty ? "Unknown error" : message, nil)
+                        }
+                    }
+                    
+                case .failure(let error):
+                    print("🔴 [ApiService] Video call log request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription, nil)
+                }
+            }
+    }
 
 
 

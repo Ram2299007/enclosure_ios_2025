@@ -36,6 +36,7 @@ struct whatsTheCode: View {
 
     @State private var fcmToken = "NEED TO ADD FIREBASE NOW"
     @State private var deviceId = "2" // युजरच्या डिव्हाइसचा UUID
+    @Environment(\.colorScheme) var colorScheme
 
 
     var body: some View {
@@ -83,65 +84,124 @@ struct whatsTheCode: View {
                             .padding(.leading, 20)
 
                             // Title
-                            Text("What’s the\ncode?")
-                                .font(.custom("Inter18pt-SemiBold", size: 40))
+                            Text("What's the\ncode?")
+                                .font(.custom("Inter18pt-SemiBold", size: 40)) // inter_bold, 40dp, fontWeight 600
                                 .foregroundColor(Color("TextColor"))
+                                .lineSpacing(20) // lineHeight 60dp (40dp + 20dp spacing)
                                 .padding(.leading, 20)
-                                .padding(.top, 10)
+                                .padding(.top, 35.19) // marginTop="35.19dp"
                                 .multilineTextAlignment(.leading)
 
                             // Subtitle
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Enter code we’ve sent to")
-                                    .font(.custom("Inter18pt-Medium", size: 16))
-                                    .foregroundColor(Color("TextColor"))
+                            Text("Enter code we've sent to")
+                                .font(.custom("Inter18pt-Medium", size: 16)) // inter_medium, 16dp, lineHeight 24dp
+                                .foregroundColor(Color("TextColor"))
+                                .lineSpacing(8) // lineHeight 24dp (16dp + 8dp spacing)
+                                .padding(.leading, 20)
+                                .padding(.top, 9) // marginTop="9dp"
 
-                                Text(mobile_no)
-                                    .font(.custom("Inter18pt-Medium", size: 16))
-                                    .foregroundColor(Color("TextColor"))
-                            }
-                            .padding(.leading, 20)
+                            // Mobile Number
+                            Text(mobile_no)
+                                .font(.custom("Inter18pt-SemiBold", size: 16)) // inter_bold, 16dp, lineHeight 24dp
+                                .foregroundColor(Color("TextColor"))
+                                .lineSpacing(8) // lineHeight 24dp (16dp + 8dp spacing)
+                                .padding(.leading, 20)
+                                .padding(.top, 5) // marginTop="5dp"
 
                             // OTP Input
-                            HStack(spacing: 15) {
+                            HStack(spacing: 10) { // marginEnd="10dp" between fields
                                 ForEach(0..<6, id: \.self) { index in
+                                    let isFocused = focusedField == index
                                     TextField("", text: Binding(
-                                        get: { otp[index] },
+                                        get: { 
+                                            return otp[index] 
+                                        },
                                         set: { newValue in
-                                            if newValue.count > 1 {
-                                                otp[index] = String(newValue.prefix(1))
+                                            let oldValue = otp[index]
+                                            
+                                            // Extract only digits from input
+                                            let digits = newValue.filter { $0.isNumber }
+                                            
+                                            // Handle paste or multiple characters
+                                            if digits.count > 1 {
+                                                // Fill current and subsequent fields
+                                                var currentIndex = index
+                                                for digit in digits {
+                                                    if currentIndex < 6 {
+                                                        otp[currentIndex] = String(digit)
+                                                        currentIndex += 1
+                                                    }
+                                                }
+                                                
+                                                // Focus on the last filled field or next empty field with animation
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                                        if currentIndex < 6 {
+                                                            focusedField = currentIndex
+                                                        } else {
+                                                            focusedField = 5
+                                                        }
+                                                    }
+                                                }
+                                            } else if newValue.isEmpty {
+                                                // Backspace/Delete handling
+                                                otp[index] = ""
+                                                
+                                                // If field was already empty, move to previous field
+                                                if oldValue.isEmpty && index > 0 {
+                                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                                            focusedField = index - 1
+                                                        }
+                                                    }
+                                                }
                                             } else {
-                                                otp[index] = newValue
-                                            }
-
-                                            DispatchQueue.main.async {
-                                                if !newValue.isEmpty {
-                                                    if index < 5 {
-                                                        focusedField = index + 1
-                                                    } else {
-                                                        focusedField = nil
+                                                // Single character entered - extract first digit if available
+                                                if let firstDigit = digits.first {
+                                                    let digit = String(firstDigit)
+                                                    otp[index] = digit
+                                                    
+                                                    // Move to next field smoothly with animation
+                                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                                            if index < 5 {
+                                                                focusedField = index + 1
+                                                            } else {
+                                                                // Last field - dismiss keyboard
+                                                                focusedField = nil
+                                                                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                                                            }
+                                                        }
                                                     }
                                                 } else {
-                                                    if index > 0 {
-                                                        focusedField = index - 1
-                                                    }
+                                                    // Non-digit character entered - keep old value
+                                                    otp[index] = oldValue
                                                 }
                                             }
                                         }
                                     ))
-                                    .frame(width: 50, height: 50)
-                                    .background(RoundedRectangle(cornerRadius: 10).stroke(Color.gray, lineWidth: 1))
-                                    .font(.custom("Inter18pt-Regular", size: 20))
+                                    .frame(width: 45, height: 48) // width="45dp", height="48dp"
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 20) // corners android:radius="20dp"
+                                            .stroke(
+                                                Color(UIColor(red: 0.62, green: 0.65, blue: 0.73, alpha: 1.0)), // #9EA6B9 - works in both light and dark mode
+                                                lineWidth: isFocused ? 1.5 : 1.0 // 1.5dp when focused, 1dp when not
+                                            )
+                                    ) // background="@drawable/button_color_hover_for_all" - transparent with stroke
+                                    .font(.custom("Inter18pt-Regular", size: 14)) // inter, 14sp
+                                    .foregroundColor(Color("TextColor")) // style="@style/TextColor" - adapts to dark/light mode
                                     .multilineTextAlignment(.center)
                                     .keyboardType(.numberPad)
                                     .focused($focusedField, equals: index)
                                     .onTapGesture {
-                                        focusedField = index
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            focusedField = index
+                                        }
                                     }
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.top, 35)
+                            .padding(.top, 35) // marginTop="35dp"
 
                             // Invalid OTP Text
                             if showInvalidOTP {
@@ -153,27 +213,38 @@ struct whatsTheCode: View {
 
                             // Resend Code
                             HStack(spacing: 2) {
-                                Text("Didn't receive code?")
-                                    .font(.custom("Inter18pt-Medium", size: 16))
-                                    .foregroundColor(Color.gray)
+                                Text("Didn't receive code ?") // Matching Android text with space before ?
+                                    .font(.custom("Inter18pt-Medium", size: 16)) // inter_medium, 16dp, lineHeight 24dp
+                                    .foregroundColor(Color(UIColor(red: 0.62, green: 0.65, blue: 0.73, alpha: 1.0))) // #9EA6B9
+                                    .lineSpacing(8) // lineHeight 24dp
                                     .padding(.leading, 20)
 
                                 if isResendDisabled {
                                     Text("Send in \(resendTimer) sec.")
                                         .font(.custom("Inter18pt-Medium", size: 16))
-                                        .foregroundColor(Color.gray)
+                                        .foregroundColor(Color("TextColor"))
+                                        .lineSpacing(8) // lineHeight 24dp
+                                        .padding(.leading, 5) // marginStart="5dp"
                                 } else {
                                     Button(action: {
+                                        // Clear all OTP text fields
+                                        otp = Array(repeating: "", count: 6)
+                                        focusedField = 0 // Focus on first field
+                                        showInvalidOTP = false // Clear any error message
+                                        
+                                        // Start resend timer and send OTP
                                         startResendTimer()
                                         viewModel.sendOTP(mobileNo: mobile_no, cID: c_id, cCode: country_Code)
                                     }) {
                                         Text("Send again")
-                                            .font(.custom("Inter18pt-Medium", size: 16))
+                                            .font(.custom("Inter18pt-Medium", size: 16)) // inter_medium, 16dp, lineHeight 24dp
                                             .foregroundColor(Color("TextColor"))
+                                            .lineSpacing(8) // lineHeight 24dp
                                     }
+                                    .padding(.leading, 2) // marginStart="2dp"
                                 }
                             }
-                            .padding(.top, 48)
+                            .padding(.top, 28) // marginTop="28dp"
                         }
                     }
 
@@ -189,7 +260,7 @@ struct whatsTheCode: View {
 
 
 
-                    // Send Code Button
+                    // Verify Button
                     Button(action: {
                         if otp.contains("") {
                             otp = Array(repeating: "", count: 6)
@@ -236,24 +307,25 @@ struct whatsTheCode: View {
                             }
                         }
                     })
- {
+{
                         Text("Verify")
-                            .font(.custom("Inter18pt-Medium", size: 16))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity, minHeight: 55)
-                            .background(RoundedRectangle(cornerRadius: 15).fill(Color("btn_color")))
+                            .font(.custom("Inter18pt-SemiBold", size: 16)) // inter_medium + fontWeight 600 = SemiBold, 16dp
+                            .foregroundColor(.white) // textColor="@color/white"
+                            .lineSpacing(8) // lineHeight 24dp
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 55) // 55dp height matching Android CardView
+                            .background(RoundedRectangle(cornerRadius: 20).fill(Color(UIColor(red: 0x03/255.0, green: 0x2F/255.0, blue: 0x60/255.0, alpha: 1.0)))) // backgroundTint #032F60, cornerRadius 20dp
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 30)
+                    .padding(.horizontal, 20) // marginHorizontal="20dp"
+                    .padding(.bottom, 100) // marginBottom="100dp" matching Android
                 }
 
                 if verifyViewModel.isLoading {
                     ZStack {
                         VStack(spacing: 16) {
                             // Loader
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint:Color("TextColor")))
-                                .scaleEffect(1.8)
+                            HorizontalProgressBar()
+                                .frame(width: 40, height: 2)
 
                             // Loading Text  Syncing Contacts...
                             Text("Your contacts are synchronizing...")

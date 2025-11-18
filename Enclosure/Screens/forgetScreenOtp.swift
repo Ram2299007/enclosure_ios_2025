@@ -306,9 +306,8 @@ struct forgetScreenOtp: View {
                     ZStack {
                         VStack(spacing: 16) {
                             // Loader
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint:Color("TextColor")))
-                                .scaleEffect(1.8)
+                            HorizontalProgressBar()
+                                .frame(width: 40, height: 2)
 
                             // Loading Text  Syncing Contacts...
                             Text("Your contacts are synchronizing...")
