@@ -16,8 +16,6 @@ class MsgLimitViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var showAlert = false
     @Published var tapPosition = CGPoint.zero
-    @Published var toastMessage: String?
-    @Published var showToast = false
     @Published var currentUserLimit: String = "0"
     
     private var allChatList: [UserActiveContactModel] = []
@@ -77,13 +75,7 @@ class MsgLimitViewModel: ObservableObject {
                     self.currentUserLimit = msg_limit
                     // Refresh the chat list after setting limit
                     self.fetch_user_active_chat_list_for_msgLmt(uid: uid)
-                    // Show toast message
-                    self.toastMessage = "Msg limit set for privacy in a day - \(msg_limit)"
-                    self.showToast = true
-                    // Hide toast after 3 seconds
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                        self.showToast = false
-                    }
+                    Constant.showToast(message: "Msg limit is shown for privacy for a day - \(msg_limit)")
                 } else {
                     self.errorMessage = message
                 }
@@ -101,13 +93,7 @@ class MsgLimitViewModel: ObservableObject {
                         // For now, we'll refresh the list
                         self.fetch_user_active_chat_list_for_msgLmt(uid: uid)
                     }
-                    // Show toast message
-                    self.toastMessage = "Msg limit set for privacy in a day - \(msg_limit)"
-                    self.showToast = true
-                    // Hide toast after 3 seconds
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                        self.showToast = false
-                    }
+                    Constant.showToast(message: "Msg limit is shown for privacy for a day - \(msg_limit)")
                 } else {
                     self.errorMessage = message
                 }

@@ -275,29 +275,6 @@ struct messageLmtView: View {
                     friendId: selectedFriendId
                 )
             }
-            
-            // Toast message
-            if viewModel.showToast, let toastMessage = viewModel.toastMessage {
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        Text(toastMessage)
-                            .font(.custom("Inter18pt-Medium", size: 14))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(Color.black.opacity(0.8))
-                            )
-                            .padding(.trailing, 20)
-                            .padding(.bottom, 50)
-                    }
-                }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .animation(.easeInOut, value: viewModel.showToast)
-            }
         }
     }
 }
@@ -446,19 +423,26 @@ struct LimitCardView: View {
     var friendId: String
     @State private var limitText: String = ""
     @FocusState private var isTextFieldFocused: Bool
+    @State private var isResettingText = false
 
     private func adjustedOffsetX(in geometry: GeometryProxy) -> CGFloat {
         let cardWidth: CGFloat = 141
         let padding: CGFloat = 8
+        let frame = geometry.frame(in: .global)
+        let localX = position.x - frame.minX
+        let centeredX = localX - (cardWidth / 2)
         let maxX = geometry.size.width - cardWidth - padding
-        return min(max(position.x, padding), maxX)
+        return min(max(centeredX, padding), maxX)
     }
-
+    
     private func adjustedOffsetY(in geometry: GeometryProxy) -> CGFloat {
         let cardHeight: CGFloat = 54
         let padding: CGFloat = 8
+        let frame = geometry.frame(in: .global)
+        let localY = position.y - frame.minY
+        let centeredY = localY - (cardHeight / 2)
         let maxY = geometry.size.height - cardHeight - padding
-        return min(max(position.y, padding), maxY)
+        return min(max(centeredY, padding), maxY)
     }
 
     var body: some View {
@@ -466,11 +450,10 @@ struct LimitCardView: View {
             ZStack(alignment: .topLeading) {
                 // Background Blur + Tap to dismiss
                 Rectangle()
-                    .fill(.ultraThinMaterial)
+                    .fill(Color.black.opacity(0.001))
                     .ignoresSafeArea()
                     .onTapGesture {
-                        // Submit and dismiss when tapping outside
-                        submitLimit()
+                        dismissWithoutSaving()
                     }
 
                 // Limit Input Card
@@ -484,22 +467,30 @@ struct LimitCardView: View {
                         .font(.custom("Inter18pt-Medium", size: 14))
                         .focused($isTextFieldFocused)
                         .onChange(of: limitText) { newValue in
-                            let filtered = newValue.filter { $0.isNumber }
-                            if filtered.count > 3 {
-                                limitText = String(filtered.prefix(3))
-                            } else if filtered != newValue {
-                                limitText = filtered
+                            guard !isResettingText else {
+                                isResettingText = false
+                                return
                             }
                             
-                            // Auto-submit when 3 digits are entered (like Android)
-                            if limitText.count == 3 {
-                                submitLimit()
+                            let filtered = newValue.filter { $0.isNumber }
+                            let truncated = String(filtered.prefix(3))
+                            
+                            if truncated != newValue {
+                                limitText = truncated
+                                return
+                            }
+                            
+                            let finalValue = truncated.isEmpty ? "0" : truncated
+                            sendLimitToAPI(with: finalValue)
+                            
+                            if truncated.count == 3 {
+                                closeCard()
                             }
                         }
                         .onChange(of: isTextFieldFocused) { focused in
                             // When keyboard is dismissed, submit if there's text
-                            if !focused && !limitText.isEmpty {
-                                submitLimit()
+                            if !focused && limitText.count == 3 {
+                                closeCard()
                             }
                         }
                 }
@@ -517,19 +508,25 @@ struct LimitCardView: View {
         }
     }
     
-    private func submitLimit() {
-        let finalLimit = limitText.isEmpty ? "0" : limitText
+    private func dismissWithoutSaving() {
+        closeCard()
+    }
+    
+    private func sendLimitToAPI(with value: String) {
         if isSettingAllUsersLimit {
-            viewModel.set_message_limit_for_all_users(uid: Constant.SenderIdMy, msg_limit: finalLimit)
+            viewModel.set_message_limit_for_all_users(uid: Constant.SenderIdMy, msg_limit: value)
         } else {
-            viewModel.set_message_limit_for_user_chat(uid: Constant.SenderIdMy, friend_id: friendId, msg_limit: finalLimit)
+            viewModel.set_message_limit_for_user_chat(uid: Constant.SenderIdMy, friend_id: friendId, msg_limit: value)
         }
-        
-        // Hide keyboard and dismiss
+    }
+    
+    private func closeCard() {
+        guard isPresented else { return }
+        isResettingText = true
+        limitText = ""
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             isTextFieldFocused = false
             isPresented = false
-            limitText = ""
         }
     }
 }

@@ -40,14 +40,28 @@ struct Constant{
     static func showToast(message: String) {
         guard let window = UIApplication.shared.windows.first else { return }
 
-        let toastHeight: CGFloat = 50
-        let padding: CGFloat = 12
-        let logoSize: CGFloat = 20
-        let toastWidth: CGFloat = window.frame.width - 80 // Adjust width for better centering
+        let horizontalMargin: CGFloat = 20
+        let maxToastWidth: CGFloat = window.frame.width - (horizontalMargin * 2)
+        let bottomMargin: CGFloat = 30
+        let font = UIFont(name: "Inter18pt-Medium", size: 16) ?? UIFont.systemFont(ofSize: 16, weight: .medium)
+        let labelHorizontalPadding: CGFloat = 20
+        let labelVerticalPadding: CGFloat = 14
+        let maxLabelWidth = maxToastWidth - (labelHorizontalPadding * 2)
+        let boundingRect = (message as NSString).boundingRect(
+            with: CGSize(width: maxLabelWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font],
+            context: nil
+        )
+        let toastHeight = max(50, boundingRect.height + (labelVerticalPadding * 2))
+        let toastWidth = min(maxToastWidth, boundingRect.width + (labelHorizontalPadding * 2))
+        let originX = (window.frame.width - toastWidth) / 2
 
-        // Center toast horizontally
-        let toastView = UIView(frame: CGRect(x: (window.frame.width - toastWidth) / 2,
-                                             y: -toastHeight,
+        let safeAreaBottom = window.safeAreaInsets.bottom
+        let toastY = window.frame.height - safeAreaBottom - toastHeight - bottomMargin
+
+        let toastView = UIView(frame: CGRect(x: originX,
+                                             y: toastY,
                                              width: toastWidth,
                                              height: toastHeight))
 
@@ -59,51 +73,29 @@ struct Constant{
         toastView.layer.shadowOpacity = 0.1
         toastView.layer.shadowOffset = CGSize(width: 2, height: 2)
 
-        // Logo ImageView (Aligned Left with 5px Left Margin)
-        let logoImageView = UIImageView()
-        logoImageView.image = UIImage(named: "ec_modern") // Replace with your asset name
-        logoImageView.contentMode = .scaleAspectFit
-        logoImageView.translatesAutoresizingMaskIntoConstraints = false
-        logoImageView.widthAnchor.constraint(equalToConstant: logoSize).isActive = true
-        logoImageView.heightAnchor.constraint(equalToConstant: logoSize).isActive = true
-
         // Message Label (Centered)
         let messageLabel = UILabel()
         messageLabel.text = message
         messageLabel.textColor = UIColor(named: "TextColor")
         messageLabel.textAlignment = .center
-        messageLabel.font = UIFont(name: "Inter18pt-Medium", size: 16)
-        messageLabel.numberOfLines = 1
+        messageLabel.font = font
+        messageLabel.numberOfLines = 0
         messageLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        // Container StackView for positioning
-        let containerStackView = UIStackView()
-        containerStackView.axis = .horizontal
-        containerStackView.alignment = .center
-        containerStackView.spacing = 8
-        containerStackView.distribution = .fill
-        containerStackView.translatesAutoresizingMaskIntoConstraints = false
-
-        // Add logo first, then message
-        containerStackView.addArrangedSubview(logoImageView)
-        containerStackView.addArrangedSubview(messageLabel)
-
-        toastView.addSubview(containerStackView)
+        toastView.addSubview(messageLabel)
         window.addSubview(toastView)
 
-        // Constraints for StackView inside toast
+        // Constraints for label inside toast
         NSLayoutConstraint.activate([
-            containerStackView.leadingAnchor.constraint(equalTo: toastView.leadingAnchor, constant: padding + 5), // 5px margin left for logo
-            containerStackView.trailingAnchor.constraint(equalTo: toastView.trailingAnchor, constant: -padding),
-            containerStackView.centerYAnchor.constraint(equalTo: toastView.centerYAnchor),
-
-            // Ensure messageLabel takes available space
-            messageLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 50)
+            messageLabel.leadingAnchor.constraint(equalTo: toastView.leadingAnchor, constant: labelHorizontalPadding),
+            messageLabel.trailingAnchor.constraint(equalTo: toastView.trailingAnchor, constant: -labelHorizontalPadding),
+            messageLabel.topAnchor.constraint(equalTo: toastView.topAnchor, constant: labelVerticalPadding),
+            messageLabel.bottomAnchor.constraint(equalTo: toastView.bottomAnchor, constant: -labelVerticalPadding),
+            messageLabel.centerYAnchor.constraint(equalTo: toastView.centerYAnchor)
         ])
 
-        // Animate slide down
-        UIView.animate(withDuration: 0.4, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 1, options: .curveEaseOut, animations: {
-            toastView.frame.origin.y = 50
+        // Animate fade-in
+        UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseOut, animations: {
             toastView.alpha = 1
         }) { _ in
             // Auto-dismiss with fade-out
