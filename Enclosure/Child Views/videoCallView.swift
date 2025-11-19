@@ -15,6 +15,7 @@ struct videoCallView: View {
     @State private var isStretchedUp = false
     @State private var isButtonVisible = false
     @Binding var isMainContentVisible: Bool
+    @Binding var isTopHeaderVisible: Bool
     @State private var isPressed = false
     
     // Tab state
@@ -313,6 +314,7 @@ struct videoCallView: View {
                             isMainContentVisible = false
                             isBackLayoutVisible = true
                             isButtonVisible = true
+                            isTopHeaderVisible = true
                         }
                     } else if value.translation.height > 50 {
                         handleSwipeDown()
@@ -334,6 +336,7 @@ struct videoCallView: View {
             alignment: .bottomLeading
         )
         .onAppear {
+            isTopHeaderVisible = false
             callLogViewModel.fetchCallLogs(uid: Constant.SenderIdMy, force: true)
         }
     }
@@ -349,6 +352,7 @@ extension videoCallView {
             isPressed = true
             isStretchedUp = false
             isMainContentVisible = true
+            isTopHeaderVisible = false
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             withAnimation(.easeInOut(duration: 0.45)) {

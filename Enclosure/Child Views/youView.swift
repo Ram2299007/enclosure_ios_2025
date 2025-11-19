@@ -15,6 +15,7 @@ struct youView: View {
     @State private var isStretchedUp = false
     @State private var youView = false
     @Binding var isMainContentVisible: Bool
+    @Binding var isTopHeaderVisible: Bool
     @State private var isPressed = false
     @StateObject private var viewModel = YouViewModel()
 
@@ -178,6 +179,7 @@ struct youView: View {
                                 isMainContentVisible = false
                                 print("Stretched upward!")
                                 youView = true
+                                isTopHeaderVisible = true
                             }
                         } else if value.translation.height > 50 {
                             handleSwipeDown()
@@ -188,6 +190,7 @@ struct youView: View {
             .animation(.spring(), value: dragOffset)
         }
         .onAppear {
+            isTopHeaderVisible = false
             viewModel.fetch_profile_YouFragment(uid: Constant.SenderIdMy)
             viewModel.fetch_user_profile_images_youFragment(uid: Constant.SenderIdMy)
             applyProfileData(from: viewModel.list.first)
@@ -210,6 +213,7 @@ extension youView {
             isPressed = true
             isStretchedUp = false
             isMainContentVisible = true
+            isTopHeaderVisible = false
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             withAnimation(.easeInOut(duration: 0.45)) {

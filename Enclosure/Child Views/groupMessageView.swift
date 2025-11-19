@@ -12,6 +12,7 @@ struct groupMessageView: View {
     @State private var isStretchedUp = false
     @State private var isBackHeaderVisible = false
     @Binding var isMainContentVisible: Bool
+    @Binding var isTopHeaderVisible: Bool
     @State private var isPressed = false
     @State private var isSearchVisible = false
     @State private var searchText = ""
@@ -67,6 +68,7 @@ struct groupMessageView: View {
                             isStretchedUp = true
                             isMainContentVisible = false
                             isBackHeaderVisible = true
+                            isTopHeaderVisible = true
                         }
                     } else if value.translation.height > 50 {
                         handleSwipeDown()
@@ -76,6 +78,7 @@ struct groupMessageView: View {
         )
         .animation(.spring(), value: dragOffset)
         .onAppear {
+            isTopHeaderVisible = false
             if !hasLoadedGroups {
                 hasLoadedGroups = true
                 viewModel.fetchGroups(uid: Constant.SenderIdMy)
@@ -309,6 +312,7 @@ extension groupMessageView {
                                 isPressed = true
                                 isStretchedUp = false
                                 isMainContentVisible = true
+                                isTopHeaderVisible = false
         }
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             withAnimation(.easeInOut(duration: 0.45)) {

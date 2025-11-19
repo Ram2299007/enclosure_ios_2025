@@ -7,6 +7,7 @@ struct messageLmtView: View {
     @State private var isStretchedUp = false
     @State private var messageLmtView = false
     @Binding var isMainContentVisible: Bool
+    @Binding var isTopHeaderVisible: Bool
 
     @State private var isSearchActive = false
     @State private var searchText = ""
@@ -30,6 +31,7 @@ struct messageLmtView: View {
                                 isPressed = true
                                 isStretchedUp = false
                                 isMainContentVisible = true
+                                isTopHeaderVisible = false
                                 withAnimation(.easeInOut(duration: 0.30)) {
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                         messageLmtView = false
@@ -206,10 +208,12 @@ struct messageLmtView: View {
                                         isMainContentVisible = false
                                         messageLmtView = true
                                         isScrollEnabled = true
+                                        isTopHeaderVisible = true
                                     } else if value.translation.height > 50 {
                                         isPressed = true
                                         isStretchedUp = false
                                         isMainContentVisible = true
+                                        isTopHeaderVisible = false
                                         withAnimation(.easeInOut(duration: 0.30)) {
                                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                                 messageLmtView = false
@@ -224,10 +228,10 @@ struct messageLmtView: View {
                     )
                     .animation(.spring(), value: dragOffset)
                 }
-            }
-            .padding(.horizontal, 0)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color("BackgroundColor"))
+        }
+        .padding(.horizontal, 0)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color("BackgroundColor"))
             .gesture(
                 DragGesture()
                     .onChanged { value in
@@ -240,10 +244,12 @@ struct messageLmtView: View {
                                 isMainContentVisible = false
                                 messageLmtView = true
                                 isScrollEnabled = true
+                                isTopHeaderVisible = true
                             } else if value.translation.height > 50 {
                                 isPressed = true
                                 isStretchedUp = false
                                 isMainContentVisible = true
+                                isTopHeaderVisible = false
                                 withAnimation(.easeInOut(duration: 0.30)) {
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                         messageLmtView = false
@@ -258,6 +264,7 @@ struct messageLmtView: View {
             )
             .animation(.spring(), value: dragOffset)
             .onAppear {
+                isTopHeaderVisible = false
                 viewModel.fetch_user_active_chat_list_for_msgLmt(uid: Constant.SenderIdMy)
                 viewModel.fetch_message_limit_for_all_users(uid: Constant.SenderIdMy)
             }
@@ -517,7 +524,7 @@ struct LimitCardView: View {
 }
 
 #Preview {
-    messageLmtView(isMainContentVisible: .constant(false))
+    messageLmtView(isMainContentVisible: .constant(false), isTopHeaderVisible: .constant(false))
         .environment(
             \.managedObjectContext,
              PersistenceController.preview.container.viewContext

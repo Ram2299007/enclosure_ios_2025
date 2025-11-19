@@ -125,7 +125,7 @@ struct MainActivityOld: View {
                                     isVStackVisible.toggle()
                                     // Use the captured state to determine which image to show
                                     currentBackgroundImage = !wasExpanded ? "mainvector" : "bg"
-                                    currentBackgroundSizeHeight = !wasExpanded ? 400 : 140
+                                    currentBackgroundSizeHeight = !wasExpanded ? 390 : 140
                                     if !wasExpanded {
                                         // Expanding - Don't set viewValue immediately - wait for animation to complete
                                         // viewValue will be set after animation completes (see below)
@@ -448,6 +448,10 @@ struct MainActivityOld: View {
                     )
                     .clipped()
                     
+                    
+                    
+                    
+                    
                    if showNetworkLoader {
                         NetworkLoaderBar()
                             .frame(height: 3)
@@ -456,8 +460,7 @@ struct MainActivityOld: View {
 
 
                 }
-
-             
+                
 
 
 
@@ -472,24 +475,39 @@ struct MainActivityOld: View {
 
                     }else if(viewValue == Constant.callView){
 
-                        callView(isMainContentVisible: $isMainContentVisible)
+                        callView(
+                            isMainContentVisible: $isMainContentVisible,
+                            isTopHeaderVisible: $isTopHeaderVisible
+                        )
 
                     }else if(viewValue == Constant.videoCallView){
 
-                        videoCallView(isMainContentVisible: $isMainContentVisible)
+                        videoCallView(
+                            isMainContentVisible: $isMainContentVisible,
+                            isTopHeaderVisible: $isTopHeaderVisible
+                        )
 
                     }else if(viewValue == Constant.groupMsgView){
 
-                        groupMessageView(isMainContentVisible: $isMainContentVisible)
+                        groupMessageView(
+                            isMainContentVisible: $isMainContentVisible,
+                            isTopHeaderVisible: $isTopHeaderVisible
+                        )
                     }else if(viewValue == Constant.messageLmtView){
 
-                        messageLmtView(isMainContentVisible: $isMainContentVisible)
+                        messageLmtView(
+                            isMainContentVisible: $isMainContentVisible,
+                            isTopHeaderVisible: $isTopHeaderVisible
+                        )
 
 
 
                     }else if(viewValue == Constant.youView){
 
-                        youView(isMainContentVisible: $isMainContentVisible)
+                        youView(
+                            isMainContentVisible: $isMainContentVisible,
+                            isTopHeaderVisible: $isTopHeaderVisible
+                        )
                     }
                 }
 
@@ -501,6 +519,15 @@ struct MainActivityOld: View {
 
             }
             .background(Color("background_color"))
+            .overlay(alignment: .top) {
+                if isTopHeaderVisible {
+                    VStack { }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 10)
+                        .background(Color("appThemeColor"))
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
 //            .overlay(
 //                WhatsYourNameDialog(isShowing: $showNameDialog) {
 //                    // On success callback
