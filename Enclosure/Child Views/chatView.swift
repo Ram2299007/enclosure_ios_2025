@@ -171,17 +171,17 @@ struct chatView: View {
                     .frame(width: 54, height: 54)
                 
                 CachedAsyncImage(url: URL(string: image ?? "")) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 50, height: 50)
-                        .clipShape(Circle())
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 50, height: 50)
+                            .clipShape(Circle())
                 } placeholder: {
-                    Image("inviteimg")
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 50, height: 50)
-                        .clipShape(Circle())
+                        Image("inviteimg")
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 50, height: 50)
+                            .clipShape(Circle())
                 }
                 .frame(width: 50, height: 50) // 50dp x 50dp as per Android
             }

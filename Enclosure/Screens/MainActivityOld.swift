@@ -1,5 +1,7 @@
 import SwiftUI
 
+import Combine
+
 struct MainActivityOld: View {
     @State private var searchText = ""
     @State private var isSearchActive = false
@@ -14,6 +16,8 @@ struct MainActivityOld: View {
     @State private var currentBackgroundSizeHeight = 140
     @State private var opacity = 0.1
     @State private var viewValue = Constant.chatView
+    @StateObject private var networkMonitor = NetworkMonitor.shared
+    @State private var showNetworkLoader = false
 
 
 
@@ -443,21 +447,17 @@ struct MainActivityOld: View {
                             .id(currentBackgroundImage)
                     )
                     .clipped()
-
-
-                }
-
-
-                if(isTopHeaderVisible){
-                    VStack{
-
+                    
+                   if showNetworkLoader {
+                        NetworkLoaderBar()
+                            .frame(height: 3)
+                            .transition(.opacity)
                     }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 0)
-                    .background(Color("appThemeColor"))
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                    .animation(.easeInOut(duration: 0.45), value: isTopHeaderVisible)
+
+
                 }
+
+             
 
 
 
@@ -493,6 +493,12 @@ struct MainActivityOld: View {
                     }
                 }
 
+                if showNetworkLoader && !isMainContentVisible {
+                    NetworkLoaderBar()
+                        .frame(height: 3)
+                        .transition(.opacity)
+                }
+
             }
             .background(Color("background_color"))
 //            .overlay(
@@ -515,6 +521,14 @@ struct MainActivityOld: View {
         }
 
         .navigationBarHidden(true)
+        .onAppear {
+            showNetworkLoader = !networkMonitor.isConnected
+        }
+        .onReceive(networkMonitor.$isConnected) { isConnected in
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showNetworkLoader = !isConnected
+            }
+        }
     }
 
 
@@ -541,5 +555,79 @@ struct MainActivityOld: View {
 struct MainActivityOld_Previews: PreviewProvider {
     static var previews: some View {
         MainActivityOld()
+    }
+}
+
+struct NetworkLoaderBar: View {
+    @State private var themeColorHex: String = UserDefaults.standard.string(forKey: Constant.ThemeColorKey) ?? "#00A3E9"
+    
+    var body: some View {
+        HorizontalProgressBar(
+            trackColor: trackColors.track.opacity(0.35),
+            indicatorColors: [trackColors.primary, trackColors.secondary]
+        )
+        .frame(height: 4)
+        .frame(maxWidth: .infinity)
+        .background(Color("background_color"))
+        .onAppear {
+            themeColorHex = UserDefaults.standard.string(forKey: Constant.ThemeColorKey) ?? "#00A3E9"
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
+            themeColorHex = UserDefaults.standard.string(forKey: Constant.ThemeColorKey) ?? "#00A3E9"
+        }
+    }
+    
+    private var trackColors: (track: Color, primary: Color, secondary: Color) {
+        let key = themeColorHex.lowercased()
+        switch key {
+        case "#ff0080":
+            return (colorFromHex("#FF0080"), colorFromHex("#FF6D00"), colorFromHex("#FFA726"))
+        case "#00a3e9":
+            return (colorFromHex("#00A3E9"), colorFromHex("#00BFA5"), colorFromHex("#0088FF"))
+        case "#7adf2a":
+            return (colorFromHex("#7ADF2A"), colorFromHex("#00C853"), colorFromHex("#66BB6A"))
+        case "#ec0001":
+            return (colorFromHex("#EC0001"), colorFromHex("#EC7500"), colorFromHex("#FF7043"))
+        case "#16f3ff":
+            return (colorFromHex("#16F3FF"), colorFromHex("#00F365"), colorFromHex("#00BCD4"))
+        case "#ff8a00":
+            return (colorFromHex("#FF8A00"), colorFromHex("#FFAB00"), colorFromHex("#FF7043"))
+        case "#7f7f7f":
+            return (colorFromHex("#7F7F7F"), colorFromHex("#314E6D"), colorFromHex("#546E7A"))
+        case "#d9b845":
+            return (colorFromHex("#D9B845"), colorFromHex("#B0D945"), colorFromHex("#8BC34A"))
+        case "#346667":
+            return (colorFromHex("#346667"), colorFromHex("#729412"), colorFromHex("#26A69A"))
+        case "#9846d9":
+            return (colorFromHex("#9846D9"), colorFromHex("#D946D1"), colorFromHex("#7E57C2"))
+        case "#a81010":
+            return (colorFromHex("#A81010"), colorFromHex("#D85D01"), colorFromHex("#E53935"))
+        default:
+            return (colorFromHex("#00A3E9"), colorFromHex("#00BFA5"), colorFromHex("#0088FF"))
+        }
+    }
+    
+    private func colorFromHex(_ hex: String) -> Color {
+        let cleaned = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: cleaned).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch cleaned.count {
+        case 3:
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6:
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8:
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (255, 0, 163, 233)
+        }
+        return Color(
+            .sRGB,
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue: Double(b) / 255,
+            opacity: Double(a) / 255
+        )
     }
 }

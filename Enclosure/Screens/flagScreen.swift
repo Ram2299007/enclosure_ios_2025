@@ -193,30 +193,42 @@ struct PressEffectModifier: ViewModifier {
 
 // Custom horizontal progress bar matching Android design
 struct HorizontalProgressBar: View {
+    var trackColor: Color = Color("TextColor").opacity(0.25)
+    var indicatorColors: [Color] = [Color("TextColor"), Color("TextColor")]
     @State private var isAnimating = false
     
     var body: some View {
         GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                // Background - full width of the progress bar
-                Rectangle()
-                    .fill(Color("TextColor").opacity(0.2))
-                    .frame(width: geometry.size.width, height: geometry.size.height)
+            ZStack {
+                RoundedRectangle(cornerRadius: geometry.size.height / 2)
+                    .fill(trackColor)
                 
-                // Animated progress indicator
-                Rectangle()
-                    .fill(Color("TextColor"))
-                    .frame(width: geometry.size.width * 0.3, height: geometry.size.height)
-                    .offset(x: isAnimating ? geometry.size.width * 0.7 : -geometry.size.width * 0.3)
-                    .animation(
-                        Animation.linear(duration: 1.5)
-                            .repeatForever(autoreverses: false),
-                        value: isAnimating
-                    )
+                LinearGradient(
+                    gradient: Gradient(stops: [
+                        .init(color: indicatorColors[0].opacity(0.0), location: 0.0),
+                        .init(color: indicatorColors[0].opacity(0.35), location: 0.2),
+                        .init(color: indicatorColors[0], location: 0.4),
+                        .init(color: indicatorColors[1], location: 0.6),
+                        .init(color: indicatorColors[1].opacity(0.35), location: 0.8),
+                        .init(color: indicatorColors[1].opacity(0.0), location: 1.0)
+                    ]),
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .offset(x: isAnimating ? geometry.size.width : -geometry.size.width)
+                .animation(
+                    Animation.linear(duration: 1.8)
+                        .repeatForever(autoreverses: false),
+                    value: isAnimating
+                )
             }
         }
         .onAppear {
             isAnimating = true
+        }
+        .onDisappear {
+            isAnimating = false
         }
     }
 }

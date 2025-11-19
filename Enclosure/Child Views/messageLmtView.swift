@@ -384,16 +384,16 @@ struct CardView: View {
     var image: String?
     var body: some View {
         CachedAsyncImage(url: URL(string: image ?? "")) { image in
-            image
-                .resizable()
-                .scaledToFill()
-                .frame(width: 48, height: 48)
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 48, height: 48)
                 .clipShape(Circle())
         } placeholder: {
-            Image("inviteimg")
-                .resizable()
-                .scaledToFill()
-                .frame(width: 48, height: 48)
+                Image("inviteimg")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 48, height: 48)
                 .clipShape(Circle())
         }
     }
@@ -419,7 +419,7 @@ struct LimitCardView: View {
         let maxX = geometry.size.width - cardWidth - padding
         return min(max(centeredX, padding), maxX)
     }
-    
+
     private func adjustedOffsetY(in geometry: GeometryProxy) -> CGFloat {
         let cardHeight: CGFloat = 54
         let padding: CGFloat = 8
@@ -503,8 +503,8 @@ struct LimitCardView: View {
         } else {
             viewModel.set_message_limit_for_user_chat(uid: Constant.SenderIdMy, friend_id: friendId, msg_limit: value)
         }
-    }
-    
+        }
+        
     private func closeCard() {
         guard isPresented else { return }
         isResettingText = true
