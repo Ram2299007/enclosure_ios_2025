@@ -254,21 +254,14 @@ struct ThemeBorderProfileImage: View {
                         .frame(width: imageSize + borderPadding * 2, height: imageSize + borderPadding * 2)
                 )
             
-            AsyncImage(url: URL(string: imageURL ?? "")) { phase in
-                switch phase {
-                case .empty:
-                    placeholder
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: imageSize, height: imageSize)
-                        .clipShape(Circle())
-                case .failure:
-                    placeholder
-                @unknown default:
-                    placeholder
-                }
+            CachedAsyncImage(url: URL(string: imageURL ?? "")) { image in
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: imageSize, height: imageSize)
+                    .clipShape(Circle())
+            } placeholder: {
+                placeholder
             }
             .frame(width: imageSize, height: imageSize)
         }
@@ -296,21 +289,14 @@ struct ThemeBorderStatusImage: View {
                 .stroke(Color("gray"), lineWidth: borderWidth)
                 .frame(width: imageSize + borderWidth * 2, height: imageSize + borderWidth * 2)
             
-            AsyncImage(url: URL(string: imageURL ?? "")) { phase in
-                switch phase {
-                case .empty:
-                    placeholder
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: imageSize, height: imageSize)
-                        .clipShape(Circle())
-                case .failure:
-                    placeholder
-                @unknown default:
-                    placeholder
-                }
+            CachedAsyncImage(url: URL(string: imageURL ?? "")) { image in
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: imageSize, height: imageSize)
+                    .clipShape(Circle())
+            } placeholder: {
+                placeholder
             }
             .frame(width: imageSize, height: imageSize)
         }

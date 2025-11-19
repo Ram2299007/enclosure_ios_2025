@@ -170,39 +170,18 @@ struct chatView: View {
                     .stroke(Color("blue"), lineWidth: 2) // 2dp border stroke
                     .frame(width: 54, height: 54)
                 
-                // Inner circular image - 50dp x 50dp
-                // Using AsyncImage to fetch the image from the URL
-                AsyncImage(url: URL(string: image ?? "")) { phase in
-                    switch phase {
-                    case .empty:
-                        // Placeholder image while the image is loading
-                        Image("inviteimg")
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 50, height: 50)
-                            .clipShape(Circle())
-                    case .success(let image):
-                        // Loaded image - centerCrop equivalent
-                        image
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 50, height: 50)
-                            .clipShape(Circle())
-                    case .failure:
-                        // Fallback image if the network image loading fails
-                        Image("inviteimg")
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 50, height: 50)
-                            .clipShape(Circle())
-                    @unknown default:
-                        // Default case
-                        Image("inviteimg")
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 50, height: 50)
-                            .clipShape(Circle())
-                    }
+                CachedAsyncImage(url: URL(string: image ?? "")) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 50, height: 50)
+                        .clipShape(Circle())
+                } placeholder: {
+                    Image("inviteimg")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 50, height: 50)
+                        .clipShape(Circle())
                 }
                 .frame(width: 50, height: 50) // 50dp x 50dp as per Android
             }

@@ -276,34 +276,18 @@ struct CallLogContactCardView: View {
                 .stroke(Color(hex: themeColor.isEmpty ? "#00A3E9" : themeColor), lineWidth: 2)
                 .frame(width: 52, height: 52)
             
-            // Inner circular image - 48dp x 48dp (matching Android)
-            AsyncImage(url: URL(string: image ?? "")) { phase in
-                switch phase {
-                case .empty:
-                    Image("inviteimg")
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 48, height: 48)
-                        .clipShape(Circle())
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 48, height: 48)
-                        .clipShape(Circle())
-                case .failure:
-                    Image("inviteimg")
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 48, height: 48)
-                        .clipShape(Circle())
-                @unknown default:
-                    Image("inviteimg")
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 48, height: 48)
-                        .clipShape(Circle())
-                }
+            CachedAsyncImage(url: URL(string: image ?? "")) { image in
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 48, height: 48)
+                    .clipShape(Circle())
+            } placeholder: {
+                Image("inviteimg")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 48, height: 48)
+                    .clipShape(Circle())
             }
             .frame(width: 48, height: 48) // 48dp x 48dp as per Android
         }

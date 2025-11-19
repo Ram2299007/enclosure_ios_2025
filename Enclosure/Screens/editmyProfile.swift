@@ -16,6 +16,7 @@ struct EditmyProfile: View {
     @State private var selectedImageStatus: [UIImage] = []
 
     @State private var showDialog = false
+    @State private var themeColorHex: String = UserDefaults.standard.string(forKey: Constant.ThemeColorKey) ?? "#00A3E9"
     
 
     @Environment(\.presentationMode) var presentationMode
@@ -82,71 +83,12 @@ struct EditmyProfile: View {
 
                         HStack{
                             Spacer()
-                            if let image = selectedImage {
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 107, height: 107)
-                                    .clipShape(RoundedRectangle(cornerRadius: 5))
-
-                                    .padding(.top,16)
-                            }else{
-                                if let profile = profile {
-                                    AsyncImage(url: URL(string: profile.photo)) { phase in
-                                        switch phase {
-                                        case .empty:
-                                            // Display the "inviteimg" placeholder without an empty area
-                                            Image("inviteimg")
-                                                .resizable()
-                                                .scaledToFill()
-                                                .frame(width: 107, height: 107)
-                                                .clipShape(RoundedRectangle(cornerRadius: 5))
-
-                                                .padding(.top,16)
-
-                                        case .success(let image):
-                                            // Display the image once it's loaded successfully
-                                            image
-                                                .resizable()
-                                                .scaledToFill()
-                                                .frame(width: 107, height: 107)
-                                                .clipShape(RoundedRectangle(cornerRadius: 5))
-
-                                                .padding(.top,16)
-
-                                        case .failure(_):
-                                            // Show the fallback image in case of failure
-                                            Image("inviteimg")
-                                                .resizable()
-                                                .scaledToFill()
-                                                .frame(width: 107, height: 107)
-                                                .clipShape(RoundedRectangle(cornerRadius: 5))
-
-                                                .padding(.top,16)
-
-                                        @unknown default:
-                                            // Fallback case
-                                            Image("inviteimg")
-                                                .resizable()
-                                                .scaledToFill()
-                                                .frame(width: 107, height: 107)
-                                                .clipShape(RoundedRectangle(cornerRadius: 5))
-
-                                                .padding(.top,16)
-                                        }
-                                    }
-                                }else{
-
-                                    Image("inviteimg")
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(width: 107, height: 107)
-                                        .clipShape(RoundedRectangle(cornerRadius: 5))
-
-                                        .padding(.top,16)
-
-                                }
-                            }
+                            ThemedProfileImageView(
+                                selectedImage: selectedImage,
+                                imageURL: profile?.photo,
+                                themeColorHex: themeColorHex
+                            )
+                            .padding(.top, 16)
                         }
                         .padding(.trailing, 16)
 
@@ -220,12 +162,8 @@ struct EditmyProfile: View {
                                 let count = viewModelList.listImages.count
                                 let imageRepeatCount = max(0, 4 - count)
 
-                                ForEach(0..<imageRepeatCount, id: \.self) { _ in
-                                    Image("inviteimg")
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(width: 60, height: 60)
-                                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                                ForEach(0..<Swift.max(0, imageRepeatCount), id: \.self) { _ in
+                                    ThemeBorderStatusImage(imageURL: nil)
                                 }
                             }
 
@@ -236,34 +174,7 @@ struct EditmyProfile: View {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 15) {
                                     ForEach(viewModelList.listImages, id: \.id) { imageData in
-                                        AsyncImage(url: URL(string: imageData.photo)) { phase in
-                                            switch phase {
-                                            case .empty:
-                                                Image("inviteimg")
-                                                    .resizable()
-                                                    .scaledToFill()
-                                                    .frame(width: 60, height: 60)
-                                                    .clipShape(RoundedRectangle(cornerRadius: 5))
-                                            case .failure:
-                                                Image("inviteimg")
-                                                    .resizable()
-                                                    .scaledToFill()
-                                                    .frame(width: 60, height: 60)
-                                                    .clipShape(RoundedRectangle(cornerRadius: 5))
-                                            case .success(let image):
-                                                image
-                                                    .resizable()
-                                                    .scaledToFill()
-                                                    .frame(width: 60, height: 60)
-                                                    .clipShape(RoundedRectangle(cornerRadius: 5))
-                                            @unknown default:
-                                                Image("inviteimg")
-                                                    .resizable()
-                                                    .scaledToFill()
-                                                    .frame(width: 60, height: 60)
-                                                    .clipShape(RoundedRectangle(cornerRadius: 5))
-                                            }
-                                        }
+                                        ThemeBorderStatusImage(imageURL: imageData.photo)
                                         .onLongPressGesture {
                                             selectedImageID = imageData.id
                                             showAlert = true
@@ -485,6 +396,10 @@ struct EditmyProfile: View {
                                 /// for set data default
                                 UserDefaults.standard.set(profile?.photo , forKey: Constant.profilePic)
                                 UserDefaults.standard.set(profile?.full_name, forKey: Constant.full_name)
+                                if let newThemeColor = fetchedProfile.themeColor, !newThemeColor.isEmpty {
+                                    themeColorHex = newThemeColor
+                                    UserDefaults.standard.set(newThemeColor, forKey: Constant.ThemeColorKey)
+                                }
                             } else {
                                 print("No profile data available or list is empty")
                             }
@@ -629,27 +544,18 @@ struct ImageDialogView: View {
                     // Image preview
                     if let imageID = selectedImageID,
                        let imageData = viewModelList.listImages.first(where: { $0.id == imageID }) {
-                        AsyncImage(url: URL(string: imageData.photo)) { phase in
-                            switch phase {
-                            case .empty, .failure:
-                                Image("inviteimg")
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 250, height: 250)
-                                    .clipShape(RoundedRectangle(cornerRadius: 20))
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 250, height: 250)
-                                    .clipShape(RoundedRectangle(cornerRadius: 20))
-                            @unknown default:
-                                Image("inviteimg")
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 250, height: 250)
-                                    .clipShape(RoundedRectangle(cornerRadius: 20))
-                            }
+                        CachedAsyncImage(url: URL(string: imageData.photo)) { image in
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 250, height: 250)
+                                .clipShape(RoundedRectangle(cornerRadius: 20))
+                        } placeholder: {
+                            Image("inviteimg")
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 250, height: 250)
+                                .clipShape(RoundedRectangle(cornerRadius: 20))
                         }
                     } else {
                         Image("inviteimg")
@@ -712,6 +618,61 @@ struct ImageDialogView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+}
+
+struct ThemedProfileImageView: View {
+    var selectedImage: UIImage?
+    var imageURL: String?
+    var themeColorHex: String
+    
+    private let imageSize: CGFloat = 107
+    private let borderPadding: CGFloat = 4.0
+    
+    private var borderColor: Color {
+        Color(hex: themeColorHex.isEmpty ? "#00A3E9" : themeColorHex)
+    }
+    
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(borderColor, lineWidth: 1.5)
+                .frame(width: imageSize + borderPadding * 2, height: imageSize + borderPadding * 2)
+                .overlay(
+                    Circle()
+                        .fill(Color("BackgroundColor"))
+                        .frame(width: imageSize + borderPadding * 2, height: imageSize + borderPadding * 2)
+                )
+            
+            if let selectedImage = selectedImage {
+                Image(uiImage: selectedImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: imageSize, height: imageSize)
+                    .clipShape(Circle())
+            } else if let imageURL = imageURL, !imageURL.isEmpty {
+                CachedAsyncImage(url: URL(string: imageURL)) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: imageSize, height: imageSize)
+                        .clipShape(Circle())
+                } placeholder: {
+                    placeholder
+                }
+            } else {
+                placeholder
+            }
+        }
+        .frame(width: imageSize + borderPadding * 2, height: imageSize + borderPadding * 2)
+    }
+    
+    private var placeholder: some View {
+        Image("inviteimg")
+            .resizable()
+            .scaledToFill()
+            .frame(width: imageSize, height: imageSize)
+            .clipShape(Circle())
     }
 }
 

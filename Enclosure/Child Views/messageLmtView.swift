@@ -383,33 +383,18 @@ struct ContactCardView: View {
 struct CardView: View {
     var image: String?
     var body: some View {
-        AsyncImage(url: URL(string: image ?? "")) { phase in
-            switch phase {
-            case .empty:
-                Image("inviteimg")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 48, height: 48)
-                    .clipShape(Circle()) // Android: cardCornerRadius="360dp"
-            case .success(let image):
-                image
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 48, height: 48)
-                    .clipShape(Circle()) // Android: cardCornerRadius="360dp"
-            case .failure:
-                Image("inviteimg")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 48, height: 48)
-                    .clipShape(Circle()) // Android: cardCornerRadius="360dp"
-            @unknown default:
-                Image("inviteimg")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 48, height: 48)
-                    .clipShape(Circle()) // Android: cardCornerRadius="360dp"
-            }
+        CachedAsyncImage(url: URL(string: image ?? "")) { image in
+            image
+                .resizable()
+                .scaledToFill()
+                .frame(width: 48, height: 48)
+                .clipShape(Circle())
+        } placeholder: {
+            Image("inviteimg")
+                .resizable()
+                .scaledToFill()
+                .frame(width: 48, height: 48)
+                .clipShape(Circle())
         }
     }
 }

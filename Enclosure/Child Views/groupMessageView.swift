@@ -445,21 +445,14 @@ struct GroupAvatarView: View {
                         .frame(width: 54, height: 54)
                 )
             
-            AsyncImage(url: URL(string: imageURL)) { phase in
-                switch phase {
-                case .empty:
-                    placeholder
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 50, height: 50)
-                        .clipShape(Circle())
-                case .failure:
-                    placeholder
-                @unknown default:
-                    placeholder
-                }
+            CachedAsyncImage(url: URL(string: imageURL)) { image in
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 50, height: 50)
+                    .clipShape(Circle())
+            } placeholder: {
+                placeholder
             }
             .frame(width: 50, height: 50)
         }
