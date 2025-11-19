@@ -101,7 +101,7 @@ struct groupMessageView: View {
     private var listContainer: some View {
         GeometryReader { geometry in
             Group {
-                if viewModel.isLoading && viewModel.groups.isEmpty {
+                if viewModel.isLoading && !viewModel.hasCachedGroups {
                     centeredContent(loadingView)
                 } else if let errorMessage = viewModel.errorMessage, filteredGroups.isEmpty {
                     centeredContent(errorStateView(message: errorMessage))
@@ -171,7 +171,6 @@ struct groupMessageView: View {
                     .scaledToFit()
                     .frame(width: 20, height: 20)
                     .padding(10)
-                    .background(Color("cardBackgroundColornew"))
                     .clipShape(Circle())
             }
         }
@@ -476,10 +475,31 @@ struct GroupAvatarView: View {
     }
 }
 
+private enum GroupCacheReason: CustomStringConvertible, Equatable {
+    case prefetch
+    case offline
+    case error(String?)
+    
+    var description: String {
+        switch self {
+        case .prefetch:
+            return "prefetch"
+        case .offline:
+            return "offline"
+        case .error(let message):
+            return "error(\(message ?? "nil"))"
+        }
+    }
+}
+
 final class GroupMessageViewModel: ObservableObject {
     @Published var groups: [GroupModel] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var hasCachedGroups = false
+    
+    private let cacheManager = CallCacheManager.shared
+    private let networkMonitor = NetworkMonitor.shared
     
     func fetchGroups(uid: String) {
         guard !uid.isEmpty else {
@@ -489,36 +509,92 @@ final class GroupMessageViewModel: ObservableObject {
         
         isLoading = true
         errorMessage = nil
+        
+        loadCachedGroups(reason: .prefetch, shouldStopLoading: false)
+        
+        guard networkMonitor.isConnected else {
+            loadCachedGroups(reason: .offline)
+            return
+        }
+        
         ApiService.get_group_list(uid: uid) { success, message, data in
             DispatchQueue.main.async {
                 self.isLoading = false
                 if success {
-                    self.groups = data.map { GroupModel(item: $0) }
-                    if self.groups.isEmpty {
-                        self.errorMessage = nil
-                    }
+                    let mapped = data.map { GroupModel(item: $0) }
+                    self.groups = mapped
+                    self.hasCachedGroups = !mapped.isEmpty
+                    self.errorMessage = nil
+                    self.cacheManager.cacheGroupMessages(mapped)
                 } else {
-                    self.groups = []
-                    self.errorMessage = message.isEmpty ? "Something went wrong." : message
+                    if !self.hasCachedGroups {
+                        self.loadCachedGroups(reason: .error(message))
+                    } else {
+                        self.errorMessage = message.isEmpty ? "Something went wrong." : message
+                    }
                 }
             }
         }
     }
+    
+    private func loadCachedGroups(reason: GroupCacheReason, shouldStopLoading: Bool = true) {
+        cacheManager.fetchGroupMessages { [weak self] cachedGroups in
+            guard let self = self else { return }
+            if cachedGroups.isEmpty && reason == .prefetch {
+                if shouldStopLoading {
+                    self.isLoading = false
+                }
+                return
+            }
+            
+            self.groups = cachedGroups
+            self.hasCachedGroups = !cachedGroups.isEmpty
+            if shouldStopLoading {
+                self.isLoading = false
+            }
+            
+            switch reason {
+            case .offline:
+                self.errorMessage = cachedGroups.isEmpty ? "You are offline. No cached groups available." : nil
+            case .prefetch:
+                break
+            case .error(let message):
+                if cachedGroups.isEmpty {
+                    self.errorMessage = message?.isEmpty == false ? message : "Unable to load groups."
+                } else {
+                    self.errorMessage = nil
+                }
+            }
+            
+            print("👥 [GroupMessageViewModel] Loaded \(cachedGroups.count) cached groups for reason: \(reason)")
+        }
+    }
 }
 
-struct GroupModel: Identifiable {
-    let id = UUID()
+struct GroupModel: Identifiable, Codable {
+    let id: UUID
     let name: String
     let lastMessage: String
     let lastMessageTime: String
     let messageType: GroupMessageType
     let iconURL: String
     let unreadCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case lastMessage
+        case lastMessageTime
+        case messageType
+        case iconURL
+        case unreadCount
+    }
     
     init(item: GroupListItem) {
+        id = UUID()
         name = item.group_name
         iconURL = item.group_icon
-        messageType = GroupMessageType(rawValue: item.data_type)
+        messageType = GroupMessageType.fromAPI(item.data_type)
         let trimmedMessage = item.l_msg?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if trimmedMessage.isEmpty {
             lastMessage = messageType.placeholderText
@@ -535,9 +611,31 @@ struct GroupModel: Identifiable {
         }
         unreadCount = 0
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decode(String.self, forKey: .name)
+        lastMessage = try container.decode(String.self, forKey: .lastMessage)
+        lastMessageTime = try container.decode(String.self, forKey: .lastMessageTime)
+        messageType = try container.decode(GroupMessageType.self, forKey: .messageType)
+        iconURL = try container.decode(String.self, forKey: .iconURL)
+        unreadCount = try container.decode(Int.self, forKey: .unreadCount)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(lastMessage, forKey: .lastMessage)
+        try container.encode(lastMessageTime, forKey: .lastMessageTime)
+        try container.encode(messageType, forKey: .messageType)
+        try container.encode(iconURL, forKey: .iconURL)
+        try container.encode(unreadCount, forKey: .unreadCount)
+    }
 }
 
-enum GroupMessageType {
+enum GroupMessageType: String, Codable {
     case text
     case photo
     case video
@@ -545,22 +643,22 @@ enum GroupMessageType {
     case contact
     case file
     
-    init(rawValue: String?) {
+    static func fromAPI(_ rawValue: String?) -> GroupMessageType {
         switch rawValue?.lowercased() {
         case "img":
-            self = .photo
+            return .photo
         case "video":
-            self = .video
+            return .video
         case "voiceaudio":
-            self = .audio
+            return .audio
         case "contact":
-            self = .contact
+            return .contact
         case "text":
-            self = .text
+            return .text
         case "doc":
-            self = .file
+            return .file
         default:
-            self = .text
+            return .text
         }
     }
     

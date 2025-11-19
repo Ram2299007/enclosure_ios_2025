@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct GetUserProfileImagesModel: Codable {
+struct GetUserProfileImagesModel: Codable, Equatable {
     let id: String
     let photo: String
  

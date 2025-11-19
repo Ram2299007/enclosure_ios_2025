@@ -202,7 +202,7 @@ struct videoCallView: View {
                     // Log RecyclerView (recyclerviewLast)
                     if selectedTab == .log {
                         ZStack {
-                            if callLogViewModel.isLoading {
+                            if callLogViewModel.isLoading && !callLogViewModel.hasCachedSections {
                                 ZStack {
                                     Color("background_color")
                                         .ignoresSafeArea()
@@ -229,7 +229,7 @@ struct videoCallView: View {
                     // Contact RecyclerView (recyclerviewAZ)
                     if selectedTab == .contact {
                         ZStack {
-                            if viewModel.isLoading {
+                            if viewModel.isLoading && !viewModel.hasCachedContacts {
                                 // Progress bar - matching Android
                                 ProgressView()
                                     .progressViewStyle(LinearProgressViewStyle(tint: Color("TextColor")))

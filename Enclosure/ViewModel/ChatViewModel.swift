@@ -8,17 +8,46 @@
 
 import Foundation
 
+private enum ChatCacheFallbackReason: CustomStringConvertible {
+    case prefetch
+    case offline
+    case error(String?)
+
+    var description: String {
+        switch self {
+        case .prefetch:
+            return "prefetch"
+        case .offline:
+            return "offline"
+        case .error(let message):
+            return "error(\(message ?? "nil"))"
+        }
+    }
+}
 
 class ChatViewModel: ObservableObject {
     @Published var chatList: [UserActiveContactModel] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var hasCachedChats = false
+
+    private let cacheManager = ChatCacheManager.shared
+    private let networkMonitor = NetworkMonitor.shared
 
     func fetchChatList(uid: String) {
         print("🔵 [ChatViewModel] fetchChatList called with uid: \(uid)")
         isLoading = true
         errorMessage = nil // Clear previous error
         print("🔵 [ChatViewModel] isLoading set to true, errorMessage cleared")
+
+        // Populate cached data immediately so UI can reuse it while fresh data loads.
+        loadCachedChats(reason: .prefetch, shouldStopLoading: false)
+
+        guard networkMonitor.isConnected else {
+            print("🔵 [ChatViewModel] No internet connection, loading cached chats")
+            loadCachedChats(reason: .offline)
+            return
+        }
         
         ApiService.get_user_active_chat_list(uid: uid) { success, message, data in
             DispatchQueue.main.async {
@@ -27,14 +56,47 @@ class ChatViewModel: ObservableObject {
                 if success {
                     self.chatList = data ?? []
                     self.errorMessage = nil // Clear error on success
+                    self.hasCachedChats = !self.chatList.isEmpty
                     print("🔵 [ChatViewModel] SUCCESS - chatList count: \(self.chatList.count), errorMessage: \(self.errorMessage ?? "nil")")
+                    self.cacheManager.cacheChats(self.chatList)
                 } else {
                     // Only set error message if message is not empty
                     self.errorMessage = message.isEmpty ? nil : message
                     self.chatList = data ?? [] // Set data even on error if available
                     print("🔵 [ChatViewModel] ERROR - errorMessage: '\(self.errorMessage ?? "nil")', chatList count: \(self.chatList.count)")
+
+                    if self.chatList.isEmpty {
+                        self.loadCachedChats(reason: .error(message))
+                    }
                 }
             }
+        }
+    }
+
+    private func loadCachedChats(reason: ChatCacheFallbackReason, shouldStopLoading: Bool = true) {
+        cacheManager.fetchChats { [weak self] cachedChats in
+            guard let self = self else { return }
+            self.chatList = cachedChats
+            self.hasCachedChats = !cachedChats.isEmpty
+            if shouldStopLoading {
+                self.isLoading = false
+            }
+
+            switch reason {
+            case .offline:
+                self.errorMessage = cachedChats.isEmpty ? "You are offline. No cached chats available." : nil
+            case .prefetch:
+                // Keep any existing error state; just ensure cached items are visible.
+                break
+            case .error(let message):
+                if cachedChats.isEmpty {
+                    self.errorMessage = message?.isEmpty == false ? message : "Unable to load chats."
+                } else {
+                    self.errorMessage = nil
+                }
+            }
+
+            print("🔵 [ChatViewModel] Loaded \(cachedChats.count) cached chats for reason: \(reason)")
         }
     }
 }

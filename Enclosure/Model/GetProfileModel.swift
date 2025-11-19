@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct GetProfileModel: Codable {
+struct GetProfileModel: Codable, Equatable {
     let full_name: String
     let caption: String
     let mobile_no: String

@@ -186,24 +186,14 @@ struct youView: View {
                     }
             )
             .animation(.spring(), value: dragOffset)
-        }.onAppear {
-
+        }
+        .onAppear {
             viewModel.fetch_profile_YouFragment(uid: Constant.SenderIdMy)
             viewModel.fetch_user_profile_images_youFragment(uid: Constant.SenderIdMy)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { // Delay for API response
-                if let fetchedProfile = viewModel.list.first {
-                    profile = fetchedProfile
-                    /// for set data default
-                    UserDefaults.standard.set(profile?.photo , forKey: Constant.profilePic)
-                    UserDefaults.standard.set(profile?.full_name, forKey: Constant.full_name)
-                    if let newThemeColor = fetchedProfile.themeColor, !newThemeColor.isEmpty {
-                        themeColorHex = newThemeColor
-                        UserDefaults.standard.set(newThemeColor, forKey: Constant.ThemeColorKey)
-                    }
-                } else {
-                    print("No profile data available or list is empty")
-                }
-            }
+            applyProfileData(from: viewModel.list.first)
+        }
+        .onChange(of: viewModel.list) { newList in
+            applyProfileData(from: newList.first)
         }
 
     }
@@ -226,6 +216,17 @@ extension youView {
                 youView = false
                 isPressed = false
             }
+        }
+    }
+
+    private func applyProfileData(from newProfile: GetProfileModel?) {
+        guard let newProfile = newProfile else { return }
+        profile = newProfile
+        UserDefaults.standard.set(newProfile.photo, forKey: Constant.profilePic)
+        UserDefaults.standard.set(newProfile.full_name, forKey: Constant.full_name)
+        if let newThemeColor = newProfile.themeColor, !newThemeColor.isEmpty {
+            themeColorHex = newThemeColor
+            UserDefaults.standard.set(newThemeColor, forKey: Constant.ThemeColorKey)
         }
     }
 }

@@ -154,7 +154,7 @@ struct messageLmtView: View {
                 .padding(.bottom, 10) // marginBottom="10dp"
 
                 // Content area - RecyclerView layout_below="@id/label"
-                if viewModel.isLoading {
+                if viewModel.isLoading && !viewModel.hasCachedContacts {
                     ZStack {
                         Color("BackgroundColor")
                         HorizontalProgressBar()

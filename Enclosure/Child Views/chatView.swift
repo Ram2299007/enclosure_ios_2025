@@ -25,9 +25,8 @@ struct chatView: View {
         let _ = print("🟡 [chatView] Rendering - isLoading: \(viewModel.isLoading), errorMessage: '\(viewModel.errorMessage ?? "nil")', chatList count: \(viewModel.chatList.count)")
         
         return VStack {
-            // Show loading indicator while fetching data
-            if viewModel.isLoading {
-                let _ = print("🟡 [chatView] Showing LOADING state")
+            if viewModel.isLoading && !viewModel.hasCachedChats {
+                let _ = print("🟡 [chatView] Showing LOADING state (no cache)")
                 ZStack {
                     Color("BackgroundColor")
                     HorizontalProgressBar()
@@ -68,19 +67,22 @@ struct chatView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 let _ = print("🟡 [chatView] Showing DATA state - \(filteredChatList.count) items (filtered from \(viewModel.chatList.count))")
-                // Show chat list if data is fetched successfully
-                List(filteredChatList, id: \.uid) { chat in
-                    ContactCardView(chat: chat)
-                        .listRowInsets(EdgeInsets())
-                        .listRowSeparator(.hidden) // Hides the separator
-                }
-                .listStyle(PlainListStyle()) // Optional for clean appearance
+                chatListView
             }
         }
         .onAppear {
             print("🟡 [chatView] onAppear - fetching chat list for uid: \(Constant.SenderIdMy)")
             viewModel.fetchChatList(uid: Constant.SenderIdMy)
         }
+    }
+
+    private var chatListView: some View {
+        List(filteredChatList, id: \.uid) { chat in
+            ContactCardView(chat: chat)
+                .listRowInsets(EdgeInsets())
+                .listRowSeparator(.hidden)
+        }
+        .listStyle(PlainListStyle())
     }
 
 
