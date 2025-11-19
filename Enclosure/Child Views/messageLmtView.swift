@@ -140,8 +140,8 @@ struct messageLmtView: View {
                             .frame(width: 70, height: 30)
                             .multilineTextAlignment(.center)
                             .background(
-                                RoundedRectangle(cornerRadius: 20) // 20dp corner radius for black background
-                                    .fill(Color.black)
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(Color("buttonColorTheme"))
                                     .frame(width: 70, height: 30)
                             )
                     }
@@ -337,8 +337,8 @@ struct ContactCardView: View {
                                 .frame(width: 51, height: 24)
                         }
                         .background(
-                            RoundedRectangle(cornerRadius: 20) // 20dp corner radius for black background
-                                .fill(Color.black)
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color("buttonColorTheme"))
                                 .frame(width: 51, height: 24)
                         )
                         .frame(width: 51, height: 24)
