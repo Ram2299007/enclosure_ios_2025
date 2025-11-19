@@ -843,6 +843,74 @@ class ApiService {
                 }
             }
     }
+    
+    static func set_message_limit_for_all_users(uid: String, msg_limit: String, completion: @escaping (Bool, String) -> Void) {
+        let url = Constant.baseURL+"set_message_limit_for_all_users"
+        let parameters: [String: Any] = ["uid": uid, "msg_limit": msg_limit]
+
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    do {
+                        if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                           let errorCode = json["error_code"] as? String {
+                            let message = json["message"] as? String ?? ""
+                            if errorCode == "200" {
+                                // Save to UserDefaults
+                                UserDefaults.standard.set(msg_limit, forKey: "msg_limitFORALL")
+                                completion(true, message)
+                            } else {
+                                completion(false, message)
+                            }
+                        } else {
+                            completion(false, "Invalid response format")
+                        }
+                    } catch {
+                        print("Decoding error: \(error.localizedDescription)")
+                        completion(false, "Decoding failed")
+                    }
+
+                case .failure(let error):
+                    print("Request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription)
+                }
+            }
+    }
+    
+    static func set_message_limit_for_user_chat(uid: String, friend_id: String, msg_limit: String, completion: @escaping (Bool, String) -> Void) {
+        let url = Constant.baseURL+"set_message_limit_for_user_chat"
+        let parameters: [String: Any] = ["uid": uid, "friend_id": friend_id, "msg_limit": msg_limit]
+
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    do {
+                        if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                           let errorCode = json["error_code"] as? String {
+                            let message = json["message"] as? String ?? ""
+                            if errorCode == "200" {
+                                completion(true, message)
+                            } else {
+                                completion(false, message)
+                            }
+                        } else {
+                            completion(false, "Invalid response format")
+                        }
+                    } catch {
+                        print("Decoding error: \(error.localizedDescription)")
+                        completion(false, "Decoding failed")
+                    }
+
+                case .failure(let error):
+                    print("Request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription)
+                }
+            }
+    }
 
 
 

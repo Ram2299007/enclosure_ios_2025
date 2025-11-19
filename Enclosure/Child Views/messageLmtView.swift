@@ -10,88 +10,109 @@ struct messageLmtView: View {
 
     @State private var isSearchActive = false
     @State private var searchText = ""
-    @State private var allValueLmt = "0"
     @State private var isScrollEnabled = false
     @State private var limitText: String = ""
     @State private var showAlertBinding: Bool = false
+    @State private var isSettingAllUsersLimit = true // Track if setting limit for all users or individual
+    @State private var selectedFriendId: String = ""
 
     @StateObject private var viewModel = MsgLimitViewModel()
-
 
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
+                // Back arrow header (shown when messageLmtView is true)
+                // Android: marginStart="20dp", marginTop="15dp", marginEnd="10dp"
                 if messageLmtView {
-                    Button(action: {
-                        withAnimation {
-                            isPressed = true
-                            isStretchedUp = false
-                            isMainContentVisible = true
-                            withAnimation(.easeInOut(duration: 0.30)) {
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                    messageLmtView = false
-                                    isPressed = false
-                                    isScrollEnabled = false
+                    HStack(spacing: 0) {
+                        Button(action: {
+                            withAnimation {
+                                isPressed = true
+                                isStretchedUp = false
+                                isMainContentVisible = true
+                                withAnimation(.easeInOut(duration: 0.30)) {
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        messageLmtView = false
+                                        isPressed = false
+                                        isScrollEnabled = false
+                                    }
                                 }
                             }
-                        }
-                    }) {
-                        ZStack {
-                            if isPressed {
-                                Circle()
-                                    .fill(Color.gray.opacity(0.3))
-                                    .frame(width: 40, height: 40)
-                                    .scaleEffect(isPressed ? 1.2 : 1.0)
-                                    .animation(.easeOut(duration: 0.1), value: isPressed)
+                        }) {
+                            ZStack {
+                                if isPressed {
+                                    Circle()
+                                        .fill(Color.gray.opacity(0.3))
+                                        .frame(width: 40, height: 40)
+                                        .scaleEffect(isPressed ? 1.2 : 1.0)
+                                        .animation(.easeOut(duration: 0.1), value: isPressed)
+                                }
+                                Image("leftvector")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 25, height: 18)
+                                    .foregroundColor(Color("icontintGlobal"))
                             }
-                            Image("leftvector")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 25, height: 18)
-                                .foregroundColor(Color("icontintGlobal"))
                         }
+                        .simultaneousGesture(
+                            DragGesture(minimumDistance: 0)
+                                .onEnded { _ in
+                                    withAnimation {
+                                        isPressed = false
+                                    }
+                                }
+                        )
+                        .frame(width: 40, height: 40)
+                        .padding(.trailing, 5) // marginEnd="5dp" for the button container
+                        
+                        Spacer()
                     }
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 0)
-                            .onEnded { _ in
-                                withAnimation {
-                                    isPressed = false
-                                }
-                            }
-                    )
-                    .padding(.leading, 5)
-                    .padding(.bottom, 15)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 20) // marginStart="20dp"
+                    .padding(.trailing, 10) // marginEnd="10dp"
+                    .padding(.top, 15) // marginTop="15dp"
                 }
 
+                // Header text
+                // Android: layout_below="@+id/backlyt", layout_marginTop="10dp"
                 VStack(alignment: .center, spacing: 0) {
                     Text("Set message limit per day \nUser can send message upto limit you set.")
-                        .font(.custom("Inter18pt-Medium", size: 12))
+                        .font(.custom("Inter18pt-Medium", size: 13)) // Match groupMessageView font style
                         .multilineTextAlignment(.center)
                         .lineSpacing(6)
                         .foregroundColor(Color("TextColor"))
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 10) // layout_marginTop="10dp"
 
-                HStack {
+                // Search section
+                // Android: layout_below="@id/create", layout_marginTop="15dp"
+                HStack(spacing: 0) {
                     Spacer()
                     if isSearchActive {
-                        HStack {
+                        HStack(spacing: 0) {
                             Rectangle()
                                 .fill(Color("blue"))
                                 .frame(width: 1, height: 19.24)
-                            TextField("Search Name", text: $searchText)
+                                .padding(.leading, 23) // marginStart="23dp"
+                            TextField("Search Name or Number", text: $searchText)
                                 .font(.custom("Inter18pt-Regular", size: 15))
                                 .foregroundColor(Color("TextColor"))
-                                .padding(.leading, 13)
+                                .padding(.leading, 13) // marginStart="13dp"
                                 .textFieldStyle(PlainTextFieldStyle())
+                                .onChange(of: searchText) { newValue in
+                                    viewModel.filterChatList(searchText: newValue)
+                                }
                         }
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                     Button(action: {
                         withAnimation {
                             isSearchActive.toggle()
+                            if !isSearchActive {
+                                searchText = ""
+                                viewModel.filterChatList(searchText: "")
+                            }
                         }
                     }) {
                         Image("search")
@@ -104,78 +125,68 @@ struct messageLmtView: View {
                     .background(Color.clear)
                     .clipShape(Circle())
                     .buttonStyle(CircularRippleStyle())
+                    .padding(.trailing, 20) // marginEnd="20dp"
                 }
-                .padding(.top, 15)
+                .padding(.top, 15) // layout_marginTop="15dp"
 
+                // Label section with A-Z - positioned on left side
+                // Android: layout_marginLeft="20dp", marginTop="15dp", marginRight="15dp", marginBottom="10dp"
                 HStack(alignment: .center, spacing: 0) {
-                    // Left Side: "A - Z" Label + Down Arrow
+                    // "A - Z" Label - left aligned
                     VStack(spacing: 0) {
                         Text("A - Z")
-                            .font(.custom("Inter18pt-Medium", size: 12))
+                            .font(.custom("Inter18pt-SemiBold", size: 12)) // Match groupMessageView "Groups" label style
                             .foregroundColor(.white)
                             .frame(width: 70, height: 30)
                             .multilineTextAlignment(.center)
                             .background(
-                                Image("rectinfinity")
-                                    .resizable()
-                                    .scaledToFill()
+                                RoundedRectangle(cornerRadius: 20) // 20dp corner radius for black background
+                                    .fill(Color.black)
                                     .frame(width: 70, height: 30)
-                                    .cornerRadius(6)
-                                    .clipped()
                             )
-                            .cornerRadius(6)
                     }
-
-                    Spacer()
-
-                    // Right Side: All Msg Limit View
-                    Button(action: {
-                        // Optional: Keep button action for fallback
-                        print("Button tapped")
-                        viewModel.showAlert = true
-                    }) {
-                        HStack {
-                            Text(allValueLmt)
-                                .font(.custom("Inter18pt-Medium", size: 12))
-                                .foregroundColor(.white)
-                                .lineSpacing(2)
-                                .frame(width: 51, height: 24)
-                        }
-                        .background(
-                            Image("rectinfinity")
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        )
-                        .frame(width: 51, height: 24)
-                        .padding(.trailing, 5)
-                    }
-                    .contentShape(Rectangle())
-                    .simultaneousGesture(
-                        SpatialTapGesture(coordinateSpace: .global)
-                            .onEnded { value in
-                                viewModel.tapPosition = value.location
-                                viewModel.showAlert = true
-                            }
-                    )
+                    
+                    Spacer() // Push A-Z to the left
                 }
-                .padding(.top, 15)
-                .padding(.bottom, 10)
+                .padding(.leading, 20) // marginLeft="20dp"
+                .padding(.trailing, 15) // marginRight="15dp"
+                .padding(.top, 15) // marginTop="15dp"
+                .padding(.bottom, 10) // marginBottom="10dp"
 
+                // Content area - RecyclerView layout_below="@id/label"
                 if viewModel.isLoading {
                     ZStack {
                         Color("BackgroundColor")
                         HorizontalProgressBar()
-                            .frame(width: 40, height: 2)
+                            .frame(width: 40, height: 2) // Match groupMessageView progress bar height
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                } else if let errorMessage = viewModel.errorMessage {
-                    Text("Error: \(errorMessage)")
-                        .foregroundColor(.red)
+                } else if viewModel.filteredChatList.isEmpty && !viewModel.isLoading {
+                    // No data view - Android: layout_centerInParent="true"
+                    ZStack {
+                        Color("BackgroundColor")
+                        VStack {
+                            Spacer()
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Color("menuRect"))
+                                VStack(spacing: 4) {
+                                    Text("No contacts available")
+                                        .font(.custom("MicrosoftPhagspa", size: 14))
+                                        .foregroundColor(Color("black_white_cross"))
+                                }
+                                .padding(12) // Android: padding="12dp"
+                            }
+                            .frame(width: 200, height: 80)
+                            Spacer()
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView(.vertical, showsIndicators: false) {
                         LazyVStack(spacing: 0) {
-                            ForEach(viewModel.chatList, id: \.uid) { chat in
-                                ContactCardView(viewModel:viewModel,chat: chat)
+                            ForEach(viewModel.filteredChatList, id: \.uid) { chat in
+                                ContactCardView(viewModel: viewModel, chat: chat, isSettingAllUsersLimit: $isSettingAllUsersLimit, selectedFriendId: $selectedFriendId)
                                     .contentShape(Rectangle())
                             }
                         }
@@ -195,7 +206,6 @@ struct messageLmtView: View {
                                         isMainContentVisible = false
                                         messageLmtView = true
                                         isScrollEnabled = true
-                                        print("Scroll enabled")
                                     } else if value.translation.height > 50 {
                                         isPressed = true
                                         isStretchedUp = false
@@ -205,7 +215,6 @@ struct messageLmtView: View {
                                                 messageLmtView = false
                                                 isPressed = false
                                                 isScrollEnabled = false
-                                                print("Scroll disabled")
                                             }
                                         }
                                     }
@@ -214,16 +223,11 @@ struct messageLmtView: View {
                             }
                     )
                     .animation(.spring(), value: dragOffset)
-
-
                 }
-                Spacer()
             }
-            .padding(.top, 15)
-            .padding(.horizontal, 15)
+            .padding(.horizontal, 0)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.clear.contentShape(Rectangle()))
-            // Disable parent DragGesture to avoid conflicts
+            .background(Color("BackgroundColor"))
             .gesture(
                 DragGesture()
                     .onChanged { value in
@@ -236,7 +240,6 @@ struct messageLmtView: View {
                                 isMainContentVisible = false
                                 messageLmtView = true
                                 isScrollEnabled = true
-                                print("Stretched upward!")
                             } else if value.translation.height > 50 {
                                 isPressed = true
                                 isStretchedUp = false
@@ -256,90 +259,150 @@ struct messageLmtView: View {
             .animation(.spring(), value: dragOffset)
             .onAppear {
                 viewModel.fetch_user_active_chat_list_for_msgLmt(uid: Constant.SenderIdMy)
-                viewModel.fetch_message_limit_for_all_users(
-                        uid: Constant.SenderIdMy
-                    )
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { // Delay for API response
-                    if let fetchedProfile = viewModel.AllLmtList.first {
-                        allValueLmt = "4"
-
-                    } else {
-                        print("No profile data available or list is empty")
-                        Spacer()
-                    }
-                }
-
+                viewModel.fetch_message_limit_for_all_users(uid: Constant.SenderIdMy)
+            }
+            .onChange(of: viewModel.currentUserLimit) { newValue in
+                // Update when limit changes
             }
 
-            // Custom Alert
+            // Custom Alert for setting limit
             if viewModel.showAlert {
-                LimitCardView(isPresented: $viewModel.showAlert, position: viewModel.tapPosition)
-                    .onChange(of: showAlertBinding) { newValue in
-                        if !newValue {
-                            viewModel.showAlert = false
-                        }
+                LimitCardView(
+                    isPresented: $viewModel.showAlert,
+                    position: viewModel.tapPosition,
+                    isSettingAllUsersLimit: isSettingAllUsersLimit,
+                    viewModel: viewModel,
+                    friendId: selectedFriendId
+                )
+            }
+            
+            // Toast message
+            if viewModel.showToast, let toastMessage = viewModel.toastMessage {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Text(toastMessage)
+                            .font(.custom("Inter18pt-Medium", size: 14))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Color.black.opacity(0.8))
+                            )
+                            .padding(.trailing, 20)
+                            .padding(.bottom, 50)
                     }
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.easeInOut, value: viewModel.showToast)
             }
         }
     }
 }
 
-// ContactCardView remains unchanged
+// ContactCardView - matches Android msg_limit_row.xml layout exactly
 struct ContactCardView: View {
     @ObservedObject var viewModel: MsgLimitViewModel
     var chat: UserActiveContactModel
+    @Binding var isSettingAllUsersLimit: Bool
+    @Binding var selectedFriendId: String
     @State private var isPressed = false
+    
     var body: some View {
-        HStack {
-            CardView(image: chat.photo)
-                .padding(.trailing, 16)
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text(chat.fullName)
-                        .font(.custom("Inter18pt-SemiBold", size: 16))
-                        .foregroundColor(Color("TextColor"))
+        // Android: RelativeLayout with custom_ripple background
+        // Android: LinearLayout (hori1) with marginTop="10dp" and marginBottom="10dp"
+        HStack(spacing: 0) {
+            // Android: FrameLayout with marginLeft="20dp", marginRight="20dp", padding="2dp", card_border background
+            // Android: CardView with cardCornerRadius="360dp" (circular)
+            // Android: ImageView 48dp x 48dp
+            ZStack {
+                // Card border background (Android: @drawable/card_border) - using theme color stroke
+                // The border is 2dp wide, so outer circle is 52dp (48 + 2*2)
+                Circle()
+                    .stroke(Color("blue"), lineWidth: 2) // 2dp border stroke with theme color
+                    .frame(width: 52, height: 52)
+                
+                // Circular image container - 48dp x 48dp
+                CardView(image: chat.photo)
+                    .frame(width: 48, height: 48)
+            }
+            .padding(.leading, 20) // marginLeft="20dp"
+            .padding(.trailing, 20) // marginRight="20dp"
+            
+            // Android: LinearLayout with layout_weight="1" for name, layout_weight="3" for button container
+            HStack(spacing: 0) {
+                // Android: TextView name - fontFamily="@font/inter_bold", maxWidth="200dp", layout_weight="1"
+                Text(chat.fullName)
+                    .font(.custom("Inter18pt-SemiBold", size: 16)) // Match groupMessageView group name style
+                    .foregroundColor(Color("TextColor"))
+                    .lineLimit(1)
+                    .frame(maxWidth: 200, alignment: .leading) // maxWidth="200dp"
+                    .frame(maxWidth: .infinity, alignment: .leading) // layout_weight="1"
+                
+                // Android: LinearLayout with layout_weight="3", layout_marginEnd="15dp"
+                HStack(spacing: 0) {
                     Spacer()
-
-                    Button(action:{
-                        print("Button tapped")
+                    
+                    // Android: LinearLayout (l1) - 51dp x 24dp, background="@drawable/radius_black_6dp"
+                    // Android: TextView txt1 - textColor="@color/whitenew", fontFamily="@font/inter_medium"
+                    Button(action: {
+                        isSettingAllUsersLimit = false
+                        selectedFriendId = chat.uid
                         viewModel.showAlert = true
-                    }){
-                        HStack {
-                            Text("0")
+                    }) {
+                        HStack(spacing: 0) {
+                            Text("\(chat.msgLimit)")
                                 .font(.custom("Inter18pt-Medium", size: 12))
-                                .foregroundColor(.white)
+                                .foregroundColor(.white) // textColor="@color/whitenew" - using white
                                 .lineSpacing(2)
                                 .frame(width: 51, height: 24)
                         }
                         .background(
-                            Image("rectinfinity")
-                                .resizable()
-                                .renderingMode(.template)
-                                .foregroundColor(Color("blue"))
-                                .aspectRatio(contentMode: .fill)
-                        )
-                        .contentShape(Rectangle())
-                        .simultaneousGesture(
-                            SpatialTapGesture(coordinateSpace: .global)
-                                .onEnded { value in
-                                    viewModel.tapPosition = value.location
-                                    viewModel.showAlert = true
-                                }
+                            RoundedRectangle(cornerRadius: 20) // 20dp corner radius for black background
+                                .fill(Color.black)
+                                .frame(width: 51, height: 24)
                         )
                         .frame(width: 51, height: 24)
-                        .padding(.trailing, 5)
                     }
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(
+                        SpatialTapGesture(coordinateSpace: .global)
+                            .onEnded { value in
+                                isSettingAllUsersLimit = false
+                                selectedFriendId = chat.uid
+                                viewModel.tapPosition = value.location
+                                viewModel.showAlert = true
+                            }
+                    )
+                    .padding(.trailing, 15) // layout_marginEnd="15dp"
+                }
+                .frame(maxWidth: .infinity) // layout_weight="3"
+            }
+        }
+        .padding(.top, 10) // marginTop="10dp"
+        .padding(.bottom, 10) // marginBottom="10dp"
+        .contentShape(Rectangle())
+        .background(
+            // Android: custom_ripple background
+            Color.clear
+        )
+        .onTapGesture {
+            // Ripple effect on tap
+            withAnimation(.easeOut(duration: 0.1)) {
+                isPressed = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                withAnimation(.easeOut(duration: 0.1)) {
+                    isPressed = false
                 }
             }
         }
-        .padding(.vertical, 16)
-        .contentShape(Rectangle())
     }
 }
 
-// CardView remains unchanged
-
+// CardView for profile image - Android: CardView with cardCornerRadius="360dp" (circular)
 struct CardView: View {
     var image: String?
     var body: some View {
@@ -350,35 +413,39 @@ struct CardView: View {
                     .resizable()
                     .scaledToFill()
                     .frame(width: 48, height: 48)
-                    .cornerRadius(6)
+                    .clipShape(Circle()) // Android: cardCornerRadius="360dp"
             case .success(let image):
                 image
                     .resizable()
                     .scaledToFill()
                     .frame(width: 48, height: 48)
-                    .cornerRadius(6)
+                    .clipShape(Circle()) // Android: cardCornerRadius="360dp"
             case .failure:
                 Image("inviteimg")
                     .resizable()
                     .scaledToFill()
                     .frame(width: 48, height: 48)
-                    .cornerRadius(6)
+                    .clipShape(Circle()) // Android: cardCornerRadius="360dp"
             @unknown default:
                 Image("inviteimg")
                     .resizable()
                     .scaledToFill()
                     .frame(width: 48, height: 48)
-                    .cornerRadius(6)
+                    .clipShape(Circle()) // Android: cardCornerRadius="360dp"
             }
         }
     }
 }
 
+// LimitCardView for setting message limit
 struct LimitCardView: View {
     @Binding var isPresented: Bool
     var position: CGPoint
+    var isSettingAllUsersLimit: Bool
+    @ObservedObject var viewModel: MsgLimitViewModel
+    var friendId: String
     @State private var limitText: String = ""
-    @FocusState private var isTextFieldFocused: Bool  // 👈 Focus state
+    @FocusState private var isTextFieldFocused: Bool
 
     private func adjustedOffsetX(in geometry: GeometryProxy) -> CGFloat {
         let cardWidth: CGFloat = 141
@@ -402,11 +469,8 @@ struct LimitCardView: View {
                     .fill(.ultraThinMaterial)
                     .ignoresSafeArea()
                     .onTapGesture {
-                        withAnimation(.easeOut) {
-                            isPresented = false
-                            isTextFieldFocused = false  // 👈 Hide keyboard
-
-                        }
+                        // Submit and dismiss when tapping outside
+                        submitLimit()
                     }
 
                 // Limit Input Card
@@ -418,13 +482,24 @@ struct LimitCardView: View {
                         .padding(.vertical, 5)
                         .foregroundColor(Color("black_white_cross"))
                         .font(.custom("Inter18pt-Medium", size: 14))
-                        .focused($isTextFieldFocused)  // 👈 Bind focus
+                        .focused($isTextFieldFocused)
                         .onChange(of: limitText) { newValue in
                             let filtered = newValue.filter { $0.isNumber }
                             if filtered.count > 3 {
                                 limitText = String(filtered.prefix(3))
                             } else if filtered != newValue {
                                 limitText = filtered
+                            }
+                            
+                            // Auto-submit when 3 digits are entered (like Android)
+                            if limitText.count == 3 {
+                                submitLimit()
+                            }
+                        }
+                        .onChange(of: isTextFieldFocused) { focused in
+                            // When keyboard is dismissed, submit if there's text
+                            if !focused && !limitText.isEmpty {
+                                submitLimit()
                             }
                         }
                 }
@@ -435,20 +510,29 @@ struct LimitCardView: View {
                 .offset(x: adjustedOffsetX(in: geometry), y: adjustedOffsetY(in: geometry))
                 .onAppear {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        isTextFieldFocused = true  // 👈 Auto focus on appear
+                        isTextFieldFocused = true
                     }
                 }
             }
         }
     }
+    
+    private func submitLimit() {
+        let finalLimit = limitText.isEmpty ? "0" : limitText
+        if isSettingAllUsersLimit {
+            viewModel.set_message_limit_for_all_users(uid: Constant.SenderIdMy, msg_limit: finalLimit)
+        } else {
+            viewModel.set_message_limit_for_user_chat(uid: Constant.SenderIdMy, friend_id: friendId, msg_limit: finalLimit)
+        }
+        
+        // Hide keyboard and dismiss
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            isTextFieldFocused = false
+            isPresented = false
+            limitText = ""
+        }
+    }
 }
-
-
-
-
-
-
-
 
 #Preview {
     messageLmtView(isMainContentVisible: .constant(false))
