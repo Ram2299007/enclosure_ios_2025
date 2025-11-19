@@ -4,6 +4,20 @@ import SwiftUI
 struct chatView: View {
     @StateObject private var viewModel = ChatViewModel()
     @State private var tappedIndex: Int? = nil
+    var searchText: String = ""
+
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var filteredChatList: [UserActiveContactModel] {
+        guard !trimmedSearchText.isEmpty else { return viewModel.chatList }
+
+        return viewModel.chatList.filter { chat in
+            chat.fullName.lowercased().contains(trimmedSearchText.lowercased()) ||
+            chat.mobileNo.contains(trimmedSearchText)
+        }
+    }
 
 
 
@@ -43,10 +57,19 @@ struct chatView: View {
                         .listRowSeparator(.hidden)
                 }
                 .listStyle(PlainListStyle())
+            } else if filteredChatList.isEmpty {
+                Text("No chats found")
+                    .font(.custom("Inter18pt-Medium", size: 14))
+                    .foregroundColor(Color("TextColor"))
+                    .padding(16)
+                    .background(Color("cardBackgroundColornew"))
+                    .cornerRadius(20)
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                let _ = print("🟡 [chatView] Showing DATA state - \(viewModel.chatList.count) items")
+                let _ = print("🟡 [chatView] Showing DATA state - \(filteredChatList.count) items (filtered from \(viewModel.chatList.count))")
                 // Show chat list if data is fetched successfully
-                List(viewModel.chatList, id: \.uid) { chat in
+                List(filteredChatList, id: \.uid) { chat in
                     ContactCardView(chat: chat)
                         .listRowInsets(EdgeInsets())
                         .listRowSeparator(.hidden) // Hides the separator
@@ -349,7 +372,7 @@ struct chatView: View {
 }
 
 #Preview {
-    chatView( )
+    chatView()
         .environment(
             \.managedObjectContext,
              PersistenceController.preview.container.viewContext

@@ -29,6 +29,19 @@ struct callView: View {
         case log, contact
     }
 
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var filteredContacts: [CallingContactModel] {
+        guard !trimmedSearchText.isEmpty else { return viewModel.contactList }
+
+        return viewModel.contactList.filter { contact in
+            contact.fullName.lowercased().contains(trimmedSearchText.lowercased()) ||
+            contact.mobileNo.contains(trimmedSearchText)
+        }
+    }
+
     var body: some View {
         ZStack {
             Color("background_color")
@@ -98,6 +111,9 @@ struct callView: View {
                             Button(action: {
                                 withAnimation {
                                     isSearchVisible.toggle()
+                                    if !isSearchVisible {
+                                        searchText = ""
+                                    }
                                 }
                             }) {
                                 Image("search")
@@ -219,30 +235,40 @@ struct callView: View {
                                     .progressViewStyle(LinearProgressViewStyle(tint: Color("TextColor")))
                                     .frame(width: 40, height: 2)
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            } else if viewModel.contactList.isEmpty {
-                                let _ = print("📞 [callView] Showing empty state - contactList count: \(viewModel.contactList.count), isLoading: \(viewModel.isLoading)")
-                                // Empty state card - matching Android noData card
-                                HStack(spacing: 0) {
-                                    Text("Press")
+                            } else if filteredContacts.isEmpty {
+                                if viewModel.contactList.isEmpty {
+                                    let _ = print("📞 [callView] Showing empty state - contactList count: \(viewModel.contactList.count), isLoading: \(viewModel.isLoading)")
+                                    // Empty state card - matching Android noData card
+                                    HStack(spacing: 0) {
+                                        Text("Press")
+                                            .font(.custom("Inter18pt-Medium", size: 14))
+                                            .foregroundColor(Color("TextColor"))
+                                        Text("  A - Z  ")
+                                            .font(.custom("Inter18pt-Medium", size: 14))
+                                            .foregroundColor(Color("TextColor"))
+                                        Text("for contact")
+                                            .font(.custom("Inter18pt-Medium", size: 14))
+                                            .foregroundColor(Color("TextColor"))
+                                    }
+                                    .padding(12)
+                                    .background(Color("cardBackgroundColornew"))
+                                    .cornerRadius(20)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                } else {
+                                    Text("No contacts found")
                                         .font(.custom("Inter18pt-Medium", size: 14))
                                         .foregroundColor(Color("TextColor"))
-                                    Text("  A - Z  ")
-                                        .font(.custom("Inter18pt-Medium", size: 14))
-                                        .foregroundColor(Color("TextColor"))
-                                    Text("for contact")
-                                        .font(.custom("Inter18pt-Medium", size: 14))
-                                        .foregroundColor(Color("TextColor"))
+                                        .padding(12)
+                                        .background(Color("cardBackgroundColornew"))
+                                        .cornerRadius(20)
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 }
-                                .padding(12)
-                                .background(Color("cardBackgroundColornew"))
-                                .cornerRadius(20)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                             } else {
-                                let _ = print("📞 [callView] Showing contact list - contactList count: \(viewModel.contactList.count)")
+                                let _ = print("📞 [callView] Showing contact list - contactList count: \(filteredContacts.count)")
                                 // Contact list
                                 ScrollView {
                                     VStack(spacing: 0) {
-                                        ForEach(viewModel.contactList, id: \.uid) { contact in
+                                        ForEach(filteredContacts, id: \.uid) { contact in
                                             CallingContactRowView(contact: contact)
                                         }
                                     }

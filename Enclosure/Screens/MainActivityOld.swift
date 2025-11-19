@@ -45,38 +45,41 @@ struct MainActivityOld: View {
                         Spacer()
 
                         HStack {
-                            if isSearchActive {
-                                HStack {
-                                    Rectangle()
-                                        .fill(Color("blue"))
-                                        .frame(width: 1, height: 19.24)
-                                        .padding(.leading, 13)
+                            if viewValue == Constant.chatView {
+                                if isSearchActive {
+                                    HStack {
+                                        Rectangle()
+                                            .fill(Color("blue"))
+                                            .frame(width: 1, height: 19.24)
+                                            .padding(.leading, 13)
 
-                                    TextField("Search Name", text: $searchText)
-                                        .font(.custom("Inter18pt-Regular", size: 15))
-                                        .foregroundColor(Color("TextColor"))
-                                        .padding(.leading, 13)
-                                        .textFieldStyle(PlainTextFieldStyle())
-
+                                        TextField("Search Name", text: $searchText)
+                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .foregroundColor(Color("TextColor"))
+                                            .padding(.leading, 13)
+                                            .textFieldStyle(PlainTextFieldStyle())
+                                    }
+                                    .transition(
+                                        .move(edge: .trailing).combined(with: .opacity)
+                                    )
                                 }
-                                .transition(
-                                    .move(edge: .trailing).combined(with: .opacity)
-                                ) // डावीकडून यायला आणि अदृश्य व्हायला मदत करेल
-                            }
 
-                            Button(action: {
-                                withAnimation {
-                                    isSearchActive.toggle()
+                                Button(action: {
+                                    withAnimation {
+                                        isSearchActive.toggle()
+                                        if !isSearchActive {
+                                            searchText = ""
+                                        }
+                                    }
+                                }) {
+                                    Image("search")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 20, height: 20)
                                 }
-                            }) {
-                                Image("search")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 20, height: 20)
+                                .frame(width: 40, height: 40)
+                                .buttonStyle(CircularRippleStyle())
                             }
-                            .frame(width: 40, height: 40)
-                            .buttonStyle(CircularRippleStyle()) // Apply Ripple effect
-
 
                             Button(action: {
                                 // Menu action
@@ -96,7 +99,7 @@ struct MainActivityOld: View {
                             }
                             .frame(width: 40, height: 40)
                             .padding(.trailing,7)
-                            .buttonStyle(CircularRippleStyle())// Apply Ripple effect
+                            .buttonStyle(CircularRippleStyle())
                         }
                     }
 
@@ -111,13 +114,16 @@ struct MainActivityOld: View {
                         HStack {
                             Spacer()
                             Button(action: {
-
+                                // Capture current state before toggling
+                                let wasExpanded = isVStackVisible
+                                
                                 withAnimation(.easeInOut(duration: 0.45)) {
                                     isVStackVisible.toggle()
-                                    currentBackgroundImage = isVStackVisible ? "mainvector" : "bg"
-                                    currentBackgroundSizeHeight = isVStackVisible ? 390 : 140
-                                    if isVStackVisible {
-                                        // Don't set viewValue immediately - wait for animation to complete
+                                    // Use the captured state to determine which image to show
+                                    currentBackgroundImage = !wasExpanded ? "mainvector" : "bg"
+                                    currentBackgroundSizeHeight = !wasExpanded ? 400 : 140
+                                    if !wasExpanded {
+                                        // Expanding - Don't set viewValue immediately - wait for animation to complete
                                         // viewValue will be set after animation completes (see below)
 
 
@@ -132,6 +138,7 @@ struct MainActivityOld: View {
 
 
                                     }else{
+                                        // Collapsing - animate smoothly to bg
                                         viewValue = Constant.chatView
                                         isTopHeaderVisible = false
 
@@ -156,11 +163,11 @@ struct MainActivityOld: View {
                                 } else {
 
                                     // Immediately reduce opacity when hiding
-                                    withAnimation {
+                                    withAnimation(.easeInOut(duration: 0.45)) {
                                         opacity = 0.0
-                                        isTopHeaderVisible = false
-
                                     }
+
+                                
 
                                 }
 
@@ -433,8 +440,9 @@ struct MainActivityOld: View {
                     .background(
                         Image(currentBackgroundImage)
                             .resizable()
-
+                            .id(currentBackgroundImage)
                     )
+                    .clipped()
 
 
                 }
@@ -445,8 +453,10 @@ struct MainActivityOld: View {
 
                     }
                     .frame(maxWidth: .infinity)
-                    .frame(height: 10)
+                    .frame(height: 0)
                     .background(Color("appThemeColor"))
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .animation(.easeInOut(duration: 0.45), value: isTopHeaderVisible)
                 }
 
 
@@ -457,7 +467,7 @@ struct MainActivityOld: View {
 
                     if(viewValue == Constant.chatView){
 
-                        chatView()
+                        chatView(searchText: searchText)
 
 
                     }else if(viewValue == Constant.callView){
