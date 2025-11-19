@@ -32,38 +32,43 @@ struct youView: View {
 
 
                 if youView {
-                    Button(action: {
-                        handleBackArrowTap()
-                    }) {
-                        ZStack {
-                            if isPressed {
-                                Circle()
-                                    .fill(Color.gray.opacity(0.3))
-                                    .frame(width: 40, height: 40)
-                                    .scaleEffect(isPressed ? 1.2 : 1.0)
-                                    .animation(.easeOut(duration: 0.1), value: isPressed)
-                            }
-
-                            Image("leftvector")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 25, height: 18)
-                                .foregroundColor(Color("icontintGlobal"))
-                        }
-                    }
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 0)
-                            .onEnded { _ in
-                                withAnimation {
-                                    isPressed = false
+                    HStack(spacing: 0) {
+                        Button(action: {
+                            handleBackArrowTap()
+                        }) {
+                            ZStack {
+                                if isPressed {
+                                    Circle()
+                                        .fill(Color.gray.opacity(0.3))
+                                        .frame(width: 40, height: 40)
+                                        .scaleEffect(isPressed ? 1.2 : 1.0)
+                                        .animation(.easeOut(duration: 0.1), value: isPressed)
                                 }
-                            }
-                    )
 
+                                Image("leftvector")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 25, height: 18)
+                                    .foregroundColor(Color("icontintGlobal"))
+                            }
+                        }
+                        .simultaneousGesture(
+                            DragGesture(minimumDistance: 0)
+                                .onEnded { _ in
+                                    withAnimation {
+                                        isPressed = false
+                                    }
+                                }
+                        )
+                        .frame(width: 40, height: 40)
+
+                        Spacer()
+                    }
                     .padding(.leading, 20)
-                    .padding(.bottom,30)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.trailing, 10)
+                    .padding(.top, 10)
+                    .padding(.bottom, 30)
                 }
 
                 //TODO: From here main content start

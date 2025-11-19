@@ -95,6 +95,7 @@ struct groupMessageView: View {
                        
                    }
                    .padding(.horizontal, 20)
+                   .padding(.top, 10)
                    .padding(.bottom, 24)
                }
            }

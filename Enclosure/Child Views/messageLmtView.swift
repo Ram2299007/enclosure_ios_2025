@@ -72,7 +72,7 @@ struct messageLmtView: View {
                     }
                     .padding(.leading, 20) // marginStart="20dp"
                     .padding(.trailing, 10) // marginEnd="10dp"
-                    .padding(.top, 15) // marginTop="15dp"
+                    .padding(.top, 10) // marginTop="15dp"
                 }
 
                 // Header text
@@ -228,6 +228,8 @@ struct messageLmtView: View {
                     )
                     .animation(.spring(), value: dragOffset)
                 }
+            }
+            .padding(.top, 15)
         }
         .padding(.horizontal, 0)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -284,7 +286,7 @@ struct messageLmtView: View {
             }
         }
     }
-}
+
 
 // ContactCardView - matches Android msg_limit_row.xml layout exactly
 struct ContactCardView: View {

@@ -80,7 +80,7 @@ struct callView: View {
                         .padding(.trailing, 10)
                     }
                     .frame(height: 50)
-                    .padding(.top, 15)
+                    .padding(.top, 10)
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
                 
