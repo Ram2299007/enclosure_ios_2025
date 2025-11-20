@@ -323,6 +323,7 @@ struct callView: View {
                 }
         )
         .overlay(
+            
             // Back button overlay when stretched up
             Group {
                 if isButtonVisible && !isBackLayoutVisible {

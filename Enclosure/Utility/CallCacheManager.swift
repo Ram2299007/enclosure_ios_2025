@@ -40,6 +40,14 @@ final class CallCacheManager {
     func fetchContacts(completion: @escaping ([CallingContactModel]) -> Void) {
         load(key: "contacts", completion: completion)
     }
+    
+    func cacheInviteContacts(_ contacts: [InviteContactModel]) {
+        store(contacts, for: "invite_contacts")
+    }
+    
+    func fetchInviteContacts(completion: @escaping ([InviteContactModel]) -> Void) {
+        load(key: "invite_contacts", completion: completion)
+    }
 
     func cacheCallLogs(_ sections: [CallLogSection], type: CallLogCacheType) {
         store(sections, for: cacheKey(for: type))

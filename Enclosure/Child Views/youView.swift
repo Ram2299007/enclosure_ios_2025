@@ -33,34 +33,34 @@ struct youView: View {
 
                 if youView {
                     HStack(spacing: 0) {
-                        Button(action: {
-                            handleBackArrowTap()
-                        }) {
-                            ZStack {
-                                if isPressed {
-                                    Circle()
-                                        .fill(Color.gray.opacity(0.3))
-                                        .frame(width: 40, height: 40)
-                                        .scaleEffect(isPressed ? 1.2 : 1.0)
-                                        .animation(.easeOut(duration: 0.1), value: isPressed)
-                                }
-
-                                Image("leftvector")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 25, height: 18)
-                                    .foregroundColor(Color("icontintGlobal"))
+                    Button(action: {
+                        handleBackArrowTap()
+                    }) {
+                        ZStack {
+                            if isPressed {
+                                Circle()
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(width: 40, height: 40)
+                                    .scaleEffect(isPressed ? 1.2 : 1.0)
+                                    .animation(.easeOut(duration: 0.1), value: isPressed)
                             }
+
+                            Image("leftvector")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 25, height: 18)
+                                .foregroundColor(Color("icontintGlobal"))
                         }
-                        .simultaneousGesture(
-                            DragGesture(minimumDistance: 0)
-                                .onEnded { _ in
-                                    withAnimation {
-                                        isPressed = false
-                                    }
+                    }
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 0)
+                            .onEnded { _ in
+                                withAnimation {
+                                    isPressed = false
                                 }
-                        )
+                            }
+                    )
                         .frame(width: 40, height: 40)
 
                         Spacer()

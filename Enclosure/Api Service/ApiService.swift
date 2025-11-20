@@ -1071,9 +1071,175 @@ class ApiService {
                 }
             }
     }
-
-
-
+    
+    
+    static func getUsersAllContact(uid: String, page: Int = 1, completion: @escaping (Bool, String, [InviteContactModel]?) -> Void) {
+        let url = Constant.baseURL + "get_users_all_contact"
+        let parameters: [String: Any] = [
+            "uid": uid,
+            "page_no": page
+        ]
+        
+        print("📇 [ApiService] get_users_all_contact - URL: \(url), params: \(parameters)")
+        
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate(statusCode: 200..<500)
+            .responseData { response in
+                print("📇 [ApiService] get_users_all_contact status: \(response.response?.statusCode ?? 0)")
+                
+                switch response.result {
+                case .success(let data):
+                    if let rawString = String(data: data, encoding: .utf8) {
+                        print("📇 [ApiService] get_users_all_contact raw: \(rawString)")
+                    }
+                    
+                    do {
+                        let decoded = try JSONDecoder().decode(InviteContactResponse.self, from: data)
+                        let contacts = decoded.data ?? []
+                        let lowerMessage = decoded.message.lowercased()
+                        let isSuccess = decoded.errorCode == "200"
+                            || lowerMessage.contains("data not found")
+                            || lowerMessage.contains("no data")
+                            || lowerMessage.contains("success")
+                        
+                        completion(isSuccess, decoded.message, contacts)
+                    } catch {
+                        print("🔴 [ApiService] get_users_all_contact decode error: \(error.localizedDescription)")
+                        
+                        guard
+                            let rawString = String(data: data, encoding: .utf8),
+                            let jsonData = rawString.data(using: .utf8),
+                            let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+                        else {
+                            completion(false, "Decoding failed: \(error.localizedDescription)", nil)
+                            return
+                        }
+                        
+                        let message = json["message"] as? String ?? ""
+                        let lowerMessage = message.lowercased()
+                        let errorCode: String = {
+                            if let codeString = json["error_code"] as? String {
+                                return codeString
+                            }
+                            if let codeInt = json["error_code"] as? Int {
+                                return String(codeInt)
+                            }
+                            return ""
+                        }()
+                        
+                        var parsedContacts: [InviteContactModel] = []
+                        if let dataArray = json["data"] as? [[String: Any]] {
+                            for item in dataArray {
+                                do {
+                                    let itemData = try JSONSerialization.data(withJSONObject: item)
+                                    let contact = try JSONDecoder().decode(InviteContactModel.self, from: itemData)
+                                    parsedContacts.append(contact)
+                                } catch {
+                                    print("🔴 [ApiService] Failed to parse invite contact row: \(error.localizedDescription)")
+                                }
+                            }
+                        }
+                        
+                        let isSuccess = errorCode == "200"
+                            || lowerMessage.contains("data not found")
+                            || lowerMessage.contains("no data")
+                            || lowerMessage.contains("success")
+                        
+                        completion(isSuccess, message, parsedContacts)
+                    }
+                    
+                case .failure(let error):
+                    print("🔴 [ApiService] get_users_all_contact request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription, nil)
+                }
+            }
+    }
+    
+    
+    static func searchInviteContacts(uid: String, keyword: String, completion: @escaping (Bool, String, [InviteContactModel]?) -> Void) {
+        let url = Constant.baseURL + "search_from_all_contact"
+        let parameters: [String: Any] = [
+            "uid": uid,
+            "srch_keyword": keyword
+        ]
+        
+        print("🔍 [ApiService] search_from_all_contact - URL: \(url), params: \(parameters)")
+        
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate(statusCode: 200..<500)
+            .responseData { response in
+                print("🔍 [ApiService] search_from_all_contact status: \(response.response?.statusCode ?? 0)")
+                
+                switch response.result {
+                case .success(let data):
+                    if let rawString = String(data: data, encoding: .utf8) {
+                        print("🔍 [ApiService] search_from_all_contact raw: \(rawString)")
+                    }
+                    
+                    do {
+                        let decoded = try JSONDecoder().decode(InviteContactResponse.self, from: data)
+                        let contacts = decoded.data ?? []
+                        let lowerMessage = decoded.message.lowercased()
+                        let isSuccess = decoded.errorCode == "200"
+                            || lowerMessage.contains("data not found")
+                            || lowerMessage.contains("no data")
+                            || lowerMessage.contains("success")
+                        
+                        completion(isSuccess, decoded.message, contacts)
+                    } catch {
+                        print("🔴 [ApiService] search_from_all_contact decode error: \(error.localizedDescription)")
+                        
+                        guard
+                            let rawString = String(data: data, encoding: .utf8),
+                            let jsonData = rawString.data(using: .utf8),
+                            let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+                        else {
+                            completion(false, "Decoding failed: \(error.localizedDescription)", nil)
+                            return
+                        }
+                        
+                        let message = json["message"] as? String ?? ""
+                        let lowerMessage = message.lowercased()
+                        let errorCode: String = {
+                            if let codeString = json["error_code"] as? String {
+                                return codeString
+                            }
+                            if let codeInt = json["error_code"] as? Int {
+                                return String(codeInt)
+                            }
+                            return ""
+                        }()
+                        
+                        var parsedContacts: [InviteContactModel] = []
+                        if let dataArray = json["data"] as? [[String: Any]] {
+                            for item in dataArray {
+                                do {
+                                    let itemData = try JSONSerialization.data(withJSONObject: item)
+                                    let contact = try JSONDecoder().decode(InviteContactModel.self, from: itemData)
+                                    parsedContacts.append(contact)
+                                } catch {
+                                    print("🔴 [ApiService] Failed to parse invite contact search row: \(error.localizedDescription)")
+                                }
+                            }
+                        }
+                        
+                        let isSuccess = errorCode == "200"
+                            || lowerMessage.contains("data not found")
+                            || lowerMessage.contains("no data")
+                            || lowerMessage.contains("success")
+                        
+                        completion(isSuccess, message, parsedContacts)
+                    }
+                    
+                case .failure(let error):
+                    print("🔴 [ApiService] search_from_all_contact request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription, nil)
+                }
+            }
+    }
+    
+    
+    
     static func get_calling_contact_list(uid: String, completion: @escaping (Bool, String, [CallingContactModel]?) -> Void) {
         let url = Constant.baseURL + "get_calling_contact_list"
         let parameters: [String: Any] = ["uid": uid]

@@ -12,6 +12,7 @@ struct MainActivityOld: View {
     @State private var isTopHeaderVisible = false
     @State private var isMainContentVisible = true
     @State private var showNameDialog = false
+    @State private var showInviteScreen = false
     @State private var currentBackgroundImage = "bg"
     @State private var currentBackgroundSizeHeight = 140
     @State private var opacity = 0.1
@@ -35,7 +36,7 @@ struct MainActivityOld: View {
                     HStack{
                         Button(action: {
                             withAnimation {
-
+                                showInviteScreen = true
                             }
                         }) {
                             Image("ec_modern")
@@ -102,7 +103,7 @@ struct MainActivityOld: View {
                                 .frame(width: 30, height: 30)
                             }
                             .frame(width: 40, height: 40)
-                            .padding(.trailing,7)
+                            .padding(.trailing,10)
                             .buttonStyle(CircularRippleStyle())
                         }
                     }
@@ -125,7 +126,7 @@ struct MainActivityOld: View {
                                     isVStackVisible.toggle()
                                     // Use the captured state to determine which image to show
                                     currentBackgroundImage = !wasExpanded ? "mainvector" : "bg"
-                                    currentBackgroundSizeHeight = !wasExpanded ? 390 : 140
+                                    currentBackgroundSizeHeight = !wasExpanded ? 400 : 140
                                     if !wasExpanded {
                                         // Expanding - Don't set viewValue immediately - wait for animation to complete
                                         // viewValue will be set after animation completes (see below)
@@ -186,7 +187,7 @@ struct MainActivityOld: View {
                                 .frame(width: 40, height: 40)
 
                             }
-                            .padding(.trailing , 18)
+                            .padding(.trailing , 16)
                             .buttonStyle(CircularRippleStyle())
                         }
                         .padding(.top, 69)
@@ -413,7 +414,7 @@ struct MainActivityOld: View {
 
 
                                         }
-                                        .padding(.trailing,22)
+                                        .padding(.trailing,24)
 
                                     }
                                     .frame(width: 200,height:40)
@@ -548,6 +549,9 @@ struct MainActivityOld: View {
         }
 
         .navigationBarHidden(true)
+        .navigationDestination(isPresented: $showInviteScreen) {
+            InviteScreen()
+        }
         .onAppear {
             showNetworkLoader = !networkMonitor.isConnected
         }
