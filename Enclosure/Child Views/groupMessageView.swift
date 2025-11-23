@@ -18,6 +18,7 @@ struct groupMessageView: View {
     @State private var searchText = ""
     @StateObject private var viewModel = GroupMessageViewModel()
     @State private var hasLoadedGroups = false
+    @State private var isNewGroupPresented = false
     
     private var filteredGroups: [GroupModel] {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -48,8 +49,7 @@ struct groupMessageView: View {
             .padding(.top, 15)
             
             FloatingActionButton {
-                // Placeholder create group action
-                print("Create group tapped")
+                isNewGroupPresented = true
             }
             .padding(.trailing, 20)
             .padding(.bottom, 0)
@@ -77,6 +77,9 @@ struct groupMessageView: View {
                 }
         )
         .animation(.spring(), value: dragOffset)
+        .fullScreenCover(isPresented: $isNewGroupPresented) {
+            NewGroupView()
+        }
         .onAppear {
             isTopHeaderVisible = false
             if !hasLoadedGroups {
@@ -422,7 +425,7 @@ struct FloatingActionButton: View {
             Image("floating")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 20, height: 20)
+                .frame(width: 25, height: 25)
                 .padding(16)
                 .background(
                     Circle()

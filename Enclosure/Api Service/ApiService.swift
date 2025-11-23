@@ -545,6 +545,55 @@ class ApiService {
                 }
             }
     }
+    
+    static func create_group_for_chatting(uid: String, groupName: String, invitedFriendList: String, groupIcon: URL?, completion: @escaping (Bool, String) -> Void) {
+        let url = Constant.baseURL + "create_group_for_chatting"
+        
+        AF.upload(
+            multipartFormData: { multipartFormData in
+                multipartFormData.append(Data(uid.utf8), withName: "uid")
+                multipartFormData.append(Data(groupName.utf8), withName: "group_name")
+                multipartFormData.append(Data(invitedFriendList.utf8), withName: "invited_friend_list")
+                
+                if let iconURL = groupIcon {
+                    multipartFormData.append(iconURL, withName: "group_icon", fileName: "group_icon.jpg", mimeType: "image/jpeg")
+                } else {
+                    multipartFormData.append(Data("".utf8), withName: "group_icon")
+                }
+            },
+            to: url,
+            method: .post
+        )
+        .validate()
+        .responseData { response in
+            switch response.result {
+            case .success(let data):
+                if let raw = String(data: data, encoding: .utf8) {
+                    print("[create_group_for_chatting] raw response -> \(raw)")
+                }
+                do {
+                    if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let errorCode = json["error_code"] as? String {
+                        let message = json["message"] as? String ?? ""
+                        if errorCode == "200" {
+                            completion(true, message)
+                        } else {
+                            completion(false, message)
+                        }
+                    } else {
+                        completion(false, "Invalid response format")
+                    }
+                } catch {
+                    print("Decoding error: \(error.localizedDescription)")
+                    completion(false, "Decoding failed")
+                }
+                
+            case .failure(let error):
+                print("Request error: \(error.localizedDescription)")
+                completion(false, error.localizedDescription)
+            }
+        }
+    }
 
 
 
