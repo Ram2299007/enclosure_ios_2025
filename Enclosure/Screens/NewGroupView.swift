@@ -9,15 +9,23 @@ import SwiftUI
 import PhotosUI
 
 struct NewGroupView: View {
-    @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = NewGroupViewModel()
     @ObservedObject private var networkMonitor = NetworkMonitor.shared
+    
+    @Binding var isPresented: Bool
     
     @State private var isImagePickerPresented = false
     @State private var showError = false
     @State private var errorMessage = ""
     @State private var isCreatingGroup = false
     @State private var isBackPressed = false
+    @State private var isBackActionInProgress = false
+    @State private var lastBackPressTime: Date = Date.distantPast
+    @State private var backActionTag: UUID = UUID()
+    
+    init(isPresented: Binding<Bool>) {
+        _isPresented = isPresented
+    }
     
     private var filteredContacts: [UserActiveContactModel] {
         viewModel.contacts
@@ -52,14 +60,7 @@ struct NewGroupView: View {
                                     .foregroundColor(Color("icontintGlobal"))
                             }
                         }
-                        .simultaneousGesture(
-                            DragGesture(minimumDistance: 0)
-                                .onEnded { _ in
-                                    withAnimation {
-                                        isBackPressed = false
-                                    }
-                                }
-                        )
+                        .disabled(isBackActionInProgress)
                         .frame(width: 40, height: 40)
                         
                         // "Create new group" text
@@ -323,13 +324,8 @@ struct NewGroupView: View {
                     Image("tick_new_dvg")
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 24, height: 24)
-                        .foregroundColor(Color("icontintGlobal"))
                         .frame(width: 52, height: 52)
-                        .background(
-                            Circle()
-                                .fill(Color("buttonColorTheme"))
-                        )
+                        .foregroundColor(Color("icontintGlobal"))
                         .logImageLoad("tick_new_dvg")
                 }
                 .buttonStyle(.plain)
@@ -342,14 +338,64 @@ struct NewGroupView: View {
     }
     
     private func handleBackTap() {
+        let currentTag = UUID()
+        let now = Date()
+        
+        // Debounce: prevent multiple presses within 0.8 seconds
+        guard now.timeIntervalSince(lastBackPressTime) > 0.8 else {
+            return
+        }
+        guard !isBackActionInProgress else {
+            return
+        }
+        backActionTag = currentTag
+        lastBackPressTime = now
+        isBackActionInProgress = true
+        
         withAnimation(.easeOut(duration: 0.1)) {
             isBackPressed = true
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            withAnimation {
+        
+        // Use Task to ensure single execution
+        Task { @MainActor in
+            // Verify tag hasn't changed (another press happened)
+            guard backActionTag == currentTag else {
+                isBackActionInProgress = false
                 isBackPressed = false
+                return
             }
-            dismiss()
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                // Verify tag again
+                guard self.backActionTag == currentTag else {
+                    self.isBackActionInProgress = false
+                    self.isBackPressed = false
+                    return
+                }
+                
+                withAnimation {
+                    self.isBackPressed = false
+                }
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                    // Final tag check
+                    guard self.backActionTag == currentTag else {
+                        self.isBackActionInProgress = false
+                        return
+                    }
+                    
+                    // Only set isPresented to false - NavigationLink will handle dismissal
+                    self.isPresented = false
+                    
+                    // Reset after navigation completes
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        if self.backActionTag == currentTag {
+                            self.isBackActionInProgress = false
+                            self.lastBackPressTime = Date.distantPast
+                        }
+                    }
+                }
+            }
         }
     }
     
@@ -372,7 +418,8 @@ struct NewGroupView: View {
             DispatchQueue.main.async {
                 isCreatingGroup = false
                 if success {
-                    dismiss()
+                    // Only set isPresented to false - NavigationLink will handle dismissal
+                    isPresented = false
                 } else {
                     errorMessage = message
                     showError = true

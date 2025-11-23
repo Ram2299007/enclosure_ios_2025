@@ -19,6 +19,9 @@ struct groupMessageView: View {
     @StateObject private var viewModel = GroupMessageViewModel()
     @State private var hasLoadedGroups = false
     @State private var isNewGroupPresented = false
+    @State private var isBackActionInProgress = false
+    @State private var lastBackPressTime: Date = Date.distantPast
+    @State private var isBackButtonEnabled = true
     
     private var filteredGroups: [GroupModel] {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -30,61 +33,107 @@ struct groupMessageView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            VStack(alignment: .leading, spacing: 0) {
-                header
-                
-                infoSection
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 10)
-                
-                searchToggleSection
-                    .padding(.horizontal, 20)
-                
-                labelSection
-                    .padding(.top, 15)
-                
-                listContainer
-            }
-            .padding(.top, 15)
-            
-            FloatingActionButton {
-                isNewGroupPresented = true
-            }
-            .padding(.trailing, 20)
-            .padding(.bottom, 0)
-            .ignoresSafeArea(edges: .bottom)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.clear.contentShape(Rectangle()))
-        .gesture(
-            DragGesture()
-                .onChanged { value in
-                    dragOffset = value.translation
+        NavigationStack {
+            ZStack(alignment: .bottomTrailing) {
+                VStack(alignment: .leading, spacing: 0) {
+                    header
+                    
+                    infoSection
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 10)
+                    
+                    searchToggleSection
+                        .padding(.horizontal, 20)
+                    
+                    labelSection
+                        .padding(.top, 15)
+                    
+                    listContainer
                 }
-                .onEnded { value in
-                    if value.translation.height < -50 {
-                        withAnimation(.easeInOut(duration: 0.45)) {
-                            isStretchedUp = true
-                            isMainContentVisible = false
-                            isBackHeaderVisible = true
-                            isTopHeaderVisible = true
-                        }
-                    } else if value.translation.height > 50 {
-                        handleSwipeDown()
+                .padding(.top, 15)
+                
+                FloatingActionButton {
+                    isNewGroupPresented = true
+                }
+                .padding(.trailing, 20)
+                .padding(.bottom, 0)
+                .ignoresSafeArea(edges: .bottom)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.clear.contentShape(Rectangle()))
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        dragOffset = value.translation
                     }
-                    dragOffset = .zero
+                    .onEnded { value in
+                        if value.translation.height < -50 {
+                            withAnimation(.easeInOut(duration: 0.45)) {
+                                isStretchedUp = true
+                                isMainContentVisible = false
+                                isBackHeaderVisible = true
+                                isTopHeaderVisible = true
+                            }
+                        } else if value.translation.height > 50 {
+                            // For drag gesture, check if back action is not in progress
+                            guard !isBackActionInProgress && isBackButtonEnabled else { return }
+                            isBackActionInProgress = true
+                            isBackButtonEnabled = false
+                            handleSwipeDown()
+                        }
+                        dragOffset = .zero
+                    }
+            )
+            .animation(.spring(), value: dragOffset)
+            .background(
+                NavigationLink(
+                    destination: NewGroupView(isPresented: $isNewGroupPresented),
+                    isActive: $isNewGroupPresented
+                ) {
+                    EmptyView()
                 }
-        )
-        .animation(.spring(), value: dragOffset)
-        .fullScreenCover(isPresented: $isNewGroupPresented) {
-            NewGroupView()
-        }
-        .onAppear {
-            isTopHeaderVisible = false
-            if !hasLoadedGroups {
-                hasLoadedGroups = true
-                viewModel.fetchGroups(uid: Constant.SenderIdMy)
+                .hidden()
+            )
+            .onAppear {
+                isTopHeaderVisible = false
+                // Reset back button state when view appears
+                isBackHeaderVisible = false
+                isBackActionInProgress = false
+                isPressed = false
+                isBackButtonEnabled = true
+                lastBackPressTime = Date.distantPast
+                
+                if !hasLoadedGroups {
+                    hasLoadedGroups = true
+                    viewModel.fetchGroups(uid: Constant.SenderIdMy)
+                }
+            }
+            .onChange(of: isNewGroupPresented) { newValue in
+                // When returning from NewGroupView, reset all back button states
+                if !newValue {
+                    // Disable button immediately to prevent any presses during state transition
+                    isBackButtonEnabled = false
+                    
+                    // Reset immediately and synchronously
+                    isBackHeaderVisible = false
+                    isBackActionInProgress = false
+                    isPressed = false
+                    isStretchedUp = false
+                    isMainContentVisible = true
+                    isTopHeaderVisible = false
+                    // Reset the debounce timer - set to past to allow immediate press
+                    lastBackPressTime = Date.distantPast
+                    
+                    // Re-enable button after a delay to ensure NavigationLink state is settled
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        if !isNewGroupPresented {
+                            self.isBackActionInProgress = false
+                            self.isPressed = false
+                            self.lastBackPressTime = Date.distantPast
+                            self.isBackButtonEnabled = true
+                        }
+                    }
+                }
             }
         }
     }
@@ -201,34 +250,29 @@ struct groupMessageView: View {
     }
     
     private func backArrowButton() -> some View {
-        Button(action: {
-            handleBackArrowTap()
-                }) {
-                    ZStack {
-                        if isPressed {
-                            Circle()
-                                .fill(Color.gray.opacity(0.3))
-                                .frame(width: 40, height: 40)
-                                .scaleEffect(isPressed ? 1.2 : 1.0)
-                                .animation(.easeOut(duration: 0.1), value: isPressed)
-                        }
+        ZStack {
+            if isPressed {
+                Circle()
+                    .fill(Color.gray.opacity(0.3))
+                    .frame(width: 40, height: 40)
+                    .scaleEffect(isPressed ? 1.2 : 1.0)
+                    .animation(.easeOut(duration: 0.1), value: isPressed)
+            }
 
-                        Image("leftvector")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 25, height: 18)
-                            .foregroundColor(Color("icontintGlobal"))
-                    }
-                }
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 0)
-                        .onEnded { _ in
-                            withAnimation {
-                                isPressed = false
-                            }
-                        }
-                )
+            Image("leftvector")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 25, height: 18)
+                .foregroundColor(Color("icontintGlobal"))
+        }
+        .frame(width: 40, height: 40)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            handleBackArrowTap()
+        }
+        .allowsHitTesting(isBackButtonEnabled && !isBackActionInProgress && !isNewGroupPresented)
+        .opacity(isBackButtonEnabled ? 1.0 : 0.5)
     }
     
     private var loadingView: some View {
@@ -308,21 +352,58 @@ struct groupMessageView: View {
 
 extension groupMessageView {
     private func handleBackArrowTap() {
+        // Check if button is enabled
+        guard isBackButtonEnabled else {
+            return
+        }
+        
+        let now = Date()
+        
+        // Simple debounce: prevent multiple presses within 1.5 seconds
+        guard now.timeIntervalSince(lastBackPressTime) > 1.5 else {
+            return
+        }
+        
+        // Set flag IMMEDIATELY to prevent any other calls
+        guard !isBackActionInProgress else {
+            return
+        }
+        guard !isNewGroupPresented else {
+            return
+        }
+        
+        // Disable button immediately
+        isBackButtonEnabled = false
+        
+        // Set all flags immediately and atomically
+        lastBackPressTime = now
+        isBackActionInProgress = true
+        
+        // Execute the action - matching youView pattern
         handleSwipeDown()
     }
     
     private func handleSwipeDown() {
+        // First animation: collapse the view and show main content
         withAnimation(.easeInOut(duration: 0.45)) {
-                                isPressed = true
-                                isStretchedUp = false
-                                isMainContentVisible = true
-                                isTopHeaderVisible = false
+            isPressed = true
+            isStretchedUp = false
+            isMainContentVisible = true
+            isTopHeaderVisible = false
         }
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        
+        // Second animation: hide back header and reset pressed state
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             withAnimation(.easeInOut(duration: 0.45)) {
-                isBackHeaderVisible = false
-                                        isPressed = false
-                                    }
+                self.isBackHeaderVisible = false
+                self.isPressed = false
+            }
+            
+            // Reset flags after animation completes
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                self.isBackActionInProgress = false
+                self.isBackButtonEnabled = true
+            }
         }
     }
 }
