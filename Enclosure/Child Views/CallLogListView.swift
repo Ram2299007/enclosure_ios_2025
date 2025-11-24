@@ -3,11 +3,16 @@ import SwiftUI
 struct CallLogListView: View {
     let sections: [CallLogSection]
     let logType: CallLogViewModel.LogType
+    var onEntrySelected: ((CallLogUserInfo) -> Void)? = nil
     
     var body: some View {
         VStack(spacing: 12) {
             ForEach(sections) { section in
-                CallLogSectionView(section: section, logType: logType)
+                CallLogSectionView(
+                    section: section,
+                    logType: logType,
+                    onEntrySelected: onEntrySelected
+                )
             }
         }
         .padding(.top, 5)
@@ -17,6 +22,7 @@ struct CallLogListView: View {
 struct CallLogSectionView: View {
     let section: CallLogSection
     let logType: CallLogViewModel.LogType
+    var onEntrySelected: ((CallLogUserInfo) -> Void)? = nil
     
     private var formattedTitle: String {
         let dateFormatter = DateFormatter()
@@ -47,7 +53,11 @@ struct CallLogSectionView: View {
                 
                 VStack(spacing: 0) {
                     ForEach(section.userInfo) { entry in
-                        CallLogUserRowView(entry: entry, logType: logType)
+                        CallLogUserRowView(
+                            entry: entry,
+                            logType: logType,
+                            onEntrySelected: onEntrySelected
+                        )
                             .padding(.bottom, 2)
                     }
                 }
@@ -61,6 +71,7 @@ struct CallLogSectionView: View {
 struct CallLogUserRowView: View {
     let entry: CallLogUserInfo
     let logType: CallLogViewModel.LogType
+    var onEntrySelected: ((CallLogUserInfo) -> Void)? = nil
     
     @State private var isExpanded: Bool = false
     @State private var callButtonWidth: CGFloat = 0
@@ -240,7 +251,9 @@ struct CallLogUserRowView: View {
         .background(Color("background_color"))
         .contentShape(Rectangle())
         .onTapGesture {
-            if !isExpanded {
+            if let onEntrySelected {
+                onEntrySelected(entry)
+            } else if !isExpanded {
                 expandCallButton()
             }
         }

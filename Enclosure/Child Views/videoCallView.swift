@@ -25,6 +25,12 @@ struct videoCallView: View {
     @State private var isBackLayoutVisible = false
     @State private var isContactLayoutVisible = false
     @State private var isBottomCallerVisible = false
+    @State private var isShowingCallHistory = false
+    @State private var selectedHistoryContact: CallLogUserInfo?
+    @State private var selectedHistoryEntries: [CallHistoryEntry] = []
+    @State private var selectedHistoryDateLabel: String = ""
+    @State private var wasBackLayoutVisibleBeforeHistory = false
+    @State private var wasTopHeaderVisibleBeforeHistory = false
     
     enum VideoCallTab {
         case log, contact
@@ -86,7 +92,7 @@ struct videoCallView: View {
                 
                 // Search section (searchData) - matching MainActivityOld.swift pattern and Android spacing
                 // Search icon always visible when on contact tab, search bar slides in/out
-                if selectedTab == .contact {
+                if selectedTab == .contact && !isShowingCallHistory {
         VStack(spacing: 0) {
                         HStack(spacing: 0) {
                             // Search bar - slides in from trailing edge when visible (matching MainActivityOld.swift)
@@ -130,78 +136,104 @@ struct videoCallView: View {
                     .padding(.trailing, 18) // marginEnd="18dp" for search icon
                 }
                 
+                if isShowingCallHistory, let selectedHistoryContact {
+                    CallHistoryHeaderView(
+                        contact: selectedHistoryContact,
+                        dateLabel: selectedHistoryDateLabel
+                    )
+                    .padding(.top, 12)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+                
                 // Tabs section (label) - matching Android design with exact spacing
-                HStack(spacing: 0) {
-                    // Last/Log tab - matching Android radius_black_6dp when selected, radius_6dp_transp when not
-                    VStack(spacing: 5) {
-                        Button(action: {
-                            handleLogTabClick()
-                        }) {
-                            Text("Last")
-                                .font(.custom("Inter18pt-Medium", size: 12))
-                                .fontWeight(.bold)
-                                .foregroundColor(selectedTab == .log ? .white : .black) // White when selected, black when not (matching Android)
-                                .frame(width: 70, height: 30)
-                                .background(
-                                    selectedTab == .log 
-                                        ? Color("buttonColorTheme") // radius_black_6dp equivalent
-                                        : Color("gray2") // radius_6dp_transp equivalent (atoz = gray2)
-                                )
-                                .cornerRadius(20) // 20dp corner radius as per Android
+                if !isShowingCallHistory {
+                    HStack(spacing: 0) {
+                        // Last/Log tab - matching Android radius_black_6dp when selected, radius_6dp_transp when not
+                        VStack(spacing: 5) {
+                            Button(action: {
+                                handleLogTabClick()
+                            }) {
+                                Text("Last")
+                                    .font(.custom("Inter18pt-Medium", size: 12))
+                                    .fontWeight(.bold)
+                                    .foregroundColor(selectedTab == .log ? .white : .black) // White when selected, black when not (matching Android)
+                                    .frame(width: 70, height: 30)
+                                    .background(
+                                        selectedTab == .log 
+                                            ? Color("buttonColorTheme") // radius_black_6dp equivalent
+                                            : Color("gray2") // radius_6dp_transp equivalent (atoz = gray2)
+                                    )
+                                    .cornerRadius(20) // 20dp corner radius as per Android
+                            }
                         }
-                    }
-                    
-                    // A-Z/Contact tab - matching Android radius_black_6dp when selected, radius_6dp_transp when not
-                    VStack(spacing: 5) {
-                Button(action: {
-                    handleContactTabClick()
-                        }) {
-                            Text("A - Z")
-                                .font(.custom("Inter18pt-Medium", size: 12))
-                                .fontWeight(.bold)
-                                .foregroundColor(selectedTab == .contact ? .white : .black) // White when selected, black when not (matching Android)
-                                .frame(width: 70, height: 30)
-                                .background(
-                                    selectedTab == .contact 
-                                        ? Color("buttonColorTheme") // radius_black_6dp equivalent
-                                        : Color("gray2") // radius_6dp_transp equivalent (atoz = gray2)
-                                )
-                                .cornerRadius(20) // 20dp corner radius as per Android
+                        
+                        // A-Z/Contact tab - matching Android radius_black_6dp when selected, radius_6dp_transp when not
+                        VStack(spacing: 5) {
+                            Button(action: {
+                                handleContactTabClick()
+                            }) {
+                                Text("A - Z")
+                                    .font(.custom("Inter18pt-Medium", size: 12))
+                                    .fontWeight(.bold)
+                                    .foregroundColor(selectedTab == .contact ? .white : .black) // White when selected, black when not (matching Android)
+                                    .frame(width: 70, height: 30)
+                                    .background(
+                                        selectedTab == .contact 
+                                            ? Color("buttonColorTheme") // radius_black_6dp equivalent
+                                            : Color("gray2") // radius_6dp_transp equivalent (atoz = gray2)
+                                    )
+                                    .cornerRadius(20) // 20dp corner radius as per Android
+                            }
                         }
-                    }
-                    .padding(.leading, 15) // marginStart="15dp" from Android
-                    
-                    Spacer()
-                    
-                    // Menu button (3 dots) - visible when on log tab
-                    if selectedTab == .log && !isBackLayoutVisible {
-                        Button(action: {
-                            // Show clear log dialog
-                        }) {
-                            VStack(spacing: 3) {
-                                Circle()
-                                    .fill(Color("menuPointColor"))
-                                    .frame(width: 4, height: 4)
-                                Circle()
-                                    .fill(Color("blue"))
-                                    .frame(width: 4, height: 4)
-                                Circle()
-                                    .fill(Color("Gray3"))
-                                    .frame(width: 4, height: 4)
+                        .padding(.leading, 15) // marginStart="15dp" from Android
+                        
+                        Spacer()
+                        
+                        // Menu button (3 dots) - visible when on log tab
+                        if selectedTab == .log && !isBackLayoutVisible {
+                            Button(action: {
+                                // Show clear log dialog
+                            }) {
+                                VStack(spacing: 3) {
+                                    Circle()
+                                        .fill(Color("menuPointColor"))
+                                        .frame(width: 4, height: 4)
+                                    Circle()
+                                        .fill(Color("blue"))
+                                        .frame(width: 4, height: 4)
+                                    Circle()
+                                        .fill(Color("Gray3"))
+                                        .frame(width: 4, height: 4)
+                                }
+                                .frame(width: 40, height: 40)
                             }
                             .frame(width: 40, height: 40)
+                            .padding(.trailing, 15) // marginEnd="15dp" from Android
                         }
-                        .frame(width: 40, height: 40)
-                        .padding(.trailing, 15) // marginEnd="15dp" from Android
                     }
+                    .padding(.leading, 20) // marginStart="20dp" from Android label layout
+                    .padding(.top, 15) // marginTop="15dp" from Android
                 }
-                .padding(.leading, 20) // marginStart="20dp" from Android label layout
-                .padding(.top, 15) // marginTop="15dp" from Android
                 
                 // Content area - RecyclerViews
                 ZStack {
+                    if isShowingCallHistory {
+                        if selectedHistoryEntries.isEmpty {
+                            logEmptyStateView(text: "No detailed history yet")
+                        } else {
+                            ScrollView {
+                                CallHistoryListView(
+                                    entries: selectedHistoryEntries,
+                                    logType: .video,
+                                    themeHex: selectedHistoryContact?.themeColor ?? "#00A3E9"
+                                )
+                                .padding(.top, 4)
+                            }
+                            .transition(.opacity)
+                        }
+                    }
                     // Log RecyclerView (recyclerviewLast)
-                    if selectedTab == .log {
+                    else if selectedTab == .log {
                         ZStack {
                             if callLogViewModel.isLoading && !callLogViewModel.hasCachedSections {
                                 ZStack {
@@ -219,7 +251,11 @@ struct videoCallView: View {
                                 logEmptyStateView(text: "No call history yet")
                             } else {
                                 ScrollView {
-                                    CallLogListView(sections: callLogViewModel.sections, logType: .video)
+                                    CallLogListView(
+                                        sections: callLogViewModel.sections,
+                                        logType: .video,
+                                        onEntrySelected: handleCallHistorySelection
+                                    )
                                 }
                                 .transition(.opacity)
                             }
@@ -344,6 +380,11 @@ struct videoCallView: View {
 
 extension videoCallView {
     private func handleBackArrowTap() {
+        if isShowingCallHistory {
+            clearHistorySelection()
+            return
+        }
+        
         withAnimation {
             isPressed = true
         }
@@ -354,6 +395,10 @@ extension videoCallView {
     }
     
     private func handleSwipeDown() {
+        if isShowingCallHistory {
+            clearHistorySelection(animated: false)
+        }
+        
         withAnimation(.easeInOut(duration: 0.45)) {
             isPressed = true
             isStretchedUp = false
@@ -535,6 +580,95 @@ extension videoCallView {
         if viewModel.contactList.isEmpty {
             viewModel.fetchContactList(uid: Constant.SenderIdMy)
         }
+    }
+    
+    private func handleCallHistorySelection(entry: CallLogUserInfo) {
+        wasBackLayoutVisibleBeforeHistory = isBackLayoutVisible
+        wasTopHeaderVisibleBeforeHistory = isTopHeaderVisible
+        selectedHistoryContact = entry
+        selectedHistoryDateLabel = formattedHistoryDate(from: entry.date)
+        
+        let sortedHistory = entry.callHistory.sorted { first, second in
+            let firstDate = CallHistoryFormatter.combinedDate(
+                date: first.date.isEmpty ? entry.date : first.date,
+                time: historyReferenceTime(for: first)
+            )
+            let secondDate = CallHistoryFormatter.combinedDate(
+                date: second.date.isEmpty ? entry.date : second.date,
+                time: historyReferenceTime(for: second)
+            )
+            
+            switch (firstDate, secondDate) {
+            case let (lhs?, rhs?):
+                return lhs > rhs
+            case (.some, .none):
+                return true
+            case (.none, .some):
+                return false
+            default:
+                return first.id > second.id
+            }
+        }
+        
+        selectedHistoryEntries = sortedHistory
+        
+        withAnimation(.easeInOut(duration: 0.35)) {
+            isShowingCallHistory = true
+            isBackLayoutVisible = true
+            isTopHeaderVisible = wasTopHeaderVisibleBeforeHistory
+        }
+    }
+    
+    private func historyReferenceTime(for entry: CallHistoryEntry) -> String {
+        if !entry.endTime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return entry.endTime
+        }
+        if !entry.startTime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return entry.startTime
+        }
+        return ""
+    }
+    
+    private func clearHistorySelection(animated: Bool = true) {
+        let resetState = {
+            self.isShowingCallHistory = false
+            self.selectedHistoryEntries = []
+            self.selectedHistoryContact = nil
+            self.selectedHistoryDateLabel = ""
+            self.isBackLayoutVisible = self.wasBackLayoutVisibleBeforeHistory
+            self.isTopHeaderVisible = self.wasTopHeaderVisibleBeforeHistory
+            self.wasBackLayoutVisibleBeforeHistory = false
+            self.wasTopHeaderVisibleBeforeHistory = false
+        }
+        
+        if animated {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                resetState()
+            }
+        } else {
+            resetState()
+        }
+    }
+    
+    private func formattedHistoryDate(from rawDate: String) -> String {
+        let inputFormatter = DateFormatter()
+        inputFormatter.dateFormat = "yyyy-MM-dd"
+        inputFormatter.locale = Locale(identifier: "en_US_POSIX")
+        
+        guard let date = inputFormatter.date(from: rawDate) else {
+            return rawDate
+        }
+        
+        if Calendar.current.isDateInToday(date) {
+            return "Today"
+        } else if Calendar.current.isDateInYesterday(date) {
+            return "Yesterday"
+        }
+        
+        let outputFormatter = DateFormatter()
+        outputFormatter.dateFormat = "MMM d"
+        outputFormatter.locale = Locale(identifier: "en_US_POSIX")
+        return outputFormatter.string(from: date)
     }
     
     @ViewBuilder
