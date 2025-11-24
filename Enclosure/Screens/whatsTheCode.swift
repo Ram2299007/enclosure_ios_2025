@@ -47,14 +47,7 @@ struct whatsTheCode: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 16) {
                             // Back Button
-                            Button(action: {
-                                withAnimation {
-                                    isPressed = true
-                                }
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                                    dismiss()
-                                }
-                            }) {
+                            Button(action: handleBackTap) {
                                 ZStack {
                                     if isPressed {
                                         Circle()
@@ -72,6 +65,15 @@ struct whatsTheCode: View {
                                         .foregroundColor(Color("icontintGlobal"))
                                 }
                             }
+                            .simultaneousGesture(
+                                DragGesture(minimumDistance: 0)
+                                    .onEnded { _ in
+                                        withAnimation {
+                                            isPressed = false
+                                        }
+                                    }
+                            )
+                            .buttonStyle(.plain)
                             .simultaneousGesture(
                                 DragGesture(minimumDistance: 0)
                                     .onEnded { _ in
@@ -356,6 +358,16 @@ struct whatsTheCode: View {
         }
     }
 
+    private func handleBackTap() {
+        withAnimation {
+            isPressed = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            dismiss()
+            isPressed = false
+        }
+    }
+    
     private func startResendTimer() {
         resendTimer = 60
         isResendDisabled = true

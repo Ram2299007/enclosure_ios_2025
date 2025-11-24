@@ -344,7 +344,13 @@ struct videoCallView: View {
 
 extension videoCallView {
     private func handleBackArrowTap() {
-        handleSwipeDown()
+        withAnimation {
+            isPressed = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            isPressed = false
+            handleSwipeDown()
+        }
     }
     
     private func handleSwipeDown() {
@@ -364,16 +370,14 @@ extension videoCallView {
     }
     
     private func backArrowButton() -> some View {
-        Button(action: {
-            handleBackArrowTap()
-        }) {
+        Button(action: handleBackArrowTap) {
             ZStack {
                 if isPressed {
                     Circle()
                         .fill(Color.gray.opacity(0.3))
                         .frame(width: 40, height: 40)
                         .scaleEffect(isPressed ? 1.2 : 1.0)
-                        .animation(.easeOut(duration: 0.1), value: isPressed)
+                        .animation(.easeOut(duration: 0.3), value: isPressed)
                 }
                 
                 Image("leftvector")
@@ -384,7 +388,6 @@ extension videoCallView {
                     .foregroundColor(Color("icontintGlobal"))
             }
         }
-        .frame(width: 40, height: 40)
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onEnded { _ in
@@ -393,6 +396,7 @@ extension videoCallView {
                     }
                 }
         )
+        .buttonStyle(.plain)
     }
 }
 

@@ -5,7 +5,7 @@ struct messageLmtView: View {
     @State private var isPressed = false
     @State private var dragOffset: CGSize = .zero
     @State private var isStretchedUp = false
-    @State private var messageLmtView = false
+    @State private var isBackHeaderVisible = false
     @Binding var isMainContentVisible: Bool
     @Binding var isTopHeaderVisible: Bool
 
@@ -22,32 +22,18 @@ struct messageLmtView: View {
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
-                // Back arrow header (shown when messageLmtView is true)
+                // Back arrow header (shown when isBackHeaderVisible is true)
                 // Android: marginStart="20dp", marginTop="15dp", marginEnd="10dp"
-                if messageLmtView {
+                if isBackHeaderVisible {
                     HStack(spacing: 0) {
-                        Button(action: {
-                            withAnimation {
-                                isPressed = true
-                                isStretchedUp = false
-                                isMainContentVisible = true
-                                isTopHeaderVisible = false
-                                withAnimation(.easeInOut(duration: 0.30)) {
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                        messageLmtView = false
-                                        isPressed = false
-                                        isScrollEnabled = false
-                                    }
-                                }
-                            }
-                        }) {
+                        Button(action: handleBackTap) {
                             ZStack {
                                 if isPressed {
                                     Circle()
                                         .fill(Color.gray.opacity(0.3))
                                         .frame(width: 40, height: 40)
                                         .scaleEffect(isPressed ? 1.2 : 1.0)
-                                        .animation(.easeOut(duration: 0.1), value: isPressed)
+                                        .animation(.easeOut(duration: 0.3), value: isPressed)
                                 }
                                 Image("leftvector")
                                     .renderingMode(.template)
@@ -65,7 +51,7 @@ struct messageLmtView: View {
                                     }
                                 }
                         )
-                        .frame(width: 40, height: 40)
+                        .buttonStyle(.plain)
                         .padding(.trailing, 5) // marginEnd="5dp" for the button container
                         
                         Spacer()
@@ -206,7 +192,7 @@ struct messageLmtView: View {
                                     if value.translation.height < -50 {
                                         isStretchedUp = true
                                         isMainContentVisible = false
-                                        messageLmtView = true
+                                        isBackHeaderVisible = true
                                         isScrollEnabled = true
                                         isTopHeaderVisible = true
                                     } else if value.translation.height > 50 {
@@ -216,7 +202,7 @@ struct messageLmtView: View {
                                         isTopHeaderVisible = false
                                         withAnimation(.easeInOut(duration: 0.30)) {
                                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                                messageLmtView = false
+                                                isBackHeaderVisible = false
                                                 isPressed = false
                                                 isScrollEnabled = false
                                             }
@@ -234,46 +220,46 @@ struct messageLmtView: View {
         .padding(.horizontal, 0)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color("BackgroundColor"))
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        dragOffset = value.translation
-                    }
-                    .onEnded { value in
-                        withAnimation(.easeInOut(duration: 0.30)) {
-                            if value.translation.height < -50 {
-                                isStretchedUp = true
-                                isMainContentVisible = false
-                                messageLmtView = true
-                                isScrollEnabled = true
-                                isTopHeaderVisible = true
-                            } else if value.translation.height > 50 {
-                                isPressed = true
-                                isStretchedUp = false
-                                isMainContentVisible = true
-                                isTopHeaderVisible = false
-                                withAnimation(.easeInOut(duration: 0.30)) {
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                        messageLmtView = false
-                                        isPressed = false
-                                        isScrollEnabled = false
-                                    }
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    dragOffset = value.translation
+                }
+                .onEnded { value in
+                    withAnimation(.easeInOut(duration: 0.30)) {
+                        if value.translation.height < -50 {
+                            isStretchedUp = true
+                            isMainContentVisible = false
+                            isBackHeaderVisible = true
+                            isScrollEnabled = true
+                            isTopHeaderVisible = true
+                        } else if value.translation.height > 50 {
+                            isPressed = true
+                            isStretchedUp = false
+                            isMainContentVisible = true
+                            isTopHeaderVisible = false
+                            withAnimation(.easeInOut(duration: 0.30)) {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    isBackHeaderVisible = false
+                                    isPressed = false
+                                    isScrollEnabled = false
                                 }
                             }
-                            dragOffset = .zero
                         }
+                        dragOffset = .zero
                     }
-            )
-            .animation(.spring(), value: dragOffset)
-            .onAppear {
-                isTopHeaderVisible = false
-                viewModel.fetch_user_active_chat_list_for_msgLmt(uid: Constant.SenderIdMy)
-                viewModel.fetch_message_limit_for_all_users(uid: Constant.SenderIdMy)
-            }
-            .onChange(of: viewModel.currentUserLimit) { newValue in
-                // Update when limit changes
-            }
-
+                }
+        )
+        .animation(.spring(), value: dragOffset)
+        .onAppear {
+            isTopHeaderVisible = false
+            viewModel.fetch_user_active_chat_list_for_msgLmt(uid: Constant.SenderIdMy)
+            viewModel.fetch_message_limit_for_all_users(uid: Constant.SenderIdMy)
+        }
+        .onChange(of: viewModel.currentUserLimit) { newValue in
+            // Update when limit changes
+        }
+        .overlay {
             // Custom Alert for setting limit
             if viewModel.showAlert {
                 LimitCardView(
@@ -286,6 +272,23 @@ struct messageLmtView: View {
             }
         }
     }
+    
+    private func handleBackTap() {
+        withAnimation {
+            isPressed = true
+            isStretchedUp = false
+            isMainContentVisible = true
+            isTopHeaderVisible = false
+            withAnimation(.easeInOut(duration: 0.30)) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isBackHeaderVisible = false
+                    isPressed = false
+                    isScrollEnabled = false
+                }
+            }
+        }
+    }
+}
 
 
 // ContactCardView - matches Android msg_limit_row.xml layout exactly

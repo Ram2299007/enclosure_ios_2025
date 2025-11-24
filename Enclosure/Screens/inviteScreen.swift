@@ -60,11 +60,15 @@ struct InviteScreen: View {
         .sheet(isPresented: $isSharePresented) {
             ShareSheet(items: shareItems)
         }
-        .confirmationDialog("", isPresented: $showMenu, titleVisibility: .hidden) {
-            Button("Refresh contacts") {
-                viewModel.syncContacts()
+        .overlay(alignment: .topTrailing) {
+            if showMenu {
+                RefreshContactsDialog(
+                    isPresented: $showMenu,
+                    onRefresh: {
+                        viewModel.syncContacts()
+                    }
+                )
             }
-            Button("Cancel", role: .cancel) {}
         }
         .onAppear {
             guard viewModel.contactList.isEmpty else { return }
@@ -474,22 +478,27 @@ private struct SyncOverlay: View {
     
     var body: some View {
         ZStack {
-            Color.black.opacity(0.35)
-                .ignoresSafeArea()
-            
-            VStack(spacing: 12) {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+            VStack(spacing: 16) {
+                // Loader - matching whatsTheCode.swift design
+                HorizontalProgressBar()
+                    .frame(width: 40, height: 2)
+
+                // Loading Text - matching whatsTheCode.swift design
                 Text(message)
-                    .font(.custom("Inter18pt-Medium", size: 14))
-                    .foregroundColor(.white)
+                    .foregroundColor(Color("TextColor"))
+                    .font(.custom("Inter18pt-Medium", size: 16))
                     .multilineTextAlignment(.center)
             }
-            .padding(24)
-            .background(Color("TextColor").opacity(0.9))
-            .cornerRadius(16)
-            .padding(.horizontal, 40)
+            .padding()
+            .frame(width: 220, height: 140)
+            .background(Color("cardBackgroundColornew").opacity(0.95))
+            .cornerRadius(20)
+            .shadow(color: Color.black.opacity(0.2), radius: 10, x: 2, y: 2)
+            .transition(.opacity)
+            .animation(.easeInOut(duration: 0.3))
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.clear.ignoresSafeArea()) // Ensures full-screen coverage
     }
 }
 
@@ -501,4 +510,86 @@ private struct ShareSheet: UIViewControllerRepresentable {
     }
     
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+private struct RefreshContactsDialog: View {
+    @Binding var isPresented: Bool
+    var onRefresh: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        ZStack {
+            // Semi-transparent background to dismiss on tap outside
+            Color.black.opacity(0.01)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isPresented = false
+                    }
+                }
+            
+            // Refresh button positioned at top-right, matching Android design
+            // Android: RelativeLayout padding="10dp", button margin="10dp", layout_alignParentEnd="true"
+            // Button dimensions: 130dp width, 50dp height, 10dp corner radius
+            // Android uses @drawable/menurect which uses @color/menuRect
+            VStack {
+                HStack {
+                    Spacer()
+                    
+                    ZStack {
+                        // Enhanced shadow layer for CardView effect (elevation 5dp equivalent)
+                        // More visible shadow in light mode to match Android CardView
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(
+                                colorScheme == .light 
+                                    ? Color.black.opacity(0.25) 
+                                    : Color.black.opacity(0.15)
+                            )
+                            .frame(width: 130, height: 50)
+                            .offset(x: 0, y: 4)
+                            .blur(radius: colorScheme == .light ? 10 : 8)
+                            .allowsHitTesting(false)
+                        
+                        // Additional subtle shadow for depth in light mode
+                        if colorScheme == .light {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.black.opacity(0.1))
+                                .frame(width: 130, height: 50)
+                                .offset(x: 0, y: 2)
+                                .blur(radius: 6)
+                                .allowsHitTesting(false)
+                        }
+                        
+                        // Button card - matches Android: 130dp width, 50dp height, 10dp corner radius
+                        // Using menuRect color to match Android @drawable/menurect
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isPresented = false
+                            }
+                            // Small delay to allow dismiss animation
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                onRefresh()
+                            }
+                        }) {
+                            Text("Refresh")
+                                .font(.custom("Inter18pt-SemiBold", size: 16))
+                                .foregroundColor(Color("TextColor"))
+                                .frame(width: 130, height: 50)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(Color("menuRect"))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.trailing, 10) // Android margin 10dp from right edge
+                    .padding(.top, 65) // Position below header area
+                }
+                
+                Spacer()
+            }
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        .animation(.easeInOut(duration: 0.2), value: isPresented)
+    }
 }

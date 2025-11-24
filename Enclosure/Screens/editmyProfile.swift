@@ -35,14 +35,7 @@ struct EditmyProfile: View {
 
                     VStack {
                         HStack {
-                            Button(action: {
-                                withAnimation {
-                                    isPressed = true
-                                }
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                                    dismiss()
-                                }
-                            }) {
+                            Button(action: handleBackTap) {
                                 ZStack {
                                     if isPressed {
                                         Circle()
@@ -68,6 +61,7 @@ struct EditmyProfile: View {
                                         }
                                     }
                             )
+                            .buttonStyle(.plain)
 
                             Text("for visible")
                                 .font(.custom("Inter18pt-Medium", size: 16))
@@ -432,6 +426,16 @@ struct EditmyProfile: View {
 
         }
         .navigationBarHidden(true)
+    }
+    
+    private func handleBackTap() {
+        withAnimation {
+            isPressed = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            dismiss()
+            isPressed = false
+        }
     }
 }
 struct MultiDemoView: View {

@@ -30,7 +30,8 @@ struct MainActivityOld: View {
     @State private var selected: SelectedOption = .none
     var body: some View {
         NavigationStack {
-            VStack(spacing:0) {
+            ZStack {
+                VStack(spacing:0) {
 
                 if(isMainContentVisible){
                     HStack{
@@ -518,34 +519,23 @@ struct MainActivityOld: View {
                         .transition(.opacity)
                 }
 
-            }
-            .background(Color("background_color"))
-            .overlay(alignment: .top) {
-                if isTopHeaderVisible {
-                    VStack { }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 10)
-                        .background(Color("appThemeColor"))
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+                .background(Color("background_color"))
+                .overlay(alignment: .top) {
+                    if isTopHeaderVisible {
+                        VStack { }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 10)
+                            .background(Color("appThemeColor"))
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
+                
+                // Custom Alert
+                if showNameDialog {
+                    WhatsYourNameDialog(isPresented: $showNameDialog)
                 }
             }
-//            .overlay(
-//                WhatsYourNameDialog(isShowing: $showNameDialog) {
-//                    // On success callback
-//                    print("✅ Name dialog completed")
-//                }
-//                .zIndex(1000) // Ensure dialog is on top of everything
-//            )
-//            .onAppear {
-//                // Check if name dialog should be shown (matching Android logic)
-//                let nameSaved = UserDefaults.standard.string(forKey: "nameSAved") ?? "0"
-//                if nameSaved != "nameSAved" {
-//                    // Show dialog on first visit
-//                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-//                        showNameDialog = true
-//                    }
-//                }
-//            }
         }
 
         .navigationBarHidden(true)
@@ -554,6 +544,15 @@ struct MainActivityOld: View {
         }
         .onAppear {
             showNetworkLoader = !networkMonitor.isConnected
+            
+            // Check if name dialog should be shown (matching Android logic)
+            let nameSaved = UserDefaults.standard.string(forKey: "nameSAved") ?? "0"
+            if nameSaved != "nameSAved" {
+                // Show dialog on first visit
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    showNameDialog = true
+                }
+            }
         }
         .onReceive(networkMonitor.$isConnected) { isConnected in
             withAnimation(.easeInOut(duration: 0.2)) {

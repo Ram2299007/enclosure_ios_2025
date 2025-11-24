@@ -24,17 +24,7 @@ struct flagScreen: View {
         VStack(spacing: 0) {
                 // Back Arrow Above Title
                 HStack(alignment: .center) {
-                    Button(action: {
-                        // Dismiss keyboard first (like Android does on back press)
-                        isSearchFocused = false
-                        
-                        withAnimation {
-                            isPressed = true
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                            dismiss()
-                        }
-                    }) {
+                    Button(action: handleBackTap) {
                         ZStack {
                             if isPressed {
                                 Circle()
@@ -60,6 +50,7 @@ struct flagScreen: View {
                                 }
                             }
                     )
+                    .buttonStyle(.plain)
 
                     Spacer()
                 }
@@ -154,6 +145,19 @@ struct flagScreen: View {
                 }
             }
             .navigationBarHidden(true)
+    }
+    
+    private func handleBackTap() {
+        // Dismiss keyboard first (like Android does on back press)
+        isSearchFocused = false
+        
+        withAnimation {
+            isPressed = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            dismiss()
+            isPressed = false
+        }
     }
 }
 

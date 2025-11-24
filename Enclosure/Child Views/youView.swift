@@ -33,16 +33,14 @@ struct youView: View {
 
                 if youView {
                     HStack(spacing: 0) {
-                    Button(action: {
-                        handleBackArrowTap()
-                    }) {
+                    Button(action: handleBackArrowTap) {
                         ZStack {
                             if isPressed {
                                 Circle()
                                     .fill(Color.gray.opacity(0.3))
                                     .frame(width: 40, height: 40)
                                     .scaleEffect(isPressed ? 1.2 : 1.0)
-                                    .animation(.easeOut(duration: 0.1), value: isPressed)
+                                    .animation(.easeOut(duration: 0.3), value: isPressed)
                             }
 
                             Image("leftvector")
@@ -61,7 +59,7 @@ struct youView: View {
                                 }
                             }
                     )
-                        .frame(width: 40, height: 40)
+                    .buttonStyle(.plain)
 
                         Spacer()
                     }
@@ -210,7 +208,13 @@ struct youView: View {
 
 extension youView {
     private func handleBackArrowTap() {
-        handleSwipeDown()
+        withAnimation {
+            isPressed = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            isPressed = false
+            handleSwipeDown()
+        }
     }
     
     private func handleSwipeDown() {

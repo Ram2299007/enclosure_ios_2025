@@ -250,29 +250,35 @@ struct groupMessageView: View {
     }
     
     private func backArrowButton() -> some View {
-        ZStack {
-            if isPressed {
-                Circle()
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(width: 40, height: 40)
-                    .scaleEffect(isPressed ? 1.2 : 1.0)
-                    .animation(.easeOut(duration: 0.1), value: isPressed)
+        Button(action: handleBackArrowTap) {
+            ZStack {
+                if isPressed {
+                    Circle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 40, height: 40)
+                        .scaleEffect(isPressed ? 1.2 : 1.0)
+                        .animation(.easeOut(duration: 0.3), value: isPressed)
+                }
+                
+                Image("leftvector")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 25, height: 18)
+                    .foregroundColor(Color("icontintGlobal"))
             }
-
-            Image("leftvector")
-                .renderingMode(.template)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 25, height: 18)
-                .foregroundColor(Color("icontintGlobal"))
         }
-        .frame(width: 40, height: 40)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            handleBackArrowTap()
-        }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onEnded { _ in
+                    withAnimation {
+                        isPressed = false
+                    }
+                }
+        )
         .allowsHitTesting(isBackButtonEnabled && !isBackActionInProgress && !isNewGroupPresented)
         .opacity(isBackButtonEnabled ? 1.0 : 0.5)
+        .buttonStyle(.plain)
     }
     
     private var loadingView: some View {
@@ -353,7 +359,7 @@ struct groupMessageView: View {
 extension groupMessageView {
     private func handleBackArrowTap() {
         // Check if button is enabled
-        guard isBackButtonEnabled else {
+        guard isBackButtonEnabled && !isBackActionInProgress && !isNewGroupPresented else {
             return
         }
         
@@ -364,23 +370,19 @@ extension groupMessageView {
             return
         }
         
-        // Set flag IMMEDIATELY to prevent any other calls
-        guard !isBackActionInProgress else {
-            return
-        }
-        guard !isNewGroupPresented else {
-            return
-        }
-        
         // Disable button immediately
         isBackButtonEnabled = false
-        
-        // Set all flags immediately and atomically
         lastBackPressTime = now
         isBackActionInProgress = true
         
-        // Execute the action - matching youView pattern
-        handleSwipeDown()
+        withAnimation {
+            isPressed = true
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            self.isPressed = false
+            self.handleSwipeDown()
+        }
     }
     
     private func handleSwipeDown() {

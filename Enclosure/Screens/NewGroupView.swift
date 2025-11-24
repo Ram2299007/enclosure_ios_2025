@@ -19,9 +19,6 @@ struct NewGroupView: View {
     @State private var errorMessage = ""
     @State private var isCreatingGroup = false
     @State private var isBackPressed = false
-    @State private var isBackActionInProgress = false
-    @State private var lastBackPressTime: Date = Date.distantPast
-    @State private var backActionTag: UUID = UUID()
     
     init(isPresented: Binding<Bool>) {
         _isPresented = isPresented
@@ -40,18 +37,16 @@ struct NewGroupView: View {
                 VStack(spacing: 0) {
                     // Back arrow and title - matching youView design
                     HStack(spacing: 0) {
-                        Button(action: {
-                            handleBackTap()
-                        }) {
+                        Button(action: handleBackTap) {
                             ZStack {
                                 if isBackPressed {
                                     Circle()
                                         .fill(Color.gray.opacity(0.3))
                                         .frame(width: 40, height: 40)
                                         .scaleEffect(isBackPressed ? 1.2 : 1.0)
-                                        .animation(.easeOut(duration: 0.1), value: isBackPressed)
+                                        .animation(.easeOut(duration: 0.3), value: isBackPressed)
                                 }
-
+                                
                                 Image("leftvector")
                                     .renderingMode(.template)
                                     .resizable()
@@ -60,8 +55,15 @@ struct NewGroupView: View {
                                     .foregroundColor(Color("icontintGlobal"))
                             }
                         }
-                        .disabled(isBackActionInProgress)
-                        .frame(width: 40, height: 40)
+                        .simultaneousGesture(
+                            DragGesture(minimumDistance: 0)
+                                .onEnded { _ in
+                                    withAnimation {
+                                        isBackPressed = false
+                                    }
+                                }
+                        )
+                        .buttonStyle(.plain)
                         
                         // "Create new group" text
                         Text("Create new group")
@@ -338,77 +340,23 @@ struct NewGroupView: View {
     }
     
     private func handleBackTap() {
-        let currentTag = UUID()
-        let now = Date()
-        
-        // Debounce: prevent multiple presses within 0.8 seconds
-        guard now.timeIntervalSince(lastBackPressTime) > 0.8 else {
-            return
-        }
-        guard !isBackActionInProgress else {
-            return
-        }
-        backActionTag = currentTag
-        lastBackPressTime = now
-        isBackActionInProgress = true
-        
-        withAnimation(.easeOut(duration: 0.1)) {
+        withAnimation {
             isBackPressed = true
         }
-        
-        // Use Task to ensure single execution
-        Task { @MainActor in
-            // Verify tag hasn't changed (another press happened)
-            guard backActionTag == currentTag else {
-                isBackActionInProgress = false
-                isBackPressed = false
-                return
-            }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                // Verify tag again
-                guard self.backActionTag == currentTag else {
-                    self.isBackActionInProgress = false
-                    self.isBackPressed = false
-                    return
-                }
-                
-                withAnimation {
-                    self.isBackPressed = false
-                }
-                
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                    // Final tag check
-                    guard self.backActionTag == currentTag else {
-                        self.isBackActionInProgress = false
-                        return
-                    }
-                    
-                    // Only set isPresented to false - NavigationLink will handle dismissal
-                    self.isPresented = false
-                    
-                    // Reset after navigation completes
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        if self.backActionTag == currentTag {
-                            self.isBackActionInProgress = false
-                            self.lastBackPressTime = Date.distantPast
-                        }
-                    }
-                }
-            }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            isPresented = false
+            isBackPressed = false
         }
     }
     
     private func handleSubmit() {
         guard !viewModel.groupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            errorMessage = "Missing group name"
-            showError = true
+            Constant.showToast(message: "Missing group name")
             return
         }
         
         guard viewModel.invitedFriendListJSON != "NODATA" else {
-            errorMessage = "Please add contacts to create group"
-            showError = true
+            Constant.showToast(message: "Please add contacts to create group")
             return
         }
         
