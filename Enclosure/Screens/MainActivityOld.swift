@@ -39,6 +39,12 @@ struct MainActivityOld: View {
     @State private var selectedGroupForDialog: GroupModel? = nil
     @State private var groupDialogPosition: CGPoint = .zero
     @State private var showGroupDialog = false
+    
+    // Clear log dialog state (voice calls)
+    @State private var showClearLogDialog = false
+    
+    // Clear video call log dialog state
+    @State private var showClearVideoCallLogDialog = false
 
 
 
@@ -507,7 +513,8 @@ struct MainActivityOld: View {
                             isTopHeaderVisible: $isTopHeaderVisible,
                             selectedCallLogForDialog: $selectedCallLogForDialog,
                             callDialogPosition: $callLogDialogPosition,
-                            showCallLogDialog: $showCallLogDialog
+                            showCallLogDialog: $showCallLogDialog,
+                            showClearLogDialog: $showClearLogDialog
                         )
 
                     }else if(viewValue == Constant.videoCallView){
@@ -517,7 +524,8 @@ struct MainActivityOld: View {
                             isTopHeaderVisible: $isTopHeaderVisible,
                             selectedCallLogForDialog: $selectedVideoCallLogForDialog,
                             callDialogPosition: $videoCallLogDialogPosition,
-                            showCallLogDialog: $showVideoCallLogDialog
+                            showCallLogDialog: $showVideoCallLogDialog,
+                            showClearVideoCallLogDialog: $showClearVideoCallLogDialog
                         )
 
                     }else if(viewValue == Constant.groupMsgView){
@@ -627,6 +635,30 @@ struct MainActivityOld: View {
                     .zIndex(999) // Ensure it's on top of everything
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
+                
+                // Clear Log Dialog - shown centered on screen (voice calls)
+                if showClearLogDialog {
+                    ClearLogDialog(
+                        isShowing: $showClearLogDialog,
+                        onClearLog: {
+                            handleClearVoiceLog()
+                        }
+                    )
+                    .zIndex(999) // Ensure it's on top of everything
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
+                
+                // Clear Video Call Log Dialog - shown centered on screen
+                if showClearVideoCallLogDialog {
+                    ClearVideoCallLogDialog(
+                        isShowing: $showClearVideoCallLogDialog,
+                        onClearLog: {
+                            handleClearVideoLog()
+                        }
+                    )
+                    .zIndex(999) // Ensure it's on top of everything
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
             }
         }
 
@@ -672,11 +704,8 @@ struct MainActivityOld: View {
             DispatchQueue.main.async {
                 if success {
                     print("🔴 [MainActivityOld] Delete SUCCESS")
-                    // No toast shown
                 } else {
                     print("🔴 [MainActivityOld] Delete FAILED - message: \(message)")
-                    // Show error toast only on failure
-                    Constant.showToast(message: "Failed to delete chat")
                 }
             }
         }
@@ -700,11 +729,8 @@ struct MainActivityOld: View {
             DispatchQueue.main.async {
                 if success {
                     print("🟢 [MainActivityOld] Delete voice call log SUCCESS")
-                    // No toast shown
                 } else {
                     print("🟢 [MainActivityOld] Delete voice call log FAILED - message: \(message)")
-                    // Show error toast only on failure
-                    Constant.showToast(message: "Failed to delete call log")
                 }
             }
         }
@@ -728,11 +754,8 @@ struct MainActivityOld: View {
             DispatchQueue.main.async {
                 if success {
                     print("🔵 [MainActivityOld] Delete video call log SUCCESS")
-                    // No toast shown
                 } else {
                     print("🔵 [MainActivityOld] Delete video call log FAILED - message: \(message)")
-                    // Show error toast only on failure
-                    Constant.showToast(message: "Failed to delete video call log")
                 }
             }
         }
@@ -756,11 +779,48 @@ struct MainActivityOld: View {
             DispatchQueue.main.async {
                 if success {
                     print("👥 [MainActivityOld] Delete group SUCCESS")
-                    // No toast shown
                 } else {
                     print("👥 [MainActivityOld] Delete group FAILED - message: \(message)")
-                    // Show error toast only on failure
-                    Constant.showToast(message: "Failed to delete group")
+                }
+            }
+        }
+    }
+    
+    private func handleClearVoiceLog() {
+        print("🟣 [MainActivityOld] Clearing all voice call logs")
+        showClearLogDialog = false
+        
+        ApiService.clear_voice_calling_list(uid: Constant.SenderIdMy, callType: "1") { success, message in
+            DispatchQueue.main.async {
+                if success {
+                    print("🟣 [MainActivityOld] Clear Voice Call Log SUCCESS")
+                    // Post notification to clear all logs from view
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("ClearAllVoiceCallLogs"),
+                        object: nil
+                    )
+                } else {
+                    print("🟣 [MainActivityOld] Clear Voice Call Log FAILED - message: \(message)")
+                }
+            }
+        }
+    }
+    
+    private func handleClearVideoLog() {
+        print("🔵 [MainActivityOld] Clearing all video call logs")
+        showClearVideoCallLogDialog = false
+        
+        ApiService.clear_video_calling_list(uid: Constant.SenderIdMy, callType: "2") { success, message in
+            DispatchQueue.main.async {
+                if success {
+                    print("🔵 [MainActivityOld] Clear Video Call Log SUCCESS")
+                    // Post notification to clear all logs from view
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("ClearAllVideoCallLogs"),
+                        object: nil
+                    )
+                } else {
+                    print("🔵 [MainActivityOld] Clear Video Call Log FAILED - message: \(message)")
                 }
             }
         }
@@ -784,6 +844,146 @@ struct MainActivityOld: View {
                 .scaleEffect(configuration.isPressed ? 1.1 : 1.0) // Add a slight scale effect
                 .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
         }
+    }
+}
+
+// MARK: - ClearLogDialog
+// Simple centered dialog for clearing call logs
+struct ClearLogDialog: View {
+    @Binding var isShowing: Bool
+    let onClearLog: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        ZStack {
+            // Semi-transparent background with ultra thin material blur to dismiss on tap outside
+            Color.black.opacity(0.01)
+                .background(.ultraThinMaterial)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isShowing = false
+                    }
+                }
+            
+            // Centered Clear Log button
+            ZStack {
+                // Enhanced shadow layer for CardView effect (elevation 5dp equivalent)
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(
+                        colorScheme == .light 
+                            ? Color.black.opacity(0.25) 
+                            : Color.black.opacity(0.15)
+                    )
+                    .frame(width: 130, height: 50)
+                    .offset(x: 0, y: 4)
+                    .blur(radius: colorScheme == .light ? 10 : 8)
+                    .allowsHitTesting(false)
+                
+                // Additional subtle shadow for depth in light mode
+                if colorScheme == .light {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.black.opacity(0.1))
+                        .frame(width: 130, height: 50)
+                        .offset(x: 0, y: 2)
+                        .blur(radius: 6)
+                        .allowsHitTesting(false)
+                }
+                
+                // Button card - matches Android: 130dp width, 50dp height, 10dp corner radius
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isShowing = false
+                    }
+                    // Small delay to allow dismiss animation
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        onClearLog()
+                    }
+                }) {
+                    Text("Clear Log")
+                        .font(.custom("Inter18pt-Bold", size: 16))
+                        .foregroundColor(Color("TextColor"))
+                        .frame(width: 130, height: 50)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color("menuRect"))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        .animation(.easeInOut(duration: 0.2), value: isShowing)
+    }
+}
+
+// MARK: - ClearVideoCallLogDialog
+// Simple centered dialog for clearing video call logs
+struct ClearVideoCallLogDialog: View {
+    @Binding var isShowing: Bool
+    let onClearLog: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        ZStack {
+            // Semi-transparent background with ultra thin material blur to dismiss on tap outside
+            Color.black.opacity(0.01)
+                .background(.ultraThinMaterial)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isShowing = false
+                    }
+                }
+            
+            // Centered Clear Log button
+            ZStack {
+                // Enhanced shadow layer for CardView effect (elevation 5dp equivalent)
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(
+                        colorScheme == .light 
+                            ? Color.black.opacity(0.25) 
+                            : Color.black.opacity(0.15)
+                    )
+                    .frame(width: 130, height: 50)
+                    .offset(x: 0, y: 4)
+                    .blur(radius: colorScheme == .light ? 10 : 8)
+                    .allowsHitTesting(false)
+                
+                // Additional subtle shadow for depth in light mode
+                if colorScheme == .light {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.black.opacity(0.1))
+                        .frame(width: 130, height: 50)
+                        .offset(x: 0, y: 2)
+                        .blur(radius: 6)
+                        .allowsHitTesting(false)
+                }
+                
+                // Button card - matches Android: 130dp width, 50dp height, 10dp corner radius
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isShowing = false
+                    }
+                    // Small delay to allow dismiss animation
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        onClearLog()
+                    }
+                }) {
+                    Text("Clear Log")
+                        .font(.custom("Inter18pt-Bold", size: 16))
+                        .foregroundColor(Color("TextColor"))
+                        .frame(width: 130, height: 50)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color("menuRect"))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        .animation(.easeInOut(duration: 0.2), value: isShowing)
     }
 }
 

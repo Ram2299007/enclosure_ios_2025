@@ -23,6 +23,9 @@ struct videoCallView: View {
     @Binding var callDialogPosition: CGPoint
     @Binding var showCallLogDialog: Bool
     
+    // Clear log dialog state
+    @Binding var showClearVideoCallLogDialog: Bool
+    
     // Tab state
     @State private var selectedTab: VideoCallTab = .log
     @State private var isSearchVisible = false
@@ -72,7 +75,9 @@ struct videoCallView: View {
                         
                         // Menu button (3 dots)
                         Button(action: {
-                            // Menu action
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showClearVideoCallLogDialog = true
+                            }
                         }) {
                             VStack(spacing: 3) {
                                 Circle()
@@ -197,7 +202,9 @@ struct videoCallView: View {
                         // Menu button (3 dots) - visible when on log tab
                         if selectedTab == .log && !isBackLayoutVisible {
                             Button(action: {
-                                // Show clear log dialog
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    showClearVideoCallLogDialog = true
+                                }
                             }) {
                                 VStack(spacing: 3) {
                                     Circle()

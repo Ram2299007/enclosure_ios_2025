@@ -23,6 +23,9 @@ struct callView: View {
     @Binding var callDialogPosition: CGPoint
     @Binding var showCallLogDialog: Bool
     
+    // Clear log dialog state - use @Binding to connect to parent
+    @Binding var showClearLogDialog: Bool
+    
     // Tab state
     @State private var selectedTab: CallTab = .log
     @State private var isSearchVisible = false
@@ -72,7 +75,9 @@ struct callView: View {
                         
                         // Menu button (3 dots)
                         Button(action: {
-                            // Menu action
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                showClearLogDialog = true
+                            }
                         }) {
                             VStack(spacing: 3) {
                                 Circle()
@@ -197,7 +202,9 @@ struct callView: View {
                         // Menu button (3 dots) - visible when on log tab
                         if selectedTab == .log && !isBackLayoutVisible {
                             Button(action: {
-                                // Show clear log dialog
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    showClearLogDialog = true
+                                }
                             }) {
                                 VStack(spacing: 3) {
                                     Circle()
@@ -387,8 +394,9 @@ struct callView: View {
             isTopHeaderVisible = false
             callLogViewModel.fetchCallLogs(uid: Constant.SenderIdMy, force: true)
         }
+        }
     }
-}
+
 
 // MARK: - Tab handling helpers
 extension callView {
@@ -578,6 +586,7 @@ extension callView {
         )
         .buttonStyle(.plain)
     }
+    
 }
 
 // Call history detail header - matching Android layoutName section

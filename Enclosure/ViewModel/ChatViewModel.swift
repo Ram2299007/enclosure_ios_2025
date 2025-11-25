@@ -133,11 +133,8 @@ class ChatViewModel: ObservableObject {
             DispatchQueue.main.async {
                 if success {
                     print("🔴 [ChatViewModel] Delete SUCCESS")
-                    // No toast shown
                 } else {
                     print("🔴 [ChatViewModel] Delete FAILED - message: \(message)")
-                    // Show error toast only
-                    Constant.showToast(message: "Failed to delete chat")
                 }
             }
         }

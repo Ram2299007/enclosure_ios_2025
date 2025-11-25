@@ -567,6 +567,86 @@ class ApiService {
             }
     }
     
+    // Clear voice calling list - deletes all voice call logs
+    static func clear_voice_calling_list(uid: String, callType: String, completion: @escaping (Bool, String) -> Void) {
+        let url = Constant.baseURL + "clear_voice_calling_list"
+        let parameters: [String: Any] = ["uid": uid, "call_type": callType]
+        
+        print("🟣 [ApiService] clear_voice_calling_list - URL: \(url)")
+        print("🟣 [ApiService] clear_voice_calling_list - Parameters: \(parameters)")
+        
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseJSON { response in
+                print("🟣 [ApiService] Response received - Status: \(response.response?.statusCode ?? 0)")
+                
+                switch response.result {
+                case .success(let value):
+                    if let json = value as? [String: Any] {
+                        print("🟣 [ApiService] Response JSON: \(json)")
+                        
+                        if let errorCode = json["error_code"] as? Int,
+                           errorCode == 200 {
+                            let message = json["message"] as? String ?? "All call logs cleared successfully"
+                            print("🟣 [ApiService] SUCCESS - calling completion(true, '\(message)')")
+                            completion(true, message)
+                        } else {
+                            let message = json["message"] as? String ?? "Failed to clear call logs"
+                            print("🟣 [ApiService] ERROR - calling completion(false, '\(message)')")
+                            completion(false, message)
+                        }
+                    } else {
+                        print("🟣 [ApiService] Invalid response format")
+                        completion(false, "Invalid response format")
+                    }
+                    
+                case .failure(let error):
+                    print("🟣 [ApiService] Request failed - error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription)
+                }
+            }
+    }
+    
+    // Clear video calling list - deletes all video call logs
+    static func clear_video_calling_list(uid: String, callType: String, completion: @escaping (Bool, String) -> Void) {
+        let url = Constant.baseURL + "clear_video_calling_list"
+        let parameters: [String: Any] = ["uid": uid, "call_type": callType]
+        
+        print("🔵 [ApiService] clear_video_calling_list - URL: \(url)")
+        print("🔵 [ApiService] clear_video_calling_list - Parameters: \(parameters)")
+        
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseJSON { response in
+                print("🔵 [ApiService] Response received - Status: \(response.response?.statusCode ?? 0)")
+                
+                switch response.result {
+                case .success(let value):
+                    if let json = value as? [String: Any] {
+                        print("🔵 [ApiService] Response JSON: \(json)")
+                        
+                        if let errorCode = json["error_code"] as? Int,
+                           errorCode == 200 {
+                            let message = json["message"] as? String ?? "All video call logs cleared successfully"
+                            print("🔵 [ApiService] SUCCESS - calling completion(true, '\(message)')")
+                            completion(true, message)
+                        } else {
+                            let message = json["message"] as? String ?? "Failed to clear video call logs"
+                            print("🔵 [ApiService] ERROR - calling completion(false, '\(message)')")
+                            completion(false, message)
+                        }
+                    } else {
+                        print("🔵 [ApiService] Invalid response format")
+                        completion(false, "Invalid response format")
+                    }
+                    
+                case .failure(let error):
+                    print("🔵 [ApiService] Request failed - error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription)
+                }
+            }
+    }
+    
     // Delete video call log
     static func delete_video_call_log(uid: String, friendId: String, callType: String, completion: @escaping (Bool, String) -> Void) {
         let url = Constant.baseURL + "delete_video_call_log"

@@ -50,6 +50,15 @@ final class CallLogViewModel: ObservableObject {
                     self?.removeFromList(id: id)
                 }
             }
+            
+            // Listen for clear all voice call logs notification
+            NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("ClearAllVoiceCallLogs"),
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.clearAllLogs()
+            }
         } else {
             NotificationCenter.default.addObserver(
                 forName: NSNotification.Name("DeleteVideoCallLogImmediately"),
@@ -59,6 +68,15 @@ final class CallLogViewModel: ObservableObject {
                 if let id = notification.userInfo?["id"] as? String {
                     self?.removeFromList(id: id)
                 }
+            }
+            
+            // Listen for clear all video call logs notification
+            NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("ClearAllVideoCallLogs"),
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.clearAllLogs()
             }
         }
     }
@@ -177,6 +195,22 @@ final class CallLogViewModel: ObservableObject {
         // Update cache immediately
         cacheManager.cacheCallLogs(sections, type: cacheType)
         print("🟢 [CallLogViewModel] Removed call log entry with id \(id) from list and updated cache.")
+    }
+    
+    func clearCache() {
+        // Clear all cached call logs
+        cacheManager.cacheCallLogs([], type: cacheType)
+        hasCachedSections = false
+        print("🟣 [CallLogViewModel] Cleared cache for \(logType) call logs")
+    }
+    
+    private func clearAllLogs() {
+        // Clear all sections immediately
+        sections = []
+        // Clear cache
+        cacheManager.cacheCallLogs([], type: cacheType)
+        hasCachedSections = false
+        print("🟣 [CallLogViewModel] Cleared all \(logType) call logs from list and cache")
     }
 }
 

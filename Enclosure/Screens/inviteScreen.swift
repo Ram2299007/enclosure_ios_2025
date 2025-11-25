@@ -519,8 +519,9 @@ private struct RefreshContactsDialog: View {
     
     var body: some View {
         ZStack {
-            // Semi-transparent background to dismiss on tap outside
+            // Semi-transparent background with ultra thin material blur to dismiss on tap outside
             Color.black.opacity(0.01)
+                .background(.ultraThinMaterial)
                 .ignoresSafeArea()
                 .onTapGesture {
                     withAnimation(.easeInOut(duration: 0.2)) {
