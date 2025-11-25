@@ -484,6 +484,47 @@ class ApiService {
                 }
             }
     }
+    
+    // Delete individual user chat
+    static func delete_individual_user_chatting(uid: String, friendId: String, completion: @escaping (Bool, String) -> Void) {
+        let url = Constant.baseURL + "delete_individual_user_chatting"
+        let parameters: [String: Any] = ["uid": uid, "friend_id": friendId]
+        
+        print("🔴 [ApiService] delete_individual_user_chatting - URL: \(url)")
+        print("🔴 [ApiService] delete_individual_user_chatting - Parameters: \(parameters)")
+        
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseJSON { response in
+                print("🔴 [ApiService] Response received - Status: \(response.response?.statusCode ?? 0)")
+                
+                switch response.result {
+                case .success(let value):
+                    if let json = value as? [String: Any] {
+                        print("🔴 [ApiService] Response JSON: \(json)")
+                        
+                        if let errorCodeString = json["error_code"] as? String,
+                           let errorCode = Int(errorCodeString),
+                           errorCode == 200 {
+                            let message = json["message"] as? String ?? "Chat deleted successfully"
+                            print("🔴 [ApiService] SUCCESS - calling completion(true, '\(message)')")
+                            completion(true, message)
+                        } else {
+                            let message = json["message"] as? String ?? "Failed to delete chat"
+                            print("🔴 [ApiService] ERROR - calling completion(false, '\(message)')")
+                            completion(false, message)
+                        }
+                    } else {
+                        print("🔴 [ApiService] Invalid response format")
+                        completion(false, "Invalid response format")
+                    }
+                    
+                case .failure(let error):
+                    print("🔴 [ApiService] Request failed - error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription)
+                }
+            }
+    }
 
 
 

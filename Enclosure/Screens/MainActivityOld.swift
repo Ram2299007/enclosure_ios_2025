@@ -19,6 +19,11 @@ struct MainActivityOld: View {
     @State private var viewValue = Constant.chatView
     @StateObject private var networkMonitor = NetworkMonitor.shared
     @State private var showNetworkLoader = false
+    
+    // Chat long press dialog state
+    @State private var selectedChatForDialog: UserActiveContactModel? = nil
+    @State private var chatDialogPosition: CGPoint = .zero
+    @State private var showChatLongPressDialog = false
 
 
 
@@ -472,7 +477,12 @@ struct MainActivityOld: View {
 
                     if(viewValue == Constant.chatView){
 
-                        chatView(searchText: searchText)
+                        chatView(
+                            searchText: searchText,
+                            selectedChatForDialog: $selectedChatForDialog,
+                            dialogPosition: $chatDialogPosition,
+                            showLongPressDialog: $showChatLongPressDialog
+                        )
 
 
                     }else if(viewValue == Constant.callView){
@@ -535,6 +545,20 @@ struct MainActivityOld: View {
                 if showNameDialog {
                     WhatsYourNameDialog(isPresented: $showNameDialog)
                 }
+                
+                // Chat Long Press Dialog - shown on top of everything
+                if showChatLongPressDialog, let selectedChat = selectedChatForDialog {
+                    chatView.ChatLongPressDialog(
+                        chat: selectedChat,
+                        position: chatDialogPosition,
+                        isShowing: $showChatLongPressDialog,
+                        onDelete: {
+                            deleteChatItem(selectedChat)
+                        }
+                    )
+                    .zIndex(999) // Ensure it's on top of everything
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
             }
         }
 
@@ -557,6 +581,35 @@ struct MainActivityOld: View {
         .onReceive(networkMonitor.$isConnected) { isConnected in
             withAnimation(.easeInOut(duration: 0.2)) {
                 showNetworkLoader = !isConnected
+            }
+        }
+    }
+    
+    // Delete chat functionality
+    private func deleteChatItem(_ chat: UserActiveContactModel) {
+        print("🔴 [MainActivityOld] Deleting chat for uid: \(chat.uid)")
+        
+        // Immediately close dialog
+        showChatLongPressDialog = false
+        
+        // Post notification for immediate UI update
+        NotificationCenter.default.post(
+            name: NSNotification.Name("DeleteChatImmediately"),
+            object: nil,
+            userInfo: ["uid": chat.uid]
+        )
+        
+        // Call API in background
+        ApiService.delete_individual_user_chatting(uid: Constant.SenderIdMy, friendId: chat.uid) { success, message in
+            DispatchQueue.main.async {
+                if success {
+                    print("🔴 [MainActivityOld] Delete SUCCESS")
+                    // No toast shown
+                } else {
+                    print("🔴 [MainActivityOld] Delete FAILED - message: \(message)")
+                    // Show error toast only on failure
+                    Constant.showToast(message: "Failed to delete chat")
+                }
             }
         }
     }

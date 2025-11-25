@@ -33,6 +33,19 @@ class ChatViewModel: ObservableObject {
 
     private let cacheManager = ChatCacheManager.shared
     private let networkMonitor = NetworkMonitor.shared
+    
+    init() {
+        // Listen for immediate delete notifications
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("DeleteChatImmediately"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            if let uid = notification.userInfo?["uid"] as? String {
+                self?.removeFromList(uid: uid)
+            }
+        }
+    }
 
     func fetchChatList(uid: String) {
         print("🔵 [ChatViewModel] fetchChatList called with uid: \(uid)")
@@ -97,6 +110,36 @@ class ChatViewModel: ObservableObject {
             }
 
             print("🔵 [ChatViewModel] Loaded \(cachedChats.count) cached chats for reason: \(reason)")
+        }
+    }
+    
+    // Immediately remove chat from list (optimistic update)
+    private func removeFromList(uid: String) {
+        print("🔴 [ChatViewModel] Immediately removing chat from list - uid: \(uid)")
+        chatList.removeAll { $0.uid == uid }
+        // Update cache immediately
+        cacheManager.cacheChats(chatList)
+    }
+    
+    // Delete chat functionality
+    func deleteChat(uid: String, receiverUid: String) {
+        print("🔴 [ChatViewModel] deleteChat called - uid: \(uid), receiverUid: \(receiverUid)")
+        
+        // Immediately remove from local list (optimistic update)
+        removeFromList(uid: receiverUid)
+        
+        // Call API in background
+        ApiService.delete_individual_user_chatting(uid: uid, friendId: receiverUid) { success, message in
+            DispatchQueue.main.async {
+                if success {
+                    print("🔴 [ChatViewModel] Delete SUCCESS")
+                    // No toast shown
+                } else {
+                    print("🔴 [ChatViewModel] Delete FAILED - message: \(message)")
+                    // Show error toast only
+                    Constant.showToast(message: "Failed to delete chat")
+                }
+            }
         }
     }
 }
