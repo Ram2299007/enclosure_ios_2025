@@ -23,6 +23,11 @@ struct groupMessageView: View {
     @State private var lastBackPressTime: Date = Date.distantPast
     @State private var isBackButtonEnabled = true
     
+    // Long press dialog state - use @Binding to connect to parent
+    @Binding var selectedGroupForDialog: GroupModel?
+    @Binding var groupDialogPosition: CGPoint
+    @Binding var showGroupDialog: Bool
+    
     private var filteredGroups: [GroupModel] {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return viewModel.groups }
@@ -62,7 +67,8 @@ struct groupMessageView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.clear.contentShape(Rectangle()))
             .gesture(
-                DragGesture()
+                // Only apply drag gesture when not stretched up to avoid interfering with scrolling
+                !isStretchedUp ? DragGesture()
                     .onChanged { value in
                         dragOffset = value.translation
                     }
@@ -82,7 +88,7 @@ struct groupMessageView: View {
                             handleSwipeDown()
                         }
                         dragOffset = .zero
-                    }
+                    } : nil
             )
             .animation(.spring(), value: dragOffset)
             .background(
@@ -149,10 +155,9 @@ struct groupMessageView: View {
                    .padding(.horizontal, 20)
                    .padding(.top, 10)
                    .padding(.bottom, 24)
-               }
            }
        }
-   
+   }
     
     private var listContainer: some View {
         GeometryReader { geometry in
@@ -167,7 +172,14 @@ struct groupMessageView: View {
                     ScrollView(.vertical, showsIndicators: false) {
                         LazyVStack(spacing: 0) {
                             ForEach(filteredGroups) { group in
-                                GroupRowView(group: group)
+                                GroupRowView(
+                                    group: group,
+                                    onLongPress: { group, position in
+                                        selectedGroupForDialog = group
+                                        groupDialogPosition = position
+                                        showGroupDialog = true
+                                    }
+                                )
                             }
                         }
                         .padding(.top, 5)
@@ -413,8 +425,11 @@ extension groupMessageView {
 struct GroupRowView: View {
     let group: GroupModel
     var onTap: (() -> Void)?
+    var onLongPress: ((GroupModel, CGPoint) -> Void)?
     
     @State private var isPressed = false
+    @State private var exactTouchLocation: CGPoint = .zero
+    @State private var isLongPressing = false
     
     private var captionIcon: String? {
         switch group.messageType {
@@ -434,69 +449,99 @@ struct GroupRowView: View {
     }
     
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(isPressed ? Color.gray.opacity(0.2) : Color.clear)
-            
-            HStack(alignment: .top, spacing: 16) {
-                GroupAvatarView(imageURL: group.iconURL)
+        GeometryReader { geometry in
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isPressed ? Color.gray.opacity(0.2) : Color.clear)
                 
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .center) {
-                        Text(group.name)
-                            .font(.custom("Inter18pt-SemiBold", size: 16))
-                            .foregroundColor(Color("TextColor"))
-                            .lineLimit(1)
-                        
-                        Spacer()
-                        
-                        Text(group.lastMessageTime)
-                            .font(.custom("Inter18pt-Medium", size: 12))
-                            .foregroundColor(Color("gray"))
-                    }
+                HStack(alignment: .top, spacing: 16) {
+                    GroupAvatarView(imageURL: group.iconURL)
                     
-                    HStack(alignment: .center, spacing: 6) {
-                        if let icon = captionIcon {
-                            Image(systemName: icon)
-                                .font(.system(size: 12))
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .center) {
+                            Text(group.name)
+                                .font(.custom("Inter18pt-SemiBold", size: 16))
+                                .foregroundColor(Color("TextColor"))
+                                .lineLimit(1)
+                            
+                            Spacer()
+                            
+                            Text(group.lastMessageTime)
+                                .font(.custom("Inter18pt-Medium", size: 12))
                                 .foregroundColor(Color("gray"))
                         }
                         
-                        Text(group.lastMessage)
-                            .font(.custom("Inter18pt-Medium", size: 13))
-                            .foregroundColor(Color("gray"))
-                            .lineLimit(1)
-                        
-                        Spacer()
-                        
-                        if group.unreadCount > 0 {
-                            Text("\(group.unreadCount)")
-                                .font(.custom("Inter18pt-SemiBold", size: 12))
-                                .foregroundColor(.white)
-                                .frame(width: 32, height: 20)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .fill(Color("buttonColorTheme"))
-                                )
+                        HStack(alignment: .center, spacing: 6) {
+                            if let icon = captionIcon {
+                                Image(systemName: icon)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Color("gray"))
+                            }
+                            
+                            Text(group.lastMessage)
+                                .font(.custom("Inter18pt-Medium", size: 13))
+                                .foregroundColor(Color("gray"))
+                                .lineLimit(1)
+                            
+                            Spacer()
+                            
+                            if group.unreadCount > 0 {
+                                Text("\(group.unreadCount)")
+                                    .font(.custom("Inter18pt-SemiBold", size: 12))
+                                    .foregroundColor(.white)
+                                    .frame(width: 32, height: 20)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .fill(Color("buttonColorTheme"))
+                                    )
+                            }
                         }
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(.easeOut(duration: 0.1)) {
-                isPressed = true
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                withAnimation(.easeOut(duration: 0.1)) {
-                    isPressed = false
+            .contentShape(Rectangle())
+            .scaleEffect(isPressed ? 0.98 : 1.0)
+            .animation(.easeInOut(duration: 0.15), value: isPressed)
+            .onTapGesture {
+                // Only perform tap action if it wasn't a long press
+                if !isLongPressing {
+                    onTap?()
                 }
-                onTap?()
+                // Reset long press flag after a short delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isLongPressing = false
+                }
             }
+            .onLongPressGesture(minimumDuration: 0.5, pressing: { pressing in
+                // Update press state for visual feedback
+                isPressed = pressing
+                if pressing {
+                    // Get center point when press starts
+                    let globalFrame = geometry.frame(in: .global)
+                    exactTouchLocation = CGPoint(x: globalFrame.width / 2, y: globalFrame.height / 2)
+                }
+            }, perform: {
+                // Mark that long press occurred to prevent tap action
+                isLongPressing = true
+                
+                // Convert to global screen coordinates (using center as approximation)
+                let globalFrame = geometry.frame(in: .global)
+                let globalX = globalFrame.midX
+                let globalY = globalFrame.midY
+                print("👥 Long press on group at location - Global: (\(globalX), \(globalY))")
+                if let onLongPress {
+                    onLongPress(group, CGPoint(x: globalX, y: globalY))
+                }
+                
+                // Reset long press flag after action
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isLongPressing = false
+                }
+            })
         }
+        .frame(height: 82) // Fixed height for consistent layout
     }
 }
 
@@ -585,6 +630,19 @@ final class GroupMessageViewModel: ObservableObject {
     private let cacheManager = CallCacheManager.shared
     private let networkMonitor = NetworkMonitor.shared
     
+    init() {
+        // Listen for immediate delete notifications
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("DeleteGroupImmediately"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            if let groupId = notification.userInfo?["groupId"] as? String {
+                self?.removeFromList(groupId: groupId)
+            }
+        }
+    }
+    
     func fetchGroups(uid: String) {
         guard !uid.isEmpty else {
             errorMessage = "Missing user id"
@@ -653,10 +711,20 @@ final class GroupMessageViewModel: ObservableObject {
             print("👥 [GroupMessageViewModel] Loaded \(cachedGroups.count) cached groups for reason: \(reason)")
         }
     }
+    
+    private func removeFromList(groupId: String) {
+        // Remove group with matching groupId
+        groups.removeAll { $0.groupId == groupId }
+        
+        // Update cache immediately
+        cacheManager.cacheGroupMessages(groups)
+        print("👥 [GroupMessageViewModel] Removed group with groupId \(groupId) from list and updated cache.")
+    }
 }
 
 struct GroupModel: Identifiable, Codable {
     let id: UUID
+    let groupId: String // API group_id for deletion
     let name: String
     let lastMessage: String
     let lastMessageTime: String
@@ -666,6 +734,7 @@ struct GroupModel: Identifiable, Codable {
 
     enum CodingKeys: String, CodingKey {
         case id
+        case groupId
         case name
         case lastMessage
         case lastMessageTime
@@ -676,6 +745,7 @@ struct GroupModel: Identifiable, Codable {
     
     init(item: GroupListItem) {
         id = UUID()
+        groupId = item.group_id
         name = item.group_name
         iconURL = item.group_icon
         messageType = GroupMessageType.fromAPI(item.data_type)
@@ -699,6 +769,7 @@ struct GroupModel: Identifiable, Codable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        groupId = try container.decode(String.self, forKey: .groupId)
         name = try container.decode(String.self, forKey: .name)
         lastMessage = try container.decode(String.self, forKey: .lastMessage)
         lastMessageTime = try container.decode(String.self, forKey: .lastMessageTime)
@@ -710,6 +781,7 @@ struct GroupModel: Identifiable, Codable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
+        try container.encode(groupId, forKey: .groupId)
         try container.encode(name, forKey: .name)
         try container.encode(lastMessage, forKey: .lastMessage)
         try container.encode(lastMessageTime, forKey: .lastMessageTime)
@@ -764,3 +836,212 @@ enum GroupMessageType: String, Codable {
     }
 }
 
+// MARK: - GroupLongPressDialog
+// Matching Android grp_chat_group_row_blur_dialogue.xml
+extension groupMessageView {
+    struct GroupLongPressDialog: View {
+        let group: GroupModel
+        let position: CGPoint
+        @Binding var isShowing: Bool
+        let onDelete: () -> Void
+        
+        // Calculate adjusted offset X - full width (match_parent)
+        private func adjustedOffsetX(in geometry: GeometryProxy) -> CGFloat {
+            return 0 // Full width, no horizontal offset
+        }
+        
+        // Calculate adjusted offset Y
+        private func adjustedOffsetY(in geometry: GeometryProxy) -> CGFloat {
+            let groupCardHeight: CGFloat = 82 // Group card with padding
+            let deleteButtonHeight: CGFloat = 83 // Button (48) + margins (10+25)
+            let dialogHeight = groupCardHeight + deleteButtonHeight // ~165
+            let padding: CGFloat = 20
+            let frame = geometry.frame(in: .global)
+            let localY = position.y - frame.minY
+            let centeredY = localY - (groupCardHeight / 2) // Center card at touch point
+            let maxY = geometry.size.height - dialogHeight - padding
+            return min(max(centeredY, padding), maxY)
+        }
+        
+        private var captionIcon: String? {
+            switch group.messageType {
+            case .text:
+                return nil
+            case .photo:
+                return "gallery"
+            case .video:
+                return "videopng"
+            case .audio:
+                return "mike"
+            case .contact:
+                return "contact"
+            case .file:
+                return "documentsvg"
+            }
+        }
+        
+        var body: some View {
+            GeometryReader { geometry in
+                ZStack(alignment: .topLeading) {
+                    // Blurred background overlay
+                    Color.black.opacity(0.3)
+                        .background(.ultraThinMaterial)
+                        .ignoresSafeArea()
+                        .zIndex(0)
+                        .onTapGesture {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                isShowing = false
+                            }
+                        }
+                    
+                    // Dialog content
+                    VStack(spacing: 0) {
+                        // Group card view (matching grp_chat_group_row_blur_dialogue.xml)
+                        VStack(spacing: 0) {
+                            // LinearLayout id="contact1" with marginStart="16dp" marginTop="16dp"
+                            HStack(alignment: .top, spacing: 0) {
+                                // FrameLayout id="themeBorder" - group icon with border
+                                // marginStart="1dp" marginEnd="16dp" padding="2dp"
+                                ZStack {
+                                    Circle()
+                                        .stroke(Color("blue"), lineWidth: 2)
+                                        .frame(width: 54, height: 54)
+                                    
+                                    CachedAsyncImage(url: URL(string: group.iconURL)) { image in
+                                        image
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(width: 50, height: 50)
+                                            .clipShape(Circle())
+                                    } placeholder: {
+                                        Image("inviteimg")
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(width: 50, height: 50)
+                                            .clipShape(Circle())
+                                    }
+                                    .frame(width: 50, height: 50)
+                                }
+                                .frame(width: 54, height: 54)
+                                .padding(.leading, 1) // marginStart="1dp"
+                                .padding(.trailing, 16) // marginEnd="16dp"
+                                
+                                // Vertical LinearLayout for name/caption
+                                VStack(alignment: .leading, spacing: 0) {
+                                    // First horizontal LinearLayout (Name and Time)
+                                    HStack(spacing: 0) {
+                                        // TextView id="grpName"
+                                        // fontFamily="@font/inter_bold" textSize="16sp" lineHeight="18dp"
+                                        Text(group.name.count > 20 ? String(group.name.prefix(20)) + "..." : group.name)
+                                            .font(.custom("Inter18pt-SemiBold", size: 16))
+                                            .foregroundColor(Color("TextColor"))
+                                            .lineLimit(1)
+                                            .frame(height: 18) // lineHeight="18dp"
+                                        
+                                        Spacer()
+                                        
+                                        // TextView id="time"
+                                        // textSize="12sp" fontFamily="@font/inter_medium"
+                                        Text(group.lastMessageTime)
+                                            .font(.custom("Inter18pt-Medium", size: 12))
+                                            .foregroundColor(Color("Gray3"))
+                                            .padding(.trailing, 8) // layout_marginEnd="8dp"
+                                    }
+                                    
+                                    // Second horizontal LinearLayout (Caption and Notification)
+                                    HStack(alignment: .center, spacing: 0) {
+                                        // TextView id="caption"
+                                        // layout_marginTop="2dp" drawablePadding="3dp" textSize="13sp"
+                                        HStack(spacing: 3) {
+                                            if let iconName = captionIcon {
+                                                Image(iconName)
+                                                    .renderingMode(.template)
+                                                    .resizable()
+                                                    .scaledToFit()
+                                                    .frame(width: 16, height: 16)
+                                                    .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0))
+                                            }
+                                            
+                                            Text(group.lastMessage.count > 25 ? String(group.lastMessage.prefix(25)) + "..." : group.lastMessage)
+                                                .font(.custom("Inter18pt-Medium", size: 13))
+                                                .foregroundColor(Color("Gray3"))
+                                                .lineLimit(1)
+                                        }
+                                        .padding(.top, 2) // layout_marginTop="2dp"
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        
+                                        Spacer()
+                                        
+                                        // Notification badge
+                                        if group.unreadCount > 0 {
+                                            ZStack {
+                                                Image("notiiconsvg")
+                                                    .resizable()
+                                                    .scaledToFit()
+                                                
+                                                Text("\(group.unreadCount)")
+                                                    .foregroundColor(.white)
+                                                    .font(.custom("Inter18pt-Regular", size: 12))
+                                            }
+                                            .frame(width: 32, height: 20)
+                                            .padding(.top, 5) // layout_marginTop="5dp"
+                                        }
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .padding(.leading, 16) // contact1 marginStart="16dp"
+                            .padding(.top, 16) // contact1 marginTop="16dp"
+                            .padding(.bottom, 16) // Spacing below group card
+                            .padding(.trailing, 16) // Right padding for symmetry
+                        }
+                        .background(Color("BackgroundColor"))
+                        .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5) // elevation
+                        
+                        // Delete button (deletecardview)
+                        // layout_marginHorizontal="20dp" layout_marginTop="10dp" layout_marginBottom="25dp"
+                        Button(action: {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                onDelete()
+                            }
+                        }) {
+                            HStack(spacing: 0) {
+                                Spacer()
+                                
+                                // ImageView - delete icon
+                                // width="26.5dp" height="24dp" layout_marginEnd="2dp"
+                                Image("baseline_delete_forever_24")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 26.5, height: 24)
+                                    .foregroundColor(Color("Gray3"))
+                                    .padding(.trailing, 2)
+                                
+                                // TextView - "Delete" text
+                                // textSize="16sp" fontFamily="@font/inter" textStyle="bold"
+                                Text("Delete")
+                                    .font(.custom("Inter18pt-Bold", size: 16))
+                                    .foregroundColor(Color("TextColor"))
+                                
+                                Spacer()
+                            }
+                            .frame(height: 48) // layout_height="48dp"
+                            .frame(maxWidth: .infinity)
+                            .background(Color("dxForward"))
+                            .cornerRadius(20) // cardCornerRadius="20dp"
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .padding(.horizontal, 20) // layout_marginHorizontal="20dp"
+                        .padding(.top, 10) // layout_marginTop="10dp"
+                        .padding(.bottom, 25) // layout_marginBottom="25dp"
+                    }
+                    .frame(maxWidth: .infinity)
+                    .background(Color.clear)
+                    .offset(x: adjustedOffsetX(in: geometry), y: adjustedOffsetY(in: geometry))
+                    .zIndex(1)
+                }
+            }
+        }
+    }
+}

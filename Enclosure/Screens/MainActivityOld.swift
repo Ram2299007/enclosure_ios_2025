@@ -34,6 +34,11 @@ struct MainActivityOld: View {
     @State private var selectedVideoCallLogForDialog: CallLogUserInfo? = nil
     @State private var videoCallLogDialogPosition: CGPoint = .zero
     @State private var showVideoCallLogDialog = false
+    
+    // Group message long press dialog state
+    @State private var selectedGroupForDialog: GroupModel? = nil
+    @State private var groupDialogPosition: CGPoint = .zero
+    @State private var showGroupDialog = false
 
 
 
@@ -519,7 +524,10 @@ struct MainActivityOld: View {
 
                         groupMessageView(
                             isMainContentVisible: $isMainContentVisible,
-                            isTopHeaderVisible: $isTopHeaderVisible
+                            isTopHeaderVisible: $isTopHeaderVisible,
+                            selectedGroupForDialog: $selectedGroupForDialog,
+                            groupDialogPosition: $groupDialogPosition,
+                            showGroupDialog: $showGroupDialog
                         )
                     }else if(viewValue == Constant.messageLmtView){
 
@@ -600,6 +608,20 @@ struct MainActivityOld: View {
                         isShowing: $showVideoCallLogDialog,
                         onDelete: {
                             deleteVideoCallLogItem(selectedVideoCallLog)
+                        }
+                    )
+                    .zIndex(999) // Ensure it's on top of everything
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
+                
+                // Group Message Long Press Dialog - shown on top of everything
+                if showGroupDialog, let selectedGroup = selectedGroupForDialog {
+                    groupMessageView.GroupLongPressDialog(
+                        group: selectedGroup,
+                        position: groupDialogPosition,
+                        isShowing: $showGroupDialog,
+                        onDelete: {
+                            deleteGroupItem(selectedGroup)
                         }
                     )
                     .zIndex(999) // Ensure it's on top of everything
@@ -711,6 +733,34 @@ struct MainActivityOld: View {
                     print("🔵 [MainActivityOld] Delete video call log FAILED - message: \(message)")
                     // Show error toast only on failure
                     Constant.showToast(message: "Failed to delete video call log")
+                }
+            }
+        }
+    }
+    
+    private func deleteGroupItem(_ group: GroupModel) {
+        print("👥 [MainActivityOld] Deleting group with groupId: \(group.groupId), name: \(group.name)")
+        
+        // Immediately close dialog
+        showGroupDialog = false
+        
+        // Post notification for immediate UI update
+        NotificationCenter.default.post(
+            name: NSNotification.Name("DeleteGroupImmediately"),
+            object: nil,
+            userInfo: ["groupId": group.groupId]
+        )
+        
+        // Call API in background
+        ApiService.delete_groupp(groupId: group.groupId) { success, message in
+            DispatchQueue.main.async {
+                if success {
+                    print("👥 [MainActivityOld] Delete group SUCCESS")
+                    // No toast shown
+                } else {
+                    print("👥 [MainActivityOld] Delete group FAILED - message: \(message)")
+                    // Show error toast only on failure
+                    Constant.showToast(message: "Failed to delete group")
                 }
             }
         }
