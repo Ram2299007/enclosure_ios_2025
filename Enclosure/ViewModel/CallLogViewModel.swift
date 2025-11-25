@@ -38,6 +38,29 @@ final class CallLogViewModel: ObservableObject {
     init(logType: LogType = .voice) {
         self.logType = logType
         self.cacheType = logType == .voice ? .voice : .video
+        
+        // Listen for immediate delete notifications based on log type
+        if logType == .voice {
+            NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("DeleteCallLogImmediately"),
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                if let id = notification.userInfo?["id"] as? String {
+                    self?.removeFromList(id: id)
+                }
+            }
+        } else {
+            NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("DeleteVideoCallLogImmediately"),
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                if let id = notification.userInfo?["id"] as? String {
+                    self?.removeFromList(id: id)
+                }
+            }
+        }
     }
     
     func fetchCallLogs(uid: String, force: Bool = false) {
@@ -139,6 +162,21 @@ final class CallLogViewModel: ObservableObject {
             
             print("📞 [CallLogViewModel] Loaded \(cachedSections.count) cached logs for reason: \(reason) (\(self.logType))")
         }
+    }
+    
+    private func removeFromList(id: String) {
+        // Remove only the specific call log entry with matching id from all sections
+        sections = sections.compactMap { section in
+            let filteredUserInfo = section.userInfo.filter { $0.id != id }
+            guard !filteredUserInfo.isEmpty else { return nil }
+            var updatedSection = section
+            updatedSection.userInfo = filteredUserInfo
+            return updatedSection
+        }
+        
+        // Update cache immediately
+        cacheManager.cacheCallLogs(sections, type: cacheType)
+        print("🟢 [CallLogViewModel] Removed call log entry with id \(id) from list and updated cache.")
     }
 }
 

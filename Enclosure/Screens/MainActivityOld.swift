@@ -24,6 +24,16 @@ struct MainActivityOld: View {
     @State private var selectedChatForDialog: UserActiveContactModel? = nil
     @State private var chatDialogPosition: CGPoint = .zero
     @State private var showChatLongPressDialog = false
+    
+    // Call log long press dialog state (voice)
+    @State private var selectedCallLogForDialog: CallLogUserInfo? = nil
+    @State private var callLogDialogPosition: CGPoint = .zero
+    @State private var showCallLogDialog = false
+    
+    // Video call log long press dialog state
+    @State private var selectedVideoCallLogForDialog: CallLogUserInfo? = nil
+    @State private var videoCallLogDialogPosition: CGPoint = .zero
+    @State private var showVideoCallLogDialog = false
 
 
 
@@ -489,14 +499,20 @@ struct MainActivityOld: View {
 
                         callView(
                             isMainContentVisible: $isMainContentVisible,
-                            isTopHeaderVisible: $isTopHeaderVisible
+                            isTopHeaderVisible: $isTopHeaderVisible,
+                            selectedCallLogForDialog: $selectedCallLogForDialog,
+                            callDialogPosition: $callLogDialogPosition,
+                            showCallLogDialog: $showCallLogDialog
                         )
 
                     }else if(viewValue == Constant.videoCallView){
 
                         videoCallView(
                             isMainContentVisible: $isMainContentVisible,
-                            isTopHeaderVisible: $isTopHeaderVisible
+                            isTopHeaderVisible: $isTopHeaderVisible,
+                            selectedCallLogForDialog: $selectedVideoCallLogForDialog,
+                            callDialogPosition: $videoCallLogDialogPosition,
+                            showCallLogDialog: $showVideoCallLogDialog
                         )
 
                     }else if(viewValue == Constant.groupMsgView){
@@ -559,6 +575,36 @@ struct MainActivityOld: View {
                     .zIndex(999) // Ensure it's on top of everything
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
+                
+                // Call Log Long Press Dialog (Voice) - shown on top of everything
+                if showCallLogDialog, let selectedCallLog = selectedCallLogForDialog {
+                    callView.CallLogLongPressDialog(
+                        callLog: selectedCallLog,
+                        position: callLogDialogPosition,
+                        logType: .voice,
+                        isShowing: $showCallLogDialog,
+                        onDelete: {
+                            deleteCallLogItem(selectedCallLog, callType: "1")
+                        }
+                    )
+                    .zIndex(999) // Ensure it's on top of everything
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
+                
+                // Video Call Log Long Press Dialog - shown on top of everything
+                if showVideoCallLogDialog, let selectedVideoCallLog = selectedVideoCallLogForDialog {
+                    videoCallView.VideoCallLogLongPressDialog(
+                        callLog: selectedVideoCallLog,
+                        position: videoCallLogDialogPosition,
+                        logType: .video,
+                        isShowing: $showVideoCallLogDialog,
+                        onDelete: {
+                            deleteVideoCallLogItem(selectedVideoCallLog)
+                        }
+                    )
+                    .zIndex(999) // Ensure it's on top of everything
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
             }
         }
 
@@ -609,6 +655,62 @@ struct MainActivityOld: View {
                     print("🔴 [MainActivityOld] Delete FAILED - message: \(message)")
                     // Show error toast only on failure
                     Constant.showToast(message: "Failed to delete chat")
+                }
+            }
+        }
+    }
+    
+    private func deleteCallLogItem(_ callLog: CallLogUserInfo, callType: String) {
+        print("🟢 [MainActivityOld] Deleting voice call log with id: \(callLog.id), friendId: \(callLog.friendId)")
+        
+        // Immediately close dialog
+        showCallLogDialog = false
+        
+        // Post notification for immediate UI update - pass the specific entry ID
+        NotificationCenter.default.post(
+            name: NSNotification.Name("DeleteCallLogImmediately"),
+            object: nil,
+            userInfo: ["id": callLog.id]
+        )
+        
+        // Call API in background (API deletes all entries by friendId, but we only remove one from UI)
+        ApiService.delete_voice_call_log(uid: Constant.SenderIdMy, friendId: callLog.friendId, callType: callType) { success, message in
+            DispatchQueue.main.async {
+                if success {
+                    print("🟢 [MainActivityOld] Delete voice call log SUCCESS")
+                    // No toast shown
+                } else {
+                    print("🟢 [MainActivityOld] Delete voice call log FAILED - message: \(message)")
+                    // Show error toast only on failure
+                    Constant.showToast(message: "Failed to delete call log")
+                }
+            }
+        }
+    }
+    
+    private func deleteVideoCallLogItem(_ callLog: CallLogUserInfo) {
+        print("🔵 [MainActivityOld] Deleting video call log with id: \(callLog.id), friendId: \(callLog.friendId)")
+        
+        // Immediately close dialog
+        showVideoCallLogDialog = false
+        
+        // Post notification for immediate UI update - pass the specific entry ID
+        NotificationCenter.default.post(
+            name: NSNotification.Name("DeleteVideoCallLogImmediately"),
+            object: nil,
+            userInfo: ["id": callLog.id]
+        )
+        
+        // Call API in background (API deletes all entries by friendId, but we only remove one from UI)
+        ApiService.delete_video_call_log(uid: Constant.SenderIdMy, friendId: callLog.friendId, callType: "2") { success, message in
+            DispatchQueue.main.async {
+                if success {
+                    print("🔵 [MainActivityOld] Delete video call log SUCCESS")
+                    // No toast shown
+                } else {
+                    print("🔵 [MainActivityOld] Delete video call log FAILED - message: \(message)")
+                    // Show error toast only on failure
+                    Constant.showToast(message: "Failed to delete video call log")
                 }
             }
         }

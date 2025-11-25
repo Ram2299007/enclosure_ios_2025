@@ -4,6 +4,7 @@ struct CallLogListView: View {
     let sections: [CallLogSection]
     let logType: CallLogViewModel.LogType
     var onEntrySelected: ((CallLogUserInfo) -> Void)? = nil
+    var onLongPress: ((CallLogUserInfo, CGPoint) -> Void)? = nil
     
     var body: some View {
         VStack(spacing: 12) {
@@ -11,7 +12,8 @@ struct CallLogListView: View {
                 CallLogSectionView(
                     section: section,
                     logType: logType,
-                    onEntrySelected: onEntrySelected
+                    onEntrySelected: onEntrySelected,
+                    onLongPress: onLongPress
                 )
             }
         }
@@ -23,6 +25,7 @@ struct CallLogSectionView: View {
     let section: CallLogSection
     let logType: CallLogViewModel.LogType
     var onEntrySelected: ((CallLogUserInfo) -> Void)? = nil
+    var onLongPress: ((CallLogUserInfo, CGPoint) -> Void)? = nil
     
     private var formattedTitle: String {
         let dateFormatter = DateFormatter()
@@ -56,7 +59,8 @@ struct CallLogSectionView: View {
                         CallLogUserRowView(
                             entry: entry,
                             logType: logType,
-                            onEntrySelected: onEntrySelected
+                            onEntrySelected: onEntrySelected,
+                            onLongPress: onLongPress
                         )
                             .padding(.bottom, 2)
                     }
@@ -72,9 +76,13 @@ struct CallLogUserRowView: View {
     let entry: CallLogUserInfo
     let logType: CallLogViewModel.LogType
     var onEntrySelected: ((CallLogUserInfo) -> Void)? = nil
+    var onLongPress: ((CallLogUserInfo, CGPoint) -> Void)? = nil
     
     @State private var isExpanded: Bool = false
     @State private var callButtonWidth: CGFloat = 0
+    @State private var isPressed = false
+    @State private var exactTouchLocation: CGPoint = .zero
+    @State private var isLongPressing = false
     
     private var displayName: String {
         if entry.fullName.count > 22 {
@@ -86,13 +94,13 @@ struct CallLogUserRowView: View {
     private var callStatusIconName: String {
         switch entry.callingFlag {
         case "0":
-            return "arrow.up.right"
+            return "outgoingcall"
         case "1":
-            return "arrow.down.left"
+            return "incomingcall"
         case "2":
-            return "phone.down"
+            return "miss_call_svg"
         default:
-            return "phone"
+            return "incomingcall"
         }
     }
     
@@ -135,128 +143,166 @@ struct CallLogUserRowView: View {
     }
     
     var body: some View {
-        HStack(spacing: 0) {
-            // Main content container - matching Android LinearLayout with margins
+        GeometryReader { geometry in
             HStack(spacing: 0) {
-                // Profile image - matching Android themeBorder FrameLayout
-                // Android: 48dp image, 2dp padding = 52dp total
-                CallLogContactCardView(image: entry.photo, themeColor: entry.themeColor)
-                    .padding(.leading, 20) // Reduced outer horizontal margin
-                
-                // Name and time container - matching Android LinearLayout
+                // Main content container - matching Android LinearLayout with margins
                 HStack(spacing: 0) {
-                    // Name and time VStack - matching Android LinearLayout with marginStart="24dp"
-                    VStack(alignment: .leading, spacing: 0) {
-                        // Name TextView - matching Android: 16sp, Inter Bold, lineHeight="18dp"
-                        Text(displayName)
-                            .font(.custom("Inter18pt-SemiBold", size: 16))
-                            .foregroundColor(Color("TextColor"))
-                            .lineLimit(1)
-                            .lineSpacing(0)
-                            .frame(height: 18) // lineHeight="18dp"
-                        
-                        // Time row - matching Android LinearLayout with marginTop="4dp"
-                        HStack(spacing: 8) {
-                            // Calling flag icon - matching Android: 15dp height, weight 4
-                            Image(systemName: callStatusIconName)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(callStatusColor)
-                                .frame(width: 18, height: 15, alignment: .leading) // Fixed width similar to vector size
-                            
-                            // Time TextView - matching Android: 13sp, Inter Medium, weight 1
-                            Text(formattedTime)
-                                .font(.custom("Inter18pt-Medium", size: 13))
-                                .foregroundColor(Color("Gray3"))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .padding(.top, 4) // marginTop="4dp"
-                    }
-                    .padding(.leading, 24) // marginStart="24dp" from image to name
-                    .frame(maxWidth: .infinity) // layout_weight="1"
+                    // Profile image - matching Android themeBorder FrameLayout
+                    // Android: 48dp image, 2dp padding = 52dp total
+                    CallLogContactCardView(image: entry.photo, themeColor: entry.themeColor)
+                        .padding(.leading, 20) // Reduced outer horizontal margin
                     
-                    // Call icon container - matching Android call1 LinearLayout
-                    // Android: layout_weight="5", gravity="center|end"
-                    HStack {
-                        Spacer()
-                        HStack(spacing: isExpanded ? 0 : 6) {
-                            // Call icon - matching Android callIcon
-                            Button(action: {
-                                expandCallButton()
-                            }) {
-                                Group {
-                                    if logType == .video {
-                                        ZStack {
-                                            Image("videosvgnew2")
+                    // Name and time container - matching Android LinearLayout
+                    HStack(spacing: 0) {
+                        // Name and time VStack - matching Android LinearLayout with marginStart="24dp"
+                        VStack(alignment: .leading, spacing: 0) {
+                            // Name TextView - matching Android: 16sp, Inter Bold, lineHeight="18dp"
+                            Text(displayName)
+                                .font(.custom("Inter18pt-SemiBold", size: 16))
+                                .foregroundColor(Color("TextColor"))
+                                .lineLimit(1)
+                                .lineSpacing(0)
+                                .frame(height: 18) // lineHeight="18dp"
+                            
+                            // Time row - matching Android LinearLayout with marginTop="4dp"
+                            HStack(spacing: 8) {
+                                // Calling flag icon - matching Android: 15dp height, weight 4
+                                Image(callStatusIconName)
+                                    .resizable()
+                                    .renderingMode(.template)
+                                    .foregroundColor(callStatusColor)
+                                    .frame(width: 17, height: 15, alignment: .leading)
+                                
+                                // Time TextView - matching Android: 13sp, Inter Medium, weight 1
+                                Text(formattedTime)
+                                    .font(.custom("Inter18pt-Medium", size: 13))
+                                    .foregroundColor(Color("Gray3"))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .padding(.top, 4) // marginTop="4dp"
+                        }
+                        .padding(.leading, 24) // marginStart="24dp" from image to name
+                        .frame(maxWidth: .infinity) // layout_weight="1"
+                        
+                        // Call icon container - matching Android call1 LinearLayout
+                        // Android: layout_weight="5", gravity="center|end"
+                        HStack {
+                            Spacer()
+                            HStack(spacing: isExpanded ? 0 : 6) {
+                                // Call icon - matching Android callIcon
+                                Button(action: {
+                                    expandCallButton()
+                                }) {
+                                    Group {
+                                        if logType == .video {
+                                            ZStack {
+                                                Image("videosvgnew2")
+                                                    .resizable()
+                                                    .renderingMode(.template)
+                                                    .foregroundColor(Color("blue"))
+                                                    .scaledToFit()
+                                                    .frame(width: 26, height: 16)
+                                                
+                                                Image("polysvg")
+                                                    .resizable()
+                                                    .renderingMode(.template)
+                                                    .foregroundColor(.white)
+                                                    .scaledToFit()
+                                                    .frame(width: 5, height: 5)
+                                            }
+                                        } else {
+                                            Image("cllingnewpng")
                                                 .resizable()
-                                                .renderingMode(.template)
-                                                .foregroundColor(Color("blue"))
                                                 .scaledToFit()
-                                                .frame(width: 26, height: 16)
-                                            
-                                            Image("polysvg")
-                                                .resizable()
-                                                .renderingMode(.template)
-                                                .foregroundColor(.white)
-                                                .scaledToFit()
-                                                .frame(width: 5, height: 5)
+                                                .frame(width: 22, height: 22)
+                                                .foregroundColor(Color(hex: entry.themeColor.isEmpty ? "#00A3E9" : entry.themeColor))
                                         }
-                                    } else {
-                                        Image("cllingnewpng")
-                                            .resizable()
-                                            .scaledToFit()
-                                            .frame(width: 22, height: 22)
-                                            .foregroundColor(Color(hex: entry.themeColor.isEmpty ? "#00A3E9" : entry.themeColor))
+                                    }
+                                }
+                                
+                                // Expandable call button - matching CallingContactRowView design
+                                if isExpanded {
+                                    Button(action: {
+                                        print("📞 Call log action -> \(entry.fullName)")
+                                        // TODO: Hook actual call flow
+                                    }) {
+                                        ZStack {
+                                            // Matching Android curve_left_bg: rounded left corners 100dp, right corners 0dp
+                                            UnevenRoundedRectangle(
+                                                cornerRadii: .init(
+                                                    topLeading: 100,
+                                                    bottomLeading: 100,
+                                                    bottomTrailing: 0,
+                                                    topTrailing: 0
+                                                )
+                                            )
+                                            .fill(Color(hex: entry.themeColor.isEmpty ? "#00A3E9" : entry.themeColor))
+                                            
+                                            Text("Call")
+                                                .font(.custom("Inter18pt-Bold", size: 16))
+                                                .foregroundColor(.white)
+                                        }
+                                        .frame(width: callButtonWidth, height: 40, alignment: .center)
                                     }
                                 }
                             }
-                            
-                            // Expandable call button - matching CallingContactRowView design
-                            if isExpanded {
-                                Button(action: {
-                                    print("📞 Call log action -> \(entry.fullName)")
-                                    // TODO: Hook actual call flow
-                                }) {
-                                    ZStack {
-                                        // Matching Android curve_left_bg: rounded left corners 100dp, right corners 0dp
-                                        UnevenRoundedRectangle(
-                                            cornerRadii: .init(
-                                                topLeading: 100,
-                                                bottomLeading: 100,
-                                                bottomTrailing: 0,
-                                                topTrailing: 0
-                                            )
-                                        )
-                                        .fill(Color(hex: entry.themeColor.isEmpty ? "#00A3E9" : entry.themeColor))
-                                        
-                                        Text("Call")
-                                            .font(.custom("Inter18pt-Bold", size: 16))
-                                            .foregroundColor(.white)
-                                    }
-                                    .frame(width: callButtonWidth, height: 40, alignment: .center)
-                                }
+                            .padding(.trailing, isExpanded ? 0 : 22) // remove spacing when expanded so button touches edge
+                        }
+                        .frame(maxWidth: .infinity) // layout_weight="5"
+                    }
+                    .frame(maxWidth: .infinity) // layout_weight="1" for outer container
+                    .padding(.trailing, 0) // Reduced outer horizontal margin
+                }
+                .padding(.top, 5) // marginTop="5dp"
+                .padding(.bottom, 5) // marginBottom="5dp"
+                .frame(maxWidth: .infinity) // layout_weight="1"
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isPressed ? Color.gray.opacity(0.1) : Color("background_color"))
+            .scaleEffect(isPressed ? 0.98 : 1.0)
+            .animation(.easeInOut(duration: 0.15), value: isPressed)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        isPressed = true
+                        // Capture exact touch location
+                        exactTouchLocation = value.location
+                    }
+                    .onEnded { _ in
+                        isPressed = false
+                        // Single tap - only execute if not a long press
+                        if !isLongPressing {
+                            if let onEntrySelected {
+                                onEntrySelected(entry)
+                            } else if !isExpanded {
+                                expandCallButton()
                             }
                         }
-                        .padding(.trailing, isExpanded ? 0 : 22) // remove spacing when expanded so button touches edge
+                        // Reset long press flag after a short delay
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            isLongPressing = false
+                        }
                     }
-                    .frame(maxWidth: .infinity) // layout_weight="5"
-                }
-                .frame(maxWidth: .infinity) // layout_weight="1" for outer container
-                .padding(.trailing, 0) // Reduced outer horizontal margin
-            }
-            .padding(.top, 5) // marginTop="5dp"
-            .padding(.bottom, 5) // marginBottom="5dp"
-            .frame(maxWidth: .infinity) // layout_weight="1"
+            )
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.5)
+                    .onEnded { _ in
+                        // Mark that long press occurred to prevent tap action
+                        isLongPressing = true
+                        
+                        // Convert exact touch location to global screen coordinates
+                        let globalFrame = geometry.frame(in: .global)
+                        let globalX = globalFrame.minX + exactTouchLocation.x
+                        let globalY = globalFrame.minY + exactTouchLocation.y
+                        print("🟢 Long press on call log at exact location - Local: \(exactTouchLocation), Global: (\(globalX), \(globalY))")
+                        if let onLongPress {
+                            onLongPress(entry, CGPoint(x: globalX, y: globalY))
+                        }
+                    }
+            )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color("background_color"))
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if let onEntrySelected {
-                onEntrySelected(entry)
-            } else if !isExpanded {
-                expandCallButton()
-            }
-        }
+        .frame(height: 62) // Fixed height for consistent layout (5+52+5)
     }
     
     private func expandCallButton() {

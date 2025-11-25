@@ -105,6 +105,7 @@ struct chatView: View {
         @State private var isPressed = false
         @State private var exactTouchLocation: CGPoint = .zero
         @GestureState private var isDetectingLongPress = false
+        @State private var isLongPressing = false
         
         var body: some View {
             GeometryReader { geometry in
@@ -166,12 +167,23 @@ struct chatView: View {
                         }
                         .onEnded { _ in
                             isPressed = false
-                            print("Tapped: \(chat.fullName)") // Handle single tap
+                            // Single tap - only execute if not a long press
+                            if !isLongPressing {
+                                print("Tapped: \(chat.fullName)") // Handle single tap
+                                // TODO: Add navigation or action here if needed
+                            }
+                            // Reset long press flag after a short delay
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                isLongPressing = false
+                            }
                         }
                 )
                 .simultaneousGesture(
                     LongPressGesture(minimumDuration: 0.5)
                         .onEnded { _ in
+                            // Mark that long press occurred to prevent tap action
+                            isLongPressing = true
+                            
                             // Convert exact touch location to global screen coordinates
                             let globalFrame = geometry.frame(in: .global)
                             let globalX = globalFrame.minX + exactTouchLocation.x

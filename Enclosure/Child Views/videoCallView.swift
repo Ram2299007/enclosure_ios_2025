@@ -18,6 +18,11 @@ struct videoCallView: View {
     @Binding var isTopHeaderVisible: Bool
     @State private var isPressed = false
     
+    // Long press dialog state - use @Binding to connect to parent
+    @Binding var selectedCallLogForDialog: CallLogUserInfo?
+    @Binding var callDialogPosition: CGPoint
+    @Binding var showCallLogDialog: Bool
+    
     // Tab state
     @State private var selectedTab: VideoCallTab = .log
     @State private var isSearchVisible = false
@@ -254,7 +259,12 @@ struct videoCallView: View {
                                     CallLogListView(
                                         sections: callLogViewModel.sections,
                                         logType: .video,
-                                        onEntrySelected: handleCallHistorySelection
+                                        onEntrySelected: handleCallHistorySelection,
+                                        onLongPress: { callLog, position in
+                                            selectedCallLogForDialog = callLog
+                                            callDialogPosition = position
+                                            showCallLogDialog = true
+                                        }
                                     )
                                 }
                                 .transition(.opacity)
@@ -338,7 +348,8 @@ struct videoCallView: View {
         .padding(.top, 15)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .gesture(
-            DragGesture()
+            // Only apply drag gesture when not stretched up to avoid interfering with scrolling
+            !isStretchedUp ? DragGesture()
                 .onChanged { value in
                     dragOffset = value.translation
                 }
@@ -356,7 +367,7 @@ struct videoCallView: View {
                         handleSwipeDown()
                     }
                     dragOffset = .zero
-                }
+                } : nil
         )
         .overlay(
             // Back button overlay when stretched up
@@ -684,5 +695,194 @@ extension videoCallView {
             .cornerRadius(20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// VideoCallLogLongPressDialog - Matching Android childcalllog_row_dialogue.xml
+extension videoCallView {
+    struct VideoCallLogLongPressDialog: View {
+        let callLog: CallLogUserInfo
+        let position: CGPoint
+        let logType: CallLogViewModel.LogType
+        @Binding var isShowing: Bool
+        let onDelete: () -> Void
+        
+        // Calculate adjusted offset X - full width (match_parent)
+        private func adjustedOffsetX(in geometry: GeometryProxy) -> CGFloat {
+            return 0 // Full width, no horizontal offset
+        }
+        
+        // Calculate adjusted offset Y
+        private func adjustedOffsetY(in geometry: GeometryProxy) -> CGFloat {
+            let callLogCardHeight: CGFloat = 82 // Call log card with padding
+            let deleteButtonHeight: CGFloat = 83 // Button (48) + margins (10+25)
+            let dialogHeight = callLogCardHeight + deleteButtonHeight // ~165
+            let padding: CGFloat = 20
+            let frame = geometry.frame(in: .global)
+            let localY = position.y - frame.minY
+            let centeredY = localY - (callLogCardHeight / 2) // Center card at touch point
+            let maxY = geometry.size.height - dialogHeight - padding
+            return min(max(centeredY, padding), maxY)
+        }
+        
+        private var callStatusIconName: String {
+            switch callLog.callingFlag {
+            case "0":
+                return "outgoingcall"
+            case "1":
+                return "incomingcall"
+            case "2":
+                return "miss_call_svg"
+            default:
+                return "incomingcall"
+            }
+        }
+        
+        private var callStatusColor: Color {
+            switch callLog.callingFlag {
+            case "0", "1":
+                return Color(hex: "#0FA430")
+            case "2":
+                return Color(hex: "#EC0000")
+            default:
+                return Color("TextColor")
+            }
+        }
+        
+        private var formattedTime: String {
+            let rawTime = callLog.endTime.isEmpty ? callLog.startTime : callLog.endTime
+            guard !rawTime.isEmpty else { return "--" }
+            return CallHistoryFormatter.formattedTime(from: rawTime)
+        }
+        
+        var body: some View {
+            GeometryReader { geometry in
+                ZStack(alignment: .topLeading) {
+                    // Blurred background overlay
+                    Color.black.opacity(0.3)
+                        .background(.ultraThinMaterial)
+                        .ignoresSafeArea()
+                        .zIndex(0)
+                        .onTapGesture {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                isShowing = false
+                            }
+                        }
+                    
+                    // Dialog content
+                    VStack(spacing: 0) {
+                        // Call log card view (matching childcalllog_row_dialogue.xml)
+                        VStack(spacing: 0) {
+                            // LinearLayout with marginStart="26dp" marginTop="10dp" marginEnd="24dp" marginBottom="15dp"
+                            HStack(spacing: 0) {
+                                // FrameLayout id="themeBorder" - profile image with border
+                                // marginStart="1dp" marginEnd="16dp" padding="2dp"
+                                CallLogContactCardView(image: callLog.photo, themeColor: callLog.themeColor)
+                                    .padding(.leading, 1) // marginStart="1dp"
+                                    .padding(.trailing, 16) // marginEnd="16dp"
+                                
+                                // Vertical LinearLayout for name/time
+                                VStack(alignment: .leading, spacing: 0) {
+                                    // TextView id="name" - Name
+                                    // fontFamily="@font/inter_bold" textSize="16sp" lineHeight="18dp"
+                                    Text(callLog.fullName.count > 22 ? String(callLog.fullName.prefix(22)) + "..." : callLog.fullName)
+                                        .font(.custom("Inter18pt-SemiBold", size: 16))
+                                        .foregroundColor(Color("TextColor"))
+                                        .lineLimit(1)
+                                        .frame(height: 18) // lineHeight="18dp"
+                                    
+                                    // Horizontal LinearLayout with marginTop="4dp"
+                                    HStack(spacing: 8) {
+                                        // ImageView id="calling_flag" - Call status icon
+                                        // layout_weight="4" height="15dp"
+                                        Image(callStatusIconName)
+                                            .resizable()
+                                            .renderingMode(.template)
+                                            .foregroundColor(callStatusColor)
+                                            .frame(width: 17, height: 15, alignment: .leading)
+                                        
+                                        // TextView id="endTime" - Time
+                                        // layout_weight="1" textSize="13sp" fontFamily="@font/inter_medium"
+                                        Text(formattedTime)
+                                            .font(.custom("Inter18pt-Medium", size: 13))
+                                            .foregroundColor(Color("TextColor"))
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    .padding(.top, 4) // layout_marginTop="4dp"
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                
+                                // Video call icon (matching Android pollyy LinearLayout)
+                                Spacer()
+                                
+                                ZStack {
+                                    Image("videosvgnew2")
+                                        .resizable()
+                                        .renderingMode(.template)
+                                        .foregroundColor(Color("blue"))
+                                        .scaledToFit()
+                                        .frame(width: 26, height: 16)
+                                    Image("polysvg")
+                                        .resizable()
+                                        .renderingMode(.template)
+                                        .foregroundColor(.white)
+                                        .scaledToFit()
+                                        .frame(width: 5, height: 5)
+                                }
+                                .padding(.trailing, 22)
+                            }
+                            .padding(.leading, 26) // marginStart="26dp"
+                            .padding(.top, 10) // marginTop="10dp"
+                            .padding(.trailing, 24) // marginEnd="24dp"
+                            .padding(.bottom, 15) // marginBottom="15dp"
+                        }
+                        .background(Color("BackgroundColor"))
+                        .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
+                        
+                        // Delete button (deletecardview)
+                        // layout_marginHorizontal="20dp" layout_marginTop="10dp" layout_marginBottom="25dp"
+                        Button(action: {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                onDelete()
+                            }
+                        }) {
+                            HStack(spacing: 0) {
+                                Spacer()
+                                
+                                // ImageView - delete icon
+                                // width="26.5dp" height="24dp" layout_marginEnd="2dp"
+                                Image("baseline_delete_forever_24")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 26.5, height: 24)
+                                    .foregroundColor(Color("Gray3"))
+                                    .padding(.trailing, 2)
+                                
+                                // TextView - "Delete" text
+                                // textSize="16sp" fontFamily="@font/inter" textStyle="bold"
+                                Text("Delete")
+                                    .font(.custom("Inter18pt-Bold", size: 16))
+                                    .foregroundColor(Color("TextColor"))
+                                
+                                Spacer()
+                            }
+                            .frame(height: 48) // layout_height="48dp"
+                            .frame(maxWidth: .infinity)
+                            .background(Color("dxForward"))
+                            .cornerRadius(20) // cardCornerRadius="20dp"
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .padding(.horizontal, 20) // layout_marginHorizontal="20dp"
+                        .padding(.top, 10) // layout_marginTop="10dp"
+                        .padding(.bottom, 25) // layout_marginBottom="25dp"
+                    }
+                    .frame(maxWidth: .infinity)
+                    .background(Color.clear)
+                    .offset(x: adjustedOffsetX(in: geometry), y: adjustedOffsetY(in: geometry))
+                    .zIndex(1)
+                }
+            }
+        }
     }
 }
