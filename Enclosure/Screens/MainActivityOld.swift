@@ -45,6 +45,9 @@ struct MainActivityOld: View {
     
     // Clear video call log dialog state
     @State private var showClearVideoCallLogDialog = false
+    
+    // Menu dialog state
+    @State private var showMenu = false
 
 
 
@@ -114,7 +117,14 @@ struct MainActivityOld: View {
                             }
 
                             Button(action: {
-                                // Menu action
+                                // Add haptic feedback for better UX
+                                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                                impactFeedback.impactOccurred()
+                                
+                                // Smooth animation when opening menu
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    showMenu = true
+                                }
                             }) {
                                 VStack(spacing: 3) {
                                     Circle()
@@ -127,10 +137,11 @@ struct MainActivityOld: View {
                                         .fill(Color("edittextremoveline"))
                                         .frame(width: 4, height: 4)
                                 }
-                                .frame(width: 30, height: 30)
+                                .frame(width: 40, height: 40) // Make visual content fill the touch area
                             }
-                            .frame(width: 40, height: 40)
-                            .padding(.trailing,10)
+                            .frame(width: 44, height: 44) // Standard iOS touch target size
+                            .contentShape(Rectangle()) // Ensure entire area is tappable
+                            .padding(.trailing,8)
                             .buttonStyle(CircularRippleStyle())
                         }
                     }
@@ -659,6 +670,13 @@ struct MainActivityOld: View {
                     .zIndex(999) // Ensure it's on top of everything
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
+                
+                // Menu Dialog - shown at top-right position
+                if showMenu {
+                    UpperLayoutDialog(isPresented: $showMenu)
+                        .zIndex(999) // Ensure it's on top of everything
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
             }
         }
 
@@ -834,15 +852,15 @@ struct MainActivityOld: View {
                     ZStack {
                         if configuration.isPressed {
                             Circle()
-                                .fill(Color("circlebtnhover").opacity(0.3)) // Adjust ripple color and opacity
-                                .frame(width: 40, height: 40) // Adjust ripple size
+                                .fill(Color("circlebtnhover").opacity(0.3))
+                                .frame(width: 44, height: 44)
+                                .scaleEffect(configuration.isPressed ? 1.0 : 0.8)
+                                .opacity(configuration.isPressed ? 1.0 : 0.0)
                         }
-
-
                     }
                 )
-                .scaleEffect(configuration.isPressed ? 1.1 : 1.0) // Add a slight scale effect
-                .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+                .scaleEffect(configuration.isPressed ? 1.05 : 1.0) // Reduced scale for smoother feel
+                .animation(.easeInOut(duration: 0.15), value: configuration.isPressed) // Slightly longer for smoothness
         }
     }
 }
@@ -984,6 +1002,269 @@ struct ClearVideoCallLogDialog: View {
         }
         .transition(.opacity.combined(with: .scale(scale: 0.95)))
         .animation(.easeInOut(duration: 0.2), value: isShowing)
+    }
+}
+
+// MARK: - UpperLayoutDialog
+// Menu popup positioned at top-right, exactly matching Android upper_layout.xml
+struct UpperLayoutDialog: View {
+    @Binding var isPresented: Bool
+    @Environment(\.colorScheme) var colorScheme
+    @State private var sliderValue: Double = 0.0
+    @State private var pressedItem: String? = nil
+    
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            // Transparent background to dismiss on tap outside
+            Rectangle()
+                .fill(Color.clear)
+                .contentShape(Rectangle())
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isPresented = false
+                    }
+                }
+            
+            // Android RelativeLayout equivalent - positioned at top-right
+            // Android: RelativeLayout padding="10dp", layout_alignParentEnd="true", layout_alignParentTop="true"
+            VStack {
+                HStack {
+                    // Custom slider with sleep.png as thumb
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            // Custom thumb with sleep.png (no track/progress bar)
+                            Image("sleep")
+                                .resizable()
+                                .frame(width: 100, height: 45)
+                                .offset(x: (geometry.size.width - 100) * CGFloat(sliderValue))
+                                .gesture(
+                                    DragGesture()
+                                        .onChanged { value in
+                                            let newValue = min(max(0, value.location.x / geometry.size.width), 1)
+                                            sliderValue = newValue
+                                        }
+                                        .onEnded { _ in
+                                            withAnimation(.easeInOut(duration: 0.3)) {
+                                                sliderValue = 0.0
+                                            }
+                                        }
+                                )
+                        }
+                    }
+                    .frame(height: 24)
+                  
+                }
+                .padding(.horizontal, 16)
+                .padding(.top,17)
+                
+                // Sleep Lock section - equivalent to Android upper_layout.xml LinearLayout
+                HStack {
+                    Spacer()
+                    
+                    // Lock Screen Rectangle - equivalent to lockScreenRect LinearLayout
+                    HStack {
+                        Spacer()
+                        Text("Sleep Lock")
+                            .font(.custom("Inter18pt-SemiBold", size: 16))
+                            .foregroundColor(pressedItem == "sleepLock" ? .white : Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                        
+                        Image("unlock")
+                            .resizable()
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(pressedItem == "sleepLock" ? .white : Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                            .padding(.leading, 12)
+                            .padding(.trailing, 24)
+                    }
+                    .frame(width: 180, height: 40)
+                    .background(
+                        pressedItem == "sleepLock" ? 
+                        Image("bg_rect")
+                            .resizable()
+                            .scaledToFill() : nil
+                    )
+                    .cornerRadius(8)
+                    .onTapGesture {
+                        // Handle Sleep Lock tap
+                        print("Sleep Lock tapped")
+                    }
+                    .scaleEffect(pressedItem == "sleepLock" ? 0.95 : 1.0)
+                    .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, pressing: { pressing in
+                        withAnimation(.easeInOut(duration: 0.1)) {
+                            pressedItem = pressing ? "sleepLock" : nil
+                        }
+                    }, perform: {})
+                }
+                .padding(.top, 15)
+                
+                // Themes section
+                HStack {
+                    Spacer()
+                    
+                    HStack {
+                        Spacer()
+                        Text("Themes")
+                            .font(.custom("Inter18pt-SemiBold", size: 16))
+                            .foregroundColor(pressedItem == "themes" ? .white : Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                        
+                        Image("theme")
+                            .resizable()
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(pressedItem == "themes" ? .white : Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                            .padding(.leading, 12)
+                            .padding(.trailing, 24)
+                    }
+                    .frame(width: 180, height: 40)
+                    .background(
+                        pressedItem == "themes" ? 
+                        Image("bg_rect")
+                            .resizable()
+                            .scaledToFill() : nil
+                    )
+                    .cornerRadius(8)
+                    .onTapGesture {
+                        // Handle Themes tap
+                        print("Themes tapped")
+                    }
+                    .scaleEffect(pressedItem == "themes" ? 0.95 : 1.0)
+                    .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, pressing: { pressing in
+                        withAnimation(.easeInOut(duration: 0.1)) {
+                            pressedItem = pressing ? "themes" : nil
+                        }
+                    }, perform: {})
+                }
+                .padding(.top, 15)
+                
+                // Pay section
+                HStack {
+                    Spacer()
+                    
+                    HStack {
+                        Spacer()
+                        Text("Pay")
+                            .font(.custom("Inter18pt-SemiBold", size: 16))
+                            .foregroundColor(pressedItem == "pay" ? .white : Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                        
+                        Image("ex_pay")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 18.5)
+                            .foregroundColor(pressedItem == "pay" ? .white : Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                            .padding(.leading, 12)
+                            .padding(.trailing, 25)
+                    }
+                    .frame(width: 180, height: 40)
+                    .background(
+                        pressedItem == "pay" ? 
+                        Image("bg_rect")
+                            .resizable()
+                            .scaledToFill() : nil
+                    )
+                    .cornerRadius(8)
+                    .onTapGesture {
+                        // Handle Pay tap
+                        print("Pay tapped")
+                    }
+                    .scaleEffect(pressedItem == "pay" ? 0.95 : 1.0)
+                    .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, pressing: { pressing in
+                        withAnimation(.easeInOut(duration: 0.1)) {
+                            pressedItem = pressing ? "pay" : nil
+                        }
+                    }, perform: {})
+                }
+                .padding(.top, 15)
+                
+                // Settings section
+                HStack {
+                    Spacer()
+                    
+                    HStack {
+                        Spacer()
+                        Text("Settings")
+                            .font(.custom("Inter18pt-SemiBold", size: 16))
+                            .foregroundColor(pressedItem == "settings" ? .white : Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                        
+                        Image("setting")
+                            .resizable()
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(pressedItem == "settings" ? .white : Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                            .padding(.leading, 12)
+                            .padding(.trailing, 24)
+                    }
+                    .frame(width: 180, height: 40)
+                    .background(
+                        pressedItem == "settings" ? 
+                        Image("bg_rect")
+                            .resizable()
+                            .scaledToFill() : nil
+                    )
+                    .cornerRadius(8)
+                    .onTapGesture {
+                        // Handle Settings tap
+                        print("Settings tapped")
+                    }
+                    .scaleEffect(pressedItem == "settings" ? 0.95 : 1.0)
+                    .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, pressing: { pressing in
+                        withAnimation(.easeInOut(duration: 0.1)) {
+                            pressedItem = pressing ? "settings" : nil
+                        }
+                    }, perform: {})
+                }
+                .padding(.top, 15)
+            }
+            .frame(width: 241, height: 304, alignment: .topLeading)
+            .background(Color("sleepBox"))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(
+                        colorScheme == .light ? Color.white : Color("sleepBox").opacity(0),
+                        lineWidth: 1
+                    )
+            )
+            .cornerRadius(8)
+            .padding(.top, 16)
+            .padding(.trailing, 10)
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        .animation(.easeInOut(duration: 0.2), value: isPresented)
+    }
+}
+
+
+
+
+// MARK: - UpperMenuDrawable
+// Exact equivalent of Android @drawable/upper_menu
+struct UpperMenuDrawable: View {
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        ZStack {
+
+            RoundedRectangle(cornerRadius: 8) // Android corners radius="8dp"
+                .fill(
+                    colorScheme == .light 
+                        ? Color.black.opacity(0.2) 
+                        : Color.black.opacity(0.3)
+                )
+                .offset(x: 0, y: 2) // Android elevation shadow offset
+                .blur(radius: 4) // Android elevation blur
+                .allowsHitTesting(false)
+            
+            // Main drawable background
+            RoundedRectangle(cornerRadius: 8) // Android corners radius="8dp"
+                .fill(Color("sleepBox")) // Android solid color="@color/menuRect"
+                .overlay(
+                    // Android stroke (if needed)
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(
+                            colorScheme == .light 
+                                ? Color.black.opacity(0.1) 
+                                : Color.white.opacity(0.1), 
+                            lineWidth: 0.5
+                        )
+                )
+        }
     }
 }
 
