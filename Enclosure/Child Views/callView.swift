@@ -260,7 +260,7 @@ struct callView: View {
                                       callLogViewModel.sections.isEmpty {
                                 logEmptyStateView(text: errorMessage)
                             } else if callLogViewModel.sections.isEmpty {
-                                logEmptyStateView(text: "No call history yet")
+                                callHistoryEmptyStateView()
                             } else {
                                 ScrollView {
                                     CallLogListView(
@@ -520,6 +520,51 @@ extension callView {
             .cornerRadius(20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    @ViewBuilder
+    private func callHistoryEmptyStateView() -> some View {
+        VStack {
+            // CardView equivalent with wrap_content size and center positioning
+            VStack(spacing: 0) {
+                // "Call On Enclosure" text (initially hidden like Android visibility="gone")
+                // This can be shown conditionally if needed
+                
+                // LinearLayout with marginTop="2dp" and horizontal orientation
+                HStack(spacing: 0) {
+                    Text("Press  ")
+                        .font(.custom("Inter18pt-Medium", size: 14))
+                        .foregroundColor(Color("TextColor"))
+                    
+                    Text("A - Z  ")
+                        .font(.custom("Inter18pt-Medium", size: 14))
+                        .foregroundColor(Color("TextColor"))
+                    
+                    Text("for contact")
+                        .font(.custom("Inter18pt-Medium", size: 14))
+                        .foregroundColor(Color("TextColor"))
+                }
+                .padding(.top, 2) // layout_marginTop="2dp"
+            }
+            .padding(12) // android:padding="12dp"
+            .background(
+                // Use a more contrasting background that works in both light and dark modes
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color("cardBackgroundColornew"))
+                    .shadow(
+                        color: Color.black.opacity(0.1), // Light shadow for elevation
+                        radius: 8, // Android elevation equivalent
+                        x: 0,
+                        y: 4
+                    )
+            )
+            .overlay(
+                // Add a subtle border for better visibility in light mode
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(Color.gray.opacity(0.2), lineWidth: 0.5)
+            )
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity) // layout_centerInParent="true" equivalent
     }
 
     private func handleBackArrowTap() {

@@ -324,38 +324,54 @@ struct groupMessageView: View {
     }
     
     private var emptyStateView: some View {
-        VStack(spacing: 0) {
-            Text("Call On Enclosure")
-                .font(.custom("Inter18pt-Medium", size: 14))
-                .foregroundColor(Color(red: 100/255, green: 100/255, blue: 100/255))
-                .multilineTextAlignment(.center)
-                .padding(.bottom, 2)
-                .hidden()
-            
-            HStack(spacing: 4) {
-                Text("Press")
+        VStack {
+            // CardView equivalent with wrap_content size and center positioning
+            VStack(spacing: 0) {
+                // "Call On Enclosure" text (initially hidden like Android visibility="gone")
+                // This can be shown conditionally if needed
+                Text("Call On Enclosure")
                     .font(.custom("Inter18pt-Medium", size: 14))
-                    .foregroundColor(Color("black_white_cross"))
+                    .foregroundColor(Color(red: 100/255, green: 100/255, blue: 100/255))
+                    .multilineTextAlignment(.center)
+                    .hidden() // visibility="gone" equivalent
                 
-                Image("floating")
-                    .resizable()
-                    .renderingMode(.template)
-                    .foregroundColor(Color("black_white_cross"))
-                    .frame(width: 20, height: 20)
-                
-                Text("to create")
-                    .font(.custom("Inter18pt-Medium", size: 14))
-                    .foregroundColor(Color("black_white_cross"))
+                // LinearLayout with marginTop="2dp" and horizontal orientation
+                HStack(spacing: 0) {
+                    Text("Press  ")
+                        .font(.custom("Inter18pt-Medium", size: 14))
+                        .foregroundColor(Color("black_white_cross"))
+                    
+                    Image("floating")
+                        .resizable()
+                        .renderingMode(.template)
+                        .foregroundColor(Color("black_white_cross"))
+                        .frame(width: 20, height: 20)
+                    
+                    Text(" to create")
+                        .font(.custom("Inter18pt-Medium", size: 14))
+                        .foregroundColor(Color("black_white_cross"))
+                }
+                .padding(.top, 2) // layout_marginTop="2dp"
             }
-            .padding(.top, 2)
+            .padding(12) // android:padding="12dp"
+            .background(
+                // Use a more contrasting background that works in both light and dark modes with elevation
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color("cardBackgroundColornew"))
+                    .shadow(
+                        color: Color.black.opacity(0.1), // Light shadow for elevation
+                        radius: 8, // Android elevation equivalent
+                        x: 0,
+                        y: 4
+                    )
+            )
+            .overlay(
+                // Add a subtle border for better visibility in light mode
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(Color.gray.opacity(0.2), lineWidth: 0.5)
+            )
         }
-        .padding(16)
-        .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color("cardBackgroundColornew"))
-        )
-        .padding(.horizontal, 40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity) // layout_centerInParent="true" equivalent
     }
     
     private func centeredContent<Content: View>(_ content: Content) -> some View {
