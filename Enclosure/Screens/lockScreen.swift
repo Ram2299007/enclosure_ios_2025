@@ -7,6 +7,7 @@ struct LockScreenView: View {
     @State private var isTapped = false
     @State private var isDropdownVisible = false
     @State private var selectedValue = "0°" // Default value
+    @State private var isPressed = false
     @Environment(\.dismiss) var dismiss
     let dropdownOptions = ["0°", "90°", "180°", "360°"]
 
@@ -15,6 +16,43 @@ struct LockScreenView: View {
             ZStack {
                 Color("BackgroundColor")
                     .ignoresSafeArea()
+
+                // Back button - positioned outside VStack
+                HStack(alignment: .top) {
+                    Button(action: handleBackTap) {
+                        ZStack {
+                            if isPressed {
+                                Circle()
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(width: 40, height: 40)
+                                    .scaleEffect(isPressed ? 1.2 : 1.0)
+                                    .animation(.easeOut(duration: 0.3), value: isPressed)
+                            }
+
+                            Image("leftvector")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 25, height: 18)
+                                .foregroundColor(Color("icontintGlobal"))
+                        }
+                    }
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 0)
+                            .onEnded { _ in
+                                withAnimation {
+                                    isPressed = false
+                                }
+                            }
+                    )
+                    .buttonStyle(.plain)
+
+                    Spacer()
+                }
+                .padding(.top, 20)
+                .padding(.horizontal, 20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .zIndex(1)
 
                 VStack {
                     VStack(spacing: 40) {
@@ -167,6 +205,16 @@ struct LockScreenView: View {
             }
         }
         .navigationBarHidden(true)
+    }
+    
+    private func handleBackTap() {
+        withAnimation {
+            isPressed = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            dismiss()
+            isPressed = false
+        }
     }
 
     // ... (prepareHaptics, simpleSuccess, CircularSeekBars, and toRadians() functions remain the same)

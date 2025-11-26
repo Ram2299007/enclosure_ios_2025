@@ -32,8 +32,7 @@ struct EditmyProfile: View {
         NavigationStack {
             ZStack{
                 ScrollView {
-
-                    VStack {
+                    VStack(spacing: 0) {
                         HStack {
                             Button(action: handleBackTap) {
                                 ZStack {
@@ -71,8 +70,9 @@ struct EditmyProfile: View {
                                 .padding(.leading, 6)
                             Spacer()
                         }
-                        .padding(.top, 20)
+                        .padding(.top, 0)
                         .padding(.horizontal, 20)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
 
 
                         HStack{

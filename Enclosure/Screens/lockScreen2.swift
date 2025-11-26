@@ -8,6 +8,8 @@ struct LockScreen2View: View {
     @State private var isRippleActive = false
     @State private var showDialog = false
     @State private var shouldSkipLockScreen: Bool
+    @State private var isPressed = false
+    @Environment(\.dismiss) var dismiss
     
     init() {
         let sleepKeyCheckOFF = UserDefaults.standard.string(forKey: Constant.sleepKeyCheckOFF) ?? ""
@@ -32,6 +34,41 @@ struct LockScreen2View: View {
                             .ignoresSafeArea()
             
                         VStack {
+                            // Back button - matching editmyProfile.swift
+                            HStack {
+                                Button(action: handleBackTap) {
+                                    ZStack {
+                                        if isPressed {
+                                            Circle()
+                                                .fill(Color.gray.opacity(0.3))
+                                                .frame(width: 40, height: 40)
+                                                .scaleEffect(isPressed ? 1.2 : 1.0)
+                                                .animation(.easeOut(duration: 0.3), value: isPressed)
+                                        }
+
+                                        Image("leftvector")
+                                            .renderingMode(.template)
+                                            .resizable()
+                                            .scaledToFit()
+                                            .frame(width: 25, height: 18)
+                                            .foregroundColor(Color("icontintGlobal"))
+                                    }
+                                }
+                                .simultaneousGesture(
+                                    DragGesture(minimumDistance: 0)
+                                        .onEnded { _ in
+                                            withAnimation {
+                                                isPressed = false
+                                            }
+                                        }
+                                )
+                                .buttonStyle(.plain)
+
+                                Spacer()
+                            }
+                            .padding(.top, 20)
+                            .padding(.horizontal, 20)
+                            
                             Spacer()
             
                             VStack(spacing: 20) {
@@ -161,6 +198,16 @@ struct LockScreen2View: View {
             try player.start(atTime: 0)
         } catch {
             print("Failed to play haptic: \(error.localizedDescription)")
+        }
+    }
+    
+    private func handleBackTap() {
+        withAnimation {
+            isPressed = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            dismiss()
+            isPressed = false
         }
     }
 }

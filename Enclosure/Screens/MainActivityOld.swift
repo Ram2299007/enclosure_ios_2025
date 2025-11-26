@@ -48,6 +48,7 @@ struct MainActivityOld: View {
     
     // Menu dialog state
     @State private var showMenu = false
+    @State private var navigateToLockScreen = false
 
 
 
@@ -673,7 +674,10 @@ struct MainActivityOld: View {
                 
                 // Menu Dialog - shown at top-right position
                 if showMenu {
-                    UpperLayoutDialog(isPresented: $showMenu)
+                    UpperLayoutDialog(
+                        isPresented: $showMenu,
+                        shouldNavigateToLockScreen: $navigateToLockScreen
+                    )
                         .zIndex(999) // Ensure it's on top of everything
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
@@ -683,6 +687,9 @@ struct MainActivityOld: View {
         .navigationBarHidden(true)
         .navigationDestination(isPresented: $showInviteScreen) {
             InviteScreen()
+        }
+        .navigationDestination(isPresented: $navigateToLockScreen) {
+            LockScreenView()
         }
         .onAppear {
             showNetworkLoader = !networkMonitor.isConnected
@@ -1009,9 +1016,11 @@ struct ClearVideoCallLogDialog: View {
 // Menu popup positioned at top-right, exactly matching Android upper_layout.xml
 struct UpperLayoutDialog: View {
     @Binding var isPresented: Bool
+    @Binding var shouldNavigateToLockScreen: Bool
     @Environment(\.colorScheme) var colorScheme
     @State private var sliderValue: Double = 0.0
     @State private var pressedItem: String? = nil
+    @State private var selectedItem: String? = nil
     
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -1056,7 +1065,7 @@ struct UpperLayoutDialog: View {
                   
                 }
                 .padding(.horizontal, 16)
-                .padding(.top,17)
+                .padding(.top, 17)
                 
                 // Sleep Lock section - equivalent to Android upper_layout.xml LinearLayout
                 HStack {
@@ -1067,26 +1076,36 @@ struct UpperLayoutDialog: View {
                         Spacer()
                         Text("Sleep Lock")
                             .font(.custom("Inter18pt-SemiBold", size: 16))
-                            .foregroundColor(pressedItem == "sleepLock" ? .white : Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                            .foregroundColor((pressedItem == "sleepLock" || selectedItem == "sleepLock") ? .white : Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
                         
                         Image("unlock")
                             .resizable()
-                            .frame(width: 24, height: 24)
-                            .foregroundColor(pressedItem == "sleepLock" ? .white : Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                            .frame(width: 23, height: 23)
+                            .foregroundColor((pressedItem == "sleepLock" || selectedItem == "sleepLock") ? .white : Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
                             .padding(.leading, 12)
                             .padding(.trailing, 24)
                     }
                     .frame(width: 180, height: 40)
                     .background(
-                        pressedItem == "sleepLock" ? 
+                        (pressedItem == "sleepLock" || selectedItem == "sleepLock") ? 
                         Image("bg_rect")
                             .resizable()
                             .scaledToFill() : nil
                     )
                     .cornerRadius(8)
                     .onTapGesture {
-                        // Handle Sleep Lock tap
-                        print("Sleep Lock tapped")
+                        // Handle Sleep Lock tap - matching Android logic
+                        selectedItem = "sleepLock"
+                        
+                        // Dismiss the dialog and navigate to lock screen
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isPresented = false
+                        }
+                        
+                        // Navigate to lock screen after dialog dismisses
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            shouldNavigateToLockScreen = true
+                        }
                     }
                     .scaleEffect(pressedItem == "sleepLock" ? 0.95 : 1.0)
                     .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, pressing: { pressing in
@@ -1095,7 +1114,7 @@ struct UpperLayoutDialog: View {
                         }
                     }, perform: {})
                 }
-                .padding(.top, 15)
+                .padding(.top, 25)
                 
                 // Themes section
                 HStack {
@@ -1105,25 +1124,26 @@ struct UpperLayoutDialog: View {
                         Spacer()
                         Text("Themes")
                             .font(.custom("Inter18pt-SemiBold", size: 16))
-                            .foregroundColor(pressedItem == "themes" ? .white : Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                            .foregroundColor((pressedItem == "themes" || selectedItem == "themes") ? .white : Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
                         
                         Image("theme")
                             .resizable()
-                            .frame(width: 24, height: 24)
-                            .foregroundColor(pressedItem == "themes" ? .white : Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                            .frame(width: 25, height: 25)
+                            .foregroundColor((pressedItem == "themes" || selectedItem == "themes") ? .white : Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
                             .padding(.leading, 12)
                             .padding(.trailing, 24)
                     }
                     .frame(width: 180, height: 40)
                     .background(
-                        pressedItem == "themes" ? 
+                        (pressedItem == "themes" || selectedItem == "themes") ? 
                         Image("bg_rect")
                             .resizable()
                             .scaledToFill() : nil
                     )
                     .cornerRadius(8)
                     .onTapGesture {
-                        // Handle Themes tap
+                        // Handle Themes tap - reset other selections
+                        selectedItem = "themes"
                         print("Themes tapped")
                     }
                     .scaleEffect(pressedItem == "themes" ? 0.95 : 1.0)
@@ -1133,7 +1153,7 @@ struct UpperLayoutDialog: View {
                         }
                     }, perform: {})
                 }
-                .padding(.top, 15)
+                .padding(.top, 10)
                 
                 // Pay section
                 HStack {
@@ -1172,7 +1192,7 @@ struct UpperLayoutDialog: View {
                         }
                     }, perform: {})
                 }
-                .padding(.top, 15)
+                .padding(.top, 10)
                 
                 // Settings section
                 HStack {
@@ -1210,7 +1230,7 @@ struct UpperLayoutDialog: View {
                         }
                     }, perform: {})
                 }
-                .padding(.top, 15)
+                .padding(.top, 10)
             }
             .frame(width: 241, height: 304, alignment: .topLeading)
             .background(Color("sleepBox"))
