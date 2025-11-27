@@ -11,6 +11,7 @@ struct SettingsView: View {
     @State private var userProfile: GetProfileModel?
     @State private var navigateToPrivacyPolicy = false
     @State private var navigateToContactUs = false
+    @State private var navigateToAccount = false
     
     var body: some View {
         ZStack {
@@ -46,6 +47,9 @@ struct SettingsView: View {
         }
         .navigationDestination(isPresented: $navigateToContactUs) {
             ContactUsView()
+        }
+        .navigationDestination(isPresented: $navigateToAccount) {
+            AccountView()
         }
     }
     
@@ -163,7 +167,7 @@ struct SettingsView: View {
     }
     
     private func handleAccount() {
-        showAlert(title: "Account", message: "Account management options will be available soon.")
+        navigateToAccount = true
     }
     
     private func handleContactSupport() {
