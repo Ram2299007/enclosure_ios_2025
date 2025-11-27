@@ -10,6 +10,7 @@ struct SettingsView: View {
     // Profile states
     @State private var userProfile: GetProfileModel?
     @State private var navigateToPrivacyPolicy = false
+    @State private var navigateToContactUs = false
     
     var body: some View {
         ZStack {
@@ -42,6 +43,9 @@ struct SettingsView: View {
         }
         .navigationDestination(isPresented: $navigateToPrivacyPolicy) {
             PrivacyPolicyView()
+        }
+        .navigationDestination(isPresented: $navigateToContactUs) {
+            ContactUsView()
         }
     }
     
@@ -163,9 +167,7 @@ struct SettingsView: View {
     }
     
     private func handleContactSupport() {
-        if let url = URL(string: "mailto:support@enclosure.com") {
-            UIApplication.shared.open(url)
-        }
+        navigateToContactUs = true
     }
     
     private func handlePrivacyPolicy() {
