@@ -137,7 +137,7 @@ struct PayView: View {
                                                 
                                                 if isChecked {
                                                     Image(systemName: "checkmark")
-                                                        .foregroundColor(colorScheme == .dark ? Color.black : Color.white)
+                                                        .foregroundColor(colorScheme == .dark ? Color.black : Color(red: 0xF6/255, green: 0xF7/255, blue: 0xFF/255))
                                                         .font(.system(size: 12, weight: .bold))
                                                         .transition(.scale.combined(with: .opacity))
                                                 }

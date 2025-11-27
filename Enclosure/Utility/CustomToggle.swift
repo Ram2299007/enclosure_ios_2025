@@ -26,7 +26,7 @@ struct CustomImageToggle: View {
             // ⚪ Thumb with optional state-specific image
             ZStack {
                 Circle()
-                    .fill(Color.white)
+                    .fill(Color(red: 0xF6/255, green: 0xF7/255, blue: 0xFF/255))
                     .frame(width: 20, height: 20)
                     .shadow(radius: 1)
 

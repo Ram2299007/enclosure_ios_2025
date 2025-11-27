@@ -137,7 +137,7 @@ struct LockScreen2View: View {
                                     }) {
                                         Text("Unlock Enclosure")
                                             .font(.custom("Inter18pt-Medium", size: 14))
-                                            .foregroundColor((Color.white))
+                                            .foregroundColor((Color(red: 0xF6/255, green: 0xF7/255, blue: 0xFF/255)))
                                             .padding()
                                             .background(Color("blue"))
                                             .cornerRadius(8)
@@ -231,7 +231,7 @@ struct CircularSeekBar: View {
                 .rotationEffect(.degrees(-90))
 
             Circle()
-                .fill(Color.white)
+                .fill(Color(red: 0xF6/255, green: 0xF7/255, blue: 0xFF/255))
                 .frame(width: 24, height: 24)
                 .shadow(color: .black.opacity(0.3), radius: 6, x: 0, y: 4)
                 .offset(x: 108 * cos((progress - 90).toRadians()), y: 108 * sin((progress - 90).toRadians()))

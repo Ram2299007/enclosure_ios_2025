@@ -50,6 +50,7 @@ struct MainActivityOld: View {
     @State private var showMenu = false
     @State private var navigateToLockScreen = false
     @State private var navigateToPayView = false
+    @State private var navigateToSettings = false
 
 
 
@@ -678,7 +679,8 @@ struct MainActivityOld: View {
                     UpperLayoutDialog(
                         isPresented: $showMenu,
                         shouldNavigateToLockScreen: $navigateToLockScreen,
-                        shouldNavigateToPayView: $navigateToPayView
+                        shouldNavigateToPayView: $navigateToPayView,
+                        shouldNavigateToSettings: $navigateToSettings
                     )
                         .zIndex(999) // Ensure it's on top of everything
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
@@ -695,6 +697,9 @@ struct MainActivityOld: View {
         }
         .navigationDestination(isPresented: $navigateToPayView) {
             PayView()
+        }
+        .navigationDestination(isPresented: $navigateToSettings) {
+            SettingsView()
         }
         .onAppear {
             showNetworkLoader = !networkMonitor.isConnected
@@ -1023,6 +1028,7 @@ struct UpperLayoutDialog: View {
     @Binding var isPresented: Bool
     @Binding var shouldNavigateToLockScreen: Bool
     @Binding var shouldNavigateToPayView: Bool
+    @Binding var shouldNavigateToSettings: Bool
     @Environment(\.colorScheme) var colorScheme
     @State private var sliderValue: Double = 0.0
     @State private var pressedItem: String? = nil
@@ -1236,8 +1242,18 @@ struct UpperLayoutDialog: View {
                     )
                     .cornerRadius(8)
                     .onTapGesture {
-                        // Handle Settings tap
-                        print("Settings tapped")
+                        // Handle Settings tap - matching Android logic
+                        selectedItem = "settings"
+                        
+                        // Dismiss the dialog and navigate to settings
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isPresented = false
+                        }
+                        
+                        // Navigate to settings after dialog dismisses
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            shouldNavigateToSettings = true
+                        }
                     }
                     .scaleEffect(pressedItem == "settings" ? 0.95 : 1.0)
                     .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, pressing: { pressing in
@@ -1253,7 +1269,7 @@ struct UpperLayoutDialog: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(
-                        colorScheme == .light ? Color.white : Color("sleepBox").opacity(0),
+                        colorScheme == .light ? Color(red: 0xF6/255, green: 0xF7/255, blue: 0xFF/255) : Color("sleepBox").opacity(0),
                         lineWidth: 1
                     )
             )
@@ -1296,7 +1312,7 @@ struct UpperMenuDrawable: View {
                         .stroke(
                             colorScheme == .light 
                                 ? Color.black.opacity(0.1) 
-                                : Color.white.opacity(0.1), 
+                                : Color(red: 0xF6/255, green: 0xF7/255, blue: 0xFF/255).opacity(0.1), 
                             lineWidth: 0.5
                         )
                 )

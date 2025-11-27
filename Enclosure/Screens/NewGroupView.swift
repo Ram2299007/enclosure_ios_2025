@@ -267,7 +267,7 @@ struct NewGroupView: View {
         .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white)
+                .fill(Color(red: 0xF6/255, green: 0xF7/255, blue: 0xFF/255))
         )
     }
     

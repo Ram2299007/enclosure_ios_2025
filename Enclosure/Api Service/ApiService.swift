@@ -731,6 +731,68 @@ class ApiService {
 
 
 
+    // MARK: - Settings API Methods
+    static func get_profile(uid: String, completion: @escaping (Bool, GetProfileModel?, String) -> Void) {
+        let url = Constant.baseURL+"get_profile"
+        let parameters: [String: Any] = ["uid": uid]
+
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    do {
+                        let decoded = try JSONDecoder().decode(GetProfileResponse.self, from: data)
+                        if decoded.error_code == "200", let profile = decoded.data.first {
+                            completion(true, profile, decoded.message)
+                        } else {
+                            completion(false, nil, decoded.message)
+                        }
+                    } catch {
+                        print("Decoding error: \(error.localizedDescription)")
+                        completion(false, nil, "Decoding failed")
+                    }
+
+                case .failure(let error):
+                    print("Request error: \(error.localizedDescription)")
+                    completion(false, nil, error.localizedDescription)
+                }
+            }
+    }
+    
+    static func update_profile(data: [String: Any], completion: @escaping (Bool, String) -> Void) {
+        let url = Constant.baseURL+"update_profile"
+        
+        AF.request(url, method: .post, parameters: data, encoding: URLEncoding.default)
+            .validate()
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    do {
+                        if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+                            let errorCode = json["error_code"] as? String ?? ""
+                            let message = json["message"] as? String ?? "Unknown error"
+                            
+                            if errorCode == "200" {
+                                completion(true, message)
+                            } else {
+                                completion(false, message)
+                            }
+                        } else {
+                            completion(false, "Invalid response format")
+                        }
+                    } catch {
+                        print("JSON parsing error: \(error.localizedDescription)")
+                        completion(false, "Response parsing failed")
+                    }
+
+                case .failure(let error):
+                    print("Request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription)
+                }
+            }
+    }
+
     static func get_profile_YouFragment(uid: String, completion: @escaping (Bool, String, [GetProfileModel]?) -> Void) {
         let url = Constant.baseURL+"get_profile"
         let parameters: [String: Any] = ["uid": uid]

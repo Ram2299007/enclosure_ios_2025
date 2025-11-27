@@ -59,8 +59,10 @@ struct chatView: View {
                     PlaceholderContactCardView()
                         .listRowInsets(EdgeInsets())
                         .listRowSeparator(.hidden)
+                        .listRowBackground(Color("background_color"))
                 }
                 .listStyle(PlainListStyle())
+                .background(Color("background_color"))
             } else if filteredChatList.isEmpty {
                 Text("No chats found")
                     .font(.custom("Inter18pt-Medium", size: 14))
@@ -93,8 +95,10 @@ struct chatView: View {
             )
             .listRowInsets(EdgeInsets())
             .listRowSeparator(.hidden)
+            .listRowBackground(Color("background_color"))
         }
         .listStyle(PlainListStyle())
+        .background(Color("background_color"))
     }
 
 
@@ -242,7 +246,7 @@ struct chatView: View {
                     .scaledToFit()
 
                 Text("\(count)")
-                    .foregroundColor(.white)
+                    .foregroundColor(Color(red: 0xF6/255, green: 0xF7/255, blue: 0xFF/255))
                     .font(.custom("Inter18pt-Regular", size: 12))
             }
             .frame(width: 32, height: 20) // Matching Android: 32dp width, 20dp height

@@ -31,6 +31,10 @@ struct EditmyProfile: View {
     var body: some View {
         NavigationStack {
             ZStack{
+                // Background color to match the theme
+                Color("background_color")
+                    .ignoresSafeArea()
+                
                 ScrollView {
                     VStack(spacing: 0) {
                         HStack {
@@ -255,7 +259,8 @@ struct EditmyProfile: View {
                                 TextField("Enter your name", text: $name)
                                     .padding(.horizontal, 13)
                                     .frame(height: 49)
-                                    .background(
+                                    .background(Color("background_color")) // Use themed background color
+                                    .overlay(
                                         RoundedRectangle(cornerRadius: 8)
                                             .stroke(Color("gray"))
                                     )
@@ -274,47 +279,10 @@ struct EditmyProfile: View {
                                     .font(.custom("Inter18pt-Medium", size: 12))
                                     .foregroundColor(Color("gray"))
 
-                                ZStack(alignment: .topLeading) {
-                                    // TextEditor
-                                    TextEditor(text: $caption)
-                                        .frame(height: 100)
-                                        .padding(8)
-                                        .padding(.bottom, 16) // Extra padding to avoid overlap with the character count
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .stroke(Color("gray"))
-                                        )
-                                        .font(.custom("Inter18pt-Medium", size: 15))
-                                        .lineSpacing(6)
-                                        .foregroundColor(Color("TextColor"))
-                                        .onChange(of: caption) { newValue in
-                                            if caption.count > 300 {
-                                                caption = String(caption.prefix(300))
-                                            }
-                                        }
-
-                                    // Hint/Placeholder Text
-                                    if caption.isEmpty {
-                                        Text("Enter your caption here...")
-                                            .font(.custom("Inter18pt-Medium", size: 15))
-                                            .foregroundColor(Color("gray"))
-                                            .padding(12)
-                                    }
-                                }
-                                .overlay(
-                                    // Character Count Label
-                                    VStack {
-                                        Spacer()
-                                        HStack {
-                                            Spacer()
-                                            Text("\(caption.count)/300")
-                                                .font(.custom("Inter18pt-Medium", size: 12))
-                                                .foregroundColor(caption.count >= 300 ? .red : Color("gray"))
-                                                .padding(.trailing, 8)
-                                                .padding(.bottom, 8) // Adjust bottom padding for better spacing
-                                        }
-                                    },
-                                    alignment: .bottomTrailing
+                                AutoResizingTextEditor(
+                                    text: $caption,
+                                    placeholder: "Enter your caption here...",
+                                    maxCharacters: 300
                                 )
                             }
                             .padding(.horizontal, 20)
@@ -683,6 +651,96 @@ struct ThemedProfileImageView: View {
 
 
 
+
+// Auto-resizing TextEditor component
+struct AutoResizingTextEditor: View {
+    @Binding var text: String
+    let placeholder: String
+    let maxCharacters: Int
+    @State private var textEditorHeight: CGFloat = 100
+    
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            // Background
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color("background_color"))
+                .frame(height: max(100, textEditorHeight + 32)) // Min height 100, dynamic based on content
+            
+            // TextEditor
+            TextEditor(text: $text)
+                .padding(8)
+                .padding(.bottom, 16)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
+                .font(.custom("Inter18pt-Medium", size: 15))
+                .lineSpacing(6)
+                .foregroundColor(Color("TextColor"))
+                .frame(height: max(100, textEditorHeight + 32))
+                .onChange(of: text) { newValue in
+                    // Limit characters
+                    if text.count > maxCharacters {
+                        text = String(text.prefix(maxCharacters))
+                    }
+                    
+                    // Calculate height based on content
+                    DispatchQueue.main.async {
+                        let font = UIFont(name: "Inter18pt-Medium", size: 15) ?? UIFont.systemFont(ofSize: 15)
+                        let attributes = [NSAttributedString.Key.font: font]
+                        let size = (text as NSString).boundingRect(
+                            with: CGSize(width: UIScreen.main.bounds.width - 56, height: .greatestFiniteMagnitude),
+                            options: [.usesLineFragmentOrigin, .usesFontLeading],
+                            attributes: attributes,
+                            context: nil
+                        )
+                        textEditorHeight = max(68, size.height) // Min content height
+                    }
+                }
+            
+            // Placeholder text
+            if text.isEmpty {
+                Text(placeholder)
+                    .font(.custom("Inter18pt-Medium", size: 15))
+                    .foregroundColor(Color("gray"))
+                    .padding(12)
+                    .allowsHitTesting(false)
+            }
+            
+            // Border overlay
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color("gray"))
+                .frame(height: max(100, textEditorHeight + 32))
+        }
+        .overlay(
+            // Character count
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    Text("\(text.count)/\(maxCharacters)")
+                        .font(.custom("Inter18pt-Medium", size: 12))
+                        .foregroundColor(text.count >= maxCharacters ? .red : Color("gray"))
+                        .padding(.trailing, 8)
+                        .padding(.bottom, 8)
+                }
+            },
+            alignment: .bottomTrailing
+        )
+        .onAppear {
+            // Initial height calculation
+            if !text.isEmpty {
+                let font = UIFont(name: "Inter18pt-Medium", size: 15) ?? UIFont.systemFont(ofSize: 15)
+                let attributes = [NSAttributedString.Key.font: font]
+                let size = (text as NSString).boundingRect(
+                    with: CGSize(width: UIScreen.main.bounds.width - 56, height: .greatestFiniteMagnitude),
+                    options: [.usesLineFragmentOrigin, .usesFontLeading],
+                    attributes: attributes,
+                    context: nil
+                )
+                textEditorHeight = max(68, size.height)
+            }
+        }
+    }
+}
 
 #Preview {
     EditmyProfile()
