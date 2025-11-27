@@ -49,6 +49,7 @@ struct MainActivityOld: View {
     // Menu dialog state
     @State private var showMenu = false
     @State private var navigateToLockScreen = false
+    @State private var navigateToPayView = false
 
 
 
@@ -676,7 +677,8 @@ struct MainActivityOld: View {
                 if showMenu {
                     UpperLayoutDialog(
                         isPresented: $showMenu,
-                        shouldNavigateToLockScreen: $navigateToLockScreen
+                        shouldNavigateToLockScreen: $navigateToLockScreen,
+                        shouldNavigateToPayView: $navigateToPayView
                     )
                         .zIndex(999) // Ensure it's on top of everything
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
@@ -690,6 +692,9 @@ struct MainActivityOld: View {
         }
         .navigationDestination(isPresented: $navigateToLockScreen) {
             LockScreenView()
+        }
+        .navigationDestination(isPresented: $navigateToPayView) {
+            PayView()
         }
         .onAppear {
             showNetworkLoader = !networkMonitor.isConnected
@@ -1017,6 +1022,7 @@ struct ClearVideoCallLogDialog: View {
 struct UpperLayoutDialog: View {
     @Binding var isPresented: Bool
     @Binding var shouldNavigateToLockScreen: Bool
+    @Binding var shouldNavigateToPayView: Bool
     @Environment(\.colorScheme) var colorScheme
     @State private var sliderValue: Double = 0.0
     @State private var pressedItem: String? = nil
@@ -1182,8 +1188,18 @@ struct UpperLayoutDialog: View {
                     )
                     .cornerRadius(8)
                     .onTapGesture {
-                        // Handle Pay tap
-                        print("Pay tapped")
+                        // Handle Pay tap - matching Android logic
+                        selectedItem = "pay"
+                        
+                        // Dismiss the dialog and navigate to pay view
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isPresented = false
+                        }
+                        
+                        // Navigate to pay view after dialog dismisses
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            shouldNavigateToPayView = true
+                        }
                     }
                     .scaleEffect(pressedItem == "pay" ? 0.95 : 1.0)
                     .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, pressing: { pressing in
