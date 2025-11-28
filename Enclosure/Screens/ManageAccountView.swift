@@ -16,8 +16,10 @@ struct ManageAccountView: View {
     
     // Navigation and loading states
     @State private var navigateToOTPVerify = false
+    @State private var navigateToOTPVerifyDelete = false
     @State private var isLoading = false
     @State private var otpVerificationData: (uid: String, phoneNumber: String, countryCode: String)?
+    @State private var otpVerificationDeleteData: (uid: String, phoneNumber: String, countryCode: String)?
     
     var body: some View {
         ZStack {
@@ -306,6 +308,15 @@ struct ManageAccountView: View {
                 )
             }
         }
+        .navigationDestination(isPresented: $navigateToOTPVerifyDelete) {
+            if let data = otpVerificationDeleteData {
+                OTPVerifyDeleteView(
+                    uid: data.uid,
+                    phoneNumber: data.phoneNumber,
+                    countryCode: data.countryCode
+                )
+            }
+        }
         .overlay(
             // Loading overlay
             isLoading ? LoadingOverlay() : nil
@@ -417,8 +428,40 @@ struct ManageAccountView: View {
     }
     
     private func handleDeleteAccount() {
-        // Show confirmation for account deletion
-        showAlert(title: "Delete Account", message: "Are you sure you want to delete your account? This action cannot be undone.")
+        // Get current user data
+        guard let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY),
+              let oldPhoneNumber = UserDefaults.standard.string(forKey: Constant.PHONE_NUMBERKEY) else {
+            showAlert(title: "Error", message: "User data not found. Please login again.")
+            return
+        }
+        
+        // Show loading
+        isLoading = true
+        
+        // Call send OTP for delete account API (matching Android Webservice.send_otpDelete)
+        ApiService.shared.sendOtpForDelete(mobileNo: oldPhoneNumber) { [self] result in
+            DispatchQueue.main.async {
+                isLoading = false
+                
+                switch result {
+                case .success(let response):
+                    if response.errorCode == "200" {
+                        // Success - navigate to OTP verification for delete (matching Android flow)
+                        let components = splitCountryCodeAndNationalNumber(phoneNumber: oldPhoneNumber)
+                        otpVerificationDeleteData = (
+                            uid: uid,
+                            phoneNumber: oldPhoneNumber,
+                            countryCode: components.0
+                        )
+                        navigateToOTPVerifyDelete = true
+                    } else {
+                        showAlert(title: "Error", message: response.message ?? "Failed to send OTP")
+                    }
+                case .failure(let error):
+                    showAlert(title: "Error", message: error.localizedDescription)
+                }
+            }
+        }
     }
     
     private func showAlert(title: String, message: String) {

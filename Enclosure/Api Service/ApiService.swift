@@ -1819,6 +1819,249 @@ class ApiService {
             }
         }
     }
+    
+    // MARK: - Delete Account APIs (matching Android Webservice)
+    
+    /// Send OTP for delete account (uses send_otp_common endpoint)
+    func sendOtpForDelete(mobileNo: String, completion: @escaping (Result<SendOtpResponse, Error>) -> Void) {
+        let endpoint = Constant.baseURL + "send_otp_common"
+        
+        print("📱 [ApiService] Send OTP for Delete - Mobile: \(mobileNo)")
+        
+        AF.request(
+            endpoint,
+            method: .post,
+            parameters: ["mobile_no": mobileNo],
+            encoding: URLEncoding.default
+        )
+        .responseData { response in
+            let statusCode = response.response?.statusCode ?? 0
+            print("📱 [ApiService] Send OTP for Delete Response Status: \(statusCode)")
+            
+            switch response.result {
+            case .success(let data):
+                if let rawResponse = String(data: data, encoding: .utf8) {
+                    print("📱 [ApiService] Raw Response: \(rawResponse.prefix(500))")
+                    
+                    // Check if response is HTML (error page)
+                    if rawResponse.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("<") {
+                        let errorResponse = SendOtpResponse(errorCode: "500", message: "Server error occurred")
+                        completion(.success(errorResponse))
+                        return
+                    }
+                    
+                    do {
+                        let sendOtpResponse = try JSONDecoder().decode(SendOtpResponse.self, from: data)
+                        print("📱 [ApiService] Decoded SendOtpResponse: \(sendOtpResponse)")
+                        completion(.success(sendOtpResponse))
+                    } catch {
+                        print("🔴 [ApiService] Decoding Error: \(error)")
+                        // Try manual parsing
+                        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                            var errorCode = ""
+                            if let errorCodeString = json["error_code"] as? String {
+                                errorCode = errorCodeString
+                            } else if let errorCodeInt = json["error_code"] as? Int {
+                                errorCode = String(errorCodeInt)
+                            }
+                            let message = json["message"] as? String ?? "Unknown error"
+                            let response = SendOtpResponse(errorCode: errorCode, message: message)
+                            completion(.success(response))
+                        } else {
+                            let errorResponse = SendOtpResponse(errorCode: String(statusCode), message: "Failed to parse response")
+                            completion(.success(errorResponse))
+                        }
+                    }
+                } else {
+                    let errorResponse = SendOtpResponse(errorCode: String(statusCode), message: "Invalid response data")
+                    completion(.success(errorResponse))
+                }
+                
+            case .failure(let error):
+                print("🔴 [ApiService] Network Error: \(error)")
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    /// Verify OTP for delete account
+    func verifyOtpForDelete(uid: String, otp: String, completion: @escaping (Result<ChangeNumberResponse, Error>) -> Void) {
+        let endpoint = Constant.baseURL + "verify_otp_common"
+        
+        print("📱 [ApiService] Verify OTP for Delete - UID: \(uid)")
+        
+        AF.upload(
+            multipartFormData: { multipartFormData in
+                multipartFormData.append(Data(uid.utf8), withName: "uid")
+                multipartFormData.append(Data(otp.utf8), withName: "otp")
+            },
+            to: endpoint,
+            method: .post,
+            headers: ["Content-Type": "multipart/form-data"]
+        )
+        .responseData { response in
+            let statusCode = response.response?.statusCode ?? 0
+            print("📱 [ApiService] Verify OTP for Delete Response Status: \(statusCode)")
+            
+            switch response.result {
+            case .success(let data):
+                if let rawResponse = String(data: data, encoding: .utf8) {
+                    print("📱 [ApiService] Raw Response: \(rawResponse.prefix(500))")
+                    
+                    // Check if response is HTML (error page)
+                    if rawResponse.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("<") {
+                        let errorResponse = ChangeNumberResponse(errorCode: "500", message: "Server error occurred")
+                        completion(.success(errorResponse))
+                        return
+                    }
+                    
+                    var cleanedData = data
+                    if let jsonStart = rawResponse.range(of: "{") {
+                        let jsonString = String(rawResponse[jsonStart.lowerBound...])
+                        if let jsonData = jsonString.data(using: .utf8) {
+                            cleanedData = jsonData
+                        }
+                    }
+                    
+                    do {
+                        let verifyResponse = try JSONDecoder().decode(ChangeNumberResponse.self, from: cleanedData)
+                        print("📱 [ApiService] Decoded VerifyResponse: \(verifyResponse)")
+                        completion(.success(verifyResponse))
+                    } catch {
+                        print("🔴 [ApiService] Decoding Error: \(error)")
+                        if let json = try? JSONSerialization.jsonObject(with: cleanedData) as? [String: Any] {
+                            var errorCode = ""
+                            if let errorCodeString = json["error_code"] as? String {
+                                errorCode = errorCodeString
+                            } else if let errorCodeInt = json["error_code"] as? Int {
+                                errorCode = String(errorCodeInt)
+                            }
+                            let message = json["message"] as? String ?? "Unknown error"
+                            let response = ChangeNumberResponse(errorCode: errorCode, message: message)
+                            completion(.success(response))
+                        } else {
+                            let errorResponse = ChangeNumberResponse(errorCode: String(statusCode), message: "Failed to parse response")
+                            completion(.success(errorResponse))
+                        }
+                    }
+                } else {
+                    let errorResponse = ChangeNumberResponse(errorCode: String(statusCode), message: "Invalid response data")
+                    completion(.success(errorResponse))
+                }
+                
+            case .failure(let error):
+                print("🔴 [ApiService] Network Error: \(error)")
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    /// Delete my account
+    func deleteMyAccount(uid: String, completion: @escaping (Result<ChangeNumberResponse, Error>) -> Void) {
+        let endpoint = Constant.baseURL + "delete_my_account"
+        
+        print("📱 [ApiService] Delete Account - UID: \(uid)")
+        
+        AF.upload(
+            multipartFormData: { multipartFormData in
+                multipartFormData.append(Data(uid.utf8), withName: "uid")
+            },
+            to: endpoint,
+            method: .post,
+            headers: ["Content-Type": "multipart/form-data"]
+        )
+        .responseData { response in
+            let statusCode = response.response?.statusCode ?? 0
+            print("📱 [ApiService] Delete Account Response Status: \(statusCode)")
+            
+            switch response.result {
+            case .success(let data):
+                if let rawResponse = String(data: data, encoding: .utf8) {
+                    print("📱 [ApiService] Raw Response: \(rawResponse.prefix(500))")
+                    
+                    // Check if response is HTML (error page)
+                    if rawResponse.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("<") {
+                        let errorResponse = ChangeNumberResponse(errorCode: "500", message: "Server error occurred")
+                        completion(.success(errorResponse))
+                        return
+                    }
+                    
+                    var cleanedData = data
+                    if let jsonStart = rawResponse.range(of: "{") {
+                        let jsonString = String(rawResponse[jsonStart.lowerBound...])
+                        if let jsonData = jsonString.data(using: .utf8) {
+                            cleanedData = jsonData
+                        }
+                    }
+                    
+                    do {
+                        let deleteResponse = try JSONDecoder().decode(ChangeNumberResponse.self, from: cleanedData)
+                        print("📱 [ApiService] Decoded DeleteResponse: \(deleteResponse)")
+                        completion(.success(deleteResponse))
+                    } catch {
+                        print("🔴 [ApiService] Decoding Error: \(error)")
+                        if let json = try? JSONSerialization.jsonObject(with: cleanedData) as? [String: Any] {
+                            var errorCode = ""
+                            if let errorCodeString = json["error_code"] as? String {
+                                errorCode = errorCodeString
+                            } else if let errorCodeInt = json["error_code"] as? Int {
+                                errorCode = String(errorCodeInt)
+                            }
+                            let message = json["message"] as? String ?? "Unknown error"
+                            let response = ChangeNumberResponse(errorCode: errorCode, message: message)
+                            completion(.success(response))
+                        } else {
+                            let errorResponse = ChangeNumberResponse(errorCode: String(statusCode), message: "Failed to parse response")
+                            completion(.success(errorResponse))
+                        }
+                    }
+                } else {
+                    let errorResponse = ChangeNumberResponse(errorCode: String(statusCode), message: "Invalid response data")
+                    completion(.success(errorResponse))
+                }
+                
+            case .failure(let error):
+                print("🔴 [ApiService] Network Error: \(error)")
+                completion(.failure(error))
+            }
+        }
+    }
+}
+
+// MARK: - Send OTP Response Model
+struct SendOtpResponse: Codable {
+    let errorCode: String
+    let message: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case error_code
+        case message
+    }
+    
+    init(errorCode: String, message: String?) {
+        self.errorCode = errorCode
+        self.message = message
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        if let errorCodeString = try? container.decode(String.self, forKey: .error_code) {
+            self.errorCode = errorCodeString
+        } else if let errorCodeInt = try? container.decode(Int.self, forKey: .error_code) {
+            self.errorCode = String(errorCodeInt)
+        } else {
+            self.errorCode = ""
+        }
+        
+        self.message = try? container.decode(String.self, forKey: .message)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(errorCode, forKey: .error_code)
+        try container.encodeIfPresent(message, forKey: .message)
+    }
 }
 
 // MARK: - Change Number Response Model

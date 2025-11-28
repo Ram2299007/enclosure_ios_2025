@@ -22,8 +22,12 @@ struct whatsYourNumber: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading) {
-                ScrollView {
+            ZStack {
+                Color("background_color")
+                    .ignoresSafeArea()
+                
+                VStack(alignment: .leading) {
+                    ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("What's your\nnumber?")
                             .font(.custom("Inter18pt-SemiBold", size: 40))
@@ -214,6 +218,7 @@ struct whatsYourNumber: View {
                         .padding(.horizontal, 20)
                 }
                 .padding(.bottom, 80)
+                }
             }
             .navigationBarHidden(true)
             .onChange(of: selectedCountryShortCode) { newValue in

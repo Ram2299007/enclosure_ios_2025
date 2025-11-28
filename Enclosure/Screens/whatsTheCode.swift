@@ -43,6 +43,9 @@ struct whatsTheCode: View {
 
         NavigationStack {
             ZStack { // Use ZStack to overlay content
+                Color("background_color")
+                    .ignoresSafeArea()
+                
                 VStack {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 16) {
