@@ -8,6 +8,19 @@ struct ChangeNumberView: View {
     @State private var alertTitle = ""
     @State private var themeColorHex: String = UserDefaults.standard.string(forKey: Constant.ThemeColorKey) ?? "#00A3E9"
     
+    // Phone number input states
+    @State private var oldNumber = ""
+    @State private var newNumber = ""
+    @State private var countryCode = "91"
+    
+    // Focus states
+    @FocusState private var isOldNumberFocused: Bool
+    @FocusState private var isNewNumberFocused: Bool
+    @FocusState private var isCountryCodeFocused: Bool
+    
+    // Navigation state
+    @State private var navigateToManageAccount = false
+    
     var body: some View {
         ZStack {
             Color("background_color")
@@ -20,74 +33,131 @@ struct ChangeNumberView: View {
                 // Content - matching Android XML layout
                 ScrollView {
                     VStack(spacing: 0) {
-                        // SIM Card Transfer Animation (matching Android layout with theme color)
-                        VStack(spacing: 0) {
-                            HStack(spacing: 0) {
-                                // SIM 1 (Old Number) - using theme color
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(Color(hex: themeColorHex.isEmpty ? "#00A3E9" : themeColorHex))
-                                        .frame(width: 32, height: 43)
-                                    
-                                    // SIM card cutout
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .fill(Color("background_color"))
-                                        .frame(width: 28, height: 39)
-                                        .offset(y: 2)
-                                }
-                                
-                                // Connecting dots - using theme color
-                                HStack(spacing: 2.5) {
-                                    ForEach(0..<3, id: \.self) { _ in
-                                        Circle()
-                                            .fill(Color(hex: themeColorHex.isEmpty ? "#00A3E9" : themeColorHex).opacity(0.8))
-                                            .frame(width: 4, height: 4)
-                                    }
-                                }
-                                .padding(.horizontal, 2.5)
-                                
-                                // SIM 2 (New Number) - using theme color
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(Color(hex: themeColorHex.isEmpty ? "#00A3E9" : themeColorHex))
-                                        .frame(width: 32, height: 43)
-                                    
-                                    // SIM card cutout
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .fill(Color("background_color"))
-                                        .frame(width: 28, height: 39)
-                                        .offset(y: 2)
-                                }
+                        // Old Phone Number Section
+                        VStack(alignment: .leading, spacing: 0) {
+                            // "Enter your old phone number" label
+                            HStack {
+                                Text("Enter your old phone number")
+                                    .font(.custom("Inter18pt-SemiBold", size: 16))
+                                    .foregroundColor(Color("TextColor"))
+                                    .fontWeight(.semibold)
+                                    .lineSpacing(5) // lineHeight="21dp"
+                                Spacer()
                             }
+                            .padding(.horizontal, 15)
+                            .padding(.top, 39)
+                            
+                            // Old number input field
+                            HStack(spacing: 0) {
+                                // Country code section (+91)
+                                VStack(spacing: 0) {
+                                    HStack(spacing: 0) {
+                                        Text("+")
+                                            .font(.custom("Inter18pt-SemiBold", size: 15))
+                                            .foregroundColor(Color(hex: "#9EA6B9"))
+                                            .fontWeight(.semibold)
+                                        
+                                        Text("91")
+                                            .font(.custom("Inter18pt-SemiBold", size: 15))
+                                            .foregroundColor(Color("TextColor"))
+                                            .fontWeight(.semibold)
+                                            .padding(.leading, 10)
+                                    }
+                                    .frame(width: 50, alignment: .leading)
+                                    
+                                    // Underline for country code
+                                    Rectangle()
+                                        .fill(Color(hex: "#9EA6B9"))
+                                        .frame(height: 1)
+                                        .padding(.top, 4.5)
+                                }
+                                
+                                // Phone number input
+                                VStack(spacing: 0) {
+                                    TextField("Phone Number", text: $oldNumber)
+                                        .font(.custom("Inter18pt-Medium", size: 15))
+                                        .foregroundColor(Color(hex: "#9EA6B9")) // Grayed out since it's disabled
+                                        .fontWeight(.medium)
+                                        .keyboardType(.phonePad)
+                                        .disabled(true) // Matching Android enabled="false"
+                                        .background(Color.clear)
+                                        .focused($isOldNumberFocused)
+                                    
+                                    // Underline for phone number
+                                    Rectangle()
+                                        .fill(Color(hex: "#9EA6B9"))
+                                        .frame(height: 1)
+                                        .padding(.top, 4.5)
+                                }
+                                .padding(.leading, 27)
+                            }
+                            .padding(.horizontal, 15)
+                            .padding(.top, 18)
                         }
-                        .padding(.top, 25)
                         
-                        // Question Text (matching Android XML)
-                        VStack(alignment: .leading, spacing: 30) {
-                            Text("Are you changing your phone number ?")
-                                .font(.custom("Inter18pt-SemiBold", size: 16))
-                                .foregroundColor(Color("TextColor"))
-                                .fontWeight(.semibold)
-                                .lineSpacing(5) // lineHeight="21dp"
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 16)
-                                .padding(.top, 53)
+                        // New Phone Number Section
+                        VStack(alignment: .leading, spacing: 0) {
+                            // "Enter your new phone number" label
+                            HStack {
+                                Text("Enter your new phone number: to begin Enclosure")
+                                    .font(.custom("Inter18pt-SemiBold", size: 16))
+                                    .foregroundColor(Color("TextColor"))
+                                    .fontWeight(.semibold)
+                                    .lineSpacing(5) // lineHeight="21dp"
+                                Spacer()
+                            }
+                            .padding(.horizontal, 15)
+                            .padding(.top, 39)
                             
-                            Text("All your current data frome here-\nwill transfer on your new number.")
-                                .font(.custom("Inter18pt-Medium", size: 16))
-                                .foregroundColor(Color("TextColor"))
-                                .fontWeight(.medium)
-                                .lineSpacing(2) // lineHeight="18dp"
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 16)
-                            
-                            Text("Make sure, your new number is active.")
-                                .font(.custom("Inter18pt-Medium", size: 16))
-                                .foregroundColor(Color("TextColor"))
-                                .fontWeight(.medium)
-                                .lineSpacing(2) // lineHeight="18dp"
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 16)
+                            // New number input field
+                            HStack(spacing: 0) {
+                                // Country code section (+91)
+                                VStack(spacing: 0) {
+                                    HStack(spacing: 0) {
+                                        Text("+")
+                                            .font(.custom("Inter18pt-SemiBold", size: 15))
+                                            .foregroundColor(Color(hex: "#9EA6B9"))
+                                            .fontWeight(.semibold)
+                                        
+                                        TextField("91", text: $countryCode)
+                                            .font(.custom("Inter18pt-SemiBold", size: 15))
+                                            .foregroundColor(Color("TextColor"))
+                                            .fontWeight(.semibold)
+                                            .keyboardType(.phonePad)
+                                            .frame(minWidth: 30)
+                                            .background(Color.clear)
+                                            .focused($isCountryCodeFocused)
+                                            .padding(.leading, 10)
+                                    }
+                                    .frame(width: 50, alignment: .leading)
+                                    
+                                    // Underline for country code
+                                    Rectangle()
+                                        .fill(Color(hex: "#9EA6B9"))
+                                        .frame(height: 1)
+                                        .padding(.top, 4.5)
+                                }
+                                
+                                // Phone number input
+                                VStack(spacing: 0) {
+                                    TextField("Phone Number", text: $newNumber)
+                                        .font(.custom("Inter18pt-Medium", size: 15))
+                                        .foregroundColor(Color("TextColor"))
+                                        .fontWeight(.medium)
+                                        .keyboardType(.phonePad)
+                                        .background(Color.clear)
+                                        .focused($isNewNumberFocused)
+                                    
+                                    // Underline for phone number
+                                    Rectangle()
+                                        .fill(Color(hex: "#9EA6B9"))
+                                        .frame(height: 1)
+                                        .padding(.top, 4.5)
+                                }
+                                .padding(.leading, 27)
+                            }
+                            .padding(.horizontal, 15)
+                            .padding(.top, 18)
                         }
                         
                         Spacer(minLength: 100)
@@ -115,6 +185,10 @@ struct ChangeNumberView: View {
             }
         }
         .navigationBarHidden(true)
+        .onAppear {
+            loadThemeColor()
+            loadCurrentPhoneNumber()
+        }
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK") {
                 if alertTitle == "Success" {
@@ -123,6 +197,9 @@ struct ChangeNumberView: View {
             }
         } message: {
             Text(alertMessage)
+        }
+        .navigationDestination(isPresented: $navigateToManageAccount) {
+            ManageAccountView(newPhoneNumber: "+\(countryCode)\(newNumber)")
         }
     }
     
@@ -157,12 +234,12 @@ struct ChangeNumberView: View {
             )
             .buttonStyle(.plain)
 
-            Text("Change number")
+            Text("Change Number")
                 .font(.custom("Inter18pt-Medium", size: 16))
                 .foregroundColor(Color("TextColor"))
                 .fontWeight(.medium)
                 .lineSpacing(24)
-                .padding(.leading, 6)
+                .padding(.leading, 15)
             Spacer()
         }
         .padding(.top, 0)
@@ -182,14 +259,53 @@ struct ChangeNumberView: View {
     }
     
     private func handleNext() {
-        // Navigate to the actual number change form
-        showAlert(title: "Change Number", message: "This will navigate to the number change form where you can enter your current and new phone numbers.")
+        // Validate form - matching Android validation
+        guard !oldNumber.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            showAlert(title: "Error", message: "Missing old phone ?")
+            return
+        }
+        
+        guard !countryCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            showAlert(title: "Error", message: "Missing country code ?")
+            return
+        }
+        
+        guard !newNumber.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            showAlert(title: "Error", message: "Missing new phone ?")
+            return
+        }
+        
+        guard newNumber.count >= 10 else {
+            showAlert(title: "Error", message: "Please enter a valid phone number")
+            return
+        }
+        
+        // Navigate to ManageAccountView (matching Android navigation to deleteMyAccount)
+        navigateToManageAccount = true
     }
     
     private func showAlert(title: String, message: String) {
         alertTitle = title
         alertMessage = message
         showAlert = true
+    }
+    
+    private func loadThemeColor() {
+        if let savedThemeColor = UserDefaults.standard.string(forKey: Constant.ThemeColorKey), !savedThemeColor.isEmpty {
+            themeColorHex = savedThemeColor
+        }
+    }
+    
+    private func loadCurrentPhoneNumber() {
+        // Load current user's phone number from UserDefaults using the correct key
+        if let currentNumber = UserDefaults.standard.string(forKey: Constant.PHONE_NUMBERKEY) {
+            oldNumber = currentNumber
+            print("📱 Loaded current phone number: \(currentNumber)")
+        } else {
+            // No current number found
+            oldNumber = ""
+            print("⚠️ No current phone number found in UserDefaults")
+        }
     }
 }
 

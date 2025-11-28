@@ -1702,4 +1702,157 @@ class ApiService {
                 }
             }
     }
+    
+    // MARK: - Change Number API (matching Android Webservice.change_number)
+    func changeNumber(uid: String, oldPhoneNumber: String, newPhoneNumber: String, completion: @escaping (Result<ChangeNumberResponse, Error>) -> Void) {
+        let endpoint = Constant.baseURL + "change_numberrold"
+        
+        print("📱 [ApiService] Change Number API Call")
+        print("📱 [ApiService] Endpoint: \(endpoint)")
+        print("📱 [ApiService] UID: \(uid)")
+        print("📱 [ApiService] Old Phone: \(oldPhoneNumber)")
+        print("📱 [ApiService] New Phone: \(newPhoneNumber)")
+        
+        // Use multipart form data (matching Android MultipartBody.FORM)
+        AF.upload(
+            multipartFormData: { multipartFormData in
+                multipartFormData.append(Data(uid.utf8), withName: "uid")
+                multipartFormData.append(Data(oldPhoneNumber.utf8), withName: "mobile_no_old")
+                multipartFormData.append(Data(newPhoneNumber.utf8), withName: "mobile_no_new")
+            },
+            to: endpoint,
+            method: .post,
+            headers: ["Content-Type": "multipart/form-data"]
+        )
+        .responseData { response in
+            let statusCode = response.response?.statusCode ?? 0
+            print("📱 [ApiService] Change Number Response Status: \(statusCode)")
+            
+            switch response.result {
+            case .success(let data):
+                if let rawResponse = String(data: data, encoding: .utf8) {
+                    print("📱 [ApiService] Raw Response: \(rawResponse.prefix(500))") // Log first 500 chars
+                    
+                    // Check if response is HTML (error page)
+                    if rawResponse.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("<") {
+                        print("🔴 [ApiService] Server returned HTML error page (likely 500 error)")
+                        
+                        // Try to extract error message from HTML
+                        var errorMessage = "Server error occurred. Please try again later."
+                        
+                        // Try multiple patterns to extract error message
+                        if let messageRange = rawResponse.range(of: "<p>Message: ") {
+                            let afterMessage = String(rawResponse[messageRange.upperBound...])
+                            if let endRange = afterMessage.range(of: "</p>") {
+                                errorMessage = String(afterMessage[..<endRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                            }
+                        } else if let messageRange = rawResponse.range(of: "Message: ") {
+                            let afterMessage = String(rawResponse[messageRange.upperBound...])
+                            if let endRange = afterMessage.range(of: "</p>") {
+                                errorMessage = String(afterMessage[..<endRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                            } else if let endRange = afterMessage.range(of: "<") {
+                                errorMessage = String(afterMessage[..<endRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                            }
+                        }
+                        
+                        // If we found a database error, make it more user-friendly
+                        if errorMessage.contains("Unknown column") {
+                            errorMessage = "Database error: \(errorMessage). Please contact support."
+                        }
+                        
+                        // Return error response with 500 status
+                        let errorResponse = ChangeNumberResponse(errorCode: "500", message: errorMessage)
+                        completion(.success(errorResponse))
+                        return
+                    }
+                    
+                    // Try to find JSON in the response
+                    var cleanedData = data
+                    if let jsonStart = rawResponse.range(of: "{") {
+                        let jsonString = String(rawResponse[jsonStart.lowerBound...])
+                        if let jsonData = jsonString.data(using: .utf8) {
+                            cleanedData = jsonData
+                        }
+                    } else {
+                        // No JSON found, return error
+                        let errorResponse = ChangeNumberResponse(errorCode: String(statusCode), message: "Invalid response from server")
+                        completion(.success(errorResponse))
+                        return
+                    }
+                    
+                    // Try to decode JSON
+                    do {
+                        let changeNumberResponse = try JSONDecoder().decode(ChangeNumberResponse.self, from: cleanedData)
+                        print("📱 [ApiService] Decoded Response: \(changeNumberResponse)")
+                        completion(.success(changeNumberResponse))
+                    } catch {
+                        print("🔴 [ApiService] Decoding Error: \(error)")
+                        // Try to parse raw response manually if JSON decoding fails
+                        if let jsonData = rawResponse.data(using: .utf8),
+                           let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                            var errorCode = ""
+                            if let errorCodeString = json["error_code"] as? String {
+                                errorCode = errorCodeString
+                            } else if let errorCodeInt = json["error_code"] as? Int {
+                                errorCode = String(errorCodeInt)
+                            }
+                            let message = json["message"] as? String ?? "Unknown error"
+                            let response = ChangeNumberResponse(errorCode: errorCode, message: message)
+                            completion(.success(response))
+                        } else {
+                            // Return error response instead of throwing
+                            let errorResponse = ChangeNumberResponse(errorCode: String(statusCode), message: "Failed to parse server response")
+                            completion(.success(errorResponse))
+                        }
+                    }
+                } else {
+                    // No valid string data
+                    let errorResponse = ChangeNumberResponse(errorCode: String(statusCode), message: "Invalid response data")
+                    completion(.success(errorResponse))
+                }
+                
+            case .failure(let error):
+                print("🔴 [ApiService] Network Error: \(error)")
+                // Convert network error to ChangeNumberResponse
+                let errorResponse = ChangeNumberResponse(errorCode: "NETWORK_ERROR", message: error.localizedDescription)
+                completion(.success(errorResponse))
+            }
+        }
+    }
+}
+
+// MARK: - Change Number Response Model
+struct ChangeNumberResponse: Codable {
+    let errorCode: String
+    let message: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case error_code
+        case message
+    }
+    
+    init(errorCode: String, message: String?) {
+        self.errorCode = errorCode
+        self.message = message
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        if let errorCodeString = try? container.decode(String.self, forKey: .error_code) {
+            self.errorCode = errorCodeString
+        } else if let errorCodeInt = try? container.decode(Int.self, forKey: .error_code) {
+            self.errorCode = String(errorCodeInt)
+        } else {
+            self.errorCode = ""
+        }
+        
+        self.message = try? container.decode(String.self, forKey: .message)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(errorCode, forKey: .error_code)
+        try container.encodeIfPresent(message, forKey: .message)
+    }
 }
