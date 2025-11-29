@@ -960,7 +960,7 @@ extension groupMessageView {
                                         // textSize="12sp" fontFamily="@font/inter_medium"
                                         Text(group.lastMessageTime)
                                             .font(.custom("Inter18pt-Medium", size: 12))
-                                            .foregroundColor(Color("Gray3"))
+                                            .foregroundColor(Color("gray3"))
                                             .padding(.trailing, 8) // layout_marginEnd="8dp"
                                     }
                                     
@@ -980,7 +980,7 @@ extension groupMessageView {
                                             
                                             Text(group.lastMessage.count > 25 ? String(group.lastMessage.prefix(25)) + "..." : group.lastMessage)
                                                 .font(.custom("Inter18pt-Medium", size: 13))
-                                                .foregroundColor(Color("Gray3"))
+                                                .foregroundColor(Color("gray3"))
                                                 .lineLimit(1)
                                         }
                                         .padding(.top, 2) // layout_marginTop="2dp"
@@ -1031,7 +1031,7 @@ extension groupMessageView {
                                     .resizable()
                                     .scaledToFit()
                                     .frame(width: 26.5, height: 24)
-                                    .foregroundColor(Color("Gray3"))
+                                    .foregroundColor(Color("gray3"))
                                     .padding(.trailing, 2)
                                 
                                 // TextView - "Delete" text

@@ -44,7 +44,7 @@ struct WhatsYourNameDialog: View {
                     ZStack(alignment: .leading) {
                         // Background and border
                         RoundedRectangle(cornerRadius: 15)
-                            .stroke(showError ? Color.red : (isNameFocused ? Color("TextColor") : Color("Gray3")), lineWidth: 1.5)
+                            .stroke(showError ? Color.red : (isNameFocused ? Color("TextColor") : Color("gray3")), lineWidth: 1.5)
                             .frame(height: 55)
                         
                         // Placeholder text (only when empty)
@@ -52,7 +52,7 @@ struct WhatsYourNameDialog: View {
                             HStack {
                                 Text("Name")
                                     .font(.custom("Inter18pt-Regular", size: 16))
-                                    .foregroundColor(Color("Gray3"))
+                                    .foregroundColor(Color("gray3"))
                                     .padding(.leading, 29)
                                 Spacer()
                             }

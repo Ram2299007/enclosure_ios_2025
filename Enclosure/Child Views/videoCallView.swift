@@ -87,7 +87,7 @@ struct videoCallView: View {
                                     .fill(Color("blue"))
                                     .frame(width: 4, height: 4)
                                 Circle()
-                                    .fill(Color("Gray3"))
+                                    .fill(Color("gray3"))
                                     .frame(width: 4, height: 4)
                             }
                             .frame(width: 40, height: 40)
@@ -214,7 +214,7 @@ struct videoCallView: View {
                                         .fill(Color("blue"))
                                         .frame(width: 4, height: 4)
                                     Circle()
-                                        .fill(Color("Gray3"))
+                                        .fill(Color("gray3"))
                                         .frame(width: 4, height: 4)
                                 }
                                 .frame(width: 40, height: 40)
@@ -908,7 +908,7 @@ extension videoCallView {
                                     .resizable()
                                     .scaledToFit()
                                     .frame(width: 26.5, height: 24)
-                                    .foregroundColor(Color("Gray3"))
+                                    .foregroundColor(Color("gray3"))
                                     .padding(.trailing, 2)
                                 
                                 // TextView - "Delete" text

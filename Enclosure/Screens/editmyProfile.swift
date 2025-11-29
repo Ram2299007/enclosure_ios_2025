@@ -463,31 +463,7 @@ struct ProfileCardView: View {
         }
     }
 }
-
-
-struct CircularRippleStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background(
-                GeometryReader { geometry in
-                    ZStack {
-                        if configuration.isPressed {
-                            Circle()
-                                .fill(Color("circlebtnhover").opacity(0.3))
-                                .frame(
-                                    width: geometry.size.width,
-                                    height: geometry.size.height
-                                )
-                                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                        }
-                    }
-                }
-            )
-            .clipShape(Circle()) // Ensures the button remains circular
-            .scaleEffect(configuration.isPressed ? 1.1 : 1.0)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
-    }
-}
+// Note: CircularRippleStyle is now defined in Utility/ButtonStyles.swift
 
 
 

@@ -176,7 +176,7 @@ struct CallLogUserRowView: View {
                                 // Time TextView - matching Android: 13sp, Inter Medium, weight 1
                                 Text(formattedTime)
                                     .font(.custom("Inter18pt-Medium", size: 13))
-                                    .foregroundColor(Color("Gray3"))
+                                    .foregroundColor(Color("gray3"))
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .padding(.top, 4) // marginTop="4dp"

@@ -133,7 +133,7 @@ struct chatView: View {
                             
                             Text(chat.sentTime)
                                 .font(.custom("Inter18pt-Medium", size: 12))
-                                .foregroundColor(chat.notification > 0 ? Color("blue"): Color("Gray3"))
+                                .foregroundColor(chat.notification > 0 ? Color("blue"): Color("gray3"))
                                 .padding(.trailing, 8) // layout_marginEnd="8dp"
                         }
 
@@ -320,7 +320,7 @@ struct chatView: View {
                 // Text
                 Text(captionContent.text)
                     .font(.custom("Inter18pt-Medium", size: 13))
-                    .foregroundColor(Color("Gray3"))
+                    .foregroundColor(Color("gray3"))
                     .lineLimit(1) // singleLine="true" equivalent
             }
         }
@@ -364,7 +364,7 @@ struct chatView: View {
                         // Caption
                         Text("Welcome to Enclosure Messagi...")
                             .font(.custom("Inter18pt-Medium", size: 13))
-                            .foregroundColor(Color("Gray3"))
+                            .foregroundColor(Color("gray3"))
                             .lineLimit(1)
                             .padding(.vertical, 5)
                         
@@ -466,7 +466,7 @@ struct chatView: View {
                                         // layout_marginEnd="8dp" fontFamily="@font/inter_medium" textSize="12sp"
                                         Text(chat.sentTime)
                                             .font(.custom("Inter18pt-Medium", size: 12))
-                                            .foregroundColor(chat.notification > 0 ? Color("blue") : Color("Gray3"))
+                                            .foregroundColor(chat.notification > 0 ? Color("blue") : Color("gray3"))
                                             .padding(.trailing, 8) // layout_marginEnd="8dp"
                                     }
                                     
@@ -517,7 +517,7 @@ struct chatView: View {
                                     .resizable()
                                     .scaledToFit()
                                     .frame(width: 26.5, height: 24)
-                                    .foregroundColor(Color("Gray3")) // tint="@color/gray3"
+                                    .foregroundColor(Color("gray3")) // tint="@color/gray3"
                                     .padding(.trailing, 2) // layout_marginEnd="2dp"
                                 
                                 // TextView - "Delete" text

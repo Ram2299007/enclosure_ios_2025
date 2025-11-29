@@ -87,7 +87,7 @@ struct callView: View {
                                     .fill(Color("blue"))
                                     .frame(width: 4, height: 4)
                                 Circle()
-                                    .fill(Color("Gray3"))
+                                    .fill(Color("gray3"))
                                     .frame(width: 4, height: 4)
                             }
                             .frame(width: 40, height: 40)
@@ -214,7 +214,7 @@ struct callView: View {
                                         .fill(Color("blue"))
                                         .frame(width: 4, height: 4)
                                     Circle()
-                                        .fill(Color("Gray3"))
+                                        .fill(Color("gray3"))
                                         .frame(width: 4, height: 4)
                                 }
                                 .frame(width: 40, height: 40)
@@ -652,12 +652,12 @@ struct CallHistoryHeaderView: View {
                 
                 Text(contact.mobileNo)
                     .font(.custom("Inter18pt-Medium", size: 14))
-                    .foregroundColor(Color("Gray3"))
+                    .foregroundColor(Color("gray3"))
                 
                 if !dateLabel.isEmpty {
                     Text(dateLabel)
                         .font(.custom("Inter18pt-Medium", size: 13))
-                        .foregroundColor(Color("Gray3"))
+                        .foregroundColor(Color("gray3"))
                 }
             }
             
@@ -762,7 +762,7 @@ struct CallHistoryRowView: View {
                     .foregroundColor(Color("TextColor"))
                 Text(readableEndTime)
                     .font(.custom("Inter18pt-Medium", size: 13))
-                    .foregroundColor(Color("Gray3"))
+                    .foregroundColor(Color("gray3"))
             }
             .padding(.leading, 16)
             
@@ -788,7 +788,7 @@ struct CallHistoryRowView: View {
             if let durationText, !durationText.isEmpty {
                 Text(durationText)
                     .font(.custom("Inter18pt-Medium", size: 13))
-                    .foregroundColor(Color("Gray3"))
+                    .foregroundColor(Color("gray3"))
                     .padding(.trailing, 20)
             } else {
                 Spacer()
@@ -1108,7 +1108,7 @@ extension callView {
                                     .resizable()
                                     .scaledToFit()
                                     .frame(width: 26.5, height: 24)
-                                    .foregroundColor(Color("Gray3"))
+                                    .foregroundColor(Color("gray3"))
                                     .padding(.trailing, 2)
                                 
                                 // TextView - "Delete" text

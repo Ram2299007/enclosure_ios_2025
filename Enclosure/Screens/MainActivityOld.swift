@@ -51,6 +51,7 @@ struct MainActivityOld: View {
     @State private var navigateToLockScreen = false
     @State private var navigateToPayView = false
     @State private var navigateToSettings = false
+    @State private var navigateToThemeView = false
 
 
 
@@ -680,7 +681,8 @@ struct MainActivityOld: View {
                         isPresented: $showMenu,
                         shouldNavigateToLockScreen: $navigateToLockScreen,
                         shouldNavigateToPayView: $navigateToPayView,
-                        shouldNavigateToSettings: $navigateToSettings
+                        shouldNavigateToSettings: $navigateToSettings,
+                        shouldNavigateToThemeView: $navigateToThemeView
                     )
                         .zIndex(999) // Ensure it's on top of everything
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
@@ -700,6 +702,9 @@ struct MainActivityOld: View {
         }
         .navigationDestination(isPresented: $navigateToSettings) {
             SettingsView()
+        }
+        .navigationDestination(isPresented: $navigateToThemeView) {
+            ThemeView()
         }
         .onAppear {
             showNetworkLoader = !networkMonitor.isConnected
@@ -860,26 +865,6 @@ struct MainActivityOld: View {
             }
         }
     }
-
-
-    struct CircularRippleStyle: ButtonStyle {
-        func makeBody(configuration: Configuration) -> some View {
-            configuration.label
-                .background(
-                    ZStack {
-                        if configuration.isPressed {
-                            Circle()
-                                .fill(Color("circlebtnhover").opacity(0.3))
-                                .frame(width: 44, height: 44)
-                                .scaleEffect(configuration.isPressed ? 1.0 : 0.8)
-                                .opacity(configuration.isPressed ? 1.0 : 0.0)
-                        }
-                    }
-                )
-                .scaleEffect(configuration.isPressed ? 1.05 : 1.0) // Reduced scale for smoother feel
-                .animation(.easeInOut(duration: 0.15), value: configuration.isPressed) // Slightly longer for smoothness
-        }
-    }
 }
 
 // MARK: - ClearLogDialog
@@ -1029,6 +1014,7 @@ struct UpperLayoutDialog: View {
     @Binding var shouldNavigateToLockScreen: Bool
     @Binding var shouldNavigateToPayView: Bool
     @Binding var shouldNavigateToSettings: Bool
+    @Binding var shouldNavigateToThemeView: Bool
     @Environment(\.colorScheme) var colorScheme
     @State private var sliderValue: Double = 0.0
     @State private var pressedItem: String? = nil
@@ -1154,9 +1140,18 @@ struct UpperLayoutDialog: View {
                     )
                     .cornerRadius(8)
                     .onTapGesture {
-                        // Handle Themes tap - reset other selections
+                        // Handle Themes tap - matching Android logic
                         selectedItem = "themes"
-                        print("Themes tapped")
+                        
+                        // Dismiss the dialog and navigate to theme view
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isPresented = false
+                        }
+                        
+                        // Navigate to theme view after dialog dismisses
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            shouldNavigateToThemeView = true
+                        }
                     }
                     .scaleEffect(pressedItem == "themes" ? 0.95 : 1.0)
                     .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, pressing: { pressing in

@@ -1054,6 +1054,35 @@ class ApiService {
             }
         }
     }
+    
+    static func upload_theme(uid: String, themeColor: String, completion: @escaping (Bool, String) -> Void) {
+        let url = Constant.baseURL + "update_theme"
+        let parameters: [String: Any] = [
+            "uid": uid,
+            "themeColor": themeColor
+        ]
+        
+        print("📡 Uploading theme - URL: \(url), Parameters: \(parameters)")
+        
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    do {
+                        let decoded = try JSONDecoder().decode(GlobalResponse.self, from: data)
+                        print("✅ Theme upload response - error_code: \(decoded.error_code), message: \(decoded.message)")
+                        completion(decoded.error_code == "200", decoded.message)
+                    } catch {
+                        print("❌ Decoding error: \(error.localizedDescription)")
+                        completion(false, "Decoding failed")
+                    }
+                case .failure(let error):
+                    print("❌ Request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription)
+                }
+            }
+    }
 
 
 
