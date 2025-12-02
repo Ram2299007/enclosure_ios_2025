@@ -113,7 +113,7 @@ struct ContactUsView: View {
                                 .frame(height: 56)
                                 .background(
                                     RoundedRectangle(cornerRadius: 16)
-                                        .fill(Color.blue) // Using blue color as shown in the design
+                                        .fill(Color(hex: Constant.themeColor)) // Use dynamic theme color
                                 )
                             }
                             .disabled(isLoading || name.isEmpty || email.isEmpty || message.isEmpty)

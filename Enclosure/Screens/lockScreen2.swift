@@ -79,6 +79,8 @@ struct LockScreen2View: View {
             
                                     Image("elipse")
                                         .resizable()
+                                        .renderingMode(.template)
+                                        .foregroundColor(Color(hex: Constant.themeColor)) // Apply theme color tint
                                         .frame(width: 190, height: 190)
             
                                     // Display the progress (0° to 360°)
@@ -101,7 +103,7 @@ struct LockScreen2View: View {
             
                                 Text("Turn into Enclosure")
                                     .font(.custom("Inter18pt-Medium", size: 20))
-                                    .foregroundColor(Color("blue"))
+                                    .foregroundColor(Color(hex: Constant.themeColor)) // Use dynamic theme color
                                     .padding(.top, 20)
                             }
             
@@ -139,7 +141,7 @@ struct LockScreen2View: View {
                                             .font(.custom("Inter18pt-Medium", size: 14))
                                             .foregroundColor((Color(red: 0xF6/255, green: 0xF7/255, blue: 0xFF/255)))
                                             .padding()
-                                            .background(Color("blue"))
+                                            .background(Color(hex: Constant.themeColor)) // Use dynamic theme color
                                             .cornerRadius(8)
                                     }
             
@@ -155,7 +157,7 @@ struct LockScreen2View: View {
                                     Text("Forget Lock Key?")
                                         .underline(true)
                                         .font(.custom("Inter18pt-Medium", size: 14))
-                                        .foregroundColor(Color("blue"))
+                                        .foregroundColor(Color(hex: Constant.themeColor)) // Use dynamic theme color
                                 }
                             }
             
@@ -226,7 +228,7 @@ struct CircularSeekBar: View {
 
             Circle()
                 .trim(from: 0.0, to: progress / 360)
-                .stroke(Color("blue"), style: StrokeStyle(lineWidth: 18, lineCap: .round))
+                .stroke(Color(hex: Constant.themeColor), style: StrokeStyle(lineWidth: 18, lineCap: .round)) // Use dynamic theme color
                 .frame(width: 210, height: 210)
                 .rotationEffect(.degrees(-90))
 

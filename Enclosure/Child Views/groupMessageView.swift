@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct groupMessageView: View {
+    @Environment(\.colorScheme) var colorScheme
     @State private var dragOffset: CGSize = .zero
     @State private var isStretchedUp = false
     @State private var isBackHeaderVisible = false
@@ -22,11 +23,21 @@ struct groupMessageView: View {
     @State private var isBackActionInProgress = false
     @State private var lastBackPressTime: Date = Date.distantPast
     @State private var isBackButtonEnabled = true
+    @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic background tint color (darker theme color)
     
     // Long press dialog state - use @Binding to connect to parent
     @Binding var selectedGroupForDialog: GroupModel?
     @Binding var groupDialogPosition: CGPoint
     @Binding var showGroupDialog: Bool
+    
+    // Computed property for background tint: appThemeColor in light mode, darker tint in dark mode
+    private var backgroundTintColor: Color {
+        if colorScheme == .light {
+            return Color("appThemeColor") // Use appThemeColor in light mode
+        } else {
+            return mainvectorTintColor // Use darker tint in dark mode
+        }
+    }
     
     private var filteredGroups: [GroupModel] {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -108,11 +119,15 @@ struct groupMessageView: View {
                 isPressed = false
                 isBackButtonEnabled = true
                 lastBackPressTime = Date.distantPast
+                mainvectorTintColor = getMainvectorTintColor(for: Constant.themeColor) // Initialize tint color
                 
                 if !hasLoadedGroups {
                     hasLoadedGroups = true
                     viewModel.fetchGroups(uid: Constant.SenderIdMy)
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ThemeColorUpdated"))) { _ in
+                mainvectorTintColor = getMainvectorTintColor(for: Constant.themeColor) // Update tint color when theme changes
             }
             .onChange(of: isNewGroupPresented) { newValue in
                 // When returning from NewGroupView, reset all back button states
@@ -206,7 +221,7 @@ struct groupMessageView: View {
             if isSearchVisible {
                 HStack(spacing: 12) {
                     Rectangle()
-                        .fill(Color("blue"))
+                        .fill(Color(hex: Constant.themeColor)) // Use original theme color in both light and dark mode
                         .frame(width: 1, height: 19.24)
                         .padding(.leading, 3)
                     
@@ -434,6 +449,37 @@ extension groupMessageView {
                 self.isBackActionInProgress = false
                 self.isBackButtonEnabled = true
             }
+        }
+    }
+    
+    private func getMainvectorTintColor(for themeColor: String) -> Color {
+        // Use case-insensitive comparison to handle mixed case theme colors
+        let colorKey = themeColor.lowercased()
+        switch colorKey {
+        case "#ff0080":
+            return Color(hex: "#4D0026")
+        case "#00a3e9":
+            return Color(hex: "#01253B")
+        case "#7adf2a":
+            return Color(hex: "#25430D")
+        case "#ec0001":
+            return Color(hex: "#470000")
+        case "#16f3ff":
+            return Color(hex: "#05495D")
+        case "#ff8a00":
+            return Color(hex: "#663700")
+        case "#7f7f7f":
+            return Color(hex: "#2B3137")
+        case "#d9b845":
+            return Color(hex: "#413815")
+        case "#346667":
+            return Color(hex: "#1F3D3E")
+        case "#9846d9":
+            return Color(hex: "#2d1541")
+        case "#a81010":
+            return Color(hex: "#430706")
+        default:
+            return Color(hex: "#01253B")
         }
     }
 }

@@ -3,6 +3,7 @@ import SwiftUI
 import Combine
 
 struct MainActivityOld: View {
+    @Environment(\.colorScheme) var colorScheme
     @State private var searchText = ""
     @State private var isSearchActive = false
     @State private var isCallEnabled = true
@@ -55,6 +56,16 @@ struct MainActivityOld: View {
     @State private var logoImageName: String = "ec_modern" // Dynamic logo based on theme color
     @State private var switchTrackImage: String = "blue_radio_btn" // Dynamic switch track based on theme color
     @State private var bgRectTintColor: Color = Color(hex: Constant.themeColor) // Dynamic bg_rect tint color
+    @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic mainvector background tint color (darker theme color)
+    
+    // Computed property for background tint: appThemeColor in light mode, darker tint in dark mode
+    private var backgroundTintColor: Color {
+        if colorScheme == .light {
+            return Color("appThemeColor") // Use appThemeColor in light mode
+        } else {
+            return mainvectorTintColor // Use darker tint in dark mode
+        }
+    }
 
 
 
@@ -528,9 +539,25 @@ struct MainActivityOld: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: CGFloat(currentBackgroundSizeHeight))
                     .background(
-                        Image(currentBackgroundImage)
-                            .resizable()
-                            .id(currentBackgroundImage)
+                        Group {
+                            if currentBackgroundImage == "mainvector" {
+                                // Apply tint to mainvector: appThemeColor in light mode, darker tint in dark mode
+                                Image("mainvector")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .foregroundColor(backgroundTintColor)
+                            } else if currentBackgroundImage == "bg" {
+                                // Apply tint to bg: appThemeColor in light mode, darker tint in dark mode
+                                Image("bg")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .foregroundColor(backgroundTintColor)
+                            } else {
+                                Image(currentBackgroundImage)
+                                    .resizable()
+                            }
+                        }
+                        .id(currentBackgroundImage)
                     )
                     .clipped()
                     
@@ -626,7 +653,7 @@ struct MainActivityOld: View {
                         VStack { }
                             .frame(maxWidth: .infinity)
                             .frame(height: 10)
-                            .background(Color("appThemeColor"))
+                            .background(backgroundTintColor) // Use appThemeColor in light mode, darker tint in dark mode
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
                 }
@@ -780,7 +807,41 @@ struct MainActivityOld: View {
         logoImageName = getLogoImage(for: themeColor)
         switchTrackImage = getSwitchTrackImage(for: themeColor)
         bgRectTintColor = Color(hex: themeColor) // Update bg_rect tint color
+        mainvectorTintColor = getMainvectorTintColor(for: themeColor) // Update mainvector background tint color
         print("🎨 [MainActivityOld] Logo: \(logoImageName), Switch Track: \(switchTrackImage)")
+    }
+    
+    // Get mainvector background tint color (matching Android linearMain.setBackgroundTintList)
+    // Android uses darker tint colors for the background
+    private func getMainvectorTintColor(for themeColor: String) -> Color {
+        // Use case-insensitive comparison to handle mixed case theme colors
+        let colorKey = themeColor.lowercased()
+        switch colorKey {
+        case "#ff0080":
+            return Color(hex: "#4D0026")
+        case "#00a3e9":
+            return Color(hex: "#01253B")
+        case "#7adf2a":
+            return Color(hex: "#25430D")
+        case "#ec0001":
+            return Color(hex: "#470000")
+        case "#16f3ff":
+            return Color(hex: "#05495D")
+        case "#ff8a00":
+            return Color(hex: "#663700")
+        case "#7f7f7f":
+            return Color(hex: "#2B3137")
+        case "#d9b845":
+            return Color(hex: "#413815")
+        case "#346667":
+            return Color(hex: "#1F3D3E")
+        case "#9846d9":
+            return Color(hex: "#2d1541")
+        case "#a81010":
+            return Color(hex: "#430706")
+        default:
+            return Color(hex: "#01253B")
+        }
     }
     
     // Get logo image name based on theme color (matching Android logic)

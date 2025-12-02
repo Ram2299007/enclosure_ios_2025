@@ -11,6 +11,7 @@ import SwiftUI
 
 
 struct youView: View {
+    @Environment(\.colorScheme) var colorScheme
     @State private var dragOffset: CGSize = .zero
     @State private var isStretchedUp = false
     @State private var youView = false
@@ -21,6 +22,16 @@ struct youView: View {
 
     @State private var profile: GetProfileModel?
     @State private var themeColorHex: String = Constant.themeColor
+    @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic background tint color (darker theme color)
+    
+    // Computed property for background tint: appThemeColor in light mode, darker tint in dark mode
+    private var backgroundTintColor: Color {
+        if colorScheme == .light {
+            return Color("appThemeColor") // Use appThemeColor in light mode
+        } else {
+            return mainvectorTintColor // Use darker tint in dark mode
+        }
+    }
 
 
 
@@ -127,7 +138,7 @@ struct youView: View {
                 HStack(alignment: .center, spacing: 20) {
                     // Colored bar matches text block height
                     Rectangle()
-                        .fill(Color("appThemeColrBackground"))
+                        .fill(Color(hex: Constant.themeColor)) // Use original theme color in both light and dark mode
                         .frame(width: 4)
 
 
@@ -159,7 +170,7 @@ struct youView: View {
 
                 }
                 .frame(maxWidth: .infinity)
-                .background( Color("appThemeColrBackground"))
+                .background(backgroundTintColor) // Use appThemeColor in light mode, darker tint in dark mode
                 .padding(.bottom, 50)
 
 
@@ -194,6 +205,7 @@ struct youView: View {
         }
         .onAppear {
             isTopHeaderVisible = false
+            mainvectorTintColor = getMainvectorTintColor(for: themeColorHex) // Initialize tint color
             viewModel.fetch_profile_YouFragment(uid: Constant.SenderIdMy)
             viewModel.fetch_user_profile_images_youFragment(uid: Constant.SenderIdMy)
             applyProfileData(from: viewModel.list.first)
@@ -240,6 +252,38 @@ extension youView {
         if let newThemeColor = newProfile.themeColor, !newThemeColor.isEmpty {
             themeColorHex = newThemeColor
             UserDefaults.standard.set(newThemeColor, forKey: Constant.ThemeColorKey)
+            mainvectorTintColor = getMainvectorTintColor(for: newThemeColor) // Update background tint color
+        }
+    }
+    
+    private func getMainvectorTintColor(for themeColor: String) -> Color {
+        // Use case-insensitive comparison to handle mixed case theme colors
+        let colorKey = themeColor.lowercased()
+        switch colorKey {
+        case "#ff0080":
+            return Color(hex: "#4D0026")
+        case "#00a3e9":
+            return Color(hex: "#01253B")
+        case "#7adf2a":
+            return Color(hex: "#25430D")
+        case "#ec0001":
+            return Color(hex: "#470000")
+        case "#16f3ff":
+            return Color(hex: "#05495D")
+        case "#ff8a00":
+            return Color(hex: "#663700")
+        case "#7f7f7f":
+            return Color(hex: "#2B3137")
+        case "#d9b845":
+            return Color(hex: "#413815")
+        case "#346667":
+            return Color(hex: "#1F3D3E")
+        case "#9846d9":
+            return Color(hex: "#2d1541")
+        case "#a81010":
+            return Color(hex: "#430706")
+        default:
+            return Color(hex: "#01253B")
         }
     }
 }

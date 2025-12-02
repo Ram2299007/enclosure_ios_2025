@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 
 struct messageLmtView: View {
+    @Environment(\.colorScheme) var colorScheme
     @State private var isPressed = false
     @State private var dragOffset: CGSize = .zero
     @State private var isStretchedUp = false
@@ -16,8 +17,18 @@ struct messageLmtView: View {
     @State private var showAlertBinding: Bool = false
     @State private var isSettingAllUsersLimit = true // Track if setting limit for all users or individual
     @State private var selectedFriendId: String = ""
+    @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic background tint color (darker theme color)
 
     @StateObject private var viewModel = MsgLimitViewModel()
+    
+    // Computed property for background tint: appThemeColor in light mode, darker tint in dark mode
+    private var backgroundTintColor: Color {
+        if colorScheme == .light {
+            return Color("appThemeColor") // Use appThemeColor in light mode
+        } else {
+            return mainvectorTintColor // Use darker tint in dark mode
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -80,7 +91,7 @@ struct messageLmtView: View {
                     if isSearchActive {
                         HStack(spacing: 0) {
                             Rectangle()
-                                .fill(Color("blue"))
+                                .fill(Color(hex: Constant.themeColor)) // Use original theme color in both light and dark mode
                                 .frame(width: 1, height: 19.24)
                                 .padding(.leading, 23) // marginStart="23dp"
                             TextField("Search Name or Number", text: $searchText)
@@ -253,8 +264,12 @@ struct messageLmtView: View {
         .animation(.spring(), value: dragOffset)
         .onAppear {
             isTopHeaderVisible = false
+            mainvectorTintColor = getMainvectorTintColor(for: Constant.themeColor) // Initialize tint color
             viewModel.fetch_user_active_chat_list_for_msgLmt(uid: Constant.SenderIdMy)
             viewModel.fetch_message_limit_for_all_users(uid: Constant.SenderIdMy)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ThemeColorUpdated"))) { _ in
+            mainvectorTintColor = getMainvectorTintColor(for: Constant.themeColor) // Update tint color when theme changes
         }
         .onChange(of: viewModel.currentUserLimit) { newValue in
             // Update when limit changes
@@ -286,6 +301,37 @@ struct messageLmtView: View {
                     isScrollEnabled = false
                 }
             }
+        }
+    }
+    
+    private func getMainvectorTintColor(for themeColor: String) -> Color {
+        // Use case-insensitive comparison to handle mixed case theme colors
+        let colorKey = themeColor.lowercased()
+        switch colorKey {
+        case "#ff0080":
+            return Color(hex: "#4D0026")
+        case "#00a3e9":
+            return Color(hex: "#01253B")
+        case "#7adf2a":
+            return Color(hex: "#25430D")
+        case "#ec0001":
+            return Color(hex: "#470000")
+        case "#16f3ff":
+            return Color(hex: "#05495D")
+        case "#ff8a00":
+            return Color(hex: "#663700")
+        case "#7f7f7f":
+            return Color(hex: "#2B3137")
+        case "#d9b845":
+            return Color(hex: "#413815")
+        case "#346667":
+            return Color(hex: "#1F3D3E")
+        case "#9846d9":
+            return Color(hex: "#2d1541")
+        case "#a81010":
+            return Color(hex: "#430706")
+        default:
+            return Color(hex: "#01253B")
         }
     }
 }

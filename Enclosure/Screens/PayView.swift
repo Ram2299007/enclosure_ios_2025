@@ -6,11 +6,20 @@ struct PayView: View {
     @State private var isPressed = false
     @State private var isChecked = true
     @State private var themeColorHex: String = Constant.themeColor
-    
+    @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic background tint color (darker theme color)
     
     // Computed property for theme color matching iOS patterns
     private var themeColor: Color {
         Color(hex: themeColorHex.isEmpty ? Constant.themeColor : themeColorHex)
+    }
+    
+    // Computed property for background tint: appThemeColor in light mode, darker tint in dark mode
+    private var backgroundTintColor: Color {
+        if colorScheme == .light {
+            return Color("appThemeColor") // Use appThemeColor in light mode
+        } else {
+            return mainvectorTintColor // Use darker tint in dark mode
+        }
     }
     
     var body: some View {
@@ -66,6 +75,8 @@ struct PayView: View {
                             ZStack {
                                 Image("pnglabel")
                                     .resizable()
+                                    .renderingMode(.template)
+                                    .foregroundColor(themeColor) // Apply theme color tint
                                     .scaledToFill()
                                     .frame(height: 50)
                                     .clipped()
@@ -109,7 +120,7 @@ struct PayView: View {
                                         Spacer()
                                     }
                                     .frame(width: 223, height: 141, alignment: .leading)
-                                    .background(Color("buttonColorTheme"))
+                                    .background(backgroundTintColor) // Use appThemeColor in light mode, darker tint in dark mode (like bg and mainvector)
                                     .cornerRadius(8)
                                     
                                     // Right side - Free Now and checkbox
@@ -170,6 +181,14 @@ struct PayView: View {
             }
         }
         .navigationBarHidden(true)
+        .onAppear {
+            themeColorHex = Constant.themeColor // Initialize theme color
+            mainvectorTintColor = getMainvectorTintColor(for: Constant.themeColor) // Initialize tint color
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ThemeColorUpdated"))) { _ in
+            themeColorHex = Constant.themeColor // Update theme color when it changes
+            mainvectorTintColor = getMainvectorTintColor(for: Constant.themeColor) // Update tint color when theme changes
+        }
     }
     
     private func handleBackTap() {
@@ -179,6 +198,37 @@ struct PayView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             dismiss()
             isPressed = false
+        }
+    }
+    
+    private func getMainvectorTintColor(for themeColor: String) -> Color {
+        // Use case-insensitive comparison to handle mixed case theme colors
+        let colorKey = themeColor.lowercased()
+        switch colorKey {
+        case "#ff0080":
+            return Color(hex: "#4D0026")
+        case "#00a3e9":
+            return Color(hex: "#01253B")
+        case "#7adf2a":
+            return Color(hex: "#25430D")
+        case "#ec0001":
+            return Color(hex: "#470000")
+        case "#16f3ff":
+            return Color(hex: "#05495D")
+        case "#ff8a00":
+            return Color(hex: "#663700")
+        case "#7f7f7f":
+            return Color(hex: "#2B3137")
+        case "#d9b845":
+            return Color(hex: "#413815")
+        case "#346667":
+            return Color(hex: "#1F3D3E")
+        case "#9846d9":
+            return Color(hex: "#2d1541")
+        case "#a81010":
+            return Color(hex: "#430706")
+        default:
+            return Color(hex: "#01253B")
         }
     }
 }

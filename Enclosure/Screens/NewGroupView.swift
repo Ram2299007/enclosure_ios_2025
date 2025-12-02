@@ -9,6 +9,7 @@ import SwiftUI
 import PhotosUI
 
 struct NewGroupView: View {
+    @Environment(\.colorScheme) var colorScheme
     @StateObject private var viewModel = NewGroupViewModel()
     @ObservedObject private var networkMonitor = NetworkMonitor.shared
     
@@ -19,6 +20,16 @@ struct NewGroupView: View {
     @State private var errorMessage = ""
     @State private var isCreatingGroup = false
     @State private var isBackPressed = false
+    @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic background tint color (darker theme color)
+    
+    // Computed property for background tint: appThemeColor in light mode, darker tint in dark mode
+    private var backgroundTintColor: Color {
+        if colorScheme == .light {
+            return Color("appThemeColor") // Use appThemeColor in light mode
+        } else {
+            return mainvectorTintColor // Use darker tint in dark mode
+        }
+    }
     
     init(isPresented: Binding<Bool>) {
         _isPresented = isPresented
@@ -114,6 +125,7 @@ struct NewGroupView: View {
             ))
         }
         .onAppear {
+            mainvectorTintColor = getMainvectorTintColor(for: Constant.themeColor) // Initialize tint color
             // Check all icons on view appear
             print("🔍 [NewGroupView] Checking icons...")
             let iconsToCheck = ["leftvector", "group_new_svg", "tick_new_dvg", "inviteimg"]
@@ -123,6 +135,9 @@ struct NewGroupView: View {
             print("🔍 [NewGroupView] Icon check complete")
             
             viewModel.fetchContacts(uid: Constant.SenderIdMy)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ThemeColorUpdated"))) { _ in
+            mainvectorTintColor = getMainvectorTintColor(for: Constant.themeColor) // Update tint color when theme changes
         }
         .alert("Error", isPresented: $showError) {
             Button("OK", role: .cancel) {}
@@ -168,7 +183,7 @@ struct NewGroupView: View {
                 .frame(width: 45, height: 45)
                 .background(
                     Circle()
-                        .fill(Color("blue"))
+                        .fill(Color(hex: Constant.themeColor)) // Use dynamic theme color
                 )
             }
             .frame(width: 45, height: 45)
@@ -179,7 +194,7 @@ struct NewGroupView: View {
             HStack(alignment: .center, spacing: 0) {
                 // Vertical line on start side - 1dp width, 19.24dp height, marginStart=13dp
                 Rectangle()
-                    .fill(Color("blue"))
+                    .fill(Color(hex: Constant.themeColor)) // Use original theme color in both light and dark mode
                     .frame(width: 1, height: 19.24)
                     .padding(.leading, 13)
                     .padding(.trailing,13)
@@ -373,6 +388,37 @@ struct NewGroupView: View {
                     showError = true
                 }
             }
+        }
+    }
+    
+    private func getMainvectorTintColor(for themeColor: String) -> Color {
+        // Use case-insensitive comparison to handle mixed case theme colors
+        let colorKey = themeColor.lowercased()
+        switch colorKey {
+        case "#ff0080":
+            return Color(hex: "#4D0026")
+        case "#00a3e9":
+            return Color(hex: "#01253B")
+        case "#7adf2a":
+            return Color(hex: "#25430D")
+        case "#ec0001":
+            return Color(hex: "#470000")
+        case "#16f3ff":
+            return Color(hex: "#05495D")
+        case "#ff8a00":
+            return Color(hex: "#663700")
+        case "#7f7f7f":
+            return Color(hex: "#2B3137")
+        case "#d9b845":
+            return Color(hex: "#413815")
+        case "#346667":
+            return Color(hex: "#1F3D3E")
+        case "#9846d9":
+            return Color(hex: "#2d1541")
+        case "#a81010":
+            return Color(hex: "#430706")
+        default:
+            return Color(hex: "#01253B")
         }
     }
 }

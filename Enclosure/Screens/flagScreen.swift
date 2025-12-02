@@ -59,10 +59,10 @@ struct flagScreen: View {
                 // Search Bar Section - matching Android layout
                 VStack(spacing: 0) {
                     HStack(alignment: .center, spacing: 0) {
-                        // Blue vertical line - smaller height
+                        // Vertical line - use original theme color in both light and dark mode
                         Rectangle()
                             .frame(width: 1, height: 20)
-                            .foregroundColor(Color("blue"))
+                            .foregroundColor(Color(hex: Constant.themeColor))
                             .padding(.leading, 5)
                         
                         // Search TextField - wrap_content height

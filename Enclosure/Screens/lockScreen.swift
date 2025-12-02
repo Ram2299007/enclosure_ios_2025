@@ -54,7 +54,7 @@ struct LockScreenView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .zIndex(1)
 
-                VStack {
+                VStack { 
                     VStack(spacing: 40) {
                         ZStack {
                             CircularSeekBars(
@@ -65,6 +65,8 @@ struct LockScreenView: View {
 
                             Image("elipse")
                                 .resizable()
+                                .renderingMode(.template)
+                                .foregroundColor(Color(hex: Constant.themeColor)) // Apply theme color tint
                                 .frame(width: 190, height: 190)
 
                             Text("\(Int(progress))°")
@@ -94,7 +96,7 @@ struct LockScreenView: View {
 
                         Text("Set Lock Screen")
                             .font(.custom("Inter18pt-Medium", size: 16))
-                            .foregroundColor(Color("blue"))
+                            .foregroundColor(Color(hex: Constant.themeColor)) // Use dynamic theme color
 
 
                         // Dropdown Button using Menu
@@ -112,11 +114,11 @@ struct LockScreenView: View {
                         } label: {
                             ZStack {
                                 Circle()
-                                    .fill(Color("blue"))
+                                    .fill(Color(hex: Constant.themeColor)) // Use dynamic theme color
                                     .frame(width: 77, height: 77)
                                     .overlay(
                                         Circle()
-                                            .stroke(Color("blue"), lineWidth: 2)
+                                            .stroke(Color(hex: Constant.themeColor), lineWidth: 2) // Use dynamic theme color
                                     )
 
                                 HStack(spacing: 4) {
@@ -270,7 +272,7 @@ struct CircularSeekBars: View {
             Circle()
                 .trim(from: 0.0, to: progress / 360)
                 .stroke(
-                    Color("blue"),
+                    Color(hex: Constant.themeColor), // Use dynamic theme color
                     style: StrokeStyle(lineWidth: 18, lineCap: .round)
                 )
                 .frame(width: 210, height: 210)
