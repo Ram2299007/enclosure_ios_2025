@@ -38,7 +38,7 @@ struct InviteContactModel: Codable, Identifiable, Equatable {
     }
     
     var resolvedThemeColor: String {
-        themeColor.isEmpty ? "#00A3E9" : themeColor
+        themeColor.isEmpty ? Constant.themeColor : themeColor
     }
     
     var canInvite: Bool { !isActiveUser }

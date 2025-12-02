@@ -52,6 +52,9 @@ struct MainActivityOld: View {
     @State private var navigateToPayView = false
     @State private var navigateToSettings = false
     @State private var navigateToThemeView = false
+    @State private var logoImageName: String = "ec_modern" // Dynamic logo based on theme color
+    @State private var switchTrackImage: String = "blue_radio_btn" // Dynamic switch track based on theme color
+    @State private var bgRectTintColor: Color = Color(hex: Constant.themeColor) // Dynamic bg_rect tint color
 
 
 
@@ -73,7 +76,7 @@ struct MainActivityOld: View {
                                 showInviteScreen = true
                             }
                         }) {
-                            Image("ec_modern")
+                            Image(logoImageName)
                                 .resizable()
                                 .scaledToFit()
                                 .frame(width: 55, height: 55)
@@ -88,7 +91,7 @@ struct MainActivityOld: View {
                                 if isSearchActive {
                                     HStack {
                                         Rectangle()
-                                            .fill(Color("blue"))
+                                            .fill(bgRectTintColor) // Dynamic theme color instead of hardcoded blue
                                             .frame(width: 1, height: 19.24)
                                             .padding(.leading, 13)
 
@@ -135,10 +138,10 @@ struct MainActivityOld: View {
                                         .fill(Color("menuPointColor"))
                                         .frame(width: 4, height: 4)
                                     Circle()
-                                        .fill(Color("blue"))
+                                        .fill(Color(hex: Constant.themeColor))
                                         .frame(width: 4, height: 4)
                                     Circle()
-                                        .fill(Color("edittextremoveline"))
+                                        .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
                                         .frame(width: 4, height: 4)
                                 }
                                 .frame(width: 40, height: 40) // Make visual content fill the touch area
@@ -256,11 +259,12 @@ struct MainActivityOld: View {
 
                                         CustomImageToggle(
                                             isOn: $isCallEnabled,
-                                            trackEnabledImage: "blue_radio_btn",      // Image from Assets
+                                            trackEnabledImage: switchTrackImage,      // Dynamic theme-based track image
                                             trackDisabledImage: "offradiograynew",    // Image from Assets
                                             thumbEnabledImage: "phone.fill",    // SF Symbol or nil
                                             thumbDisabledImage: "xmark"         // SF Symbol or nil
                                         )
+                                        .id(switchTrackImage) // Force refresh when track image changes
                                     }
                                     .padding(.leading, 16)
 
@@ -287,7 +291,12 @@ struct MainActivityOld: View {
                                     }
                                     .frame(width: 200,height:40)
                                     .background(
-                                        selected == .call ? AnyView(Image("bg_rect").resizable()) : AnyView(Color.clear)
+                                        selected == .call ? AnyView(
+                                            Image("bg_rect")
+                                                .renderingMode(.template)
+                                                .resizable()
+                                                .foregroundColor(bgRectTintColor)
+                                        ) : AnyView(Color.clear)
                                     )
                                     .onTapGesture {
                                         selected = .call
@@ -313,11 +322,12 @@ struct MainActivityOld: View {
 
                                         CustomImageToggle(
                                             isOn: $isVideoCallEnabled,
-                                            trackEnabledImage: "blue_radio_btn",      // Image from Assets
+                                            trackEnabledImage: switchTrackImage,      // Dynamic theme-based track image
                                             trackDisabledImage: "offradiograynew",    // Image from Assets
                                             thumbEnabledImage: "phone.fill",    // SF Symbol or nil
                                             thumbDisabledImage: "xmark"         // SF Symbol or nil
                                         )
+                                        .id(switchTrackImage) // Force refresh when track image changes
                                     }
                                     .padding(.leading, 16)
 
@@ -344,7 +354,12 @@ struct MainActivityOld: View {
                                     }
                                     .frame(width: 200,height:40)
                                     .background(
-                                        selected == .videoCall ? AnyView(Image("bg_rect").resizable()) : AnyView(Color.clear)
+                                        selected == .videoCall ? AnyView(
+                                            Image("bg_rect")
+                                                .renderingMode(.template)
+                                                .resizable()
+                                                .foregroundColor(bgRectTintColor)
+                                        ) : AnyView(Color.clear)
                                     )
                                     .onTapGesture {
                                         selected = .videoCall
@@ -384,7 +399,12 @@ struct MainActivityOld: View {
                                     }
                                     .frame(width: 200,height:40)
                                     .background(
-                                        selected == .groupMessage ? AnyView(Image("bg_rect").resizable()) : AnyView(Color.clear)
+                                        selected == .groupMessage ? AnyView(
+                                            Image("bg_rect")
+                                                .renderingMode(.template)
+                                                .resizable()
+                                                .foregroundColor(bgRectTintColor)
+                                        ) : AnyView(Color.clear)
                                     )
                                     .onTapGesture {
                                         selected = .groupMessage
@@ -423,7 +443,12 @@ struct MainActivityOld: View {
                                     }
                                     .frame(width: 200,height:40)
                                     .background(
-                                        selected == .messageLimit ? AnyView(Image("bg_rect").resizable()) : AnyView(Color.clear)
+                                        selected == .messageLimit ? AnyView(
+                                            Image("bg_rect")
+                                                .renderingMode(.template)
+                                                .resizable()
+                                                .foregroundColor(bgRectTintColor)
+                                        ) : AnyView(Color.clear)
                                     )
                                     .onTapGesture {
                                         selected = .messageLimit
@@ -461,7 +486,12 @@ struct MainActivityOld: View {
                                     }
                                     .frame(width: 200,height:40)
                                     .background(
-                                        selected == .you ? AnyView(Image("bg_rect").resizable()) : AnyView(Color.clear)
+                                        selected == .you ? AnyView(
+                                            Image("bg_rect")
+                                                .renderingMode(.template)
+                                                .resizable()
+                                                .foregroundColor(bgRectTintColor)
+                                        ) : AnyView(Color.clear)
                                     )
                                     .onTapGesture {
                                         selected = .you
@@ -708,6 +738,7 @@ struct MainActivityOld: View {
         }
         .onAppear {
             showNetworkLoader = !networkMonitor.isConnected
+            updateLogoBasedOnTheme()
             
             // Check if name dialog should be shown (matching Android logic)
             let nameSaved = UserDefaults.standard.string(forKey: "nameSAved") ?? "0"
@@ -722,6 +753,84 @@ struct MainActivityOld: View {
             withAnimation(.easeInOut(duration: 0.2)) {
                 showNetworkLoader = !isConnected
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ThemeColorUpdated"))) { notification in
+            updateLogoBasedOnTheme()
+        }
+    }
+    
+    // MARK: - Logo Helper Functions
+    // Update logo based on theme color (matching Android MainActivityOld.java)
+    private func updateLogoBasedOnTheme() {
+        let themeColor = Constant.themeColor
+        print("🎨 [MainActivityOld] Updating theme - Color: \(themeColor)")
+        logoImageName = getLogoImage(for: themeColor)
+        switchTrackImage = getSwitchTrackImage(for: themeColor)
+        bgRectTintColor = Color(hex: themeColor) // Update bg_rect tint color
+        print("🎨 [MainActivityOld] Logo: \(logoImageName), Switch Track: \(switchTrackImage)")
+    }
+    
+    // Get logo image name based on theme color (matching Android logic)
+    private func getLogoImage(for themeColor: String) -> String {
+        switch themeColor {
+        case "#ff0080":
+            return "pinklogopng"
+        case "#00A3E9":
+            return "ec_modern"
+        case "#7adf2a":
+            return "popatilogopng"
+        case "#ec0001":
+            return "redlogopng"
+        case "#16f3ff":
+            return "bluelogopng"
+        case "#FF8A00":
+            return "orangelogopng"
+        case "#7F7F7F":
+            return "graylogopng"
+        case "#D9B845":
+            return "yellowlogopng"
+        case "#346667":
+            return "greenlogoppng"
+        case "#9846D9":
+            return "voiletlogopng"
+        case "#A81010":
+            return "red2logopng"
+        default:
+            return "ec_modern"
+        }
+    }
+    
+    // Get switch track image name based on theme color (matching Android MainActivityOld.java)
+    // Android uses: bg_track_pink, bg_track, bg_track_popati, bg_track_redone, etc.
+    private func getSwitchTrackImage(for themeColor: String) -> String {
+        // Use case-insensitive comparison to handle mixed case theme colors
+        let colorKey = themeColor.lowercased()
+        switch colorKey {
+        case "#ff0080":
+            return "bg_track_pink"
+        case "#00a3e9":
+            return "blue_radio_btn" // Android: bg_track
+        case "#7adf2a":
+            return "bg_track_popati"
+        case "#ec0001":
+            return "bg_track_redone"
+        case "#16f3ff":
+            return "bg_track_blue"
+        case "#ff8a00":
+            return "bg_track_orange"
+        case "#7f7f7f":
+            return "bg_track_gray"
+        case "#d9b845":
+            return "bg_track_yelloe"
+        case "#346667":
+            return "bg_track_green"
+        case "#9846d9":
+            return "bg_track_voilet"
+        case "#a81010":
+            return "bg_track_redtwo"
+        default:
+            print("⚠️ [MainActivityOld] Unknown theme color: \(themeColor), using default blue_radio_btn")
+            return "blue_radio_btn" // Android: bg_track
         }
     }
     
@@ -1020,6 +1129,11 @@ struct UpperLayoutDialog: View {
     @State private var pressedItem: String? = nil
     @State private var selectedItem: String? = nil
     
+    // Dynamic bg_rect tint color based on theme
+    private var bgRectTintColor: Color {
+        Color(hex: Constant.themeColor)
+    }
+    
     var body: some View {
         ZStack(alignment: .topTrailing) {
             // Transparent background to dismiss on tap outside
@@ -1087,8 +1201,10 @@ struct UpperLayoutDialog: View {
                     .background(
                         (pressedItem == "sleepLock" || selectedItem == "sleepLock") ? 
                         Image("bg_rect")
+                            .renderingMode(.template)
                             .resizable()
-                            .scaledToFill() : nil
+                            .scaledToFill()
+                            .foregroundColor(bgRectTintColor) : nil
                     )
                     .cornerRadius(8)
                     .onTapGesture {
@@ -1135,8 +1251,10 @@ struct UpperLayoutDialog: View {
                     .background(
                         (pressedItem == "themes" || selectedItem == "themes") ? 
                         Image("bg_rect")
+                            .renderingMode(.template)
                             .resizable()
-                            .scaledToFill() : nil
+                            .scaledToFill()
+                            .foregroundColor(bgRectTintColor) : nil
                     )
                     .cornerRadius(8)
                     .onTapGesture {
@@ -1184,8 +1302,10 @@ struct UpperLayoutDialog: View {
                     .background(
                         pressedItem == "pay" ? 
                         Image("bg_rect")
+                            .renderingMode(.template)
                             .resizable()
-                            .scaledToFill() : nil
+                            .scaledToFill()
+                            .foregroundColor(bgRectTintColor) : nil
                     )
                     .cornerRadius(8)
                     .onTapGesture {
@@ -1232,8 +1352,10 @@ struct UpperLayoutDialog: View {
                     .background(
                         pressedItem == "settings" ? 
                         Image("bg_rect")
+                            .renderingMode(.template)
                             .resizable()
-                            .scaledToFill() : nil
+                            .scaledToFill()
+                            .foregroundColor(bgRectTintColor) : nil
                     )
                     .cornerRadius(8)
                     .onTapGesture {
@@ -1322,7 +1444,7 @@ struct MainActivityOld_Previews: PreviewProvider {
 }
 
 struct NetworkLoaderBar: View {
-    @State private var themeColorHex: String = UserDefaults.standard.string(forKey: Constant.ThemeColorKey) ?? "#00A3E9"
+    @State private var themeColorHex: String = Constant.themeColor
     
     var body: some View {
         HorizontalProgressBar(
@@ -1333,10 +1455,10 @@ struct NetworkLoaderBar: View {
         .frame(maxWidth: .infinity)
         .background(Color("background_color"))
         .onAppear {
-            themeColorHex = UserDefaults.standard.string(forKey: Constant.ThemeColorKey) ?? "#00A3E9"
+            themeColorHex = Constant.themeColor
         }
         .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
-            themeColorHex = UserDefaults.standard.string(forKey: Constant.ThemeColorKey) ?? "#00A3E9"
+            themeColorHex = Constant.themeColor
         }
     }
     
@@ -1346,7 +1468,7 @@ struct NetworkLoaderBar: View {
         case "#ff0080":
             return (colorFromHex("#FF0080"), colorFromHex("#FF6D00"), colorFromHex("#FFA726"))
         case "#00a3e9":
-            return (colorFromHex("#00A3E9"), colorFromHex("#00BFA5"), colorFromHex("#0088FF"))
+            return (colorFromHex(Constant.themeColor), colorFromHex("#00BFA5"), colorFromHex("#0088FF"))
         case "#7adf2a":
             return (colorFromHex("#7ADF2A"), colorFromHex("#00C853"), colorFromHex("#66BB6A"))
         case "#ec0001":
@@ -1366,7 +1488,7 @@ struct NetworkLoaderBar: View {
         case "#a81010":
             return (colorFromHex("#A81010"), colorFromHex("#D85D01"), colorFromHex("#E53935"))
         default:
-            return (colorFromHex("#00A3E9"), colorFromHex("#00BFA5"), colorFromHex("#0088FF"))
+            return (colorFromHex(Constant.themeColor), colorFromHex("#00BFA5"), colorFromHex("#0088FF"))
         }
     }
     

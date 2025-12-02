@@ -6,7 +6,7 @@ struct ChangeNumberView: View {
     @State private var showAlert = false
     @State private var alertMessage = ""
     @State private var alertTitle = ""
-    @State private var themeColorHex: String = UserDefaults.standard.string(forKey: Constant.ThemeColorKey) ?? "#00A3E9"
+    @State private var themeColorHex: String = Constant.themeColor
     
     // Phone number input states
     @State private var oldNumber = ""
@@ -178,7 +178,7 @@ struct ChangeNumberView: View {
                     .frame(width: 157, height: 49)
                     .background(
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(Color(hex: themeColorHex.isEmpty ? "#00A3E9" : themeColorHex)) // Using theme color
+                            .fill(Color(hex: themeColorHex.isEmpty ? Constant.themeColor : themeColorHex)) // Using theme color
                     )
                     .padding(.bottom, 100)
                 }

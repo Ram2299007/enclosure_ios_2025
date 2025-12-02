@@ -122,7 +122,7 @@ struct CallLogUserInfo: Identifiable, Codable {
         callingFlag = try container.decodeIfPresent(String.self, forKey: .callingFlag) ?? ""
         callType = try container.decodeIfPresent(String.self, forKey: .callType) ?? ""
         callHistory = try container.decodeIfPresent([CallHistoryEntry].self, forKey: .callHistory) ?? []
-        themeColor = try container.decodeIfPresent(String.self, forKey: .themeColor) ?? "#00A3E9"
+        themeColor = try container.decodeIfPresent(String.self, forKey: .themeColor) ?? Constant.themeColor
         
         if let boolValue = try container.decodeIfPresent(Bool.self, forKey: .block) {
             block = boolValue

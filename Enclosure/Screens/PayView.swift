@@ -5,12 +5,12 @@ struct PayView: View {
     @Environment(\.colorScheme) var colorScheme
     @State private var isPressed = false
     @State private var isChecked = true
-    @State private var themeColorHex: String = UserDefaults.standard.string(forKey: Constant.ThemeColorKey) ?? "#00A3E9"
+    @State private var themeColorHex: String = Constant.themeColor
     
     
     // Computed property for theme color matching iOS patterns
     private var themeColor: Color {
-        Color(hex: themeColorHex.isEmpty ? "#00A3E9" : themeColorHex)
+        Color(hex: themeColorHex.isEmpty ? Constant.themeColor : themeColorHex)
     }
     
     var body: some View {

@@ -18,6 +18,11 @@ struct callView: View {
     @Binding var isTopHeaderVisible: Bool
     @State private var isPressed = false
     
+    // Dynamic theme color for UI elements
+    private var themeColor: Color {
+        Color(hex: Constant.themeColor)
+    }
+    
     // Long press dialog state - use @Binding to connect to parent
     @Binding var selectedCallLogForDialog: CallLogUserInfo?
     @Binding var callDialogPosition: CGPoint
@@ -84,10 +89,10 @@ struct callView: View {
                                     .fill(Color("menuPointColor"))
                                     .frame(width: 4, height: 4)
                                 Circle()
-                                    .fill(Color("blue"))
+                                    .fill(themeColor) // Dynamic theme color
                                     .frame(width: 4, height: 4)
                                 Circle()
-                                    .fill(Color("gray3"))
+                                    .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
                                     .frame(width: 4, height: 4)
                             }
                             .frame(width: 40, height: 40)
@@ -109,7 +114,7 @@ struct callView: View {
                             if isSearchVisible {
                                 HStack(spacing: 0) {
                                     Rectangle()
-                                        .fill(Color("blue"))
+                                        .fill(themeColor) // Dynamic theme color
                                         .frame(width: 1, height: 19.24)
                                         .padding(.leading, 23)
                                     
@@ -211,10 +216,10 @@ struct callView: View {
                                         .fill(Color("menuPointColor"))
                                         .frame(width: 4, height: 4)
                                     Circle()
-                                        .fill(Color("blue"))
+                                        .fill(themeColor) // Dynamic theme color
                                         .frame(width: 4, height: 4)
                                     Circle()
-                                        .fill(Color("gray3"))
+                                        .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
                                         .frame(width: 4, height: 4)
                                 }
                                 .frame(width: 40, height: 40)
@@ -237,7 +242,7 @@ struct callView: View {
                         CallHistoryListView(
                             entries: selectedHistoryEntries,
                             logType: .voice,
-                            themeHex: selectedHistoryContact?.themeColor ?? "#00A3E9"
+                            themeHex: selectedHistoryContact?.themeColor ?? Constant.themeColor
                         )
                         .padding(.top, 4)
                     }
@@ -641,7 +646,7 @@ struct CallHistoryHeaderView: View {
     
     var body: some View {
         HStack(spacing: 16) {
-            CallLogContactCardView(image: contact.photo, themeColor: contact.themeColor)
+            CallLogContactCardView(image: contact.photo, themeColor: Constant.themeColor) // Use global theme color
                 .padding(.leading, 4)
             
             VStack(alignment: .leading, spacing: 4) {
@@ -805,6 +810,11 @@ struct CallingContactRowView: View {
     @State private var isExpanded = false
     @State private var callButtonWidth: CGFloat = 0
     
+    // Dynamic theme color for UI elements
+    private var themeColor: Color {
+        Color(hex: Constant.themeColor)
+    }
+    
     // Truncate name to 22 characters like Android
     private var displayName: String {
         if contact.fullName.count > 22 {
@@ -839,10 +849,11 @@ struct CallingContactRowView: View {
                             expandCallButton()
                         }) {
                             Image("cllingnewpng")
+                                .renderingMode(.template)
                                 .resizable()
                                 .scaledToFit()
                                 .frame(width: 22, height: 22)
-                                .foregroundColor(Color(hex: contact.themeColor.isEmpty ? "#00A3E9" : contact.themeColor))
+                                .foregroundColor(themeColor) // Use global theme color for all users
                         }
                         
                         if isExpanded {
@@ -860,7 +871,7 @@ struct CallingContactRowView: View {
                                             topTrailing: 0
                                         )
                                     )
-                                    .fill(Color(hex: contact.themeColor.isEmpty ? "#00A3E9" : contact.themeColor))
+                                    .fill(themeColor) // Use global theme color for all users
                                     
                                     Text("Call")
                                         .font(.custom("Inter18pt-Bold", size: 16))
@@ -918,7 +929,7 @@ struct CallingContactCardView: View {
             // Border background (card_border equivalent) - using theme color instead of blue
             // The border is 2dp wide, so outer circle is 54dp (50 + 2*2)
             Circle()
-                .stroke(Color(hex: themeColor.isEmpty ? "#00A3E9" : themeColor), lineWidth: 2) // 2dp border stroke with theme color
+                .stroke(Color(hex: themeColor.isEmpty ? Constant.themeColor : themeColor), lineWidth: 2) // 2dp border stroke with theme color
                 .frame(width: 54, height: 54)
             
             CachedAsyncImage(url: URL(string: image ?? "")) { image in
@@ -948,6 +959,11 @@ extension callView {
         let logType: CallLogViewModel.LogType
         @Binding var isShowing: Bool
         let onDelete: () -> Void
+        
+        // Dynamic theme color for UI elements - use global theme for all users
+        private var themeColor: Color {
+            Color(hex: Constant.themeColor)
+        }
         
         // Calculate adjusted offset X - full width (match_parent)
         private func adjustedOffsetX(in geometry: GeometryProxy) -> CGFloat {
@@ -1019,7 +1035,7 @@ extension callView {
                             HStack(spacing: 0) {
                                 // FrameLayout id="themeBorder" - profile image with border
                                 // marginStart="1dp" marginEnd="16dp" padding="2dp"
-                                CallLogContactCardView(image: callLog.photo, themeColor: callLog.themeColor)
+                                CallLogContactCardView(image: callLog.photo, themeColor: Constant.themeColor) // Use global theme color
                                     .padding(.leading, 1) // marginStart="1dp"
                                     .padding(.trailing, 16) // marginEnd="16dp"
                                 
@@ -1063,7 +1079,7 @@ extension callView {
                                         Image("videosvgnew2")
                                             .resizable()
                                             .renderingMode(.template)
-                                            .foregroundColor(Color("blue"))
+                                            .foregroundColor(themeColor) // Use global theme color
                                             .scaledToFit()
                                             .frame(width: 26, height: 16)
                                         Image("polysvg")
@@ -1076,10 +1092,11 @@ extension callView {
                                     .padding(.trailing, 22)
                                 } else {
                                     Image("cllingnewpng")
+                                        .renderingMode(.template)
                                         .resizable()
                                         .scaledToFit()
                                         .frame(width: 22, height: 22)
-                                        .foregroundColor(Color(hex: callLog.themeColor.isEmpty ? "#00A3E9" : callLog.themeColor))
+                                        .foregroundColor(themeColor) // Use global theme color
                                         .padding(.trailing, 22)
                                 }
                             }

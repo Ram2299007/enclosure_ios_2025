@@ -84,6 +84,11 @@ struct CallLogUserRowView: View {
     @State private var exactTouchLocation: CGPoint = .zero
     @State private var isLongPressing = false
     
+    // Dynamic theme color for UI elements - use global theme for all users
+    private var themeColor: Color {
+        Color(hex: Constant.themeColor)
+    }
+    
     private var displayName: String {
         if entry.fullName.count > 22 {
             return String(entry.fullName.prefix(22)) + "..."
@@ -199,7 +204,7 @@ struct CallLogUserRowView: View {
                                                 Image("videosvgnew2")
                                                     .resizable()
                                                     .renderingMode(.template)
-                                                    .foregroundColor(Color("blue"))
+                                                    .foregroundColor(themeColor) // Use global theme color
                                                     .scaledToFit()
                                                     .frame(width: 26, height: 16)
                                                 
@@ -212,10 +217,11 @@ struct CallLogUserRowView: View {
                                             }
                                         } else {
                                             Image("cllingnewpng")
+                                                .renderingMode(.template)
                                                 .resizable()
                                                 .scaledToFit()
                                                 .frame(width: 22, height: 22)
-                                                .foregroundColor(Color(hex: entry.themeColor.isEmpty ? "#00A3E9" : entry.themeColor))
+                                                .foregroundColor(themeColor) // Use global theme color
                                         }
                                     }
                                 }
@@ -236,7 +242,7 @@ struct CallLogUserRowView: View {
                                                     topTrailing: 0
                                                 )
                                             )
-                                            .fill(Color(hex: entry.themeColor.isEmpty ? "#00A3E9" : entry.themeColor))
+                                            .fill(themeColor) // Use global theme color
                                             
                                             Text("Call")
                                                 .font(.custom("Inter18pt-Bold", size: 16))
@@ -323,16 +329,21 @@ struct CallLogUserRowView: View {
 // Call log specific contact card view - matching Android: 48dp image, 2dp padding = 52dp total
 struct CallLogContactCardView: View {
     var image: String?
-    var themeColor: String
+    var themeColor: String // Parameter kept for compatibility, but we use global theme
+    
+    // Use global theme color for all users
+    private var borderColor: Color {
+        Color(hex: Constant.themeColor)
+    }
     
     var body: some View {
         // FrameLayout with border - matching Android card_border
         // FrameLayout: padding="2dp", Image: 48dp x 48dp (not 50dp)
         ZStack {
-            // Border background (card_border equivalent) - using theme color
+            // Border background (card_border equivalent) - using global theme color
             // The border is 2dp wide, so outer circle is 52dp (48 + 2*2)
             Circle()
-                .stroke(Color(hex: themeColor.isEmpty ? "#00A3E9" : themeColor), lineWidth: 2)
+                .stroke(borderColor, lineWidth: 2)
                 .frame(width: 52, height: 52)
             
             CachedAsyncImage(url: URL(string: image ?? "")) { image in

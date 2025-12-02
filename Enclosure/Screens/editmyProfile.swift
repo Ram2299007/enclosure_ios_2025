@@ -16,7 +16,7 @@ struct EditmyProfile: View {
     @State private var selectedImageStatus: [UIImage] = []
 
     @State private var showDialog = false
-    @State private var themeColorHex: String = UserDefaults.standard.string(forKey: Constant.ThemeColorKey) ?? "#00A3E9"
+    @State private var themeColorHex: String = Constant.themeColor
     
 
     @Environment(\.presentationMode) var presentationMode
@@ -578,7 +578,7 @@ struct ThemedProfileImageView: View {
     private let borderPadding: CGFloat = 4.0
     
     private var borderColor: Color {
-        Color(hex: themeColorHex.isEmpty ? "#00A3E9" : themeColorHex)
+        Color(hex: themeColorHex.isEmpty ? Constant.themeColor : themeColorHex)
     }
     
     var body: some View {

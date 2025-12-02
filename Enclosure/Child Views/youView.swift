@@ -20,7 +20,7 @@ struct youView: View {
     @StateObject private var viewModel = YouViewModel()
 
     @State private var profile: GetProfileModel?
-    @State private var themeColorHex: String = UserDefaults.standard.string(forKey: Constant.ThemeColorKey) ?? "#00A3E9"
+    @State private var themeColorHex: String = Constant.themeColor
 
 
 
@@ -253,7 +253,7 @@ struct ThemeBorderProfileImage: View {
     private let borderPadding: CGFloat = 4.0
     
     private var borderColor: Color {
-        Color(hex: themeColorHex.isEmpty ? "#00A3E9" : themeColorHex)
+        Color(hex: themeColorHex.isEmpty ? Constant.themeColor : themeColorHex)
     }
     
     var body: some View {

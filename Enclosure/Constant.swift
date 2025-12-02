@@ -33,6 +33,11 @@ struct Constant{
     static var SenderIdMy: String {
         return UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? "0"
     }
+    
+    // Get theme color dynamically from UserDefaults
+    static var themeColor: String {
+        return UserDefaults.standard.string(forKey: Constant.ThemeColorKey) ?? "#00A3E9"
+    }
 
 
 

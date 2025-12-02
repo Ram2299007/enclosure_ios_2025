@@ -18,6 +18,11 @@ struct videoCallView: View {
     @Binding var isTopHeaderVisible: Bool
     @State private var isPressed = false
     
+    // Dynamic theme color for UI elements
+    private var themeColor: Color {
+        Color(hex: Constant.themeColor)
+    }
+    
     // Long press dialog state - use @Binding to connect to parent
     @Binding var selectedCallLogForDialog: CallLogUserInfo?
     @Binding var callDialogPosition: CGPoint
@@ -84,10 +89,10 @@ struct videoCallView: View {
                                     .fill(Color("menuPointColor"))
                                     .frame(width: 4, height: 4)
                                 Circle()
-                                    .fill(Color("blue"))
+                                    .fill(themeColor) // Dynamic theme color
                                     .frame(width: 4, height: 4)
                                 Circle()
-                                    .fill(Color("gray3"))
+                                    .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
                                     .frame(width: 4, height: 4)
                             }
                             .frame(width: 40, height: 40)
@@ -109,7 +114,7 @@ struct videoCallView: View {
                             if isSearchVisible {
                                 HStack(spacing: 0) {
                                     Rectangle()
-                                        .fill(Color("blue"))
+                                        .fill(themeColor) // Dynamic theme color
                                         .frame(width: 1, height: 19.24)
                                         .padding(.leading, 23)
                                     
@@ -211,10 +216,10 @@ struct videoCallView: View {
                                         .fill(Color("menuPointColor"))
                                         .frame(width: 4, height: 4)
                                     Circle()
-                                        .fill(Color("blue"))
+                                        .fill(themeColor) // Dynamic theme color
                                         .frame(width: 4, height: 4)
                                     Circle()
-                                        .fill(Color("gray3"))
+                                        .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
                                         .frame(width: 4, height: 4)
                                 }
                                 .frame(width: 40, height: 40)
@@ -237,7 +242,7 @@ struct videoCallView: View {
                                 CallHistoryListView(
                                     entries: selectedHistoryEntries,
                                     logType: .video,
-                                    themeHex: selectedHistoryContact?.themeColor ?? "#00A3E9"
+                                    themeHex: Constant.themeColor // Use global theme color for all users
                                 )
                                 .padding(.top, 4)
                             }
@@ -470,6 +475,11 @@ struct VideoCallingContactRowView: View {
     @State private var isExpanded = false
     @State private var callButtonWidth: CGFloat = 0
     
+    // Dynamic theme color for UI elements - use global theme for all users
+    private var themeColor: Color {
+        Color(hex: Constant.themeColor)
+    }
+    
     // Truncate name to 22 characters like Android
     private var displayName: String {
         if contact.fullName.count > 22 {
@@ -484,7 +494,7 @@ struct VideoCallingContactRowView: View {
             HStack(spacing: 0) {
                 // Profile image with theme border - matching chatView CardView design
                 // Android: marginLeft="20dp", marginRight="20dp" on themeBorder FrameLayout
-                CallingContactCardView(image: contact.photo, themeColor: contact.themeColor)
+                CallingContactCardView(image: contact.photo, themeColor: Constant.themeColor) // Use global theme color
                     .padding(.leading, 20) // marginLeft="20dp"
                     .padding(.trailing, 20) // marginRight="20dp"
                 
@@ -508,7 +518,7 @@ struct VideoCallingContactRowView: View {
                                 Image("videosvgnew2")
                                     .resizable()
                                     .renderingMode(.template)
-                                    .foregroundColor(Color("blue"))
+                                    .foregroundColor(themeColor) // Use global theme color
                                     .scaledToFit()
                                     .frame(width: 26, height: 16)
                                 
@@ -536,7 +546,7 @@ struct VideoCallingContactRowView: View {
                                             topTrailing: 0
                                         )
                                     )
-                                    .fill(Color(hex: contact.themeColor.isEmpty ? "#00A3E9" : contact.themeColor))
+                                    .fill(themeColor) // Use global theme color
                                     
                                     Text("Call")
                                         .font(.custom("Inter18pt-Bold", size: 16))
@@ -829,7 +839,7 @@ extension videoCallView {
                             HStack(spacing: 0) {
                                 // FrameLayout id="themeBorder" - profile image with border
                                 // marginStart="1dp" marginEnd="16dp" padding="2dp"
-                                CallLogContactCardView(image: callLog.photo, themeColor: callLog.themeColor)
+                                CallLogContactCardView(image: callLog.photo, themeColor: Constant.themeColor) // Use global theme color
                                     .padding(.leading, 1) // marginStart="1dp"
                                     .padding(.trailing, 16) // marginEnd="16dp"
                                 
@@ -871,7 +881,7 @@ extension videoCallView {
                                     Image("videosvgnew2")
                                         .resizable()
                                         .renderingMode(.template)
-                                        .foregroundColor(Color("blue"))
+                                        .foregroundColor(Color(hex: Constant.themeColor)) // Use global theme color
                                         .scaledToFit()
                                         .frame(width: 26, height: 16)
                                     Image("polysvg")

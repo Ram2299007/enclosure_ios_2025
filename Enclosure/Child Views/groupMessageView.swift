@@ -573,7 +573,7 @@ struct FloatingActionButton: View {
                 .padding(16)
                 .background(
                     Circle()
-                        .fill(Color(hex: "#00A3E9"))
+                        .fill(Color(hex: Constant.themeColor))
                 )
                 .frame(width: 53, height: 53)
                 .foregroundColor(.white)

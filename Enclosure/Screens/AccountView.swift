@@ -6,7 +6,7 @@ struct AccountView: View {
     @State private var showAlert = false
     @State private var alertMessage = ""
     @State private var alertTitle = ""
-    @State private var themeColorHex: String = UserDefaults.standard.string(forKey: Constant.ThemeColorKey) ?? "#00A3E9"
+    @State private var themeColorHex: String = Constant.themeColor
     
     // Navigation states
     @State private var navigateToChangeNumber = false
@@ -30,7 +30,7 @@ struct AccountView: View {
                                 // SIM 1 (Old Number) - using theme color
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 8)
-                                        .fill(Color(hex: themeColorHex.isEmpty ? "#00A3E9" : themeColorHex))
+                                        .fill(Color(hex: themeColorHex.isEmpty ? Constant.themeColor : themeColorHex))
                                         .frame(width: 32, height: 43)
                                     
                                     // SIM card cutout
@@ -44,7 +44,7 @@ struct AccountView: View {
                                 HStack(spacing: 2.5) {
                                     ForEach(0..<3, id: \.self) { _ in
                                         Circle()
-                                            .fill(Color(hex: themeColorHex.isEmpty ? "#00A3E9" : themeColorHex).opacity(0.8))
+                                            .fill(Color(hex: themeColorHex.isEmpty ? Constant.themeColor : themeColorHex).opacity(0.8))
                                             .frame(width: 4, height: 4)
                                     }
                                 }
@@ -53,7 +53,7 @@ struct AccountView: View {
                                 // SIM 2 (New Number) - using theme color
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 8)
-                                        .fill(Color(hex: themeColorHex.isEmpty ? "#00A3E9" : themeColorHex))
+                                        .fill(Color(hex: themeColorHex.isEmpty ? Constant.themeColor : themeColorHex))
                                         .frame(width: 32, height: 43)
                                     
                                     // SIM card cutout
@@ -112,7 +112,7 @@ struct AccountView: View {
                     .frame(width: 157, height: 49)
                     .background(
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(Color(hex: themeColorHex.isEmpty ? "#00A3E9" : themeColorHex)) // Using theme color
+                            .fill(Color(hex: themeColorHex.isEmpty ? Constant.themeColor : themeColorHex)) // Using theme color
                     )
                     .padding(.bottom, 100)
                 }

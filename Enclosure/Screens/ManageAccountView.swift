@@ -6,7 +6,7 @@ struct ManageAccountView: View {
     @State private var showAlert = false
     @State private var alertMessage = ""
     @State private var alertTitle = ""
-    @State private var themeColorHex: String = UserDefaults.standard.string(forKey: Constant.ThemeColorKey) ?? "#00A3E9"
+    @State private var themeColorHex: String = Constant.themeColor
     
     let newPhoneNumber: String
     
@@ -154,7 +154,7 @@ struct ManageAccountView: View {
                         .padding(.horizontal, 20) // paddingStart="20dp" paddingEnd="20dp"
                         .background(
                             RoundedRectangle(cornerRadius: 8)
-                                .fill(Color(hex: themeColorHex.isEmpty ? "#00A3E9" : themeColorHex))
+                                .fill(Color(hex: themeColorHex.isEmpty ? Constant.themeColor : themeColorHex))
                         )
                         .buttonStyle(.plain) // textAllCaps="false"
                         .padding(.horizontal, 20)

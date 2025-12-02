@@ -334,7 +334,7 @@ private struct MenuDotsIcon: View {
                 .fill(Color(hex: "#011224"))
                 .frame(width: 4, height: 4)
             Circle()
-                .fill(Color(hex: "#00A3E9"))
+                .fill(Color(hex: Constant.themeColor))
                 .frame(width: 4, height: 4)
             Circle()
                 .fill(Color(hex: "#9EA6B9"))
