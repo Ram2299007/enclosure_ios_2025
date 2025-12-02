@@ -343,9 +343,22 @@ struct MainActivityOld: View {
                                                 .fontWeight(.heavy)
 
 
-                                            Image("videosvgpoly") // Make sure this is in your Assets
-                                                .resizable()
-                                                .frame(width: 24, height: 16)
+                                            ZStack {
+                                                Image("videosvgnew2")
+                                                    .resizable()
+                                                    .renderingMode(.template)
+                                                    .foregroundColor(.white) // Camera body stays white
+                                                    .scaledToFit()
+                                                    .frame(width: 24, height: 16)
+                                                
+                                                Image("polysvg")
+                                                    .resizable()
+                                                    .renderingMode(.template)
+                                                    .foregroundColor(bgRectTintColor) // Play button always uses theme color for visibility
+                                                    .scaledToFit()
+                                                    .frame(width: 5, height: 5)
+                                                    .offset(x: 2, y: -0.5) // Position the play button overlay
+                                            }
 
 
                                         }
