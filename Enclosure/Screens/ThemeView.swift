@@ -10,6 +10,8 @@ struct ThemeView: View {
     @State private var alertMessage = ""
     @State private var alertTitle = ""
     @State private var isSubmitting = false
+    @State private var iconChangeRetryCount = 0
+    private let maxIconChangeRetries = 2
     
     // Theme colors mapping (matching Android)
     private let themeColors: [(color: String, name: String, logoImage: String)] = [
@@ -666,25 +668,220 @@ struct ThemeView: View {
                 isSubmitting = false
                 
                 if success {
-                    // CRITICAL: Change app icon IMMEDIATELY while app is definitely active
-                    // Do this BEFORE posting notification or dismissing to ensure app stays active
-                    self.changeAppIconSync(for: selectedThemeColor)
-                    
-                    // Post notification to update UI
+                    // Post notification to update UI first
                     NotificationCenter.default.post(
                         name: NSNotification.Name("ThemeColorUpdated"),
                         object: nil,
                         userInfo: ["themeColor": selectedThemeColor]
                     )
                     
-                    // Dismiss after a small delay to allow icon change to complete
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    // Change app icon BEFORE dismissing (matching Android behavior)
+                    // Android calls themeScreen.changeAppIcon() after API success (line 1321 in Webservice.java)
+                    // Reset retry count
+                    self.iconChangeRetryCount = 0
+                    
+                    // Attempt icon change immediately - the waitForAppActiveAndChangeIcon will handle waiting
+                    // We do this BEFORE dismissing to ensure the app stays active
+                    self.changeAppIconDirectly(for: selectedThemeColor)
+                    
+                    // Dismiss after a delay to allow icon change to complete
+                    // Keep the view open longer to ensure app stays active during icon change
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                         dismiss()
                     }
                 } else {
                     alertTitle = "Error"
                     alertMessage = message
                     showAlert = true
+                }
+            }
+        }
+    }
+    
+    // Direct app icon change (matching Android changeAppIcon behavior)
+    private func changeAppIconDirectly(for themeColor: String) {
+        // Ensure we're on the main thread
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async {
+                self.changeAppIconDirectly(for: themeColor)
+            }
+            return
+        }
+        
+        // Map theme colors to alternate icon names (matching Android aliases)
+        let iconName: String?
+        switch themeColor {
+        case "#ff0080": iconName = "SplashScreenMyAliasPink"
+        case "#00A3E9": iconName = "SplashScreenMyAliasDefault"
+        case "#7adf2a": iconName = "SplashScreenMyAliasPopati"
+        case "#ec0001": iconName = "SplashScreenMyAliasRed"
+        case "#16f3ff": iconName = "SplashScreenMyAliasLightBlue"
+        case "#FF8A00": iconName = "SplashScreenMyAliasOrange"
+        case "#7F7F7F": iconName = "SplashScreenMyAliasgray"
+        case "#D9B845": iconName = "SplashScreenMyAliasyellow"
+        case "#346667": iconName = "SplashScreenMyAliasrichgreen"
+        case "#9846D9": iconName = "SplashScreenMyAliasVoilet"
+        case "#A81010": iconName = "SplashScreenMyAliasred2"
+        default: iconName = "SplashScreenMyAliasDefault"
+        }
+        
+        guard UIApplication.shared.supportsAlternateIcons else {
+            print("⚠️ Alternate app icons not supported on this device")
+            return
+        }
+        
+        let currentIcon = UIApplication.shared.alternateIconName
+        let targetIcon = iconName == "SplashScreenMyAliasDefault" ? nil : iconName
+        
+        // Only change if different from current
+        guard currentIcon != targetIcon else {
+            print("ℹ️ App icon already set to: \(iconName ?? "default")")
+            return
+        }
+        
+        print("🔄 [changeAppIconDirectly] Changing app icon:")
+        print("   - Current: \(currentIcon ?? "default")")
+        print("   - Target: \(iconName ?? "default")")
+        print("   - App State: \(UIApplication.shared.applicationState.rawValue)")
+        print("   - Supports Alternate Icons: \(UIApplication.shared.supportsAlternateIcons)")
+        
+        // Wait for app to be active before attempting icon change
+        // This is critical - icon changes only work when app is in .active state
+        self.waitForAppActiveAndChangeIcon(targetIcon: targetIcon, iconName: iconName, themeColor: themeColor)
+    }
+    
+    // Wait for app to become active, then change icon
+    private func waitForAppActiveAndChangeIcon(targetIcon: String?, iconName: String?, themeColor: String, attemptCount: Int = 0) {
+        let maxAttempts = 10 // Maximum 2 seconds of waiting (10 * 0.2s)
+        
+        let appState = UIApplication.shared.applicationState
+        let appStateRaw = appState.rawValue
+        print("🔍 [waitForAppActiveAndChangeIcon] Attempt \(attemptCount + 1)/\(maxAttempts), App State: \(appStateRaw) (0=inactive, 1=active, 2=background)")
+        
+        // Explicitly check for active state (rawValue must be 1)
+        if appState == .active && appStateRaw == 1 {
+            // App is active, proceed with icon change
+            print("✅ App is active (confirmed state: \(appStateRaw)), proceeding with icon change")
+            self.performIconChange(targetIcon: targetIcon, iconName: iconName, themeColor: themeColor)
+        } else if attemptCount < maxAttempts {
+            // App not active yet, wait and retry
+            print("⚠️ App not active (state: \(appStateRaw)), waiting 0.2s and retrying...")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                self.waitForAppActiveAndChangeIcon(targetIcon: targetIcon, iconName: iconName, themeColor: themeColor, attemptCount: attemptCount + 1)
+            }
+        } else {
+            // Max attempts reached, set up observer for when app becomes active
+            print("⚠️ Max attempts reached, setting up observer for app activation")
+            #if targetEnvironment(simulator)
+            print("⚠️ Running on simulator - app icon changes may not work")
+            print("⚠️ App state staying inactive is a known simulator limitation")
+            print("⚠️ Please test app icon changes on a real device")
+            #endif
+            
+            var observer: NSObjectProtocol?
+            observer = NotificationCenter.default.addObserver(
+                forName: UIApplication.didBecomeActiveNotification,
+                object: nil,
+                queue: .main
+            ) { _ in
+                if let observer = observer {
+                    NotificationCenter.default.removeObserver(observer)
+                }
+                let finalState = UIApplication.shared.applicationState
+                let finalStateRaw = finalState.rawValue
+                print("✅ App became active (state: \(finalStateRaw)), attempting icon change")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.performIconChange(targetIcon: targetIcon, iconName: iconName, themeColor: themeColor)
+                }
+            }
+            
+            // Also try one more time after a longer delay in case app becomes active
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                let delayedState = UIApplication.shared.applicationState
+                let delayedStateRaw = delayedState.rawValue
+                if delayedState == .active && delayedStateRaw == 1 {
+                    print("✅ App became active after delay (state: \(delayedStateRaw)), attempting icon change")
+                    self.performIconChange(targetIcon: targetIcon, iconName: iconName, themeColor: themeColor)
+                } else {
+                    print("⚠️ App still inactive after delay (state: \(delayedStateRaw))")
+                    #if targetEnvironment(simulator)
+                    print("⚠️ This is expected on simulators - app icon changes require a real device")
+                    #endif
+                }
+            }
+        }
+    }
+    
+    // Perform the actual icon change
+    private func performIconChange(targetIcon: String?, iconName: String?, themeColor: String) {
+        // Final check - ensure app is still active (explicitly check rawValue)
+        let appState = UIApplication.shared.applicationState
+        let appStateRaw = appState.rawValue
+        guard appState == .active && appStateRaw == 1 else {
+            print("⚠️ [performIconChange] App not active (state: \(appStateRaw)), retrying...")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.waitForAppActiveAndChangeIcon(targetIcon: targetIcon, iconName: iconName, themeColor: themeColor)
+            }
+            return
+        }
+        
+        // Check if we've exceeded max retries
+        guard iconChangeRetryCount < maxIconChangeRetries else {
+            print("⚠️ [performIconChange] Max retries (\(maxIconChangeRetries)) reached, giving up")
+            print("   - Note: Error 35 (Resource temporarily unavailable) is common on iOS simulators")
+            print("   - Note: App icon changes may not work reliably on simulators")
+            print("   - Note: Please test on a real device for proper icon change functionality")
+            return
+        }
+        
+        print("🚀 [performIconChange] Calling setAlternateIconName... (Attempt \(iconChangeRetryCount + 1)/\(maxIconChangeRetries))")
+        UIApplication.shared.setAlternateIconName(targetIcon) { error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    let nsError = error as NSError
+                    print("❌ [performIconChange] Failed to change app icon:")
+                    print("   - Error: \(error.localizedDescription)")
+                    print("   - Code: \(nsError.code)")
+                    print("   - Domain: \(nsError.domain)")
+                    print("   - UserInfo: \(nsError.userInfo)")
+                    
+                    // Increment retry count
+                    self.iconChangeRetryCount += 1
+                    
+                    // For error 35, use longer delay and check if we should continue
+                    if nsError.code == 35 {
+                        if self.iconChangeRetryCount < self.maxIconChangeRetries {
+                            let retryDelay: TimeInterval = 2.0 // Longer delay for error 35
+                            print("   - Error 35: Resource temporarily unavailable")
+                            print("   - Retrying after \(retryDelay) seconds... (Attempt \(self.iconChangeRetryCount + 1)/\(self.maxIconChangeRetries))")
+                            print("   - Note: This error is common on iOS simulators")
+                            DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) {
+                                self.changeAppIconDirectly(for: themeColor)
+                            }
+                        } else {
+                            print("   - Max retries reached for error 35")
+                            print("   - This is a known iOS simulator limitation")
+                            print("   - Icon changes work reliably on real devices")
+                        }
+                    } else {
+                        // For other errors, retry with shorter delay
+                        if self.iconChangeRetryCount < self.maxIconChangeRetries {
+                            let retryDelay: TimeInterval = 0.5
+                            print("   - Retrying after \(retryDelay) seconds... (Attempt \(self.iconChangeRetryCount + 1)/\(self.maxIconChangeRetries))")
+                            DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) {
+                                self.changeAppIconDirectly(for: themeColor)
+                            }
+                        } else {
+                            print("   - Max retries reached")
+                        }
+                    }
+                } else {
+                    print("✅ [performIconChange] App icon changed successfully to: \(iconName ?? "default")")
+                    print("   - Note: Icon change may take a moment to appear on home screen")
+                    #if targetEnvironment(simulator)
+                    print("   - Note: On simulator, you may need to restart the app to see the change")
+                    #endif
+                    self.iconChangeRetryCount = 0 // Reset on success
                 }
             }
         }
