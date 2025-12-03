@@ -22,7 +22,13 @@ struct ContentView: View {
                 // Centered Logo (matching Android SplashScreen)
                 VStack {
                     Spacer()
-                   
+                    
+                    // Theme-based logo (matching Launch Screen size: 110x110)
+                    Image(logoImageName)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 110, height: 110)
+                    
                     Spacer()
                 }
             }
@@ -55,41 +61,46 @@ struct ContentView: View {
                 setupSplashScreen()
                 startSplashThread()
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ThemeColorUpdated"))) { notification in
+                setupSplashScreen()
+            }
         }
     }
     
-    // Setup splash screen logo based on theme color (matching Android)
+    // Setup splash screen logo based on theme color (matching Android and MainActivityOld)
     private func setupSplashScreen() {
-        // Get theme color from UserDefaults (if available)
-        // For now, using default logo. Can be extended to support theme colors
         let themeColor = Constant.themeColor
-        
-        // Map theme colors to logos (matching Android logic)
+        logoImageName = getLogoImage(for: themeColor)
+        print("🎨 [ContentView] Splash screen logo set to: \(logoImageName) (theme: \(themeColor))")
+    }
+    
+    // Get logo image name based on theme color (matching MainActivityOld logic)
+    private func getLogoImage(for themeColor: String) -> String {
         switch themeColor {
         case "#ff0080":
-            logoImageName = "pinklogopng"
+            return "pinklogopng"
         case "#00A3E9":
-            logoImageName = "ec_modern"
+            return "ec_modern"
         case "#7adf2a":
-            logoImageName = "popatilogopng"
+            return "popatilogopng"
         case "#ec0001":
-            logoImageName = "redlogopng"
+            return "redlogopng"
         case "#16f3ff":
-            logoImageName = "bluelogopng"
+            return "bluelogopng"
         case "#FF8A00":
-            logoImageName = "orangelogopng"
+            return "orangelogopng"
         case "#7F7F7F":
-            logoImageName = "graylogopng"
+            return "graylogopng"
         case "#D9B845":
-            logoImageName = "yellowlogopng"
+            return "yellowlogopng"
         case "#346667":
-            logoImageName = "greenlogoppng"
+            return "greenlogoppng"
         case "#9846D9":
-            logoImageName = "voiletlogopng"
+            return "voiletlogopng"
         case "#A81010":
-            logoImageName = "red2logopng"
+            return "red2logopng"
         default:
-            logoImageName = "ec_modern"
+            return "ec_modern"
         }
     }
     
