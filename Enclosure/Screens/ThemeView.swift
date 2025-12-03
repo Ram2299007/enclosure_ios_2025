@@ -50,6 +50,16 @@ struct ThemeView: View {
         }
     }
     
+    // Computed property for background tint: appThemeColor in light mode, darker tint in dark mode
+    // Matching MainActivityOld.swift backgroundTintColor logic
+    private var backgroundTintColor: Color {
+        if colorScheme == .light {
+            return Color("appThemeColor") // Use appThemeColor in light mode
+        } else {
+            return getBackgroundTintColor(for: selectedThemeColor) // Use darker tint in dark mode
+        }
+    }
+    
     var body: some View {
         ZStack {
             Color("background_color")
@@ -203,7 +213,9 @@ struct ThemeView: View {
             .frame(height: 71)
             .background(
                 Image("bg")
+                    .renderingMode(.template)
                     .resizable()
+                    .foregroundColor(backgroundTintColor)
             )
             .padding(.top, 3)
             
