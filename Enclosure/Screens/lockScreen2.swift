@@ -7,28 +7,12 @@ struct LockScreen2View: View {
     @State private var isTapped = false
     @State private var isRippleActive = false
     @State private var showDialog = false
-    @State private var shouldSkipLockScreen: Bool
+    @State private var shouldNavigateToMain: Bool = false
     @State private var isPressed = false
     @Environment(\.dismiss) var dismiss
     
-    init() {
-        let sleepKeyCheckOFF = UserDefaults.standard.string(forKey: Constant.sleepKeyCheckOFF) ?? ""
-        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY)
-        let loggedInKey = UserDefaults.standard.string(forKey: Constant.loggedInKey) ?? ""
-        let shouldSkip = sleepKeyCheckOFF != "on" &&
-            uid != nil && uid != "0" &&
-            loggedInKey == Constant.loggedInKey
-        
-        _shouldSkipLockScreen = State(initialValue: shouldSkip)
-    }
-    
     var body: some View {
-        Group {
-            if shouldSkipLockScreen {
-                // Show MainActivityOld immediately without any delay
-                MainActivityOld()
-            } else {
-                NavigationStack {
+        NavigationStack {
                     ZStack {
                         Color("BackgroundColor")
                             .ignoresSafeArea()
@@ -169,10 +153,16 @@ struct LockScreen2View: View {
                     )
                     .onAppear {
                         prepareHaptics()
+                        // Re-check sleepKeyCheckOFF when view appears (matching Android onStart())
+                        checkSleepModeStatus()
                     }
                     .navigationBarHidden(true)
-                }
-            }
+                    .background(
+                        NavigationLink(destination: MainActivityOld(), isActive: $shouldNavigateToMain) {
+                            EmptyView()
+                        }
+                        .hidden()
+                    )
         }
     }
 
@@ -210,6 +200,22 @@ struct LockScreen2View: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             dismiss()
             isPressed = false
+        }
+    }
+    
+    // Check sleep mode status (matching Android onStart() logic)
+    private func checkSleepModeStatus() {
+        let sleepKeyCheckOFF = UserDefaults.standard.string(forKey: Constant.sleepKeyCheckOFF) ?? ""
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        
+        // Android: if (sleepKeyCheckOFF.equals("on")) { stay on lock screen } 
+        //          else { navigate to MainActivityOld }
+        // If sleepKeyCheckOFF != "on" AND user is logged in, navigate to MainActivityOld
+        if sleepKeyCheckOFF != "on" && !uid.isEmpty && uid != "0" {
+            // Navigate to MainActivityOld (matching Android SmoothNavigationHelper.startActivity)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                shouldNavigateToMain = true
+            }
         }
     }
 }

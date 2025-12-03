@@ -106,12 +106,15 @@ struct ContentView: View {
             let loggedInKey = UserDefaults.standard.string(forKey: Constant.loggedInKey) ?? ""
             
             if loggedInKey == Constant.loggedInKey {
-                // If lock screen is already set up, go directly to MainActivityOld
+                // Matching Android logic:
+                // - If sleepKeyCheckOFF == "on" (sleep mode is ON), show lock screen (LockScreen2View)
+                // - If sleepKeyCheckOFF != "on" (sleep mode is OFF), go directly to MainActivityOld
                 if sleepKeyCheckOFF == "on" {
-                    isNavigatingToMain = true
-                } else {
-                    // Otherwise, go to LockScreen2View to set up lock screen
+                    // Sleep mode is ON - show lock screen
                     isNavigating = true
+                } else {
+                    // Sleep mode is OFF - go directly to MainActivityOld
+                    isNavigatingToMain = true
                 }
             } else {
                 // User has UID but hasn't completed registration - go to onboarding

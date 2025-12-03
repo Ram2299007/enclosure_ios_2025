@@ -57,6 +57,7 @@ struct MainActivityOld: View {
     @State private var switchTrackImage: String = "blue_radio_btn" // Dynamic switch track based on theme color
     @State private var bgRectTintColor: Color = Color(hex: Constant.themeColor) // Dynamic bg_rect tint color
     @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic mainvector background tint color (darker theme color)
+    @State private var sleepImageName: String = "sleep" // Dynamic sleep seekbar image based on theme color
     
     // Computed property for background tint: appThemeColor in light mode, darker tint in dark mode
     private var backgroundTintColor: Color {
@@ -806,9 +807,10 @@ struct MainActivityOld: View {
         print("🎨 [MainActivityOld] Updating theme - Color: \(themeColor)")
         logoImageName = getLogoImage(for: themeColor)
         switchTrackImage = getSwitchTrackImage(for: themeColor)
+        sleepImageName = getSleepImage(for: themeColor) // Update sleep seekbar image
         bgRectTintColor = Color(hex: themeColor) // Update bg_rect tint color
         mainvectorTintColor = getMainvectorTintColor(for: themeColor) // Update mainvector background tint color
-        print("🎨 [MainActivityOld] Logo: \(logoImageName), Switch Track: \(switchTrackImage)")
+        print("🎨 [MainActivityOld] Logo: \(logoImageName), Switch Track: \(switchTrackImage), Sleep: \(sleepImageName)")
     }
     
     // Get mainvector background tint color (matching Android linearMain.setBackgroundTintList)
@@ -905,6 +907,39 @@ struct MainActivityOld: View {
         default:
             print("⚠️ [MainActivityOld] Unknown theme color: \(themeColor), using default blue_radio_btn")
             return "blue_radio_btn" // Android: bg_track
+        }
+    }
+    
+    // Get sleep seekbar image name based on theme color (matching Android MainActivityOld.java)
+    // Android uses: pinksleep, sleep, popatisleep, redonesleep, bluesleep, orangesleep, graysleep, yellowsleep, greensleep, voiletsleep, redtwonewsleep
+    private func getSleepImage(for themeColor: String) -> String {
+        // Use case-insensitive comparison to handle mixed case theme colors
+        let colorKey = themeColor.lowercased()
+        switch colorKey {
+        case "#ff0080":
+            return "pinksleep"
+        case "#00a3e9":
+            return "sleep" // Default sleep image
+        case "#7adf2a":
+            return "popatisleep"
+        case "#ec0001":
+            return "redonesleep"
+        case "#16f3ff":
+            return "bluesleep"
+        case "#ff8a00":
+            return "orangesleep"
+        case "#7f7f7f":
+            return "graysleep"
+        case "#d9b845":
+            return "yellowsleep"
+        case "#346667":
+            return "greensleep"
+        case "#9846d9":
+            return "voiletsleep"
+        case "#a81010":
+            return "redtwonewsleep"
+        default:
+            return "sleep"
         }
     }
     
@@ -1202,10 +1237,47 @@ struct UpperLayoutDialog: View {
     @State private var sliderValue: Double = 0.0
     @State private var pressedItem: String? = nil
     @State private var selectedItem: String? = nil
+    @State private var hasTriggeredSleepMode: Bool = false // Prevent multiple calls when slider reaches 100%
     
     // Dynamic bg_rect tint color based on theme
     private var bgRectTintColor: Color {
         Color(hex: Constant.themeColor)
+    }
+    
+    // Get sleep seekbar image name based on theme color (matching Android MainActivityOld.java)
+    private var sleepImageName: String {
+        getSleepImageName(for: Constant.themeColor)
+    }
+    
+    // Helper function to get sleep image name based on theme color
+    private func getSleepImageName(for themeColor: String) -> String {
+        let colorKey = themeColor.lowercased()
+        switch colorKey {
+        case "#ff0080":
+            return "pinksleep"
+        case "#00a3e9":
+            return "sleep" // Default sleep image
+        case "#7adf2a":
+            return "popatisleep"
+        case "#ec0001":
+            return "redonesleep"
+        case "#16f3ff":
+            return "bluesleep"
+        case "#ff8a00":
+            return "orangesleep"
+        case "#7f7f7f":
+            return "graysleep"
+        case "#d9b845":
+            return "yellowsleep"
+        case "#346667":
+            return "greensleep"
+        case "#9846d9":
+            return "voiletsleep"
+        case "#a81010":
+            return "redtwonewsleep"
+        default:
+            return "sleep"
+        }
     }
     
     var body: some View {
@@ -1228,8 +1300,8 @@ struct UpperLayoutDialog: View {
                     // Custom slider with sleep.png as thumb
                     GeometryReader { geometry in
                         ZStack(alignment: .leading) {
-                            // Custom thumb with sleep.png (no track/progress bar)
-                            Image("sleep")
+                            // Custom thumb with sleep image (dynamic based on theme color)
+                            Image(sleepImageName)
                                 .resizable()
                                 .frame(width: 100, height: 45)
                                 .offset(x: (geometry.size.width - 100) * CGFloat(sliderValue))
@@ -1238,10 +1310,18 @@ struct UpperLayoutDialog: View {
                                         .onChanged { value in
                                             let newValue = min(max(0, value.location.x / geometry.size.width), 1)
                                             sliderValue = newValue
+                                            
+                                            // Check if slider reached 100% (matching Android onProgressChanged)
+                                            if newValue >= 1.0 && !hasTriggeredSleepMode {
+                                                hasTriggeredSleepMode = true
+                                                handleSleepSeekbarComplete()
+                                            }
                                         }
                                         .onEnded { _ in
+                                            // Reset slider when user stops tracking (matching Android onStopTrackingTouch)
                                             withAnimation(.easeInOut(duration: 0.3)) {
                                                 sliderValue = 0.0
+                                                hasTriggeredSleepMode = false // Reset flag for next drag
                                             }
                                         }
                                 )
@@ -1470,6 +1550,60 @@ struct UpperLayoutDialog: View {
         }
         .transition(.opacity.combined(with: .scale(scale: 0.95)))
         .animation(.easeInOut(duration: 0.2), value: isPresented)
+    }
+    
+    // Handle sleep seekbar completion (matching Android sb.setOnSeekBarChangeListener)
+    private func handleSleepSeekbarComplete() {
+        // Prevent multiple calls
+        guard sliderValue >= 1.0 else { return }
+        
+        // Get lockKey from UserDefaults (matching Android Constant.getSF.getString("lockKey", String.valueOf(0)))
+        let lockKey = UserDefaults.standard.string(forKey: "lockKey") ?? "0"
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? "0"
+        
+        print("🔒 [UpperLayoutDialog] Sleep seekbar completed - lockKey: \(lockKey), UID: \(uid)")
+        
+        var finalLockKey: String
+        if lockKey == "0" {
+            // If lockKey is "0", set it to "360" (matching Android)
+            finalLockKey = "360"
+            UserDefaults.standard.set("360", forKey: "lockKey")
+        } else {
+            // Use existing lockKey
+            finalLockKey = lockKey
+            UserDefaults.standard.set(lockKey, forKey: "lockKey")
+        }
+        
+        // Set sleepKeyCheckOFF to "on" (matching Android)
+        UserDefaults.standard.set("on", forKey: Constant.sleepKeyCheckOFF)
+        
+        // Set sleepKey (matching Android)
+        UserDefaults.standard.set(Constant.sleepKey, forKey: Constant.sleepKey)
+        
+        // Call lock_screen API (matching Android Webservice.lock_screenDummy or lock_screen)
+        ApiService.shared.lockScreen(
+            uid: uid,
+            lockScreen: "1",
+            lockScreenPin: finalLockKey,
+            lock3: ""
+        ) { success, message in
+            DispatchQueue.main.async {
+                if success {
+                    // Show toast (matching Android Constant.showCustomToast("Sleep Mode - ON"))
+                    Constant.showToast(message: "Sleep Mode - ON")
+                    
+                    // Dismiss dialog (matching Android upper_layout.dismiss())
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isPresented = false
+                    }
+                    
+                    // Note: Android finishes the app after countdown, but iOS handles this differently
+                    // The app will be locked and user will see lock screen on next launch
+                } else {
+                    Constant.showToast(message: message.isEmpty ? "Failed to activate sleep mode" : message)
+                }
+            }
+        }
     }
 }
 
