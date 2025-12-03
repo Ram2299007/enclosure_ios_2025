@@ -31,12 +31,18 @@ struct ContentView: View {
                     EmptyView()
                 }
                 .hidden()
+                .onChange(of: isNavigating) { newValue in
+                    print("🔍 [ContentView] NavigationLink to LockScreen2View - isActive changed to: \(newValue)")
+                }
             )
             .background(
                 NavigationLink(destination: MainActivityOld(), isActive: $isNavigatingToMain) {
                     EmptyView()
                 }
                 .hidden()
+                .onChange(of: isNavigatingToMain) { newValue in
+                    print("🔍 [ContentView] NavigationLink to MainActivityOld - isActive changed to: \(newValue)")
+                }
             )
             .background(
                 NavigationLink(destination: OnboardingView(), isActive: $isNavigatingToOnboarding) {
@@ -45,6 +51,7 @@ struct ContentView: View {
                 .hidden()
             )
             .onAppear {
+                print("🔍 [ContentView] onAppear called")
                 setupSplashScreen()
                 startSplashThread()
             }
@@ -88,7 +95,9 @@ struct ContentView: View {
     
     // Start splash thread with 200ms delay (matching Android)
     private func startSplashThread() {
+        print("🔍 [ContentView] startSplashThread() called - will call navigateToNextScreen() after 0.2s")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            print("🔍 [ContentView] Delayed navigation triggered")
             navigateToNextScreen()
         }
     }
@@ -97,30 +106,54 @@ struct ContentView: View {
     private func navigateToNextScreen() {
         let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? "0"
         
+        print("🔍 [ContentView] navigateToNextScreen() called")
+        print("🔍 [ContentView] UID: \(uid)")
+        
         if uid == "0" {
             // No UID - go to onboarding screen (SplashScreen2 equivalent)
+            print("🔍 [ContentView] UID is '0' - Navigating to OnboardingView")
             isNavigatingToOnboarding = true
         } else {
             // Has UID - check if lock screen is set up
             let sleepKeyCheckOFF = UserDefaults.standard.string(forKey: Constant.sleepKeyCheckOFF) ?? ""
             let loggedInKey = UserDefaults.standard.string(forKey: Constant.loggedInKey) ?? ""
             
+            print("🔍 [ContentView] sleepKeyCheckOFF: '\(sleepKeyCheckOFF)'")
+            print("🔍 [ContentView] loggedInKey: '\(loggedInKey)'")
+            print("🔍 [ContentView] Constant.loggedInKey: '\(Constant.loggedInKey)'")
+            
             if loggedInKey == Constant.loggedInKey {
+                print("🔍 [ContentView] loggedInKey matches - Checking sleep mode status")
+                
+                // Also check lockKey to understand the full state
+                let lockKey = UserDefaults.standard.string(forKey: "lockKey") ?? "0"
+                print("🔍 [ContentView] lockKey: '\(lockKey)'")
+                
                 // Matching Android logic:
                 // - If sleepKeyCheckOFF == "on" (sleep mode is ON), show lock screen (LockScreen2View)
                 // - If sleepKeyCheckOFF != "on" (sleep mode is OFF), go directly to MainActivityOld
                 if sleepKeyCheckOFF == "on" {
                     // Sleep mode is ON - show lock screen
+                    print("🔍 [ContentView] ✅ sleepKeyCheckOFF == 'on' - Navigating to LockScreen2View")
+                    print("🔍 [ContentView] Setting isNavigating = true")
                     isNavigating = true
+                    print("🔍 [ContentView] isNavigating set to: \(isNavigating)")
                 } else {
                     // Sleep mode is OFF - go directly to MainActivityOld
+                    print("🔍 [ContentView] ⚠️ sleepKeyCheckOFF != 'on' (value: '\(sleepKeyCheckOFF)') - Navigating to MainActivityOld")
+                    print("🔍 [ContentView] 💡 To test lock screen: Activate sleep mode by dragging seekbar to 100% in MainActivityOld")
+                    print("🔍 [ContentView] Setting isNavigatingToMain = true")
                     isNavigatingToMain = true
+                    print("🔍 [ContentView] isNavigatingToMain set to: \(isNavigatingToMain)")
                 }
             } else {
                 // User has UID but hasn't completed registration - go to onboarding
+                print("🔍 [ContentView] loggedInKey does NOT match - Navigating to OnboardingView")
                 isNavigatingToOnboarding = true
             }
         }
+        
+        print("🔍 [ContentView] Final navigation state - isNavigating: \(isNavigating), isNavigatingToMain: \(isNavigatingToMain), isNavigatingToOnboarding: \(isNavigatingToOnboarding)")
     }
 }
 

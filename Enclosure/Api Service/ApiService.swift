@@ -130,7 +130,26 @@ class ApiService {
                             DispatchQueue.main.async {
                                 if lockScreen == "1" {
                                     UserDefaults.standard.set(lockScreenPin, forKey: "lockKey")
+                                    
+                                    // Check if this is sleep mode activation
+                                    // If sleepKey is set, this is sleep mode - keep sleepKeyCheckOFF as "on"
+                                    // Otherwise, clear sleepKeyCheckOFF (normal lock screen setup)
+                                    let sleepKey = UserDefaults.standard.string(forKey: Constant.sleepKey) ?? ""
+                                    let currentSleepKeyCheckOFF = UserDefaults.standard.string(forKey: Constant.sleepKeyCheckOFF) ?? ""
+                                    print("🔒 [ApiService] lockScreen == '1' - sleepKey: '\(sleepKey)', currentSleepKeyCheckOFF: '\(currentSleepKeyCheckOFF)'")
+                                    
+                                    if sleepKey == Constant.sleepKey {
+                                        // Sleep mode - keep sleepKeyCheckOFF as "on" (already set in handleSleepSeekbarComplete)
+                                        print("🔒 [ApiService] ✅ Sleep mode detected - keeping sleepKeyCheckOFF as 'on'")
+                                        UserDefaults.standard.set("on", forKey: Constant.sleepKeyCheckOFF)
+                                    } else {
+                                        // Normal lock screen setup - clear sleepKeyCheckOFF
+                                        print("🔒 [ApiService] ⚠️ Normal lock screen - clearing sleepKeyCheckOFF")
                                     UserDefaults.standard.set("", forKey: Constant.sleepKeyCheckOFF)
+                                    }
+                                    
+                                    let finalSleepKeyCheckOFF = UserDefaults.standard.string(forKey: Constant.sleepKeyCheckOFF) ?? ""
+                                    print("🔒 [ApiService] Final sleepKeyCheckOFF after API response: '\(finalSleepKeyCheckOFF)'")
 
                                     ///print("Lock screen set. lockScreenPin: \(lockScreenPin), sleepKeyCheckOFF: \(UserDefaults.standard.string(forKey: "sleepKeyCheckOFF") ?? "nil")")
 
@@ -164,19 +183,20 @@ class ApiService {
                                         completion(true, "Navigate to lock screen")
                                     } else if message == "Screen unlocked !" {
 
+                                        // Clear sleep mode if it was set (matching Android logic)
                                         if let sleepKey = UserDefaults.standard.string(forKey: Constant.sleepKey), sleepKey == Constant.sleepKey {
                                             UserDefaults.standard.set("", forKey: Constant.sleepKey)
-                                            UserDefaults.standard.set(Constant.sleepKeyCheckOFF, forKey: Constant.sleepKeyCheckOFF)
+                                            UserDefaults.standard.set("", forKey: Constant.sleepKeyCheckOFF) // Clear sleepKeyCheckOFF (not set to constant name)
+                                            print("🔓 [ApiService] Cleared sleep mode - sleepKey and sleepKeyCheckOFF set to empty")
                                         }
 
-
                                         // TODO: MAIN ACTIVITY HERE NEED TO CALL pass data lockScreen to main activity use below commented android code
+                                        // Android: Intent intent = new Intent(mContext, MainActivityOld.class);
+                                        //          intent.putExtra("lockSuccess", "lockSuccess");
+                                        //          mContext.startActivity(intent);
+                                        // Navigation is handled in lockScreen2.swift completion handler
 
-                                        /* Intent intent = new Intent(mContext, MainActivityOld.class);
-                                         intent.putExtra("lockSuccess", "lockSuccess");
-                                         mContext.startActivity(intent);*/
-
-                                        print("Screen unlocked. sleepKey: \(UserDefaults.standard.string(forKey: "sleepKey") ?? "nil")")
+                                        print("🔓 [ApiService] Screen unlocked. sleepKey: \(UserDefaults.standard.string(forKey: "sleepKey") ?? "nil"), sleepKeyCheckOFF: \(UserDefaults.standard.string(forKey: Constant.sleepKeyCheckOFF) ?? "nil")")
 
                                         completion(true, message)
                                     } else {

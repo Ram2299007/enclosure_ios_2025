@@ -8,51 +8,18 @@ struct LockScreen2View: View {
     @State private var isRippleActive = false
     @State private var showDialog = false
     @State private var shouldNavigateToMain: Bool = false
-    @State private var isPressed = false
-    @Environment(\.dismiss) var dismiss
+    
+    init() {
+        print("🔍 [LockScreen2View] init() called - View is being created")
+    }
     
     var body: some View {
-        NavigationStack {
+                NavigationStack {
                     ZStack {
                         Color("BackgroundColor")
                             .ignoresSafeArea()
             
                         VStack {
-                            // Back button - matching editmyProfile.swift
-                            HStack {
-                                Button(action: handleBackTap) {
-                                    ZStack {
-                                        if isPressed {
-                                            Circle()
-                                                .fill(Color.gray.opacity(0.3))
-                                                .frame(width: 40, height: 40)
-                                                .scaleEffect(isPressed ? 1.2 : 1.0)
-                                                .animation(.easeOut(duration: 0.3), value: isPressed)
-                                        }
-
-                                        Image("leftvector")
-                                            .renderingMode(.template)
-                                            .resizable()
-                                            .scaledToFit()
-                                            .frame(width: 25, height: 18)
-                                            .foregroundColor(Color("icontintGlobal"))
-                                    }
-                                }
-                                .simultaneousGesture(
-                                    DragGesture(minimumDistance: 0)
-                                        .onEnded { _ in
-                                            withAnimation {
-                                                isPressed = false
-                                            }
-                                        }
-                                )
-                                .buttonStyle(.plain)
-
-                                Spacer()
-                            }
-                            .padding(.top, 20)
-                            .padding(.horizontal, 20)
-                            
                             Spacer()
             
                             VStack(spacing: 20) {
@@ -100,26 +67,43 @@ struct LockScreen2View: View {
             
                                         let UID_KEY = UserDefaults.standard.string(forKey: Constant.UID_KEY)
             
-                                        print("🥰 UID_KEY : \(UID_KEY ?? "0")")
+                                        print("🔓 [LockScreen2View] Unlock button clicked - UID_KEY: \(UID_KEY ?? "0"), Progress: \(Int(progress))")
             
                                         ApiService
                                             .shared.lockScreen(
                                                 uid: UID_KEY ?? "0",
-                                                lockScreen: "0", /// default value of loxk screen
+                                                lockScreen: "0", /// default value of lock screen
                                                 lockScreenPin: "\(Int(progress))",
                                                 lock3: ""
                                             ) { success, msg in
-            
+                                                DispatchQueue.main.async {
                                                 if success {
-                                                    print("lockScreen Success: \(msg)")
+                                                        print("🔓 [LockScreen2View] lockScreen Success: \(msg)")
                                                     Constant.showToast(message: msg)
+                                                        
+                                                        // Check if unlock was successful (matching Android logic)
+                                                        if msg == "Screen unlocked !" || msg.contains("unlocked") {
+                                                            print("🔓 [LockScreen2View] Screen unlocked successfully - Navigating to MainActivityOld")
+                                                            
+                                                            // Clear sleep mode if it was set (matching Android)
+                                                            if let sleepKey = UserDefaults.standard.string(forKey: Constant.sleepKey), sleepKey == Constant.sleepKey {
+                                                                UserDefaults.standard.set("", forKey: Constant.sleepKey)
+                                                                UserDefaults.standard.set("", forKey: Constant.sleepKeyCheckOFF)
+                                                                print("🔓 [LockScreen2View] Cleared sleep mode keys")
+                                                            }
+                                                            
+                                                            // Navigate to MainActivityOld (matching Android Intent to MainActivityOld)
+                                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                                                shouldNavigateToMain = true
+                                                                print("🔓 [LockScreen2View] Setting shouldNavigateToMain = true")
+                                                            }
+                                                        }
                                                 } else {
-                                                    print("lockScreen Failed: \(msg)")
+                                                        print("🔓 [LockScreen2View] lockScreen Failed: \(msg)")
                                                     Constant.showToast(message: msg)
+                                                    }
                                                 }
                                             }
-            
-            
                                     }) {
                                         Text("Unlock Enclosure")
                                             .font(.custom("Inter18pt-Medium", size: 14))
@@ -152,6 +136,7 @@ struct LockScreen2View: View {
                         ForgotLockScreenDialog(isShowing: $showDialog)
                     )
                     .onAppear {
+                        print("🔍 [LockScreen2View] onAppear called")
                         prepareHaptics()
                         // Re-check sleepKeyCheckOFF when view appears (matching Android onStart())
                         checkSleepModeStatus()
@@ -160,8 +145,11 @@ struct LockScreen2View: View {
                     .background(
                         NavigationLink(destination: MainActivityOld(), isActive: $shouldNavigateToMain) {
                             EmptyView()
-                        }
+                }
                         .hidden()
+                        .onChange(of: shouldNavigateToMain) { newValue in
+                            print("🔍 [LockScreen2View] NavigationLink to MainActivityOld - isActive changed to: \(newValue)")
+            }
                     )
         }
     }
@@ -193,29 +181,32 @@ struct LockScreen2View: View {
         }
     }
     
-    private func handleBackTap() {
-        withAnimation {
-            isPressed = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            dismiss()
-            isPressed = false
-        }
-    }
-    
     // Check sleep mode status (matching Android onStart() logic)
     private func checkSleepModeStatus() {
         let sleepKeyCheckOFF = UserDefaults.standard.string(forKey: Constant.sleepKeyCheckOFF) ?? ""
         let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         
+        print("🔍 [LockScreen2View] checkSleepModeStatus() called")
+        print("🔍 [LockScreen2View] sleepKeyCheckOFF: '\(sleepKeyCheckOFF)'")
+        print("🔍 [LockScreen2View] uid: '\(uid)'")
+        
         // Android: if (sleepKeyCheckOFF.equals("on")) { stay on lock screen } 
         //          else { navigate to MainActivityOld }
         // If sleepKeyCheckOFF != "on" AND user is logged in, navigate to MainActivityOld
         if sleepKeyCheckOFF != "on" && !uid.isEmpty && uid != "0" {
+            print("🔍 [LockScreen2View] Condition met: sleepKeyCheckOFF != 'on' AND uid is valid")
+            print("🔍 [LockScreen2View] Will navigate to MainActivityOld in 0.1s")
             // Navigate to MainActivityOld (matching Android SmoothNavigationHelper.startActivity)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                print("🔍 [LockScreen2View] Setting shouldNavigateToMain = true")
                 shouldNavigateToMain = true
+                print("🔍 [LockScreen2View] shouldNavigateToMain set to: \(shouldNavigateToMain)")
             }
+        } else {
+            print("🔍 [LockScreen2View] Condition NOT met - staying on lock screen")
+            print("🔍 [LockScreen2View] sleepKeyCheckOFF == 'on': \(sleepKeyCheckOFF == "on")")
+            print("🔍 [LockScreen2View] uid.isEmpty: \(uid.isEmpty)")
+            print("🔍 [LockScreen2View] uid == '0': \(uid == "0")")
         }
     }
 }

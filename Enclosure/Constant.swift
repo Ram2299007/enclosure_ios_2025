@@ -52,14 +52,32 @@ struct Constant{
         let labelHorizontalPadding: CGFloat = 20
         let labelVerticalPadding: CGFloat = 14
         let maxLabelWidth = maxToastWidth - (labelHorizontalPadding * 2)
+        
+        // Calculate text size with wrap content (matching Android wrap_content)
         let boundingRect = (message as NSString).boundingRect(
             with: CGSize(width: maxLabelWidth, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: [.font: font],
             context: nil
         )
+        
+        // Calculate toast dimensions with wrap content
+        // Height: wrap content based on text height
         let toastHeight = max(50, boundingRect.height + (labelVerticalPadding * 2))
-        let toastWidth = min(maxToastWidth, boundingRect.width + (labelHorizontalPadding * 2))
+        
+        // Width: wrap content - use text width for short messages, max width for long messages
+        // If text width is less than maxLabelWidth, use text width + padding (wrap content)
+        // If text wraps (width equals maxLabelWidth), use maxToastWidth
+        let textWidth = boundingRect.width
+        let toastWidth: CGFloat
+        if textWidth < maxLabelWidth {
+            // Short message - wrap content to text width
+            toastWidth = min(maxToastWidth, textWidth + (labelHorizontalPadding * 2))
+        } else {
+            // Long message that wraps - use full available width
+            toastWidth = maxToastWidth
+        }
+        
         let originX = (window.frame.width - toastWidth) / 2
 
         let safeAreaBottom = window.safeAreaInsets.bottom
@@ -78,19 +96,20 @@ struct Constant{
         toastView.layer.shadowOpacity = 0.1
         toastView.layer.shadowOffset = CGSize(width: 2, height: 2)
 
-        // Message Label (Centered)
+        // Message Label (Centered) - with wrap content
         let messageLabel = UILabel()
         messageLabel.text = message
         messageLabel.textColor = UIColor(named: "TextColor")
         messageLabel.textAlignment = .center
         messageLabel.font = font
-        messageLabel.numberOfLines = 0
+        messageLabel.numberOfLines = 0 // Allow multiple lines (wrap content)
+        messageLabel.lineBreakMode = .byWordWrapping // Wrap by words
         messageLabel.translatesAutoresizingMaskIntoConstraints = false
 
         toastView.addSubview(messageLabel)
         window.addSubview(toastView)
 
-        // Constraints for label inside toast
+        // Constraints for label inside toast - wrap content
         NSLayoutConstraint.activate([
             messageLabel.leadingAnchor.constraint(equalTo: toastView.leadingAnchor, constant: labelHorizontalPadding),
             messageLabel.trailingAnchor.constraint(equalTo: toastView.trailingAnchor, constant: -labelHorizontalPadding),

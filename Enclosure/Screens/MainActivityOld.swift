@@ -357,11 +357,11 @@ struct MainActivityOld: View {
 
                                             ZStack {
                                                 Image("videosvgnew2")
-                                                    .resizable()
+                                                .resizable()
                                                     .renderingMode(.template)
                                                     .foregroundColor(.white) // Camera body stays white
                                                     .scaledToFit()
-                                                    .frame(width: 24, height: 16)
+                                                .frame(width: 24, height: 16)
                                                 
                                                 Image("polysvg")
                                                     .resizable()
@@ -554,11 +554,11 @@ struct MainActivityOld: View {
                                     .resizable()
                                     .foregroundColor(backgroundTintColor)
                             } else {
-                                Image(currentBackgroundImage)
-                                    .resizable()
+                        Image(currentBackgroundImage)
+                            .resizable()
                             }
                         }
-                        .id(currentBackgroundImage)
+                            .id(currentBackgroundImage)
                     )
                     .clipped()
                     
@@ -1576,9 +1576,11 @@ struct UpperLayoutDialog: View {
         
         // Set sleepKeyCheckOFF to "on" (matching Android)
         UserDefaults.standard.set("on", forKey: Constant.sleepKeyCheckOFF)
+        print("🔒 [UpperLayoutDialog] Set sleepKeyCheckOFF to 'on'")
         
         // Set sleepKey (matching Android)
         UserDefaults.standard.set(Constant.sleepKey, forKey: Constant.sleepKey)
+        print("🔒 [UpperLayoutDialog] Set sleepKey to '\(Constant.sleepKey)'")
         
         // Call lock_screen API (matching Android Webservice.lock_screenDummy or lock_screen)
         ApiService.shared.lockScreen(
@@ -1597,8 +1599,13 @@ struct UpperLayoutDialog: View {
                         isPresented = false
                     }
                     
-                    // Note: Android finishes the app after countdown, but iOS handles this differently
-                    // The app will be locked and user will see lock screen on next launch
+                    // Finish app immediately after showing toast (matching Android finishAndRemoveTask() and finishAffinity())
+                    // Android shows countdown timer then finishes, but user wants immediate finish
+                    // Small delay to ensure toast is visible before app closes
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        print("🔒 [UpperLayoutDialog] Finishing app immediately after sleep mode activation")
+                        exit(0) // Terminate app immediately (matching Android finishAndRemoveTask() and finishAffinity())
+                    }
                 } else {
                     Constant.showToast(message: message.isEmpty ? "Failed to activate sleep mode" : message)
                 }

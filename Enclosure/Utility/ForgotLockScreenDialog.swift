@@ -46,31 +46,37 @@ struct ForgotLockScreenDialog: View {
 
                     Button(
                         action: {
-                            isShowing = false  // Handle OK button action
-                            UserDefaults.standard.string(forKey: Constant.PHONE_NUMBERKEY)
-                            UserDefaults.standard.string(forKey: Constant.UID_KEY)
-                            UserDefaults.standard.string(forKey: Constant.country_Code)
-
-                            print("XXXXXXXXXXXXXXXXXXX \( UserDefaults.standard.string(forKey: Constant.country_Code))  : ")
-
+                            // Get values from UserDefaults (matching Android)
+                            let mobileNo = UserDefaults.standard.string(forKey: Constant.PHONE_NUMBERKEY) ?? "0"
+                            let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? "0"
+                            let countryCode = UserDefaults.standard.string(forKey: Constant.country_Code) ?? ""
+                            
+                            print("🔒 [ForgotLockScreenDialog] OK clicked - mobileNo: \(mobileNo), uid: \(uid), countryCode: \(countryCode)")
+                            
+                            // Call reSendOtpForget API (matching Android Webservice.reSendOtpForget)
                             ApiService.shared
-                                .reSendOtpForget(mobile_no: UserDefaults.standard.string(forKey: Constant.PHONE_NUMBERKEY) ?? "0") { success, msg in
-                                    if success
-                                    {
-                                          Constant.showToast(message: msg)
-                                        self.isActive = true;
-
-                                    }else{
-                                        Constant.showToast(message: "Failed"+msg)
+                                .reSendOtpForget(mobile_no: mobileNo) { success, msg in
+                                    DispatchQueue.main.async {
+                                        if success {
+                                            // Show success message (matching Android Toast)
+                                            Constant.showToast(message: msg)
+                                            
+                                            // Dismiss dialog (matching Android dialogLayoutColor.dismiss())
+                                            isShowing = false
+                                            
+                                            // Navigate to forgetScreenOtp (matching Android Intent)
+                                            print("🔒 [ForgotLockScreenDialog] Navigating to forgetScreenOtp")
+                                            self.isActive = true
+                                        } else {
+                                            // Show error message
+                                            Constant.showToast(message: msg.isEmpty ? "Failed to send OTP" : msg)
+                                        }
                                     }
                                 }
-
-
-
                         }) {
                             Text("OK")
                                 .frame(width: 66, height: 33)
-                                .background(Color("appThemeColor"))
+                                .background(Color(hex: Constant.themeColor)) // Use dynamic theme color
                                 .font(.custom("Inter18pt-Medium",size: 14))
                                 .foregroundColor(.white)
                                 .cornerRadius(8)
