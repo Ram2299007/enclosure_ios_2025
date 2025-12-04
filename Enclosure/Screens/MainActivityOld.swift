@@ -58,6 +58,8 @@ struct MainActivityOld: View {
     @State private var bgRectTintColor: Color = Color(hex: Constant.themeColor) // Dynamic bg_rect tint color
     @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic mainvector background tint color (darker theme color)
     @State private var sleepImageName: String = "sleep" // Dynamic sleep seekbar image based on theme color
+    @State private var isMenuButtonPressed = false // Track menu button press state
+    @State private var initialFadeInOpacity: Double = 0.0 // Start at 0 for smooth fade-in
     
     // Computed property for background tint: appThemeColor in light mode, darker tint in dark mode
     private var backgroundTintColor: Color {
@@ -135,16 +137,16 @@ struct MainActivityOld: View {
                                 .buttonStyle(CircularRippleStyle())
                             }
 
-                            Button(action: {
-                                // Add haptic feedback for better UX
-                                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                                impactFeedback.impactOccurred()
-                                
-                                // Smooth animation when opening menu
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    showMenu = true
+                            // Menu button - using simpler approach for better tap responsiveness
+                            ZStack {
+                                // Background circle for visual feedback
+                                if isMenuButtonPressed {
+                                    Circle()
+                                        .fill(Color("circlebtnhover").opacity(0.3))
+                                        .frame(width: 44, height: 44)
+                                        .transition(.opacity)
                                 }
-                            }) {
+                                
                                 VStack(spacing: 3) {
                                     Circle()
                                         .fill(Color("menuPointColor"))
@@ -156,12 +158,32 @@ struct MainActivityOld: View {
                                         .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
                                         .frame(width: 4, height: 4)
                                 }
-                                .frame(width: 40, height: 40) // Make visual content fill the touch area
                             }
                             .frame(width: 44, height: 44) // Standard iOS touch target size
                             .contentShape(Rectangle()) // Ensure entire area is tappable
+                            .onTapGesture {
+                                // Add haptic feedback for better UX
+                                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                                impactFeedback.impactOccurred()
+                                
+                                // Visual feedback
+                                withAnimation(.easeInOut(duration: 0.1)) {
+                                    isMenuButtonPressed = true
+                                }
+                                
+                                // Smooth animation when opening menu
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    showMenu = true
+                                }
+                                
+                                // Reset pressed state
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                    withAnimation(.easeInOut(duration: 0.1)) {
+                                        isMenuButtonPressed = false
+                                    }
+                                }
+                            }
                             .padding(.trailing,8)
-                            .buttonStyle(CircularRippleStyle())
                         }
                     }
 
@@ -759,27 +781,32 @@ struct MainActivityOld: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
             }
-        }
-
-        .navigationBarHidden(true)
-        .navigationDestination(isPresented: $showInviteScreen) {
-            InviteScreen()
-        }
-        .navigationDestination(isPresented: $navigateToLockScreen) {
-            LockScreenView()
-        }
-        .navigationDestination(isPresented: $navigateToPayView) {
-            PayView()
-        }
-        .navigationDestination(isPresented: $navigateToSettings) {
-            SettingsView()
-        }
-        .navigationDestination(isPresented: $navigateToThemeView) {
-            ThemeView()
+            .opacity(initialFadeInOpacity)
+            .navigationBarHidden(true)
+            .navigationDestination(isPresented: $showInviteScreen) {
+                InviteScreen()
+            }
+            .navigationDestination(isPresented: $navigateToLockScreen) {
+                LockScreenView()
+            }
+            .navigationDestination(isPresented: $navigateToPayView) {
+                PayView()
+            }
+            .navigationDestination(isPresented: $navigateToSettings) {
+                SettingsView()
+            }
+            .navigationDestination(isPresented: $navigateToThemeView) {
+                ThemeView()
+            }
         }
         .onAppear {
             showNetworkLoader = !networkMonitor.isConnected
             updateLogoBasedOnTheme()
+            
+            // Smooth fade-in animation when view appears
+            withAnimation(.easeInOut(duration: 0.3)) {
+                initialFadeInOpacity = 1.0
+            }
             
             // Check if name dialog should be shown (matching Android logic)
             let nameSaved = UserDefaults.standard.string(forKey: "nameSAved") ?? "0"

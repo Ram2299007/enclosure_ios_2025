@@ -1,7 +1,31 @@
 {
   "images" : [
     {
-      "filename" : "Group 8778-2.png",
+      "filename" : "SplashScreenMyAliasgray-7-2.png",
+      "idiom" : "universal",
+      "platform" : "ios",
+      "size" : "1024x1024"
+    },
+    {
+      "appearances" : [
+        {
+          "appearance" : "luminosity",
+          "value" : "dark"
+        }
+      ],
+      "filename" : "SplashScreenMyAliasgray-7-2 1.png",
+      "idiom" : "universal",
+      "platform" : "ios",
+      "size" : "1024x1024"
+    },
+    {
+      "appearances" : [
+        {
+          "appearance" : "luminosity",
+          "value" : "tinted"
+        }
+      ],
+      "filename" : "SplashScreenMyAliasgray-7-2 2.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"

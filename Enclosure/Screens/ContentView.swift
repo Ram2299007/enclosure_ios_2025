@@ -14,55 +14,47 @@ struct ContentView: View {
     @State private var logoImageName = "ec_modern" // Default logo
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color("BackgroundColor")
-                    .edgesIgnoringSafeArea(.all)
-                
-                // Centered Logo (matching Android SplashScreen)
-                VStack {
-                    Spacer()
+        ZStack {
+            NavigationStack {
+                ZStack {
+                    Color("BackgroundColor")
+                        .edgesIgnoringSafeArea(.all)
                     
-                    // Theme-based logo (matching Launch Screen size: 110x110)
-                    Image(logoImageName)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 110, height: 110)
-                    
-                    Spacer()
+                    // Centered Logo (matching Android SplashScreen)
+                    VStack {
+                        Spacer()
+                        
+                        // Theme-based logo (matching Launch Screen size: 110x110)
+                        Image(logoImageName)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 110, height: 110)
+                        
+                        Spacer()
+                    }
+                }
+                .navigationDestination(isPresented: $isNavigating) {
+                    LockScreen2View()
+                }
+                .navigationDestination(isPresented: $isNavigatingToOnboarding) {
+                    OnboardingView()
+                }
+                .onAppear {
+                    print("🔍 [ContentView] onAppear called")
+                    setupSplashScreen()
+                    startSplashThread()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ThemeColorUpdated"))) { notification in
+                    setupSplashScreen()
                 }
             }
-            .background(
-                NavigationLink(destination: LockScreen2View(), isActive: $isNavigating) {
-                    EmptyView()
-                }
-                .hidden()
-                .onChange(of: isNavigating) { newValue in
-                    print("🔍 [ContentView] NavigationLink to LockScreen2View - isActive changed to: \(newValue)")
-                }
-            )
-            .background(
-                NavigationLink(destination: MainActivityOld(), isActive: $isNavigatingToMain) {
-                    EmptyView()
-                }
-                .hidden()
-                .onChange(of: isNavigatingToMain) { newValue in
-                    print("🔍 [ContentView] NavigationLink to MainActivityOld - isActive changed to: \(newValue)")
-                }
-            )
-            .background(
-                NavigationLink(destination: OnboardingView(), isActive: $isNavigatingToOnboarding) {
-                    EmptyView()
-                }
-                .hidden()
-            )
-            .onAppear {
-                print("🔍 [ContentView] onAppear called")
-                setupSplashScreen()
-                startSplashThread()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ThemeColorUpdated"))) { notification in
-                setupSplashScreen()
+            
+            // Show MainActivityOld directly with smooth fade-in transition
+            if isNavigatingToMain {
+                MainActivityOld()
+                    .transition(.opacity)
+                    .zIndex(1)
+                    .animation(.easeInOut(duration: 0.3), value: isNavigatingToMain)
             }
         }
     }
@@ -104,11 +96,11 @@ struct ContentView: View {
         }
     }
     
-    // Start splash thread with 200ms delay (matching Android)
+    // Start splash thread with 0 delay
     private func startSplashThread() {
-        print("🔍 [ContentView] startSplashThread() called - will call navigateToNextScreen() after 0.2s")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            print("🔍 [ContentView] Delayed navigation triggered")
+        print("🔍 [ContentView] startSplashThread() called - will call navigateToNextScreen() immediately")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.0) {
+            print("🔍 [ContentView] Navigation triggered")
             navigateToNextScreen()
         }
     }
