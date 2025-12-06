@@ -28,6 +28,8 @@ struct ChattingScreen: View {
     @State private var characterCount: Int = 0
     @State private var showCharacterCount: Bool = false
     @State private var isPressed: Bool = false
+    @State private var downArrowCount: Int = 0
+    @State private var showDownArrowCount: Bool = false
     
     // Message list state
     @State private var messages: [ChatMessage] = []
@@ -122,9 +124,10 @@ struct ChattingScreen: View {
                 .padding(.trailing, 8)
                 
                 // Profile section
-                Button(action: {
-                    // TODO: Navigate to profile
-                }) {
+                NavigationLink(destination: UserInfoScreen(
+                    recUserId: contact.uid,
+                    recUserName: contact.fullName
+                )) {
                     HStack(spacing: 0) {
                         // Profile image with border
                         ZStack {
@@ -339,21 +342,32 @@ struct ChattingScreen: View {
             // TODO: Scroll to bottom
         }) {
             ZStack {
+                // Background matching modern_play_button_bg
                 Circle()
                     .fill(Color("BackgroundColor"))
                     .frame(width: 35, height: 35)
                     .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
                 
-                Image("down_arrow")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 24, height: 24)
-                    .foregroundColor(Color("blue"))
+                VStack(spacing: 0) {
+                    // Down arrow image - 24dp x 24dp, original colors (no tint)
+                    Image("down_arrow")
+                        .renderingMode(.original)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 24, height: 24)
+                    
+                    // Count text - hidden by default (visibility="gone")
+                    if showDownArrowCount {
+                        Text("\(downArrowCount)")
+                            .font(.custom("Inter18pt-Bold", size: 12))
+                            .foregroundColor(Color("blue"))
+                    }
+                }
+                .padding(5) // 5dp padding
             }
         }
-        .padding(.trailing, 10)
-        .padding(.bottom, 45)
+        .padding(.trailing, 10) // marginEnd="10dp"
+        .padding(.bottom, 45) // marginBottom="45dp"
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
     
