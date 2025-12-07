@@ -30,6 +30,7 @@ struct ChattingScreen: View {
     @State private var isPressed: Bool = false
     @State private var downArrowCount: Int = 0
     @State private var showDownArrowCount: Bool = false
+    @State private var maxMessageLength: Int = 1000
     
     // Message list state
     @State private var messages: [ChatMessage] = []
@@ -487,6 +488,9 @@ struct ChattingScreen: View {
                                 .padding(.top, 5)
                                 .padding(.bottom, 5)
                                 .background(Color.clear)
+                                .onChange(of: messageText) { newValue in
+                                    updateMessageText(newValue)
+                                }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         
@@ -520,21 +524,38 @@ struct ChattingScreen: View {
                 // Send button (sendGrpLyt) - layout_gravity="center_vertical|bottom"
                 VStack(spacing: 0) {
                     Button(action: {
-                        sendMessage()
+                        if messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            // TODO: Handle mic button action (voice recording)
+                        } else {
+                            sendMessage()
+                        }
                     }) {
                         ZStack {
                             Circle()
                                 .fill(Color("blue"))
                                 .frame(width: 50, height: 50)
                             
-                            Image("mikesvg")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 22, height: 22)
-                                .foregroundColor(.white)
-                                .padding(.top, 4)
-                                .padding(.bottom, 8)
+                            // Show mic icon when text is empty, send icon when text is present
+                            if messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedCount == 0 {
+                                Image("mikesvg")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 22, height: 22)
+                                    .foregroundColor(.white)
+                                    .padding(.top, 4)
+                                    .padding(.bottom, 8)
+                            } else {
+                                // Send icon (keyboard double arrow right) - same as Android
+                                Image("baseline_keyboard_double_arrow_right_24")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 26, height: 26)
+                                    .foregroundColor(.white)
+                                    .padding(.top, 4)
+                                    .padding(.bottom, 8)
+                            }
                         }
                     }
                 }
@@ -852,6 +873,26 @@ struct ChattingScreen: View {
     private func loadMessages() {
         // TODO: Load messages from Firebase or API
         // For now, using empty array
+    }
+    
+    private func updateMessageText(_ newValue: String) {
+        let trimmedText = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if trimmedText.isEmpty {
+            // Clear typing status when messageBox is empty
+            clearTypingStatus()
+        } else {
+            // Update typing status when user is typing
+            updateTypingStatus(true)
+        }
+    }
+    
+    private func clearTypingStatus() {
+        // TODO: Clear typing status in Firebase
+    }
+    
+    private func updateTypingStatus(_ isTyping: Bool) {
+        // TODO: Update typing status in Firebase
     }
     
     private func sendMessage() {
