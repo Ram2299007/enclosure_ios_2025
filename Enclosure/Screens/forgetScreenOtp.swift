@@ -34,8 +34,8 @@ struct forgetScreenOtp: View {
     @State private var showInvalidOTP = false
     @StateObject private var verifyViewModel = VerifyMobileOTPViewModel()
 
-    @State private var fcmToken = "NEED TO ADD FIREBASE NOW"
-    @State private var deviceId = "2" // युजरच्या डिव्हाइसचा UUID
+    @State private var fcmToken = ""
+    @State private var deviceId = UIDevice.current.identifierForVendor?.uuidString ?? "unknown"
 
 
     var body: some View {
@@ -415,6 +415,23 @@ struct forgetScreenOtp: View {
             .navigationBarHidden(true)
             .onAppear {
                 print("UID: \(uid), Country Code: \(country_Code), Mobile No: \(mobile_no)")
+                
+                // Get FCM token
+                FirebaseManager.shared.getFCMToken { token in
+                    if let token = token {
+                        DispatchQueue.main.async {
+                            self.fcmToken = token
+                        }
+                    } else {
+                        // Fallback: try to get from UserDefaults if available
+                        if let savedToken = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) {
+                            DispatchQueue.main.async {
+                                self.fcmToken = savedToken
+                            }
+                        }
+                    }
+                }
+                
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     // requestPermissions()
                 }

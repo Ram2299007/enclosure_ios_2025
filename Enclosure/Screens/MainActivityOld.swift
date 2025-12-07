@@ -1,6 +1,7 @@
 import SwiftUI
-
 import Combine
+import FirebaseDatabase
+import FirebaseAuth
 
 struct MainActivityOld: View {
     @Environment(\.colorScheme) var colorScheme
@@ -25,6 +26,10 @@ struct MainActivityOld: View {
     @State private var selectedChatForDialog: UserActiveContactModel? = nil
     @State private var chatDialogPosition: CGPoint = .zero
     @State private var showChatLongPressDialog = false
+    
+    // Navigation to chatting screen
+    @State private var selectedChatForNavigation: UserActiveContactModel? = nil
+    @State private var navigateToChattingScreen: Bool = false
     
     // Call log long press dialog state (voice)
     @State private var selectedCallLogForDialog: CallLogUserInfo? = nil
@@ -610,7 +615,8 @@ struct MainActivityOld: View {
                             searchText: searchText,
                             selectedChatForDialog: $selectedChatForDialog,
                             dialogPosition: $chatDialogPosition,
-                            showLongPressDialog: $showChatLongPressDialog
+                            showLongPressDialog: $showChatLongPressDialog,
+                            selectedChatForNavigation: $selectedChatForNavigation
                         )
 
 
@@ -798,6 +804,24 @@ struct MainActivityOld: View {
             .navigationDestination(isPresented: $navigateToThemeView) {
                 ThemeView()
             }
+            .navigationDestination(isPresented: $navigateToChattingScreen) {
+                if let chat = selectedChatForNavigation {
+                    ChattingScreen(contact: chat)
+                } else {
+                    EmptyView()
+                }
+            }
+            .onChange(of: selectedChatForNavigation) { newValue in
+                navigateToChattingScreen = newValue != nil
+            }
+            .onChange(of: navigateToChattingScreen) { isPresented in
+                if !isPresented {
+                    // Reset selected chat when navigation is dismissed
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        selectedChatForNavigation = nil
+                    }
+                }
+            }
         }
         .onAppear {
             showNetworkLoader = !networkMonitor.isConnected
@@ -807,6 +831,9 @@ struct MainActivityOld: View {
             withAnimation(.easeInOut(duration: 0.3)) {
                 initialFadeInOpacity = 1.0
             }
+            
+            // Authenticate as anonymous user
+            authenticateAnonymousUser()
             
             // Check if name dialog should be shown (matching Android logic)
             let nameSaved = UserDefaults.standard.string(forKey: "nameSAved") ?? "0"
@@ -1107,6 +1134,32 @@ struct MainActivityOld: View {
                 } else {
                     print("🔵 [MainActivityOld] Clear Video Call Log FAILED - message: \(message)")
                 }
+            }
+        }
+    }
+    
+    // MARK: - Firebase Authentication
+    
+    /// Authenticate as anonymous user (always called when view appears)
+    private func authenticateAnonymousUser() {
+        // Check if user is already authenticated - reuse existing session
+        if let currentUser = Auth.auth().currentUser {
+            print("✅ [MainActivityOld] User already authenticated, reusing session - UID: \(currentUser.uid)")
+            return
+        }
+        
+        // Only sign in anonymously if no user is authenticated
+        print("🔐 [MainActivityOld] No existing session, signing in as guest...")
+        Auth.auth().signInAnonymously { authResult, error in
+            if let error = error {
+                print("❌ [MainActivityOld] Guest authentication error: \(error.localizedDescription)")
+                return
+            }
+            
+            if let user = authResult?.user {
+                print("✅ [MainActivityOld] Guest authentication successful - UID: \(user.uid)")
+            } else {
+                print("❌ [MainActivityOld] Guest authentication failed - no user returned")
             }
         }
     }

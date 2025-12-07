@@ -2,13 +2,89 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>UIAppFonts</key>
-	<array>
-		<string>Inter-Bold.ttf</string>
-		<string>Inter-Medium.ttf</string>
-		<string>Inter-SemiBold.ttf</string>
-		<string>Inter-Regular.ttf</string>
-	</array>
+	<key>CFBundleIcons</key>
+	<dict>
+		<key>CFBundleAlternateIcons</key>
+		<dict>
+			<key>SplashScreenMyAliasDefault</key>
+			<dict>
+				<key>CFBundleIconFiles</key>
+				<array>
+					<string>SplashScreenMyAliasDefault</string>
+				</array>
+			</dict>
+			<key>SplashScreenMyAliasLightBlue</key>
+			<dict>
+				<key>CFBundleIconFiles</key>
+				<array>
+					<string>SplashScreenMyAliasLightBlue</string>
+				</array>
+			</dict>
+			<key>SplashScreenMyAliasOrange</key>
+			<dict>
+				<key>CFBundleIconFiles</key>
+				<array>
+					<string>SplashScreenMyAliasOrange</string>
+				</array>
+			</dict>
+			<key>SplashScreenMyAliasPink</key>
+			<dict>
+				<key>CFBundleIconFiles</key>
+				<array>
+					<string>SplashScreenMyAliasPink</string>
+				</array>
+			</dict>
+			<key>SplashScreenMyAliasPopati</key>
+			<dict>
+				<key>CFBundleIconFiles</key>
+				<array>
+					<string>SplashScreenMyAliasPopati</string>
+				</array>
+			</dict>
+			<key>SplashScreenMyAliasRed</key>
+			<dict>
+				<key>CFBundleIconFiles</key>
+				<array>
+					<string>SplashScreenMyAliasRed</string>
+				</array>
+			</dict>
+			<key>SplashScreenMyAliasVoilet</key>
+			<dict>
+				<key>CFBundleIconFiles</key>
+				<array>
+					<string>SplashScreenMyAliasVoilet</string>
+				</array>
+			</dict>
+			<key>SplashScreenMyAliasgray</key>
+			<dict>
+				<key>CFBundleIconFiles</key>
+				<array>
+					<string>SplashScreenMyAliasgray</string>
+				</array>
+			</dict>
+			<key>SplashScreenMyAliasred2</key>
+			<dict>
+				<key>CFBundleIconFiles</key>
+				<array>
+					<string>SplashScreenMyAliasred2</string>
+				</array>
+			</dict>
+			<key>SplashScreenMyAliasrichgreen</key>
+			<dict>
+				<key>CFBundleIconFiles</key>
+				<array>
+					<string>SplashScreenMyAliasrichgreen</string>
+				</array>
+			</dict>
+			<key>SplashScreenMyAliasyellow</key>
+			<dict>
+				<key>CFBundleIconFiles</key>
+				<array>
+					<string>SplashScreenMyAliasyellow</string>
+				</array>
+			</dict>
+		</dict>
+	</dict>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
@@ -26,110 +102,17 @@
 			</dict>
 		</dict>
 	</dict>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>This app requires access to devices on your local network.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Inter-Bold.ttf</string>
+		<string>Inter-Medium.ttf</string>
+		<string>Inter-SemiBold.ttf</string>
+		<string>Inter-Regular.ttf</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
+		<string>remote-notification</string>
 	</array>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>This app needs Bluetooth access for device communication.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>This app requires camera access for video calls.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>This app requires microphone access for voice communication.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>This app requires location access to provide better services.</string>
-	<key>NSLocationAlwaysUsageDescription</key>
-	<string>This app requires location access even when running in the background.</string>
-	<key>NSContactsUsageDescription</key>
-	<string>This app requires access to your contacts to help you connect with your friends.
-</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>This app requires access to your photo library to allow you to upload and share images.
-</string>
-	<key>CFBundleIcons</key>
-	<dict>
-		<key>CFBundleAlternateIcons</key>
-		<dict>
-			<key>SplashScreenMyAliasPink</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasPink</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasDefault</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasDefault</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasPopati</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasPopati</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasRed</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasRed</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasLightBlue</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasLightBlue</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasOrange</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasOrange</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasgray</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasgray</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasyellow</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasyellow</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasrichgreen</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasrichgreen</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasVoilet</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasVoilet</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasred2</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasred2</string>
-				</array>
-			</dict>
-		</dict>
-	</dict>
 </dict>
 </plist>

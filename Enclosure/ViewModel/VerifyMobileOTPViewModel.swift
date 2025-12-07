@@ -142,7 +142,7 @@ class VerifyMobileOTPViewModel: ObservableObject {
                                 }
                         }
 
-                        print("✅ Verification Success: Phone = \(phone), FCM Token = NEED TO ADD FIREBASE NOW, UID = \(uid)")
+                        print("✅ Verification Success: Phone = \(phone), FCM Token = \(fcmToken), UID = \(uid)")
                     } else {
                         DispatchQueue.main.async {
                             self.errorMessage = "Invalid data format from API"

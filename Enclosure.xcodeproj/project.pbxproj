@@ -8,6 +8,18 @@
 
 /* Begin PBXBuildFile section */
 		C261E29A2D95334700E1CFE6 /* Alamofire in Frameworks */ = {isa = PBXBuildFile; productRef = C261E2992D95334700E1CFE6 /* Alamofire */; };
+		C261E29B2D95334700E1CFE7 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = C261E29C2D95334700E1CFE7 /* FirebaseCore */; };
+		C261E29D2D95334700E1CFE8 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = C261E29E2D95334700E1CFE8 /* FirebaseMessaging */; };
+		C281549F2EE56B560033FB02 /* FirebaseAI in Frameworks */ = {isa = PBXBuildFile; productRef = C281549E2EE56B560033FB02 /* FirebaseAI */; };
+		C28154A12EE56B560033FB02 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = C28154A02EE56B560033FB02 /* FirebaseAnalytics */; };
+		C28154A32EE56B560033FB02 /* FirebaseAnalyticsCore in Frameworks */ = {isa = PBXBuildFile; productRef = C28154A22EE56B560033FB02 /* FirebaseAnalyticsCore */; };
+		C28154A52EE56B560033FB02 /* FirebaseAnalyticsIdentitySupport in Frameworks */ = {isa = PBXBuildFile; productRef = C28154A42EE56B560033FB02 /* FirebaseAnalyticsIdentitySupport */; };
+		C28154A72EE56B560033FB02 /* FirebaseAnalyticsOnDeviceConversion in Frameworks */ = {isa = PBXBuildFile; productRef = C28154A62EE56B560033FB02 /* FirebaseAnalyticsOnDeviceConversion */; };
+		C28154A92EE56B560033FB02 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = C28154A82EE56B560033FB02 /* FirebaseAuth */; };
+		C28154AB2EE56B560033FB02 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = C28154AA2EE56B560033FB02 /* FirebaseCrashlytics */; };
+		C28154AD2EE56B560033FB02 /* FirebaseDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = C28154AC2EE56B560033FB02 /* FirebaseDatabase */; };
+		C28154AF2EE56B560033FB02 /* FirebaseInAppMessaging-Beta in Frameworks */ = {isa = PBXBuildFile; productRef = C28154AE2EE56B560033FB02 /* FirebaseInAppMessaging-Beta */; };
+		C28154B12EE56B560033FB02 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = C28154B02EE56B560033FB02 /* FirebaseStorage */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -70,6 +82,18 @@
 			buildActionMask = 2147483647;
 			files = (
 				C261E29A2D95334700E1CFE6 /* Alamofire in Frameworks */,
+				C28154A32EE56B560033FB02 /* FirebaseAnalyticsCore in Frameworks */,
+				C281549F2EE56B560033FB02 /* FirebaseAI in Frameworks */,
+				C28154A52EE56B560033FB02 /* FirebaseAnalyticsIdentitySupport in Frameworks */,
+				C28154A92EE56B560033FB02 /* FirebaseAuth in Frameworks */,
+				C261E29B2D95334700E1CFE7 /* FirebaseCore in Frameworks */,
+				C28154A12EE56B560033FB02 /* FirebaseAnalytics in Frameworks */,
+				C28154AB2EE56B560033FB02 /* FirebaseCrashlytics in Frameworks */,
+				C28154B12EE56B560033FB02 /* FirebaseStorage in Frameworks */,
+				C28154AD2EE56B560033FB02 /* FirebaseDatabase in Frameworks */,
+				C261E29D2D95334700E1CFE8 /* FirebaseMessaging in Frameworks */,
+				C28154A72EE56B560033FB02 /* FirebaseAnalyticsOnDeviceConversion in Frameworks */,
+				C28154AF2EE56B560033FB02 /* FirebaseInAppMessaging-Beta in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -131,6 +155,18 @@
 			name = Enclosure;
 			packageProductDependencies = (
 				C261E2992D95334700E1CFE6 /* Alamofire */,
+				C261E29C2D95334700E1CFE7 /* FirebaseCore */,
+				C261E29E2D95334700E1CFE8 /* FirebaseMessaging */,
+				C281549E2EE56B560033FB02 /* FirebaseAI */,
+				C28154A02EE56B560033FB02 /* FirebaseAnalytics */,
+				C28154A22EE56B560033FB02 /* FirebaseAnalyticsCore */,
+				C28154A42EE56B560033FB02 /* FirebaseAnalyticsIdentitySupport */,
+				C28154A62EE56B560033FB02 /* FirebaseAnalyticsOnDeviceConversion */,
+				C28154A82EE56B560033FB02 /* FirebaseAuth */,
+				C28154AA2EE56B560033FB02 /* FirebaseCrashlytics */,
+				C28154AC2EE56B560033FB02 /* FirebaseDatabase */,
+				C28154AE2EE56B560033FB02 /* FirebaseInAppMessaging-Beta */,
+				C28154B02EE56B560033FB02 /* FirebaseStorage */,
 			);
 			productName = Enclosure;
 			productReference = C22079682D848199006AA986 /* Enclosure.app */;
@@ -216,6 +252,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				C261E2982D95334700E1CFE6 /* XCRemoteSwiftPackageReference "Alamofire" */,
+				C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C22079692D848199006AA986 /* Products */;
@@ -415,19 +452,29 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Enclosure/Enclosure.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Enclosure/Preview Content\"";
-				DEVELOPMENT_TEAM = RVB8PS34DF;
+				DEVELOPMENT_TEAM = 3BF3D2Q33L;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Enclosure/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "This app needs Bluetooth access for device communication.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "This app requires camera access for video calls.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "This app requires access to your contacts to help you connect with your friends.\n";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "This app requires access to devices on your local network.";
+				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "This app requires location access even when running in the background.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "This app requires location access to provide better services.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app requires microphone access for voice communication.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "This app requires access to your photo library to allow you to upload and share images.\n";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = "Launch Screen.storyboard";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 16;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -435,7 +482,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.powerfulnext.Enclosure.Enclosure;
+				PRODUCT_BUNDLE_IDENTIFIER = com.enclosure;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -448,19 +495,29 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Enclosure/Enclosure.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Enclosure/Preview Content\"";
-				DEVELOPMENT_TEAM = RVB8PS34DF;
+				DEVELOPMENT_TEAM = 3BF3D2Q33L;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Enclosure/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "This app needs Bluetooth access for device communication.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "This app requires camera access for video calls.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "This app requires access to your contacts to help you connect with your friends.\n";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "This app requires access to devices on your local network.";
+				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "This app requires location access even when running in the background.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "This app requires location access to provide better services.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app requires microphone access for voice communication.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "This app requires access to your photo library to allow you to upload and share images.\n";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = "Launch Screen.storyboard";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 16;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -468,7 +525,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.powerfulnext.Enclosure.Enclosure;
+				PRODUCT_BUNDLE_IDENTIFIER = com.enclosure;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -485,7 +542,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.powerfulnext.Enclosure.EnclosureTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.enclosure.EnclosureTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -503,7 +560,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.powerfulnext.Enclosure.EnclosureTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.enclosure.EnclosureTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -519,7 +576,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.powerfulnext.Enclosure.EnclosureUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.enclosure.EnclosureUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -535,7 +592,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.powerfulnext.Enclosure.EnclosureUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.enclosure.EnclosureUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -594,6 +651,14 @@
 				minimumVersion = 5.10.2;
 			};
 		};
+		C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 11.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -601,6 +666,66 @@
 			isa = XCSwiftPackageProductDependency;
 			package = C261E2982D95334700E1CFE6 /* XCRemoteSwiftPackageReference "Alamofire" */;
 			productName = Alamofire;
+		};
+		C261E29C2D95334700E1CFE7 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		C261E29E2D95334700E1CFE8 /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
+		};
+		C281549E2EE56B560033FB02 /* FirebaseAI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAI;
+		};
+		C28154A02EE56B560033FB02 /* FirebaseAnalytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalytics;
+		};
+		C28154A22EE56B560033FB02 /* FirebaseAnalyticsCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalyticsCore;
+		};
+		C28154A42EE56B560033FB02 /* FirebaseAnalyticsIdentitySupport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalyticsIdentitySupport;
+		};
+		C28154A62EE56B560033FB02 /* FirebaseAnalyticsOnDeviceConversion */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalyticsOnDeviceConversion;
+		};
+		C28154A82EE56B560033FB02 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		C28154AA2EE56B560033FB02 /* FirebaseCrashlytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCrashlytics;
+		};
+		C28154AC2EE56B560033FB02 /* FirebaseDatabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseDatabase;
+		};
+		C28154AE2EE56B560033FB02 /* FirebaseInAppMessaging-Beta */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = "FirebaseInAppMessaging-Beta";
+		};
+		C28154B02EE56B560033FB02 /* FirebaseStorage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseStorage;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
