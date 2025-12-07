@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import FirebaseDatabase
 
 struct chatView: View {
     @StateObject private var viewModel = ChatViewModel()
@@ -10,6 +11,12 @@ struct chatView: View {
     @Binding var selectedChatForDialog: UserActiveContactModel?
     @Binding var dialogPosition: CGPoint
     @Binding var showLongPressDialog: Bool
+
+    // Navigation state for chatting screen
+    @Binding var selectedChatForNavigation: UserActiveContactModel?
+    
+    // Firebase listener handle
+    @State private var firebaseListenerHandle: DatabaseHandle?
 
     private var trimmedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -80,6 +87,13 @@ struct chatView: View {
         .onAppear {
             print("🟡 [chatView] onAppear - fetching chat list for uid: \(Constant.SenderIdMy)")
             viewModel.fetchChatList(uid: Constant.SenderIdMy)
+            
+            // Set up Firebase Realtime Database listener for chattingSocket (matching Android)
+            setupChattingSocketListener(uid: Constant.SenderIdMy)
+        }
+        .onDisappear {
+            // Remove Firebase listener when view disappears
+            removeChattingSocketListener()
         }
     }
 
@@ -87,6 +101,7 @@ struct chatView: View {
         List(filteredChatList, id: \.uid) { chat in
             ContactCardView(
                 chat: chat,
+                selectedChatForNavigation: $selectedChatForNavigation,
                 onLongPress: { chat, position in
                     selectedChatForDialog = chat
                     dialogPosition = position
@@ -104,6 +119,7 @@ struct chatView: View {
 
     struct ContactCardView: View {
         var chat: UserActiveContactModel
+        @Binding var selectedChatForNavigation: UserActiveContactModel?
         var onLongPress: (UserActiveContactModel, CGPoint) -> Void
         
         @State private var isPressed = false
@@ -174,7 +190,10 @@ struct chatView: View {
                             // Single tap - only execute if not a long press
                             if !isLongPressing {
                                 print("Tapped: \(chat.fullName)") // Handle single tap
-                                // TODO: Add navigation or action here if needed
+                                // Navigate to chatting screen
+                                DispatchQueue.main.async {
+                                    selectedChatForNavigation = chat
+                                }
                             }
                             // Reset long press flag after a short delay
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -324,6 +343,80 @@ struct chatView: View {
                     .lineLimit(1) // singleLine="true" equivalent
             }
         }
+    }
+    
+    // MARK: - Firebase Realtime Database Listener (matching Android ChattingRoom.java)
+    private func setupChattingSocketListener(uid: String) {
+        let database = Database.database().reference()
+        let chattingSocketPath = "\(Constant.chattingSocket)/\(uid)"
+        
+        print("🔵 [chatView] Setting up Firebase listener for path: \(chattingSocketPath)")
+        print("🔵 [chatView] Current UID: \(uid)")
+        
+        // Remove existing listener if any
+        if let existingHandle = firebaseListenerHandle {
+            database.child(chattingSocketPath).removeObserver(withHandle: existingHandle)
+            firebaseListenerHandle = nil
+        }
+        
+        // Listen for value changes (matching Android addValueEventListener)
+        firebaseListenerHandle = database.child(chattingSocketPath).observe(.value) { [weak viewModel] snapshot in
+            guard let viewModel = viewModel else {
+                print("⚠️ [chatView] ViewModel is nil, skipping update")
+                return
+            }
+            
+            // Check if snapshot exists and has a value (matching Android message != null check)
+            if snapshot.exists() {
+                // Get the message value (matching Android snapshot.getValue(String.class))
+                if let message = snapshot.value as? String {
+                    print("🔵 [chatView] Live update received: \(message)")
+                    
+                    // Refresh chat list when socket message changes (matching Android commented code)
+                    // This triggers a refresh of the active chat list
+                    DispatchQueue.main.async {
+                        print("🔵 [chatView] Refreshing chat list due to socket update")
+                        viewModel.fetchChatList(uid: uid)
+                    }
+                } else {
+                    // Value exists but is not a String (could be other type or null)
+                    print("⚠️ [chatView] Snapshot exists but value is not String. Value type: \(type(of: snapshot.value)), Value: \(String(describing: snapshot.value))")
+                }
+            } else {
+                // Snapshot doesn't exist (null value) - matching Android "No message found"
+                print("⚠️ [chatView] No message found (snapshot doesn't exist)")
+            }
+        } withCancel: { error in
+            // Handle cancellation/error (matching Android onCancelled)
+            print("❌ [chatView] Firebase database error: \(error.localizedDescription)")
+        }
+        
+        // Verify listener was set up
+        if firebaseListenerHandle != nil {
+            print("✅ [chatView] Firebase listener set up successfully with handle: \(firebaseListenerHandle!)")
+            
+            // Also read the current value once to verify the path exists
+            database.child(chattingSocketPath).observeSingleEvent(of: .value) { snapshot in
+                if snapshot.exists() {
+                    print("🔵 [chatView] Initial value at path: \(String(describing: snapshot.value))")
+                } else {
+                    print("⚠️ [chatView] Path exists but has no value (this is normal if no messages yet)")
+                }
+            }
+        } else {
+            print("❌ [chatView] Failed to set up Firebase listener")
+        }
+    }
+    
+    private func removeChattingSocketListener() {
+        guard let handle = firebaseListenerHandle else { return }
+        
+        let database = Database.database().reference()
+        let chattingSocketPath = "\(Constant.chattingSocket)/\(Constant.SenderIdMy)"
+        
+        print("🔵 [chatView] Removing Firebase listener for path: \(chattingSocketPath)")
+        database.child(chattingSocketPath).removeObserver(withHandle: handle)
+        firebaseListenerHandle = nil
     }
     
     struct PlaceholderContactCardView: View {
@@ -616,7 +709,8 @@ struct chatView: View {
     chatView(
         selectedChatForDialog: .constant(nil),
         dialogPosition: .constant(.zero),
-        showLongPressDialog: .constant(false)
+        showLongPressDialog: .constant(false),
+        selectedChatForNavigation: .constant(nil)
     )
     .environment(
         \.managedObjectContext,

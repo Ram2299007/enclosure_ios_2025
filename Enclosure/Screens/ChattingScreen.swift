@@ -524,11 +524,7 @@ struct ChattingScreen: View {
                 // Send button (sendGrpLyt) - layout_gravity="center_vertical|bottom"
                 VStack(spacing: 0) {
                     Button(action: {
-                        if messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            // TODO: Handle mic button action (voice recording)
-                        } else {
-                            sendMessage()
-                        }
+                        handleSendButtonClick()
                     }) {
                         ZStack {
                             Circle()
@@ -537,14 +533,14 @@ struct ChattingScreen: View {
                             
                             // Show mic icon when text is empty, send icon when text is present
                             if messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedCount == 0 {
-                                Image("mikesvg")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 22, height: 22)
-                                    .foregroundColor(.white)
-                                    .padding(.top, 4)
-                                    .padding(.bottom, 8)
+                            Image("mikesvg")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 22, height: 22)
+                                .foregroundColor(.white)
+                                .padding(.top, 4)
+                                .padding(.bottom, 8)
                             } else {
                                 // Send icon (keyboard double arrow right) - same as Android
                                 Image("baseline_keyboard_double_arrow_right_24")
@@ -552,9 +548,9 @@ struct ChattingScreen: View {
                                     .resizable()
                                     .scaledToFit()
                                     .frame(width: 26, height: 26)
-                                    .foregroundColor(.white)
-                                    .padding(.top, 4)
-                                    .padding(.bottom, 8)
+                                .foregroundColor(.white)
+                                .padding(.top, 4)
+                                .padding(.bottom, 8)
                             }
                         }
                     }
@@ -895,42 +891,393 @@ struct ChattingScreen: View {
         // TODO: Update typing status in Firebase
     }
     
-    private func sendMessage() {
-        guard !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    // MARK: - Send Button Handler (matching Android sendGrp.setOnClickListener)
+    private func handleSendButtonClick() {
+        print("DIALOGUE_DEBUG: === SEND BUTTON CLICKED ===")
         
-        // TODO: Send message to Firebase or API
+        // Check if multi-select mode is active
+        if selectedCount > 0 {
+            print("DIALOGUE_DEBUG: Send button clicked for multi-images!")
+            // TODO: Show full-screen dialog for multi-image preview
+            // setupMultiImagePreviewWithData()
+            return
+        }
+        
+        // Normal message send
+        let message = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !message.isEmpty else { return }
+        
+        // Capture values needed in the closure
+        let receiverUid = contact.uid
+        let replyMsg = replyMessage
+        let replyType = replyDataType
+        let limitStatusValue = limitStatus
+        let totalMsgLimitValue = totalMsgLimit
+        
+        // Run in background thread (matching Android new Thread)
+        // Note: No need for [weak self] since ChattingScreen is a struct (value type)
+        DispatchQueue.global(qos: .userInitiated).async {
+            
+            do {
+                // Generate unique message ID
+                let modelId = UUID().uuidString
+                
+                // Get current time in "hh:mm a" format (matching Android)
+                let dateFormatter = DateFormatter()
+                dateFormatter.dateFormat = "hh:mm a"
+                let currentDateTimeString = dateFormatter.string(from: Date())
+                
+                // Get current date (matching Android Constant.getCurrentDate())
+                let currentDateFormatter = DateFormatter()
+                currentDateFormatter.dateFormat = "yyyy-MM-dd"
+                let currentDateString = currentDateFormatter.string(from: Date())
+                
+                // Get timestamp
+                let timestamp = Date().timeIntervalSince1970
+                
+                // Get user name from UserDefaults (matching Android Constant.getSF.getString(Constant.full_name, ""))
+                let userName = UserDefaults.standard.string(forKey: "full_name") ?? ""
+                let micPhoto = UserDefaults.standard.string(forKey: "profilePic") ?? ""
+                
+                // Create emoji model array (matching Android - default empty emoji)
+                let emojiModels: [EmojiModel] = [EmojiModel(name: "", emoji: "")]
+                
+                // Create message model with all parameters (matching Android messageModel structure)
         let newMessage = ChatMessage(
-            id: UUID().uuidString,
-            text: messageText,
-            senderId: Constant.SenderIdMy,
-            receiverId: contact.uid,
-            timestamp: Date(),
-            dataType: "Text"
-        )
+                    id: modelId,
+                    uid: Constant.SenderIdMy,
+                    message: message,
+                    time: currentDateTimeString,
+                    document: "",
+                    dataType: "Text",
+                    fileExtension: nil,
+                    name: nil,
+                    phone: nil,
+                    micPhoto: micPhoto,
+                    miceTiming: nil,
+                    userName: userName,
+                    receiverId: receiverUid,
+                    replytextData: replyMsg.isEmpty ? nil : replyMsg,
+                    replyKey: replyMsg.isEmpty ? nil : modelId,
+                    replyType: replyType.isEmpty ? nil : replyType,
+                    replyOldData: nil,
+                    replyCrtPostion: nil,
+                    forwaredKey: nil,
+                    groupName: nil,
+                    docSize: nil,
+                    fileName: nil,
+                    thumbnail: nil,
+                    fileNameThumbnail: nil,
+                    caption: nil,
+                    notification: 1,
+                    currentDate: currentDateString,
+                    emojiModel: emojiModels,
+                    emojiCount: nil,
+                    timestamp: timestamp,
+                    imageWidth: nil,
+                    imageHeight: nil,
+                    aspectRatio: nil,
+                    selectionCount: nil,
+                    selectionBunch: nil,
+                    receiverLoader: 0
+                )
         
-        messages.append(newMessage)
-        messageText = ""
-        showReplyLayout = false
+                // TODO: Store message in SQLite pending table before upload
+                // try DatabaseHelper.shared.insertPendingMessage(model)
+                
+                // Check message limit status
+                if limitStatusValue == "0" {
+                    // Upload message using MessageUploadService (matching Android)
+                    DispatchQueue.main.async {
+                        // Get user FCM token
+                        let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
+                        let deviceType = "2" // iOS device type
+                        
+                        // Use MessageUploadService (matching Android MessageUploadService)
+                        MessageUploadService.shared.uploadMessage(
+                            model: newMessage,
+                            filePath: nil, // Text messages don't have files
+                            userFTokenKey: userFTokenKey,
+                            deviceType: deviceType
+                        ) { success, errorMessage in
+                            if success {
+                                print("✅ MessageUploadService: Message uploaded successfully with ID: \(modelId)")
+                            } else {
+                                print("❌ MessageUploadService: Error uploading message: \(errorMessage ?? "Unknown error")")
+                            }
+                        }
+                    }
+                } else {
+                    // Show message limit toast
+                    DispatchQueue.main.async {
+                        Constant.showToast(
+                            message: "Msg limit set for privacy in a day - \(totalMsgLimitValue)"
+                        )
+                    }
+                }
+                
+                // Update UI on main thread
+                DispatchQueue.main.async {
+                    // Add message to list
+                    self.messages.append(newMessage)
+                    
+                    // Clear typing status when message is sent
+                    self.clearTypingStatus()
+                    
+                    // Clear message box and reply layout
+                    self.messageText = ""
+                    self.showReplyLayout = false
+                    self.replyMessage = ""
+                    self.replySenderName = ""
+                    self.replyDataType = ""
+                    self.hideEmojiAndGalleryPickers()
+                    
+                    // Hide down arrow cardview when new message is added (user is at bottom)
+                    // TODO: Hide down arrow if visible
+                }
+                
+            } catch {
+                print("SendGroupClickListener: Error: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    // Re-enable message box if there was an error
+                    // In SwiftUI, TextField is always enabled, but we can handle errors here
+                }
+            }
+        }
+    }
+    
+    // Legacy method - keeping for backward compatibility if needed
+    private func uploadMessageToFirebase(
+        message: String,
+        modelId: String,
+        currentDateTimeString: String
+    ) {
+        // This method is no longer used - upload is now done directly in handleSendButtonClick
+        // Keeping for backward compatibility
+    }
+    
+    private func hideEmojiAndGalleryPickers() {
+        // Hide emoji picker if visible
+        if showEmojiPicker {
+            withAnimation {
+                showEmojiPicker = false
+            }
+        }
         
-        // TODO: Upload message to server
+        // Hide gallery picker if visible
+        if showGalleryPicker {
+            withAnimation {
+                showGalleryPicker = false
+            }
+        }
+        
+        // Request focus on message box (show keyboard)
+        // In SwiftUI, we can use @FocusState to manage focus
+        // TODO: Add @FocusState for message box focus management
+    }
+    
+    private func sendMessage() {
+        // Legacy method - keeping for backward compatibility
+        handleSendButtonClick()
     }
 }
 
-// MARK: - Chat Message Model
-struct ChatMessage: Identifiable {
-    let id: String
-    let text: String
-    let senderId: String
-    let receiverId: String
-    let timestamp: Date
-    let dataType: String
-    var imageUrl: String? = nil
-    var videoUrl: String? = nil
-    var documentUrl: String? = nil
-    var contactInfo: ContactInfo? = nil
+// MARK: - Chat Message Model (matching Android messageModel.java)
+struct ChatMessage: Identifiable, Codable {
+    // CodingKeys to map Swift property names to JSON keys (matching Android)
+    enum CodingKeys: String, CodingKey {
+        case id, uid, message, time, document, dataType
+        case fileExtension = "extension" // Map fileExtension to "extension" in JSON
+        case name, phone, micPhoto, miceTiming, userName, receiverId
+        case replytextData, replyKey, replyType, replyOldData, replyCrtPostion
+        case forwaredKey, groupName, docSize, fileName, thumbnail, fileNameThumbnail, caption
+        case notification, currentDate, emojiModel, emojiCount, timestamp
+        case imageWidth, imageHeight, aspectRatio, selectionCount, selectionBunch, receiverLoader
+    }
+    
+    // Core message fields
+    let id: String // modelId
+    var uid: String // senderId
+    var message: String // message text
+    var time: String // formatted time "hh:mm a"
+    var document: String // document URL (image/video/document)
+    var dataType: String // Text, img, video, doc, contact, voiceAudio
+    var fileExtension: String? // file extension
+    var name: String? // contact name (for contact type)
+    var phone: String? // contact phone (for contact type)
+    var micPhoto: String? // sender profile photo
+    var miceTiming: String? // audio timing (for voice messages)
+    var userName: String? // sender user name
+    var receiverId: String // receiverUid
+    
+    // Reply fields
+    var replytextData: String?
+    var replyKey: String?
+    var replyType: String?
+    var replyOldData: String?
+    var replyCrtPostion: String?
+    
+    // Forward and group fields
+    var forwaredKey: String?
+    var groupName: String?
+    
+    // File/document fields
+    var docSize: String?
+    var fileName: String?
+    var thumbnail: String?
+    var fileNameThumbnail: String?
+    var caption: String?
+    
+    // Notification and date
+    var notification: Int
+    var currentDate: String?
+    
+    // Emoji fields
+    var emojiModel: [EmojiModel]?
+    var emojiCount: String?
+    
+    // Timestamp
+    var timestamp: TimeInterval // long timestamp
+    
+    // Image dimensions
+    var imageWidth: String?
+    var imageHeight: String?
+    var aspectRatio: String?
+    
+    // Selection bunch (for multi-image messages)
+    var selectionCount: String?
+    var selectionBunch: [SelectionBunchModel]?
+    
+    // Receiver loader (for loading state)
+    var receiverLoader: Int
+    
+    // Initializer with all parameters (matching Android constructor)
+    init(
+        id: String,
+        uid: String,
+        message: String,
+        time: String,
+        document: String = "",
+        dataType: String = "Text",
+        fileExtension: String? = nil,
+        name: String? = nil,
+        phone: String? = nil,
+        micPhoto: String? = nil,
+        miceTiming: String? = nil,
+        userName: String? = nil,
+        receiverId: String,
+        replytextData: String? = nil,
+        replyKey: String? = nil,
+        replyType: String? = nil,
+        replyOldData: String? = nil,
+        replyCrtPostion: String? = nil,
+        forwaredKey: String? = nil,
+        groupName: String? = nil,
+        docSize: String? = nil,
+        fileName: String? = nil,
+        thumbnail: String? = nil,
+        fileNameThumbnail: String? = nil,
+        caption: String? = nil,
+        notification: Int = 1,
+        currentDate: String? = nil,
+        emojiModel: [EmojiModel]? = nil,
+        emojiCount: String? = nil,
+        timestamp: TimeInterval = Date().timeIntervalSince1970,
+        imageWidth: String? = nil,
+        imageHeight: String? = nil,
+        aspectRatio: String? = nil,
+        selectionCount: String? = nil,
+        selectionBunch: [SelectionBunchModel]? = nil,
+        receiverLoader: Int = 0
+    ) {
+        self.id = id
+        self.uid = uid
+        self.message = message
+        self.time = time
+        self.document = document
+        self.dataType = dataType
+        self.fileExtension = fileExtension
+        self.name = name
+        self.phone = phone
+        self.micPhoto = micPhoto
+        self.miceTiming = miceTiming
+        self.userName = userName
+        self.receiverId = receiverId
+        self.replytextData = replytextData
+        self.replyKey = replyKey
+        self.replyType = replyType
+        self.replyOldData = replyOldData
+        self.replyCrtPostion = replyCrtPostion
+        self.forwaredKey = forwaredKey
+        self.groupName = groupName
+        self.docSize = docSize
+        self.fileName = fileName
+        self.thumbnail = thumbnail
+        self.fileNameThumbnail = fileNameThumbnail
+        self.caption = caption
+        self.notification = notification
+        self.currentDate = currentDate
+        self.emojiModel = emojiModel
+        self.emojiCount = emojiCount
+        self.timestamp = timestamp
+        self.imageWidth = imageWidth
+        self.imageHeight = imageHeight
+        self.aspectRatio = aspectRatio
+        self.selectionCount = selectionCount
+        self.selectionBunch = selectionBunch
+        self.receiverLoader = receiverLoader
+    }
+    
+    // Convenience initializer for simple text messages
+    init(
+        id: String,
+        text: String,
+        senderId: String,
+        receiverId: String,
+        timestamp: Date,
+        dataType: String = "Text"
+    ) {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "hh:mm a"
+        let timeString = dateFormatter.string(from: timestamp)
+        
+        self.init(
+            id: id,
+            uid: senderId,
+            message: text,
+            time: timeString,
+            document: "",
+            dataType: dataType,
+            receiverId: receiverId,
+            timestamp: timestamp.timeIntervalSince1970
+        )
+    }
 }
 
-struct ContactInfo {
+// MARK: - Emoji Model (matching Android emojiModel.java)
+struct EmojiModel: Codable, Equatable, Hashable {
+    var name: String
+    var emoji: String
+    
+    init(name: String = "", emoji: String = "") {
+        self.name = name
+        self.emoji = emoji
+    }
+}
+
+// MARK: - Selection Bunch Model (matching Android selectionBunchModel.java)
+struct SelectionBunchModel: Codable, Equatable, Hashable {
+    var imgUrl: String
+    var fileName: String
+    
+    init(imgUrl: String = "", fileName: String = "") {
+        self.imgUrl = imgUrl
+        self.fileName = fileName
+    }
+}
+
+// MARK: - Contact Info (for contact type messages)
+struct ContactInfo: Codable {
     let name: String
     let phoneNumber: String
     let email: String?
@@ -943,7 +1290,7 @@ struct MessageBubbleView: View {
     
     init(message: ChatMessage) {
         self.message = message
-        self.isSentByMe = message.senderId == Constant.SenderIdMy
+        self.isSentByMe = message.uid == Constant.SenderIdMy
     }
     
     var body: some View {
@@ -953,7 +1300,7 @@ struct MessageBubbleView: View {
             }
             
             VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 4) {
-                Text(message.text)
+                Text(message.message)
                     .font(.custom("Inter18pt-Regular", size: 16))
                     .foregroundColor(isSentByMe ? .white : Color("TextColor"))
                     .padding(.horizontal, 12)
@@ -963,7 +1310,7 @@ struct MessageBubbleView: View {
                             .fill(isSentByMe ? Color("blue") : Color("message_box_bg"))
                     )
                 
-                Text(formatTime(message.timestamp))
+                Text(message.time)
                     .font(.custom("Inter18pt-Regular", size: 10))
                     .foregroundColor(Color("gray3"))
                     .padding(.horizontal, 4)
@@ -975,12 +1322,6 @@ struct MessageBubbleView: View {
                 Spacer()
             }
         }
-    }
-    
-    private func formatTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm a"
-        return formatter.string(from: date)
     }
 }
 

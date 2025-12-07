@@ -28,6 +28,21 @@ struct Constant{
     static let profilePic = "profilePic"
     static let full_name = "full_name"
     static let ThemeColorKey = "ThemeColorKey"
+    
+    // Firebase constants (matching Android Constant.java)
+    static let CHAT = "chats"
+    static let GROUPCHAT = "group_chats"
+    static let chattingSocket = "chattingSocket"
+    static let chatting = "chatting"
+    
+    // Data type constants (matching Android)
+    static let Text = "Text"
+    static let img = "img"
+    static let video = "video"
+    static let doc = "doc"
+    static let contact = "contact"
+    static let voiceAudio = "voiceAudio"
+    static let camera = "camera"
 
 
     static var SenderIdMy: String {
