@@ -155,30 +155,33 @@ final class CallLogViewModel: ObservableObject {
     private func loadCachedCallLogs(reason: CallLogCacheReason, shouldStopLoading: Bool = true) {
         cacheManager.fetchCallLogs(type: cacheType) { [weak self] cachedSections in
             guard let self = self else { return }
-            if cachedSections.isEmpty && reason == .prefetch {
-                // Do not override existing data with empty cache during prefetch.
-            } else {
-                self.sections = cachedSections
-            }
-            self.hasCachedSections = !cachedSections.isEmpty
-            if shouldStopLoading {
-                self.isLoading = false
-            }
-            
-            switch reason {
-            case .offline:
-                self.errorMessage = cachedSections.isEmpty ? "You are offline. No cached call logs available." : nil
-            case .prefetch:
-                break
-            case .error(let message):
-                if cachedSections.isEmpty {
-                    self.errorMessage = message?.isEmpty == false ? message : "Unable to load call logs."
+            // Ensure all @Published property updates happen on main thread
+            DispatchQueue.main.async {
+                if cachedSections.isEmpty && reason == .prefetch {
+                    // Do not override existing data with empty cache during prefetch.
                 } else {
-                    self.errorMessage = nil
+                    self.sections = cachedSections
                 }
+                self.hasCachedSections = !cachedSections.isEmpty
+                if shouldStopLoading {
+                    self.isLoading = false
+                }
+                
+                switch reason {
+                case .offline:
+                    self.errorMessage = cachedSections.isEmpty ? "You are offline. No cached call logs available." : nil
+                case .prefetch:
+                    break
+                case .error(let message):
+                    if cachedSections.isEmpty {
+                        self.errorMessage = message?.isEmpty == false ? message : "Unable to load call logs."
+                    } else {
+                        self.errorMessage = nil
+                    }
+                }
+                
+                print("📞 [CallLogViewModel] Loaded \(cachedSections.count) cached logs for reason: \(reason) (\(self.logType))")
             }
-            
-            print("📞 [CallLogViewModel] Loaded \(cachedSections.count) cached logs for reason: \(reason) (\(self.logType))")
         }
     }
     

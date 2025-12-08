@@ -86,33 +86,36 @@ final class NewGroupViewModel: ObservableObject {
         cacheManager.fetchChats { [weak self] (cachedContacts: [UserActiveContactModel]) in
             guard let self = self else { return }
             
-            if cachedContacts.isEmpty && reason == .prefetch {
+            // Ensure all @Published property updates happen on main thread
+            DispatchQueue.main.async {
+                if cachedContacts.isEmpty && reason == .prefetch {
+                    if shouldStopLoading {
+                        self.isLoading = false
+                    }
+                    return
+                }
+                
+                // Filter out current user
+                let uid = Constant.SenderIdMy
+                let filtered = cachedContacts.filter { $0.uid != uid }
+                self.contacts = filtered
+                self.hasCachedContacts = !filtered.isEmpty
+                
                 if shouldStopLoading {
                     self.isLoading = false
                 }
-                return
-            }
-            
-            // Filter out current user
-            let uid = Constant.SenderIdMy
-            let filtered = cachedContacts.filter { $0.uid != uid }
-            self.contacts = filtered
-            self.hasCachedContacts = !filtered.isEmpty
-            
-            if shouldStopLoading {
-                self.isLoading = false
-            }
-            
-            switch reason {
-            case .offline:
-                self.errorMessage = filtered.isEmpty ? "You are offline. No cached contacts available." : nil
-            case .prefetch:
-                break
-            case .error(let message):
-                if filtered.isEmpty {
-                    self.errorMessage = message?.isEmpty == false ? message : "Unable to load contacts."
-                } else {
-                    self.errorMessage = nil
+                
+                switch reason {
+                case .offline:
+                    self.errorMessage = filtered.isEmpty ? "You are offline. No cached contacts available." : nil
+                case .prefetch:
+                    break
+                case .error(let message):
+                    if filtered.isEmpty {
+                        self.errorMessage = message?.isEmpty == false ? message : "Unable to load contacts."
+                    } else {
+                        self.errorMessage = nil
+                    }
                 }
             }
         }

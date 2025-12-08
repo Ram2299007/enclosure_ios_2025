@@ -36,8 +36,12 @@ class YouViewModel: ObservableObject {
     private let networkMonitor = NetworkMonitor.shared
 
     func fetch_profile_YouFragment(uid: String) {
-        isLoading = true
-        errorMessage = nil
+        // Ensure @Published updates happen on main thread
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.isLoading = true
+            self.errorMessage = nil
+        }
 
         loadCachedProfile(reason: .prefetch, shouldStopLoading: false)
 
@@ -66,8 +70,12 @@ class YouViewModel: ObservableObject {
     }
 
     func fetch_user_profile_images_youFragment(uid: String) {
-        isLoading = true
-        errorMessage = nil
+        // Ensure @Published updates happen on main thread
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.isLoading = true
+            self.errorMessage = nil
+        }
 
         loadCachedImages(reason: .prefetch, shouldStopLoading: false)
 
@@ -98,66 +106,72 @@ class YouViewModel: ObservableObject {
     private func loadCachedProfile(reason: YouCacheReason, shouldStopLoading: Bool = true) {
         cacheManager.fetchYouProfiles { [weak self] cachedProfiles in
             guard let self = self else { return }
-            if cachedProfiles.isEmpty && reason == .prefetch {
+            // Ensure all @Published property updates happen on main thread
+            DispatchQueue.main.async {
+                if cachedProfiles.isEmpty && reason == .prefetch {
+                    if shouldStopLoading {
+                        self.isLoading = false
+                    }
+                    return
+                }
+
+                self.list = cachedProfiles
+                self.hasCachedProfile = !cachedProfiles.isEmpty
                 if shouldStopLoading {
                     self.isLoading = false
                 }
-                return
-            }
 
-            self.list = cachedProfiles
-            self.hasCachedProfile = !cachedProfiles.isEmpty
-            if shouldStopLoading {
-                self.isLoading = false
-            }
-
-            switch reason {
-            case .offline:
-                self.errorMessage = cachedProfiles.isEmpty ? "You are offline. No cached profile available." : nil
-            case .prefetch:
-                break
-            case .error(let message):
-                if cachedProfiles.isEmpty {
-                    self.errorMessage = message?.isEmpty == false ? message : "Unable to load profile."
-                } else {
-                    self.errorMessage = nil
+                switch reason {
+                case .offline:
+                    self.errorMessage = cachedProfiles.isEmpty ? "You are offline. No cached profile available." : nil
+                case .prefetch:
+                    break
+                case .error(let message):
+                    if cachedProfiles.isEmpty {
+                        self.errorMessage = message?.isEmpty == false ? message : "Unable to load profile."
+                    } else {
+                        self.errorMessage = nil
+                    }
                 }
-            }
 
-            print("👤 [YouViewModel] Loaded \(cachedProfiles.count) cached profiles for reason: \(reason)")
+                print("👤 [YouViewModel] Loaded \(cachedProfiles.count) cached profiles for reason: \(reason)")
+            }
         }
     }
 
     private func loadCachedImages(reason: YouCacheReason, shouldStopLoading: Bool = true) {
         cacheManager.fetchYouProfileImages { [weak self] cachedImages in
             guard let self = self else { return }
-            if cachedImages.isEmpty && reason == .prefetch {
+            // Ensure all @Published property updates happen on main thread
+            DispatchQueue.main.async {
+                if cachedImages.isEmpty && reason == .prefetch {
+                    if shouldStopLoading {
+                        self.isLoading = false
+                    }
+                    return
+                }
+
+                self.listImages = cachedImages
+                self.hasCachedImages = !cachedImages.isEmpty
                 if shouldStopLoading {
                     self.isLoading = false
                 }
-                return
-            }
 
-            self.listImages = cachedImages
-            self.hasCachedImages = !cachedImages.isEmpty
-            if shouldStopLoading {
-                self.isLoading = false
-            }
-
-            switch reason {
-            case .offline:
-                self.errorMessage = cachedImages.isEmpty ? "You are offline. No cached images available." : nil
-            case .prefetch:
-                break
-            case .error(let message):
-                if cachedImages.isEmpty {
-                    self.errorMessage = message?.isEmpty == false ? message : "Unable to load profile images."
-                } else {
-                    self.errorMessage = nil
+                switch reason {
+                case .offline:
+                    self.errorMessage = cachedImages.isEmpty ? "You are offline. No cached images available." : nil
+                case .prefetch:
+                    break
+                case .error(let message):
+                    if cachedImages.isEmpty {
+                        self.errorMessage = message?.isEmpty == false ? message : "Unable to load profile images."
+                    } else {
+                        self.errorMessage = nil
+                    }
                 }
-            }
 
-            print("👤 [YouViewModel] Loaded \(cachedImages.count) cached images for reason: \(reason)")
+                print("👤 [YouViewModel] Loaded \(cachedImages.count) cached images for reason: \(reason)")
+            }
         }
     }
 }

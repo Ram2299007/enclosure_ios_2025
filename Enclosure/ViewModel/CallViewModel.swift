@@ -72,26 +72,29 @@ class CallViewModel: ObservableObject {
     private func loadCachedContacts(reason: CallContactCacheReason, shouldStopLoading: Bool = true) {
         cacheManager.fetchContacts { [weak self] cachedContacts in
             guard let self = self else { return }
-            self.contactList = cachedContacts
-            self.hasCachedContacts = !cachedContacts.isEmpty
-            if shouldStopLoading {
-                self.isLoading = false
-            }
-            
-            switch reason {
-            case .offline:
-                self.errorMessage = cachedContacts.isEmpty ? "You are offline. No cached contacts available." : nil
-            case .prefetch:
-                break
-            case .error(let message):
-                if cachedContacts.isEmpty {
-                    self.errorMessage = message?.isEmpty == false ? message : "Unable to load contacts."
-                } else {
-                    self.errorMessage = nil
+            // Ensure all @Published property updates happen on main thread
+            DispatchQueue.main.async {
+                self.contactList = cachedContacts
+                self.hasCachedContacts = !cachedContacts.isEmpty
+                if shouldStopLoading {
+                    self.isLoading = false
                 }
+                
+                switch reason {
+                case .offline:
+                    self.errorMessage = cachedContacts.isEmpty ? "You are offline. No cached contacts available." : nil
+                case .prefetch:
+                    break
+                case .error(let message):
+                    if cachedContacts.isEmpty {
+                        self.errorMessage = message?.isEmpty == false ? message : "Unable to load contacts."
+                    } else {
+                        self.errorMessage = nil
+                    }
+                }
+                
+                print("📞 [CallViewModel] Loaded \(cachedContacts.count) cached contacts for reason: \(reason)")
             }
-            
-            print("📞 [CallViewModel] Loaded \(cachedContacts.count) cached contacts for reason: \(reason)")
         }
     }
 }

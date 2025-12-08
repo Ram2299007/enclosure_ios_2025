@@ -8,7 +8,8 @@
 
 import SwiftUI
 
-struct UserActiveContactModel: Codable {
+struct UserActiveContactModel: Codable, Identifiable, Hashable {
+    var id: String { uid }
     let photo: String
     let fullName: String
     let mobileNo: String
@@ -96,6 +97,15 @@ struct UserActiveContactModel: Codable {
         self.deviceType = deviceType
         self.messageId = messageId
         self.createdAt = createdAt
+    }
+    
+    // Hashable conformance
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(uid)
+    }
+    
+    static func == (lhs: UserActiveContactModel, rhs: UserActiveContactModel) -> Bool {
+        lhs.uid == rhs.uid
     }
 }
 

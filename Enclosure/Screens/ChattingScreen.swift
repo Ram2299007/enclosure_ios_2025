@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import FirebaseDatabase
 
 struct ChattingScreen: View {
     @Environment(\.dismiss) private var dismiss
@@ -35,11 +36,21 @@ struct ChattingScreen: View {
     // Message list state
     @State private var messages: [ChatMessage] = []
     
+    // Firebase listener state (matching Android)
+    @State private var isLoading: Bool = false
+    @State private var initialLoadDone: Bool = false
+    @State private var fullListenerAttached: Bool = false
+    @State private var firebaseListenerHandle: DatabaseHandle?
+    @State private var firebaseChildListenerHandle: DatabaseHandle?
+    
     // Valuable card state
     @State private var limitStatus: String = "0"
     @State private var totalMsgLimit: String = "0"
     @State private var showLimitStatus: Bool = false
     @State private var showTotalMsgLimit: Bool = false
+    
+    // Unique dates tracking (matching Android uniqueDates Set)
+    @State private var uniqueDates: Set<String> = []
     
     var body: some View {
         ZStack {
@@ -73,7 +84,19 @@ struct ChattingScreen: View {
         }
         .navigationBarHidden(true)
         .onAppear {
-            loadMessages()
+            // Get receiverRoom (matching Android: receiverUid + uid)
+            let receiverUid = contact.uid
+            let uid = Constant.SenderIdMy
+            let receiverRoom = receiverUid + uid
+            
+            // Fetch messages (matching Android fetchMessages)
+            fetchMessages(receiverRoom: receiverRoom) {
+                print("✅ Messages fetched successfully")
+            }
+        }
+        .onDisappear {
+            // Remove Firebase listeners when leaving screen
+            removeFirebaseListeners()
         }
     }
     
@@ -316,6 +339,14 @@ struct ChattingScreen: View {
                 .onAppear {
                     if let lastMessage = messages.last {
                         proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                    }
+                }
+                .onChange(of: messages.count) { _ in
+                    // Auto-scroll to bottom when new messages arrive (matching Android real-time scroll)
+                    if let lastMessage = messages.last {
+                        withAnimation {
+                            proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                        }
                     }
                 }
             }
@@ -866,9 +897,445 @@ struct ChattingScreen: View {
         }
     }
     
-    private func loadMessages() {
-        // TODO: Load messages from Firebase or API
-        // For now, using empty array
+    // MARK: - Firebase Message Fetching (matching Android fetchMessages)
+    
+    /// Fetch messages from Firebase (matching Android fetchMessages with OnMessagesFetchedListener)
+    private func fetchMessages(receiverRoom: String, listener: (() -> Void)? = nil) {
+        fetchMessages(receiverRoom: receiverRoom, shouldScrollToLast: false, listener: listener)
+    }
+    
+    /// Fetch messages from Firebase with scroll option (matching Android fetchMessages overload)
+    private func fetchMessages(receiverRoom: String, shouldScrollToLast: Bool, listener: (() -> Void)?) {
+        // Check if already loading (matching Android isLoading check)
+        if isLoading {
+            print("📱 [fetchMessages] Already loading, skipping fetch.")
+            listener?()
+            return
+        }
+        
+        // If we already have messages (cached data), don't show loader (matching Android)
+        if !messages.isEmpty {
+            print("📱 [fetchMessages] Messages already available, skipping network fetch")
+            listener?()
+            return
+        }
+        
+        isLoading = true
+        print("📱 [fetchMessages] Fetching messages for room: \(receiverRoom)")
+        
+        if !initialLoadDone {
+            // 🔹 Phase 1: Load last 10 messages ordered by timestamp (matching Android)
+            print("📱 [fetchMessages] Phase 1: Initial load (last 10 messages by timestamp).")
+            
+            let database = Database.database().reference()
+            let chatPath = "\(Constant.CHAT)/\(receiverRoom)"
+            
+            let limitedQuery = database.child(chatPath)
+                .queryOrdered(byChild: "timestamp")
+                .queryLimited(toLast: 10)
+            
+            limitedQuery.observeSingleEvent(of: .value) { snapshot in
+                print("📱 [fetchMessages] Fetched initial data: \(snapshot.childrenCount) messages.")
+                
+                var tempList: [ChatMessage] = []
+                
+                guard let children = snapshot.children.allObjects as? [DataSnapshot] else {
+                    print("⚠️ [fetchMessages] No children found")
+                    DispatchQueue.main.async {
+                        self.isLoading = false
+                        self.initialLoadDone = true
+                        self.updateEmptyState(isEmpty: tempList.isEmpty)
+                        listener?()
+                    }
+                    return
+                }
+                
+                for child in children {
+                    let childKey = child.key
+                    
+                    // Skip typing indicator node - it's not a message (matching Android)
+                    if childKey == "typing" {
+                        print("📱 [fetchMessages] Skipping typing indicator node")
+                        continue
+                    }
+                    
+                    // Skip invalid keys (matching Android)
+                    if childKey.count <= 1 || childKey == ":" {
+                        print("📱 [fetchMessages] Skipping invalid key: \(childKey)")
+                        continue
+                    }
+                    
+                    do {
+                        // Parse message from Firebase snapshot (matching Android child.getValue(messageModel.class))
+                        if let messageDict = child.value as? [String: Any] {
+                            if let model = self.parseMessageFromDict(messageDict, messageId: childKey) {
+                                // Only add Text datatype messages (as requested)
+                                if model.dataType == Constant.Text {
+                                    tempList.append(model)
+                                }
+                            }
+                        }
+                    } catch {
+                        print("❌ [fetchMessages] Error parsing message for key: \(childKey), error: \(error.localizedDescription)")
+                        continue
+                    }
+                }
+                
+                // Sort by timestamp (matching Android Collections.sort)
+                tempList.sort { $0.timestamp < $1.timestamp }
+                
+                // 🔹 Directly update messages array (matching Android chatAdapter.setMessages)
+                DispatchQueue.main.async {
+                    print("📱 [fetchMessages] Updating messages array with \(tempList.count) messages")
+                    self.messages = tempList
+                    
+                    // Update unique dates
+                    for message in tempList {
+                        if let date = message.currentDate {
+                            self.uniqueDates.insert(date)
+                        }
+                    }
+                    
+                    // Auto scroll to bottom ONLY on first time onCreate (matching Android)
+                    if shouldScrollToLast && !tempList.isEmpty {
+                        // Scroll will be handled by ScrollViewReader in messageListView
+                    }
+                    
+                    self.updateEmptyState(isEmpty: tempList.isEmpty)
+                    print("📱 [fetchMessages] \(tempList.isEmpty ? "Message list is empty after fetch, showing valuable view" : "Messages found, hiding valuable view")")
+                    
+                    self.isLoading = false
+                    self.initialLoadDone = true
+                    
+                    // 🔁 Attach continuous listener after a delay (matching Android Handler.postDelayed)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.attachFullListener(receiverRoom: receiverRoom)
+                    }
+                    
+                    listener?()
+                }
+            } withCancel: { error in
+                self.isLoading = false
+                DispatchQueue.main.async {
+                    self.updateEmptyState(isEmpty: self.messages.isEmpty)
+                }
+                print("❌ [fetchMessages] Error fetching initial messages: \(error.localizedDescription)")
+                
+                // Don't show toast for network errors to avoid spam (matching Android)
+                // Check if it's a network error by checking error domain
+                let nsError = error as NSError
+                let isNetworkError = nsError.domain == NSURLErrorDomain && 
+                                    (nsError.code == NSURLErrorNotConnectedToInternet || 
+                                     nsError.code == NSURLErrorNetworkConnectionLost ||
+                                     nsError.code == NSURLErrorTimedOut)
+                
+                if !isNetworkError {
+                    DispatchQueue.main.async {
+                        Constant.showToast(message: "Error loading messages: \(error.localizedDescription)")
+                    }
+                }
+                listener?()
+            }
+        } else {
+            // Already loaded once, just make sure full listener is attached (matching Android)
+            print("📱 [fetchMessages] Phase 2: Full listener already attached.")
+            // 🚀 ALWAYS ATTACH LISTENER FOR REAL-TIME MESSAGES
+            attachFullListener(receiverRoom: receiverRoom)
+            listener?()
+        }
+    }
+    
+    /// Attach full listener for real-time message updates (matching Android attachFullListener)
+    private func attachFullListener(receiverRoom: String) {
+        if fullListenerAttached {
+            print("📱 [attachFullListener] Full listener already attached, skipping.")
+            return // Prevent duplicate listeners
+        }
+        
+        print("📱 [attachFullListener] 🚀 Attaching full listener to room: \(receiverRoom)")
+        fullListenerAttached = true
+        
+        let database = Database.database().reference()
+        let chatPath = "\(Constant.CHAT)/\(receiverRoom)"
+        
+        let fullQuery = database.child(chatPath)
+            .queryOrdered(byChild: "timestamp")
+        
+        // Listen for child added events (matching Android addChildEventListener.onChildAdded)
+        firebaseChildListenerHandle = fullQuery.observe(.childAdded) { snapshot in
+            print("📱 [onChildAdded] 🚀 REAL-TIME: Child added with key: \(snapshot.key)")
+            self.handleChildAdded(snapshot: snapshot, receiverRoom: receiverRoom)
+        }
+        
+        // Listen for child changed events (matching Android onChildChanged)
+        fullQuery.observe(.childChanged) { snapshot in
+            let changedKey = snapshot.key
+            
+            // Skip typing indicator node (matching Android)
+            if changedKey == "typing" {
+                print("📱 [onChildChanged] Skipping typing indicator node")
+                return
+            }
+            
+            if let messageDict = snapshot.value as? [String: Any],
+               let updatedModel = self.parseMessageFromDict(messageDict, messageId: changedKey) {
+                
+                // Only handle Text datatype messages
+                if updatedModel.dataType == Constant.Text {
+                    // Find and update existing message (matching Android)
+                    if let index = self.messages.firstIndex(where: { $0.id == changedKey }) {
+                        let oldModel = self.messages[index]
+                        
+                        // Check if message actually changed (matching Android)
+                        let isChanged = oldModel.message != updatedModel.message ||
+                                      oldModel.emojiCount != updatedModel.emojiCount ||
+                                      oldModel.timestamp != updatedModel.timestamp
+                        
+                        if isChanged {
+                            DispatchQueue.main.async {
+                                self.messages[index] = updatedModel
+                                print("📱 [onChildChanged] Message updated for key: \(changedKey)")
+                            }
+                        } else {
+                            print("📱 [onChildChanged] No meaningful change → update skipped: \(changedKey)")
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Listen for child removed events (matching Android onChildRemoved)
+        fullQuery.observe(.childRemoved) { snapshot in
+            print("📱 [onChildRemoved] Child removed with key: \(snapshot.key)")
+            self.handleChildRemoved(snapshot: snapshot)
+        }
+    }
+    
+    /// Handle child added event (matching Android handleChildAdded)
+    private func handleChildAdded(snapshot: DataSnapshot, receiverRoom: String) {
+        guard snapshot.exists() else {
+            print("⚠️ [handleChildAdded] DataSnapshot does not exist")
+            return
+        }
+        
+        let key = snapshot.key
+        
+        // Skip typing indicator node (matching Android)
+        if key == "typing" {
+            print("📱 [handleChildAdded] Skipping typing indicator node")
+            return
+        }
+        
+        // Parse message from snapshot (matching Android dataSnapshot.getValue(messageModel.class))
+        guard let messageDict = snapshot.value as? [String: Any],
+              var model = parseMessageFromDict(messageDict, messageId: key) else {
+            print("⚠️ [handleChildAdded] Failed to parse ChatMessage for key: \(key)")
+            return
+        }
+        
+        // Only handle Text datatype messages (as requested)
+        guard model.dataType == Constant.Text else {
+            print("📱 [handleChildAdded] Skipping non-Text message type: \(model.dataType)")
+            return
+        }
+        
+        // Ensure modelId is set (matching Android)
+        if model.id.isEmpty && !key.isEmpty {
+            // Note: ChatMessage.id is immutable, so we recreate if needed
+            // In practice, the id should already be set from parseMessageFromDict
+        }
+        
+        print("📱 [handleChildAdded] Message ID: \(model.id)")
+        print("📱 [handleChildAdded] Message type: \(model.dataType)")
+        print("📱 [handleChildAdded] Message content: \(model.message)")
+        
+        // Check for duplicates and remove if exists (matching Android)
+        DispatchQueue.main.async {
+            var updatedMessageList = self.messages
+            
+            // Remove existing message with same ID if it exists (matching Android)
+            if let existingIndex = updatedMessageList.firstIndex(where: { $0.id == model.id }) {
+                updatedMessageList.remove(at: existingIndex)
+                print("📱 [handleChildAdded] Duplicate found, removed message with ID: \(model.id)")
+            }
+            
+            // Handle unique dates (matching Android uniqueDates logic)
+            let uniqDate = model.currentDate ?? ""
+            let isNewDate = self.uniqueDates.insert(uniqDate).inserted
+            let finalDate = isNewDate ? uniqDate : ":\(uniqDate)"
+            
+            // Create mutable copy of model with updated date
+            var updatedModel = model
+            updatedModel.currentDate = finalDate
+            
+            // Add new message
+            updatedMessageList.append(updatedModel)
+            
+            // Sort messages by timestamp (matching Android Collections.sort)
+            updatedMessageList.sort { $0.timestamp < $1.timestamp }
+            
+            print("📱 [handleChildAdded] Updated messageList size: \(updatedMessageList.count)")
+            
+            // Update messages array (matching Android messageList.clear() and addAll())
+            self.messages = updatedMessageList
+            
+            // Check if message is from receiver (matching Android isReceiverMessage check)
+            let currentUid = Constant.SenderIdMy
+            let isReceiverMessage = model.uid != currentUid
+            
+            // Auto scroll for receiver messages (matching Android real-time scroll)
+            if isReceiverMessage {
+                // Scroll will be handled by ScrollViewReader in messageListView
+                print("📱 [handleChildAdded] 🚀 FAST REAL-TIME SCROLL - New receiver message")
+            }
+            
+            // Update empty state
+            self.updateEmptyState(isEmpty: updatedMessageList.isEmpty)
+        }
+    }
+    
+    /// Handle child removed event (matching Android handleChildRemoved)
+    private func handleChildRemoved(snapshot: DataSnapshot) {
+        let key = snapshot.key
+        
+        DispatchQueue.main.async {
+            // Remove message from list if it exists (matching Android)
+            if let index = self.messages.firstIndex(where: { $0.id == key }) {
+                self.messages.remove(at: index)
+                print("📱 [handleChildRemoved] Removed message with key: \(key)")
+                self.updateEmptyState(isEmpty: self.messages.isEmpty)
+            }
+        }
+    }
+    
+    /// Parse message from Firebase dictionary (matching Android messageModel parsing)
+    private func parseMessageFromDict(_ dict: [String: Any], messageId: String) -> ChatMessage? {
+        do {
+            // Extract all fields matching Android messageModel structure
+            let uid = dict["uid"] as? String ?? ""
+            let message = dict["message"] as? String ?? ""
+            let time = dict["time"] as? String ?? ""
+            let document = dict["document"] as? String ?? ""
+            let dataType = dict["dataType"] as? String ?? Constant.Text
+            let fileExtension = dict["extension"] as? String
+            let name = dict["name"] as? String
+            let phone = dict["phone"] as? String
+            let micPhoto = dict["micPhoto"] as? String
+            let miceTiming = dict["miceTiming"] as? String
+            let userName = dict["userName"] as? String
+            let receiverId = dict["receiverId"] as? String ?? ""
+            let replytextData = dict["replytextData"] as? String
+            let replyKey = dict["replyKey"] as? String
+            let replyType = dict["replyType"] as? String
+            let replyOldData = dict["replyOldData"] as? String
+            let replyCrtPostion = dict["replyCrtPostion"] as? String
+            let forwaredKey = dict["forwaredKey"] as? String
+            let groupName = dict["groupName"] as? String
+            let docSize = dict["docSize"] as? String
+            let fileName = dict["fileName"] as? String
+            let thumbnail = dict["thumbnail"] as? String
+            let fileNameThumbnail = dict["fileNameThumbnail"] as? String
+            let caption = dict["caption"] as? String
+            let notification = dict["notification"] as? Int ?? 1
+            let currentDate = dict["currentDate"] as? String
+            let emojiCount = dict["emojiCount"] as? String
+            let timestamp = (dict["timestamp"] as? TimeInterval) ?? Date().timeIntervalSince1970
+            let imageWidth = dict["imageWidth"] as? String
+            let imageHeight = dict["imageHeight"] as? String
+            let aspectRatio = dict["aspectRatio"] as? String
+            let selectionCount = dict["selectionCount"] as? String
+            let receiverLoader = dict["receiverLoader"] as? Int ?? 0
+            
+            // Parse emojiModel array (matching Android ArrayList<emojiModel>)
+            var emojiModels: [EmojiModel] = []
+            if let emojiArray = dict["emojiModel"] as? [[String: Any]] {
+                for emojiDict in emojiArray {
+                    let emojiName = emojiDict["name"] as? String ?? ""
+                    let emoji = emojiDict["emoji"] as? String ?? ""
+                    emojiModels.append(EmojiModel(name: emojiName, emoji: emoji))
+                }
+            } else {
+                // Default empty emoji (matching Android)
+                emojiModels = [EmojiModel(name: "", emoji: "")]
+            }
+            
+            // Parse selectionBunch array (matching Android parseSelectionBunchFromSnapshot)
+            var selectionBunch: [SelectionBunchModel]? = nil
+            if let bunchArray = dict["selectionBunch"] as? [[String: Any]] {
+                selectionBunch = []
+                for bunchDict in bunchArray {
+                    let imgUrl = bunchDict["imgUrl"] as? String ?? ""
+                    let fileName = bunchDict["fileName"] as? String ?? ""
+                    selectionBunch?.append(SelectionBunchModel(imgUrl: imgUrl, fileName: fileName))
+                }
+            }
+            
+            // Create ChatMessage (matching Android messageModel constructor)
+            return ChatMessage(
+                id: messageId,
+                uid: uid,
+                message: message,
+                time: time,
+                document: document,
+                dataType: dataType,
+                fileExtension: fileExtension,
+                name: name,
+                phone: phone,
+                micPhoto: micPhoto,
+                miceTiming: miceTiming,
+                userName: userName,
+                receiverId: receiverId,
+                replytextData: replytextData,
+                replyKey: replyKey,
+                replyType: replyType,
+                replyOldData: replyOldData,
+                replyCrtPostion: replyCrtPostion,
+                forwaredKey: forwaredKey,
+                groupName: groupName,
+                docSize: docSize,
+                fileName: fileName,
+                thumbnail: thumbnail,
+                fileNameThumbnail: fileNameThumbnail,
+                caption: caption,
+                notification: notification,
+                currentDate: currentDate,
+                emojiModel: emojiModels,
+                emojiCount: emojiCount,
+                timestamp: timestamp,
+                imageWidth: imageWidth,
+                imageHeight: imageHeight,
+                aspectRatio: aspectRatio,
+                selectionCount: selectionCount,
+                selectionBunch: selectionBunch,
+                receiverLoader: receiverLoader
+            )
+        } catch {
+            print("❌ [parseMessageFromDict] Error parsing message: \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
+    /// Remove Firebase listeners (matching Android cleanup)
+    private func removeFirebaseListeners() {
+        let database = Database.database().reference()
+        let receiverUid = contact.uid
+        let uid = Constant.SenderIdMy
+        let receiverRoom = receiverUid + uid
+        let chatPath = "\(Constant.CHAT)/\(receiverRoom)"
+        
+        if let handle = firebaseChildListenerHandle {
+            database.child(chatPath).removeObserver(withHandle: handle)
+            firebaseChildListenerHandle = nil
+            print("📱 [removeFirebaseListeners] Removed child listener")
+        }
+        
+        fullListenerAttached = false
+    }
+    
+    /// Update empty state (matching Android updateEmptyState)
+    private func updateEmptyState(isEmpty: Bool) {
+        // Empty state is handled by the valuable card view in messageListView
+        // This method can be extended if needed
     }
     
     private func updateMessageText(_ newValue: String) {
@@ -1283,7 +1750,7 @@ struct ContactInfo: Codable {
     let email: String?
 }
 
-// MARK: - Message Bubble View
+// MARK: - Message Bubble View (matching Android sample_sender.xml)
 struct MessageBubbleView: View {
     let message: ChatMessage
     let isSentByMe: Bool
@@ -1299,29 +1766,69 @@ struct MessageBubbleView: View {
                 Spacer()
             }
             
-            VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 4) {
-                Text(message.message)
-                    .font(.custom("Inter18pt-Regular", size: 16))
-                    .foregroundColor(isSentByMe ? .white : Color("TextColor"))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(isSentByMe ? Color("blue") : Color("message_box_bg"))
-                    )
+            VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+                // Main message bubble container (matching Android MainSenderBox)
+                if isSentByMe {
+                    // Sender message (matching Android sendMessage TextView) - wrap content with maxWidth, gravity="end"
+                    HStack {
+                        Spacer(minLength: 0) // Push content to end
+                        Text(message.message)
+                            .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp", textFontWeight="200" (light)
+                            .fontWeight(.light) // textFontWeight="200" = Light weight
+                            .foregroundColor(Color(hex: "#e7ebf4")) // textColor="#e7ebf4"
+                            .lineSpacing(7) // lineHeight="22dp" (22 - 15 = 7dp spacing)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true) // allow wrapping
+                            .padding(.horizontal, 12) // layout_marginHorizontal="12dp"
+                            .padding(.top, 5) // paddingTop="5dp"
+                            .padding(.bottom, 6) // paddingBottom="6dp"
+                            .background(
+                                // Background matching message_bg_blue.xml
+                                RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
+                                    .fill(Color(hex: "#011224")) // solid color="#011224"
+                            )
+                    }
+                    .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
+                } else {
+                    // Receiver message (matching Android recMessage TextView) - wrap content with maxWidth
+                    HStack {
+                        Text(message.message)
+                            .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp" (matching Android)
+                            .fontWeight(.light) // textFontWeight="200" (matching Android)
+                            .foregroundColor(Color("TextColor"))
+                            .lineSpacing(7) // lineHeight="22dp" (22 - 15 = 7dp spacing)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true) // allow wrapping
+                            .padding(.horizontal, 12) // layout_marginHorizontal="12dp"
+                            .padding(.top, 5) // paddingTop="5dp"
+                            .padding(.bottom, 6) // paddingBottom="6dp"
+                            .background(
+                                RoundedRectangle(cornerRadius: 12) // matching Android corner radius
+                                    .fill(Color("message_box_bg"))
+                            )
+                        Spacer(minLength: 0) // Don't expand beyond content
+                    }
+                    .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
+                }
                 
+                // Time text (matching Android sendTime TextView)
                 Text(message.time)
-                    .font(.custom("Inter18pt-Regular", size: 10))
-                    .foregroundColor(Color("gray3"))
-                    .padding(.horizontal, 4)
+                    .font(.custom("Inter18pt-Regular", size: 10)) // textSize="10sp"
+                    .foregroundColor(Color("gray3")) // textColor="@color/gray3"
+                    .padding(.top, 5) // layout_marginTop="5dp"
+                    .padding(.trailing, isSentByMe ? 15 : 0) // layout_marginEnd="15dp" for sender
+                    .padding(.leading, isSentByMe ? 8 : 0) // layout_marginStart="8dp" for sender
+                    .padding(.bottom, 7) // layout_marginBottom="7dp"
+                    .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading) // gravity="end" for sender
             }
-            .padding(.horizontal, 16)
             .padding(.vertical, 4)
             
             if !isSentByMe {
                 Spacer()
             }
         }
+        .padding(.horizontal, 10) // side margin like Android screen margins
+       
     }
 }
 
