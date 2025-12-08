@@ -1816,8 +1816,8 @@ struct MessageBubbleView: View {
                     .font(.custom("Inter18pt-Regular", size: 10)) // textSize="10sp"
                     .foregroundColor(Color("gray3")) // textColor="@color/gray3"
                     .padding(.top, 5) // layout_marginTop="5dp"
-                    .padding(.trailing, isSentByMe ? 15 : 0) // layout_marginEnd="15dp" for sender
-                    .padding(.leading, isSentByMe ? 8 : 0) // layout_marginStart="8dp" for sender
+                    .padding(.trailing, isSentByMe ? 0 : 0) // layout_marginEnd="15dp" for sender
+                    .padding(.leading, isSentByMe ? 0 : 0) // layout_marginStart="8dp" for sender
                     .padding(.bottom, 7) // layout_marginBottom="7dp"
                     .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading) // gravity="end" for sender
             }
