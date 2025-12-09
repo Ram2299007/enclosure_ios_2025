@@ -2205,9 +2205,9 @@ struct MessageBubbleView: View {
                             .padding(.top, 5) // paddingTop="5dp"
                             .padding(.bottom, 6) // paddingBottom="6dp"
                             .background(
-                                // Background matching message_bg_blue.xml
+                                // Background matching message_bg_blue.xml with theme color support
                                 RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
-                                    .fill(Color(hex: "#011224")) // solid color="#011224"
+                                    .fill(getSenderMessageBackgroundColor()) // Theme-based background color
                             )
                     }
                     .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
@@ -2259,6 +2259,33 @@ struct MessageBubbleView: View {
         }
         .padding(.horizontal, 10) // side margin like Android screen margins
        
+    }
+    
+    // Get sender message background color based on theme (matching Android dark mode tint colors)
+    private func getSenderMessageBackgroundColor() -> Color {
+        // Light mode: always use legacy bubble color (#011224) to match Android light theme
+        guard colorScheme == .dark else {
+            return Color(hex: "#011224")
+        }
+        
+        // Dark mode: use theme-based tinted backgrounds (matching Android)
+        let themeColor = Constant.themeColor
+        let colorKey = themeColor.lowercased()
+        
+        switch colorKey {
+        case "#ff0080": return Color(hex: "#4D0026")
+        case "#00a3e9": return Color(hex: "#01253B")
+        case "#7adf2a": return Color(hex: "#25430D")
+        case "#ec0001": return Color(hex: "#470000")
+        case "#16f3ff": return Color(hex: "#05495D")
+        case "#ff8a00": return Color(hex: "#663700")
+        case "#7f7f7f": return Color(hex: "#2B3137")
+        case "#d9b845": return Color(hex: "#413815")
+        case "#346667": return Color(hex: "#1F3D3E")
+        case "#9846d9": return Color(hex: "#2d1541")
+        case "#a81010": return Color(hex: "#430706")
+        default: return Color(hex: "#01253B")
+        }
     }
     
     // Progress indicator styling based on Android LinearProgressIndicator
