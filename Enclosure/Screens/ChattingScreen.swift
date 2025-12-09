@@ -8,6 +8,7 @@
 import SwiftUI
 import FirebaseDatabase
 import QuartzCore
+import UIKit
 
 struct ChattingScreen: View {
     @Environment(\.dismiss) private var dismiss
@@ -57,6 +58,9 @@ struct ChattingScreen: View {
     @State private var allowAnimatedScroll: Bool = false // Enable animated scrolls after initial scroll completes
     @State private var firebaseListenerHandle: DatabaseHandle?
     @State private var firebaseChildListenerHandle: DatabaseHandle?
+    @State private var scrollViewProxy: ScrollViewProxy? = nil // Hold proxy for manual scrolls (down arrow)
+    @State private var showScrollDownButton: Bool = false // Show when user is away from bottom
+    @State private var nearBottomVisibleIds: Set<String> = [] // Track which near-bottom items are visible
     
     // Pagination constants (matching Android)
     private let PAGE_SIZE: UInt = 10
@@ -83,14 +87,16 @@ struct ChattingScreen: View {
                 
                 // Message list
                 messageListView
+                    .overlay(alignment: .bottomTrailing) {
+                        if showScrollDownButton {
+                            scrollDownButton
+                        }
+                    }
                 
                 // Multi-select counter (hidden by default)
                 if showMultiSelectHeader && selectedCount > 0 {
                     multiSelectCounterView
                 }
-                
-                // Scroll down button (hidden by default)
-                scrollDownButton
                 
                 // Bottom input area
                 bottomInputView
@@ -381,6 +387,7 @@ struct ChattingScreen: View {
                                         }
                                     )
                                     .onAppear {
+                                        handleNearBottomVisibility(id: message.id, index: index, isAppearing: true)
                                         // When last message appears, scroll to it once (for initial load only)
                                         // This ensures we only scroll once when the view is actually rendered (like WhatsApp)
                                         if index == messages.count - 1 && hasPerformedInitialScroll && !hasScrolledToBottom {
@@ -408,12 +415,21 @@ struct ChattingScreen: View {
                                             }
                                         }
                                     }
+                                    .onDisappear {
+                                        handleNearBottomVisibility(id: message.id, index: index, isAppearing: false)
+                                    }
                             }
                         }
                     }
                     .padding(.vertical, 8)
                 }
                 .coordinateSpace(name: "scroll")
+                .onAppear {
+                    scrollViewProxy = proxy
+                }
+                .onDisappear {
+                    scrollViewProxy = nil
+                }
                 .onPreferenceChange(ScrollOffsetPreferenceKey.self) { offset in
                     // Detect when user scrolls to top (matching Android findFirstVisibleItemPosition == 0)
                     // offset <= 10 means first message is near top of visible area
@@ -522,7 +538,12 @@ struct ChattingScreen: View {
     // MARK: - Scroll Down Button
     private var scrollDownButton: some View {
         Button(action: {
-            // TODO: Scroll to bottom
+            // Light haptic feedback (Android-style tap vibration)
+            let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.impactOccurred()
+            
+            // Scroll to the last message if available
+            scrollToBottom(animated: allowAnimatedScroll)
         }) {
             ZStack {
                 // Background matching modern_play_button_bg
@@ -1685,6 +1706,46 @@ struct ChattingScreen: View {
         }
     }
     
+    /// Scroll to the bottom message, optionally animated (mirrors Android smooth scroll)
+    private func scrollToBottom(animated: Bool) {
+        guard let lastId = messages.last?.id, let proxy = scrollViewProxy else { return }
+        
+        if animated {
+            withAnimation {
+                proxy.scrollTo(lastId, anchor: .bottom)
+            }
+        } else {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            CATransaction.setAnimationDuration(0)
+            proxy.scrollTo(lastId, anchor: .bottom)
+            CATransaction.commit()
+        }
+    }
+    
+    /// Track near-bottom visibility to toggle down arrow (hide when last 3 items are visible)
+    private func handleNearBottomVisibility(id: String, index: Int, isAppearing: Bool) {
+        guard messages.count > 3 else {
+            // If there are 3 or fewer items, always hide button
+            showScrollDownButton = false
+            return
+        }
+        
+        // Near bottom if within last 3 items
+        let isNearBottom = index >= messages.count - 3
+        
+        if isNearBottom {
+            if isAppearing {
+                nearBottomVisibleIds.insert(id)
+            } else {
+                nearBottomVisibleIds.remove(id)
+            }
+        }
+        
+        // Show button only if none of the last 3 are visible
+        showScrollDownButton = nearBottomVisibleIds.isEmpty
+    }
+    
     private func updateMessageText(_ newValue: String) {
         let trimmedText = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
         
@@ -2114,6 +2175,7 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
 struct MessageBubbleView: View {
     let message: ChatMessage
     let isSentByMe: Bool
+    @Environment(\.colorScheme) private var colorScheme
     
     init(message: ChatMessage) {
         self.message = message
@@ -2132,7 +2194,7 @@ struct MessageBubbleView: View {
                     // Sender message (matching Android sendMessage TextView) - wrap content with maxWidth, gravity="end"
                     HStack {
                         Spacer(minLength: 0) // Push content to end
-                Text(message.message)
+                        Text(message.message)
                             .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp", textFontWeight="200" (light)
                             .fontWeight(.light) // textFontWeight="200" = Light weight
                             .foregroundColor(Color(hex: "#e7ebf4")) // textColor="#e7ebf4"
@@ -2142,13 +2204,14 @@ struct MessageBubbleView: View {
                             .padding(.horizontal, 12) // layout_marginHorizontal="12dp"
                             .padding(.top, 5) // paddingTop="5dp"
                             .padding(.bottom, 6) // paddingBottom="6dp"
-                    .background(
+                            .background(
                                 // Background matching message_bg_blue.xml
                                 RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
                                     .fill(Color(hex: "#011224")) // solid color="#011224"
                             )
                     }
                     .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
+                    
                 } else {
                     // Receiver message (matching Android recMessage TextView) - wrap content with maxWidth
                     HStack {
@@ -2171,15 +2234,23 @@ struct MessageBubbleView: View {
                     .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
                 }
                 
-                // Time text (matching Android sendTime TextView)
-                Text(message.time)
-                    .font(.custom("Inter18pt-Regular", size: 10)) // textSize="10sp"
-                    .foregroundColor(Color("gray3")) // textColor="@color/gray3"
-                    .padding(.top, 5) // layout_marginTop="5dp"
-                    .padding(.trailing, isSentByMe ? 0 : 0) // layout_marginEnd="15dp" for sender
-                    .padding(.leading, isSentByMe ? 0 : 0) // layout_marginStart="8dp" for sender
-                    .padding(.bottom, 7) // layout_marginBottom="7dp"
-                    .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading) // gravity="end" for sender
+                // Time row with progress indicator beside time (matching Android placement)
+                HStack(spacing: 6) {
+                    if isSentByMe {
+                        progressIndicatorView(isSender: true)
+                        Text(message.time)
+                            .font(.custom("Inter18pt-Regular", size: 10))
+                            .foregroundColor(Color("gray3"))
+                    } else {
+                        Text(message.time)
+                            .font(.custom("Inter18pt-Regular", size: 10))
+                            .foregroundColor(Color("gray3"))
+                        progressIndicatorView(isSender: false)
+                    }
+                }
+                .padding(.top, 5)
+                .padding(.bottom, 7)
+                .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading)
             }
             
             if !isSentByMe {
@@ -2188,6 +2259,26 @@ struct MessageBubbleView: View {
         }
         .padding(.horizontal, 10) // side margin like Android screen margins
        
+    }
+    
+    // Progress indicator styling based on Android LinearProgressIndicator
+    private func progressIndicatorView(isSender: Bool) -> some View {
+        let themeColor = Color(hex: Constant.themeColor)
+        // Sender: use themeColor for both track and indicator (per ThemeColorKey); Receiver: fixed colors
+        let indicatorColor = isSender ? themeColor : Color.white
+        let trackColor = isSender ? themeColor : Color(hex: "#BFBFBF")
+        let cornerRadius: CGFloat = isSender ? 20 : 10
+        
+        return ZStack(alignment: .leading) {
+            Capsule()
+                .fill(trackColor)
+                .frame(width: 20, height: 1)
+            Capsule()
+                .fill(indicatorColor)
+                .frame(width: 20, height: 1)
+        }
+        .frame(width: 20, height: 1)
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 }
 
