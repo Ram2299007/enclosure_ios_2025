@@ -2264,9 +2264,9 @@ struct MessageBubbleView: View {
     // Progress indicator styling based on Android LinearProgressIndicator
     private func progressIndicatorView(isSender: Bool) -> some View {
         let themeColor = Color(hex: Constant.themeColor)
-        // Sender: use themeColor for both track and indicator (per ThemeColorKey); Receiver: fixed colors
-        let indicatorColor = isSender ? themeColor : Color.white
-        let trackColor = isSender ? themeColor : Color(hex: "#BFBFBF")
+        // Sender: use themeColor for both track and indicator (per ThemeColorKey); Receiver: asset colors
+        let indicatorColor = isSender ? themeColor : Color("line")
+        let trackColor = isSender ? themeColor : Color("line")
         let cornerRadius: CGFloat = isSender ? 20 : 10
         
         return ZStack(alignment: .leading) {
