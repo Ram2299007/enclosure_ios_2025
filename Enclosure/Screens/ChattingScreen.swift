@@ -7,6 +7,7 @@
 
 import SwiftUI
 import FirebaseDatabase
+import QuartzCore
 
 struct ChattingScreen: View {
     @Environment(\.dismiss) private var dismiss
@@ -38,10 +39,28 @@ struct ChattingScreen: View {
     
     // Firebase listener state (matching Android)
     @State private var isLoading: Bool = false
+    @State private var isLoadingMore: Bool = false // Track pagination loading state
     @State private var initialLoadDone: Bool = false
     @State private var fullListenerAttached: Bool = false
+    @State private var hasScrolledToBottom: Bool = false // Track if we've scrolled to bottom initially
+    @State private var initiallyLoadedMessageIds: Set<String> = [] // Track message IDs loaded in initial fetch
+    @State private var oldestInitialTimestamp: TimeInterval = 0 // Track oldest timestamp from initial load
+    @State private var lastTimestamp: TimeInterval? = nil // Track oldest timestamp for pagination (matching Android)
+    @State private var lastLoadMoreTime: Date? = nil // Track last loadMore call time for throttling
+    @State private var hasMoreMessages: Bool = true // Track if there are more messages to load
+    @State private var isInitialScrollInProgress: Bool = false // Prevent loadMore during initial scroll
+    @State private var initialScrollCompletedTime: Date? = nil // Track when initial scroll completed
+    @State private var scrollDebounceWorkItem: DispatchWorkItem? = nil // Debounce scroll for rapid message additions
+    @State private var listenerMessagesDebounceWorkItem: DispatchWorkItem? = nil // Debounce scroll after listener finishes
+    @State private var hasPerformedInitialScroll: Bool = false // Track if initial scroll has been performed
+    @State private var pendingInitialScrollId: String? = nil // Message ID to scroll to once ready
+    @State private var allowAnimatedScroll: Bool = false // Enable animated scrolls after initial scroll completes
     @State private var firebaseListenerHandle: DatabaseHandle?
     @State private var firebaseChildListenerHandle: DatabaseHandle?
+    
+    // Pagination constants (matching Android)
+    private let PAGE_SIZE: UInt = 10
+    private let LOAD_MORE_THROTTLE: TimeInterval = 0.5 // Throttle loadMore calls (500ms)
     
     // Valuable card state
     @State private var limitStatus: String = "0"
@@ -98,6 +117,13 @@ struct ChattingScreen: View {
             // Remove Firebase listeners when leaving screen
             removeFirebaseListeners()
         }
+    }
+    
+    // MARK: - Helper function to get receiver room
+    private func getReceiverRoom() -> String {
+        let receiverUid = contact.uid
+        let uid = Constant.SenderIdMy
+        return receiverUid + uid
     }
     
     // MARK: - Header View
@@ -288,7 +314,17 @@ struct ChattingScreen: View {
         GeometryReader { geometry in
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 0) {
+                    LazyVStack(spacing: 8) { // spacing="8dp" matching Android layout_marginTop="8dp"
+                        // Loading indicator at top when loading more (matching Android)
+                        if isLoadingMore {
+                            HStack {
+                                Spacer()
+                                ProgressView()
+                                    .padding()
+                                Spacer()
+                            }
+                        }
+                        
                         if messages.isEmpty {
                             // Valuable card view (matching Android valuable CardView)
                             VStack {
@@ -328,24 +364,139 @@ struct ChattingScreen: View {
                             }
                             .frame(width: geometry.size.width, height: geometry.size.height)
                         } else {
-                            ForEach(messages) { message in
+                            ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                                 MessageBubbleView(message: message)
                                     .id(message.id)
+                                    .background(
+                                        // Detect when first message (index 0) becomes visible (matching Android findFirstVisibleItemPosition == 0)
+                                        Group {
+                                            if index == 0 {
+                                                GeometryReader { geo in
+                                                    Color.clear.preference(
+                                                        key: ScrollOffsetPreferenceKey.self,
+                                                        value: geo.frame(in: .named("scroll")).minY
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    )
+                                    .onAppear {
+                                        // When last message appears, scroll to it once (for initial load only)
+                                        // This ensures we only scroll once when the view is actually rendered (like WhatsApp)
+                                        if index == messages.count - 1 && hasPerformedInitialScroll && !hasScrolledToBottom {
+                                            print("🟢 [SCROLL_DEBUG] Last message appeared - performing single scroll to: \(message.id)")
+                                            
+                                            // Scroll immediately when last message appears (like WhatsApp)
+                                            print("🟢 [SCROLL_DEBUG] Executing scroll to: \(message.id)")
+                                            
+                                            // Scroll without animation (like WhatsApp)
+                                            CATransaction.begin()
+                                            CATransaction.setDisableActions(true)
+                                            CATransaction.setAnimationDuration(0)
+                                            proxy.scrollTo(message.id, anchor: .bottom)
+                                            CATransaction.commit()
+                                            
+                                            // Set flags immediately
+                                            self.hasScrolledToBottom = true
+                                            self.hasPerformedInitialScroll = true
+                                            
+                                            // Enable loadMore after a delay
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                                self.isInitialScrollInProgress = false
+                                                self.initialScrollCompletedTime = Date()
+                                                print("🟢 [SCROLL_DEBUG] Initial scroll completed - loadMore enabled")
+                                            }
+                                        }
+                                    }
                             }
                         }
                     }
                     .padding(.vertical, 8)
                 }
-                .onAppear {
-                    if let lastMessage = messages.last {
-                        proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                .coordinateSpace(name: "scroll")
+                .onPreferenceChange(ScrollOffsetPreferenceKey.self) { offset in
+                    // Detect when user scrolls to top (matching Android findFirstVisibleItemPosition == 0)
+                    // offset <= 10 means first message is near top of visible area
+                    // Prevent loadMore during initial scroll or if already loading
+                    guard !isInitialScrollInProgress else {
+                        print("🟡 [SCROLL_DEBUG] loadMore prevented - initial scroll in progress")
+                        return
+                    }
+                    
+                    // Prevent loadMore immediately after initial scroll (wait at least 2 seconds)
+                    if let completedTime = initialScrollCompletedTime {
+                        let timeSinceCompletion = Date().timeIntervalSince(completedTime)
+                        if timeSinceCompletion < 2.0 {
+                            print("🟡 [SCROLL_DEBUG] loadMore prevented - too soon after initial scroll (\(String(format: "%.1f", timeSinceCompletion))s)")
+                            return
+                        }
+                    }
+                    
+                    // Throttle calls to prevent rapid firing
+                    let now = Date()
+                    if offset <= 10 && !isLoadingMore && initialLoadDone && searchText.isEmpty && !messages.isEmpty && hasMoreMessages {
+                        if let lastCall = lastLoadMoreTime {
+                            // Only call if enough time has passed since last call
+                            if now.timeIntervalSince(lastCall) >= LOAD_MORE_THROTTLE {
+                                lastLoadMoreTime = now
+                                print("🟡 [SCROLL_DEBUG] loadMore triggered from scroll detection")
+                                loadMore(receiverRoom: getReceiverRoom())
+                            }
+                        } else {
+                            // First call
+                            lastLoadMoreTime = now
+                            print("🟡 [SCROLL_DEBUG] loadMore triggered from scroll detection (first call)")
+                            loadMore(receiverRoom: getReceiverRoom())
+                        }
+                    } else if offset <= 10 && !hasMoreMessages {
+                        // User is at top but no more messages - don't call loadMore
+                        // This prevents repeated calls when hasMoreMessages is false
                     }
                 }
-                .onChange(of: messages.count) { _ in
-                    // Auto-scroll to bottom when new messages arrive (matching Android real-time scroll)
-                    if let lastMessage = messages.last {
-                        withAnimation {
+                .onAppear {
+                    // Don't scroll here - let onChange handle it when messages are loaded
+                }
+                // Initial scroll is driven by onAppear of the last message; no scroll here
+                .onChange(of: initialLoadDone) { done in
+                    print("🟢 [SCROLL_DEBUG] onChange(initialLoadDone) called - done: \(done), hasScrolledToBottom: \(hasScrolledToBottom), messages.count: \(messages.count)")
+                }
+                .onChange(of: pendingInitialScrollId) { targetId in
+                    guard let id = targetId, !hasScrolledToBottom else { return }
+                    print("🟢 [SCROLL_DEBUG] Performing initial scroll via pendingInitialScrollId - id: \(id)")
+                    isInitialScrollInProgress = true
+                    CATransaction.begin()
+                    CATransaction.setDisableActions(true)
+                    CATransaction.setAnimationDuration(0)
+                    proxy.scrollTo(id, anchor: .bottom)
+                    CATransaction.commit()
+                    hasScrolledToBottom = true
+                    pendingInitialScrollId = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        isInitialScrollInProgress = false
+                        initialScrollCompletedTime = Date()
+                        allowAnimatedScroll = true
+                        print("🟢 [SCROLL_DEBUG] Initial scroll completed - loadMore enabled")
+                    }
+                }
+                .onChange(of: messages.count) { newCount in
+                    print("🔵 [SCROLL_DEBUG] onChange(messages.count) called - newCount: \(newCount), hasScrolledToBottom: \(hasScrolledToBottom), previousCount: \(messages.count), isInitialScrollInProgress: \(isInitialScrollInProgress), hasPerformedInitialScroll: \(hasPerformedInitialScroll)")
+                    guard newCount > 0, let lastMessage = messages.last else {
+                        print("🔵 [SCROLL_DEBUG] Scroll skipped - no messages or no lastMessage")
+                        return
+                    }
+                    
+                    // For new incoming messages after initial scroll
+                    if hasScrolledToBottom && !isInitialScrollInProgress && hasPerformedInitialScroll {
+                        if allowAnimatedScroll {
+                            withAnimation {
+                                proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                            }
+                        } else {
+                            CATransaction.begin()
+                            CATransaction.setDisableActions(true)
+                            CATransaction.setAnimationDuration(0)
                             proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                            CATransaction.commit()
                         }
                     }
                 }
@@ -984,10 +1135,24 @@ struct ChattingScreen: View {
                 // Sort by timestamp (matching Android Collections.sort)
                 tempList.sort { $0.timestamp < $1.timestamp }
                 
+                // Store message IDs from initial load to prevent duplicates when listener attaches
+                let initialMessageIds = Set(tempList.map { $0.id })
+                
+                // Get oldest timestamp from initial load (to skip older messages from listener)
+                let oldestTimestamp = tempList.first?.timestamp ?? 0
+                
                 // 🔹 Directly update messages array (matching Android chatAdapter.setMessages)
                 DispatchQueue.main.async {
                     print("📱 [fetchMessages] Updating messages array with \(tempList.count) messages")
                     self.messages = tempList
+                    
+                    // Store initially loaded message IDs to prevent duplicates
+                    self.initiallyLoadedMessageIds = initialMessageIds
+                    self.oldestInitialTimestamp = oldestTimestamp
+                    // Set lastTimestamp for pagination (oldest message timestamp)
+                    self.lastTimestamp = oldestTimestamp
+                    print("📱 [fetchMessages] Stored \(initialMessageIds.count) initial message IDs to prevent duplicates")
+                    print("📱 [fetchMessages] Oldest initial timestamp: \(oldestTimestamp)")
                     
                     // Update unique dates
                     for message in tempList {
@@ -1139,6 +1304,21 @@ struct ChattingScreen: View {
             return
         }
         
+        // Skip messages that were already loaded in initial fetch (prevent duplicates)
+        // When listener attaches, it fires for all existing messages, not just new ones
+        // But we want to add older messages that weren't in the initial load
+        if initiallyLoadedMessageIds.contains(model.id) {
+            print("📱 [handleChildAdded] Skipping duplicate - message already loaded in initial fetch: \(model.id)")
+            return
+        }
+        
+        // Check if message already exists in current list (additional duplicate check)
+        // This handles cases where message might have been added from listener before
+        if messages.contains(where: { $0.id == model.id }) {
+            print("📱 [handleChildAdded] Skipping duplicate - message already in list: \(model.id)")
+            return
+        }
+        
         // Ensure modelId is set (matching Android)
         if model.id.isEmpty && !key.isEmpty {
             // Note: ChatMessage.id is immutable, so we recreate if needed
@@ -1175,9 +1355,29 @@ struct ChattingScreen: View {
             updatedMessageList.sort { $0.timestamp < $1.timestamp }
             
             print("📱 [handleChildAdded] Updated messageList size: \(updatedMessageList.count)")
+            print("🔵 [SCROLL_DEBUG] handleChildAdded - messages updated, new count: \(updatedMessageList.count), hasScrolledToBottom: \(self.hasScrolledToBottom), hasPerformedInitialScroll: \(self.hasPerformedInitialScroll)")
             
             // Update messages array (matching Android messageList.clear() and addAll())
             self.messages = updatedMessageList
+            
+            // If initial load is done but initial scroll hasn't been performed yet, wait for listener to finish
+            // This ensures we scroll only once to the actual last message (like WhatsApp)
+            if self.initialLoadDone && !self.hasPerformedInitialScroll {
+                // Cancel previous debounce
+                self.listenerMessagesDebounceWorkItem?.cancel()
+                
+                // Wait for listener to finish adding messages, then mark for initial scroll
+                let workItem = DispatchWorkItem {
+                    guard !self.hasPerformedInitialScroll else { return }
+                    guard let lastId = self.messages.last?.id else { return }
+                    print("🟢 [SCROLL_DEBUG] Listener finished - will perform single initial scroll to: \(lastId), total: \(self.messages.count)")
+                    self.hasPerformedInitialScroll = true
+                    self.pendingInitialScrollId = lastId
+                }
+                self.listenerMessagesDebounceWorkItem = workItem
+                // Wait 1 second after last message addition to ensure listener is done
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: workItem)
+            }
             
             // Check if message is from receiver (matching Android isReceiverMessage check)
             let currentUid = Constant.SenderIdMy
@@ -1336,6 +1536,153 @@ struct ChattingScreen: View {
     private func updateEmptyState(isEmpty: Bool) {
         // Empty state is handled by the valuable card view in messageListView
         // This method can be extended if needed
+    }
+    
+    // MARK: - Load More Messages (Pagination) - matching Android loadMore
+    /// Load more older messages when user scrolls to top (matching Android loadMore)
+    private func loadMore(receiverRoom: String) {
+        print("📱 [loadMore] loadMore called - isLoadingMore: \(isLoadingMore), initialLoadDone: \(initialLoadDone)")
+        
+        // Prevent loadMore during initial setup (matching Android)
+        if isLoading || isLoadingMore || !initialLoadDone {
+            print("📱 [loadMore] Skipped - isLoading: \(isLoading), isLoadingMore: \(isLoadingMore), initialLoadDone: \(initialLoadDone)")
+            return
+        }
+        
+        isLoadingMore = true
+        
+        let database = Database.database().reference()
+        let chatPath = "\(Constant.CHAT)/\(receiverRoom)"
+        
+        var query: DatabaseQuery
+        
+        guard let lastTs = lastTimestamp else {
+            // No lastTimestamp means we shouldn't be calling loadMore
+            print("📱 [loadMore] No lastTimestamp, skipping")
+            isLoadingMore = false
+            hasMoreMessages = false
+            return
+        }
+        
+        // ✅ Load older messages than the currently oldest (matching Android endBefore)
+        // Firebase iOS: Use queryEnding(atValue:) with exclusive end to get messages before timestamp
+        // We'll query a larger set and filter to get exactly PAGE_SIZE older messages
+        query = database.child(chatPath)
+            .queryOrdered(byChild: "timestamp")
+            .queryEnding(atValue: lastTs - 0.001, childKey: nil) // Messages before lastTimestamp
+            .queryLimited(toLast: PAGE_SIZE * 3) // Get more to account for filtering and ensure we have enough
+        
+        query.observeSingleEvent(of: .value) { snapshot in
+            
+            print("📱 [loadMore] Fetched \(snapshot.childrenCount) older messages")
+            
+            var fetchedNewMessages: [ChatMessage] = []
+            var newLastTimestamp: TimeInterval? = nil
+            
+            guard let children = snapshot.children.allObjects as? [DataSnapshot] else {
+                DispatchQueue.main.async {
+                    self.isLoadingMore = false
+                }
+                return
+            }
+            
+            for child in children {
+                let childKey = child.key
+                
+                // Skip typing indicator node (matching Android)
+                if childKey == "typing" {
+                    continue
+                }
+                
+                // Skip invalid keys (matching Android)
+                if childKey.count <= 1 || childKey == ":" {
+                    continue
+                }
+                
+                // Parse message from snapshot
+                if let messageDict = child.value as? [String: Any],
+                   let model = self.parseMessageFromDict(messageDict, messageId: childKey) {
+                    
+                    // Only add Text datatype messages
+                    if model.dataType == Constant.Text {
+                        // ✅ Filter: only add messages older than lastTimestamp (matching Android endBefore)
+                        if model.timestamp < lastTs {
+                            // ✅ Avoid duplicate messages (matching Android)
+                            let exists = self.messages.contains { $0.id == model.id }
+                            
+                            if !exists {
+                                fetchedNewMessages.append(model)
+                                
+                                // ✅ Track the oldest timestamp (matching Android)
+                                let ts = model.timestamp
+                                if newLastTimestamp == nil || ts < newLastTimestamp! {
+                                    newLastTimestamp = ts
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // ✅ Merge results (matching Android)
+            if !fetchedNewMessages.isEmpty {
+                // Update lastTimestamp for next pagination
+                if let newLastTs = newLastTimestamp {
+                    DispatchQueue.main.async {
+                        self.lastTimestamp = newLastTs
+                        self.hasMoreMessages = true // There might be more messages
+                    }
+                }
+                
+                // Merge: prepend new messages (matching Android combinedList)
+                var combinedList: [ChatMessage] = []
+                combinedList.append(contentsOf: fetchedNewMessages)
+                combinedList.append(contentsOf: self.messages)
+                
+                // ✅ Ensure chronological order (matching Android Collections.sort)
+                combinedList.sort { $0.timestamp < $1.timestamp }
+                
+                // ✅ Update messages array (matching Android messageList)
+                DispatchQueue.main.async {
+                    // Store the first message ID before update to maintain scroll position
+                    let firstMessageId = self.messages.first?.id
+                    
+                    self.messages = combinedList
+                    
+                    // Update unique dates
+                    for message in fetchedNewMessages {
+                        if let date = message.currentDate {
+                            self.uniqueDates.insert(date)
+                        }
+                    }
+                    
+                    print("📱 [loadMore] Loaded \(fetchedNewMessages.count) older messages, total: \(combinedList.count)")
+                    
+                    // Scroll to maintain position after a delay to allow layout update
+                    if let firstId = firstMessageId {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            // Scroll will be handled by ScrollViewReader if needed
+                            // For now, just update the list - scroll position should be maintained automatically
+                        }
+                    }
+                }
+            } else {
+                print("📱 [loadMore] No more older messages to load")
+                // Mark that there are no more messages if we got 0 results
+                DispatchQueue.main.async {
+                    self.hasMoreMessages = false
+                }
+            }
+            
+            DispatchQueue.main.async {
+                self.isLoadingMore = false
+            }
+        } withCancel: { error in
+            print("❌ [loadMore] Error loading more messages: \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                self.isLoadingMore = false
+            }
+        }
     }
     
     private func updateMessageText(_ newValue: String) {
@@ -1750,6 +2097,19 @@ struct ContactInfo: Codable {
     let email: String?
 }
 
+// MARK: - Scroll Offset Preference Key (for detecting scroll to top)
+struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        // Only update if the new value is significantly different to reduce update frequency
+        // This prevents "Bound preference tried to update multiple times per frame" warning
+        let next = nextValue()
+        if abs(value - next) > 5 { // Only update if change is more than 5 points
+            value = next
+        }
+    }
+}
+
 // MARK: - Message Bubble View (matching Android sample_sender.xml)
 struct MessageBubbleView: View {
     let message: ChatMessage
@@ -1772,7 +2132,7 @@ struct MessageBubbleView: View {
                     // Sender message (matching Android sendMessage TextView) - wrap content with maxWidth, gravity="end"
                     HStack {
                         Spacer(minLength: 0) // Push content to end
-                        Text(message.message)
+                Text(message.message)
                             .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp", textFontWeight="200" (light)
                             .fontWeight(.light) // textFontWeight="200" = Light weight
                             .foregroundColor(Color(hex: "#e7ebf4")) // textColor="#e7ebf4"
@@ -1782,7 +2142,7 @@ struct MessageBubbleView: View {
                             .padding(.horizontal, 12) // layout_marginHorizontal="12dp"
                             .padding(.top, 5) // paddingTop="5dp"
                             .padding(.bottom, 6) // paddingBottom="6dp"
-                            .background(
+                    .background(
                                 // Background matching message_bg_blue.xml
                                 RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
                                     .fill(Color(hex: "#011224")) // solid color="#011224"
@@ -1821,7 +2181,6 @@ struct MessageBubbleView: View {
                     .padding(.bottom, 7) // layout_marginBottom="7dp"
                     .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading) // gravity="end" for sender
             }
-            .padding(.vertical, 4)
             
             if !isSentByMe {
                 Spacer()
@@ -1890,4 +2249,5 @@ struct EmojiIconView: View {
         )
     )
 }
+
 
