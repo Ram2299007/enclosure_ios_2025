@@ -6,6 +6,8 @@
 //
 
 import SwiftUI
+import Photos
+import PhotosUI
 import FirebaseDatabase
 import QuartzCore
 import UIKit
@@ -64,9 +66,30 @@ struct ChattingScreen: View {
     @State private var isLastItemVisible: Bool = false // Track if last message is visible (matching Android)
     @State private var isTouchGestureActive: Bool = false // Track touch to debounce touch gesture
     
+    // Local gallery (mirrors Android dataRecview)
+    @State private var photoAssets: [PHAsset] = []
+    @State private var selectedAssetIds: Set<String> = []
+    private let imageManager = PHCachingImageManager()
+    
     // Pagination constants (matching Android)
     private let PAGE_SIZE: UInt = 10
     private let LOAD_MORE_THROTTLE: TimeInterval = 0.5 // Throttle loadMore calls (500ms)
+
+    // Typography (match Android messageBox sizing prefs)
+    private var messageInputFont: Font {
+        let pref = UserDefaults.standard.string(forKey: "Font_Size") ?? "medium"
+        let size: CGFloat
+        switch pref {
+        case "small":
+            size = 13
+        case "large":
+            size = 19
+        default:
+            size = 16
+        }
+        // Android uses a regular weight for the messageBox text
+        return .custom("Inter18pt-Regular", size: size)
+    }
     
     // Valuable card state
     @State private var limitStatus: String = "0"
@@ -740,7 +763,7 @@ struct ChattingScreen: View {
                         // Message input field container - layout_weight="1"
                         VStack(alignment: .leading, spacing: 0) {
                             TextField("Message on Ec", text: $messageText, axis: .vertical)
-                                .font(.custom("Inter18pt-Medium", size: 17))
+                                .font(messageInputFont)
                                 .foregroundColor(Color("black_white_cross"))
                                 .lineLimit(4)
                                 .frame(maxWidth: 180, alignment: .leading)
@@ -827,7 +850,10 @@ struct ChattingScreen: View {
             
             // Gallery picker layout (galleryRecentLyt) - below horizontal container
             if showGalleryPicker {
-                galleryPickerView
+                        galleryPickerView
+                            .onAppear {
+                                requestPhotosAndLoad()
+                            }
             }
         }
     }
@@ -936,15 +962,28 @@ struct ChattingScreen: View {
                 // Gallery RecyclerView
                 ScrollView {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 80))], spacing: 2) {
-                        // TODO: Add gallery images here
-                        ForEach(0..<12) { _ in
-                            Rectangle()
-                                .fill(Color.gray.opacity(0.3))
-                                .frame(width: 80, height: 80)
-                                .cornerRadius(4)
+                        ForEach(photoAssets, id: \.localIdentifier) { asset in
+                            GalleryAssetThumbnail(
+                                asset: asset,
+                                imageManager: imageManager,
+                                isSelected: selectedAssetIds.contains(asset.localIdentifier)
+                            )
+                            .overlay(alignment: .topTrailing) {
+                                if selectedAssetIds.contains(asset.localIdentifier) {
+                                    Image("multitick")
+                                        .resizable()
+                                        .frame(width: 20, height: 20)
+                                        .padding(6)
+                                }
+                            }
+                            .onTapGesture {
+                                toggleSelection(for: asset)
+                            }
                         }
                     }
-                    .padding(5)
+                    // Match Android dataRecview container insets (5dp all around)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 5)
                 }
                 .frame(height: 250)
                 
@@ -2119,6 +2158,51 @@ struct ChattingScreen: View {
         return fileManager.fileExists(atPath: filePath)
     }
     
+    // MARK: - Gallery helpers (iOS parity with Android dataRecview)
+    private func requestPhotosAndLoad() {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        switch status {
+        case .authorized, .limited:
+            loadRecentPhotos()
+        case .notDetermined:
+            PHPhotoLibrary.requestAuthorization(for: .readWrite) { newStatus in
+                if newStatus == .authorized || newStatus == .limited {
+                    loadRecentPhotos()
+                }
+            }
+        default:
+            // Permissions denied; keep grid empty
+            break
+        }
+    }
+    
+    private func loadRecentPhotos(limit: Int = 120) {
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        options.fetchLimit = limit
+        options.includeAssetSourceTypes = [.typeUserLibrary, .typeCloudShared, .typeiTunesSynced]
+        let fetched = PHAsset.fetchAssets(with: .image, options: options)
+        
+        var assets: [PHAsset] = []
+        fetched.enumerateObjects { asset, _, _ in
+            assets.append(asset)
+        }
+        DispatchQueue.main.async {
+            self.photoAssets = assets
+        }
+    }
+    
+    private func toggleSelection(for asset: PHAsset) {
+        let id = asset.localIdentifier
+        if selectedAssetIds.contains(id) {
+            selectedAssetIds.remove(id)
+        } else {
+            // Match Android multi-select limit (30)
+            guard selectedAssetIds.count < 30 else { return }
+            selectedAssetIds.insert(id)
+        }
+    }
+    
     // Scroll-based date visibility removed per latest requirements
 }
 
@@ -2522,6 +2606,64 @@ struct EmojiIconView: View {
                     )
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
+        }
+    }
+}
+
+// MARK: - Gallery thumbnail (parity with Android item_image.xml)
+private struct GalleryAssetThumbnail: View {
+    let asset: PHAsset
+    let imageManager: PHCachingImageManager
+    let isSelected: Bool
+    
+    @State private var thumbnail: UIImage? = nil
+    
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Rectangle()
+                .fill(Color("BackgroundColor"))
+                .frame(width: 80, height: 80)
+                .cornerRadius(20)
+                .overlay(
+                    Group {
+                        if let thumb = thumbnail {
+                            Image(uiImage: thumb)
+                                .resizable()
+                                .scaledToFill()
+                        } else {
+                            Color.gray.opacity(0.2)
+                        }
+                    }
+                    .frame(width: 80, height: 80)
+                    .clipped()
+                    .cornerRadius(20)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(isSelected ? Color("blue") : Color.clear, lineWidth: 2)
+                )
+                .onAppear {
+                    requestThumbnail()
+                }
+        }
+    }
+    
+    private func requestThumbnail() {
+        let targetSize = CGSize(width: 160, height: 160)
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .opportunistic
+        options.resizeMode = .fast
+        options.isSynchronous = false
+        
+        imageManager.requestImage(
+            for: asset,
+            targetSize: targetSize,
+            contentMode: .aspectFill,
+            options: options
+        ) { image, _ in
+            if let image = image {
+                self.thumbnail = image
+            }
         }
     }
 }
