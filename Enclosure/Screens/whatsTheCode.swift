@@ -122,67 +122,7 @@ struct whatsTheCode: View {
                                             return otp[index] 
                                         },
                                         set: { newValue in
-                                            let oldValue = otp[index]
-                                            
-                                            // Extract only digits from input
-                                            let digits = newValue.filter { $0.isNumber }
-                                            
-                                            // Handle paste or multiple characters
-                                            if digits.count > 1 {
-                                                // Fill current and subsequent fields
-                                                var currentIndex = index
-                                                for digit in digits {
-                                                    if currentIndex < 6 {
-                                                        otp[currentIndex] = String(digit)
-                                                        currentIndex += 1
-                                                    }
-                                                }
-                                                
-                                                // Focus on the last filled field or next empty field with animation
-                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                                        if currentIndex < 6 {
-                                                            focusedField = currentIndex
-                                                        } else {
-                                                            focusedField = 5
-                                                        }
-                                                    }
-                                                }
-                                            } else if newValue.isEmpty {
-                                                // Backspace/Delete handling
-                                                otp[index] = ""
-                                                
-                                                // If field was already empty, move to previous field
-                                                if oldValue.isEmpty && index > 0 {
-                                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                                            focusedField = index - 1
-                                                        }
-                                                    }
-                                                }
-                                            } else {
-                                                // Single character entered - extract first digit if available
-                                                if let firstDigit = digits.first {
-                                                    let digit = String(firstDigit)
-                                                    otp[index] = digit
-                                                    
-                                                    // Move to next field smoothly with animation
-                                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                                            if index < 5 {
-                                                                focusedField = index + 1
-                                                            } else {
-                                                                // Last field - dismiss keyboard
-                                                                focusedField = nil
-                                                                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                                                            }
-                                                        }
-                                                    }
-                                                } else {
-                                                    // Non-digit character entered - keep old value
-                                                    otp[index] = oldValue
-                                                }
-                                            }
+                                            handleOTPInput(newValue, at: index)
                                         }
                                     ))
                                     .frame(width: 45, height: 48) // width="45dp", height="48dp"
@@ -266,52 +206,7 @@ struct whatsTheCode: View {
 
 
                     // Verify Button
-                    Button(action: {
-                        if otp.contains("") {
-                            otp = Array(repeating: "", count: 6)
-                            focusedField = 0
-                            Constant.showToast(message: "Invalid OTP")
-                        } else {
-                            let contactStore = CNContactStore()
-                            let authorizationStatus = CNContactStore.authorizationStatus(for: .contacts)
-
-                            switch authorizationStatus {
-                            case .notDetermined:
-                                // Request permission
-                                contactStore.requestAccess(for: .contacts) { granted, error in
-                                    DispatchQueue.main.async {
-                                        if granted {
-                                            verifyViewModel.verifyOTP(
-                                                uid: uid,
-                                                otp: otp.joined(),
-                                                cCode: country_Code,
-                                                token: fcmToken,
-                                                deviceId: deviceId
-                                            )
-                                        } else {
-                                            showPermissionAlert()
-                                        }
-                                    }
-                                }
-
-                            case .authorized:
-                                // Permission already granted, proceed with OTP verification
-                                verifyViewModel.verifyOTP(
-                                    uid: uid,
-                                    otp: otp.joined(),
-                                    cCode: country_Code,
-                                    token: fcmToken,
-                                    deviceId: deviceId
-                                )
-
-                            case .denied, .restricted:
-                                // Permission denied, show alert to open settings
-                                showPermissionAlert()
-                            @unknown default:
-                                break
-                            }
-                        }
-                    })
+                    Button(action: ensureTokenAndVerify)
 {
                         Text("Verify")
                             .font(.custom("Inter18pt-SemiBold", size: 16)) // inter_medium + fontWeight 600 = SemiBold, 16dp
@@ -587,6 +482,131 @@ struct whatsTheCode: View {
         // फक्त अंक आणि + चिन्ह सोडून बाकीचे काढून टाका
         let cleanedNumber = phoneNumber.replacingOccurrences(of: "[^+0-9]", with: "", options: .regularExpression)
         return cleanedNumber
+    }
+
+    /// Ensure we have an FCM token before verifying; fetch if missing.
+    private func ensureTokenAndVerify() {
+        if otp.contains("") {
+            otp = Array(repeating: "", count: 6)
+            focusedField = 0
+            Constant.showToast(message: "Invalid OTP")
+            return
+        }
+
+        // If token already available, proceed
+        if !fcmToken.isEmpty {
+            performOTPVerification()
+            return
+        }
+
+        // Try fallback from UserDefaults
+        if let savedToken = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN), !savedToken.isEmpty {
+            fcmToken = savedToken
+            performOTPVerification()
+            return
+        }
+
+        // Fetch new token then proceed; if APNs not ready, fall back to placeholder
+        FirebaseManager.shared.getFCMToken { token in
+            DispatchQueue.main.async {
+                if let token = token, !token.isEmpty {
+                    self.fcmToken = token
+                } else {
+                    // APNs token missing; use placeholder to avoid empty backend param
+                    self.fcmToken = "apns_missing"
+                    Constant.showToast(message: "Push token unavailable; proceeding with limited token.")
+                }
+                self.performOTPVerification()
+            }
+        }
+    }
+
+    /// Performs OTP verification after prerequisites are satisfied.
+    private func performOTPVerification() {
+        let contactStore = CNContactStore()
+        let authorizationStatus = CNContactStore.authorizationStatus(for: .contacts)
+
+        switch authorizationStatus {
+        case .notDetermined:
+            // Request permission
+            contactStore.requestAccess(for: .contacts) { granted, _ in
+                DispatchQueue.main.async {
+                    if granted {
+                        verifyViewModel.verifyOTP(
+                            uid: uid,
+                            otp: otp.joined(),
+                            cCode: country_Code,
+                            token: fcmToken,
+                            deviceId: deviceId
+                        )
+                    } else {
+                        showPermissionAlert()
+                    }
+                }
+            }
+
+        case .authorized:
+            // Permission already granted, proceed with OTP verification
+            verifyViewModel.verifyOTP(
+                uid: uid,
+                otp: otp.joined(),
+                cCode: country_Code,
+                token: fcmToken,
+                deviceId: deviceId
+            )
+
+        case .denied, .restricted:
+            // Permission denied, show alert to open settings
+            showPermissionAlert()
+        @unknown default:
+            break
+        }
+    }
+
+    /// Normalize OTP input to avoid flicker and only keep numeric characters
+    private func handleOTPInput(_ newValue: String, at index: Int) {
+        let oldValue = otp[index]
+        let digits = newValue.filter { $0.isNumber }
+
+        // Handle paste: distribute digits across fields without animations or delays
+        if digits.count > 1 {
+            var current = index
+            for digit in digits {
+                guard current < otp.count else { break }
+                otp[current] = String(digit)
+                current += 1
+            }
+            focusedField = min(current, otp.count - 1)
+            if current >= otp.count {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
+            return
+        }
+
+        // Backspace handling
+        if newValue.isEmpty {
+            otp[index] = ""
+            if oldValue.isEmpty && index > 0 {
+                focusedField = index - 1
+            }
+            return
+        }
+
+        // Single digit entry
+        guard let firstDigit = digits.first else {
+            otp[index] = oldValue // Ignore non-digit characters
+            return
+        }
+
+        otp[index] = String(firstDigit)
+
+        // Move focus forward without animation to avoid flicker
+        if index < otp.count - 1 {
+            focusedField = index + 1
+        } else {
+            focusedField = nil
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
     }
 
 

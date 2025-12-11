@@ -26,16 +26,46 @@ class VerifyMobileOTPViewModel: ObservableObject {
         let phoneId = UIDevice.current.identifierForVendor?.uuidString ?? "unknown"
         print("📱 Phone ID: \(phoneId)")
 
+        // Resolve FCM token (required by backend). Prefer passed token, fallback to stored.
+        let resolvedToken = token.isEmpty
+            ? (UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? "")
+            : token
+
+        // If we still do not have a token (APNs not ready), use a safe placeholder so
+        // the backend gets a non-empty value while we surface a warning.
+        let finalToken: String
+        if resolvedToken.isEmpty {
+            finalToken = "apns_missing"
+            print("⚠️ Missing f_token; using placeholder \(finalToken)")
+        } else {
+            finalToken = resolvedToken
+        }
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
 
-        // Matching Android parameters: uid, mob_otp, f_token, device_id, phone_id
-        let bodyString = "uid=\(uid)&mob_otp=\(otp)&f_token=\(token)&device_id=\(deviceId)&phone_id=\(phoneId)"
+        // Matching Android parameters: uid, mob_otp, f_token, device_id, phone_id (+ country code)
+        let params: [String: String] = [
+            "uid": uid,
+            "mob_otp": otp,
+            "f_token": finalToken,
+            "device_id": deviceId,
+            "phone_id": phoneId,
+            "country_code": cCode
+        ]
+
+        let bodyString = params
+            .map { key, value in
+                let escaped = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
+                return "\(key)=\(escaped)"
+            }
+            .joined(separator: "&")
+
         request.httpBody = bodyString.data(using: .utf8)
 
         print("📤 API: verify_mobile_otp")
-        print("📤 Parameters: uid=\(uid), mob_otp=\(otp), f_token=\(token), device_id=\(deviceId), phone_id=\(phoneId)")
+        print("📤 Parameters: uid=\(uid), mob_otp=\(otp), f_token=\(resolvedToken), device_id=\(deviceId), phone_id=\(phoneId), country_code=\(cCode)")
         print("📤 Full Request Body: \(bodyString)")
 
         URLSession.shared.dataTask(with: request) {

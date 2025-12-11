@@ -49,6 +49,7 @@ struct ChattingScreen: View {
     @State private var lastTimestamp: TimeInterval? = nil // Track oldest timestamp for pagination (matching Android)
     @State private var lastLoadMoreTime: Date? = nil // Track last loadMore call time for throttling
     @State private var hasMoreMessages: Bool = true // Track if there are more messages to load
+    @State private var lastScrollOffsetUpdateTime: Date? = nil // Track last scroll offset update time for throttling
     @State private var isInitialScrollInProgress: Bool = false // Prevent loadMore during initial scroll
     @State private var initialScrollCompletedTime: Date? = nil // Track when initial scroll completed
     @State private var scrollDebounceWorkItem: DispatchWorkItem? = nil // Debounce scroll for rapid message additions
@@ -60,7 +61,7 @@ struct ChattingScreen: View {
     @State private var firebaseChildListenerHandle: DatabaseHandle?
     @State private var scrollViewProxy: ScrollViewProxy? = nil // Hold proxy for manual scrolls (down arrow)
     @State private var showScrollDownButton: Bool = false // Show when user is away from bottom
-    @State private var nearBottomVisibleIds: Set<String> = [] // Track which near-bottom items are visible
+    @State private var isLastItemVisible: Bool = false // Track if last message is visible (matching Android)
     
     // Pagination constants (matching Android)
     private let PAGE_SIZE: UInt = 10
@@ -75,6 +76,15 @@ struct ChattingScreen: View {
     // Unique dates tracking (matching Android uniqueDates Set)
     @State private var uniqueDates: Set<String> = []
     
+    // Date display state (matching Android datelyt)
+    @State private var showDateView: Bool = false
+    @State private var dateText: String = ""
+    @State private var firstVisibleMessageIndex: Int = 0
+    @State private var hideDateWorkItem: DispatchWorkItem? = nil
+    @State private var isScrolling: Bool = false
+    @State private var dateScrollDebounceWorkItem: DispatchWorkItem? = nil // Debounce for date view scroll detection
+    @State private var lastScrollEventTime: Date? = nil // Track last scroll event time
+    
     var body: some View {
         ZStack {
             // Background color matching Android modetheme2
@@ -86,12 +96,27 @@ struct ChattingScreen: View {
                 headerView
                 
                 // Message list
-                messageListView
-                    .overlay(alignment: .bottomTrailing) {
-                        if showScrollDownButton {
-                            scrollDownButton
+                ZStack(alignment: .top) {
+                    messageListView
+                    
+                    // Date view overlay (matching Android datelyt)
+                    if showDateView {
+                        dateView
+                            .zIndex(1000) // Ensure it's on top
+                            .padding(.top, 8) // Add some top padding
+                    }
+                    
+                    // Scroll down button overlay
+                    if showScrollDownButton {
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                scrollDownButton
+                            }
                         }
                     }
+                }
                 
                 // Multi-select counter (hidden by default)
                 if showMultiSelectHeader && selectedCount > 0 {
@@ -122,6 +147,10 @@ struct ChattingScreen: View {
         .onDisappear {
             // Remove Firebase listeners when leaving screen
             removeFirebaseListeners()
+            
+            // Clean up work items
+            hideDateWorkItem?.cancel()
+            dateScrollDebounceWorkItem?.cancel()
         }
     }
     
@@ -383,11 +412,26 @@ struct ChattingScreen: View {
                                                         value: geo.frame(in: .named("scroll")).minY
                                                     )
                                                 }
-                                            }
+                                    }
+                                        }
+                                    )
+                                    .background(
+                                        // Track first visible message for date display
+                                        GeometryReader { geo in
+                                            let frame = geo.frame(in: .named("scroll"))
+                                            // Consider item visible if it's in the visible area (minY >= 0 and maxY <= screen height)
+                                            let isVisible = frame.minY >= -50 && frame.maxY <= UIScreen.main.bounds.height + 50
+                                            return Color.clear.preference(
+                                                key: FirstVisibleItemPreferenceKey.self,
+                                                value: isVisible ? index : nil
+                                            )
                                         }
                                     )
                                     .onAppear {
-                                        handleNearBottomVisibility(id: message.id, index: index, isAppearing: true)
+                                        handleLastItemVisibility(id: message.id, index: index, isAppearing: true)
+                                        // Update first visible message index for date display
+                                        updateFirstVisibleMessageIndex(index)
+                                        
                                         // When last message appears, scroll to it once (for initial load only)
                                         // This ensures we only scroll once when the view is actually rendered (like WhatsApp)
                                         if index == messages.count - 1 && hasPerformedInitialScroll && !hasScrolledToBottom {
@@ -416,7 +460,7 @@ struct ChattingScreen: View {
                                         }
                                     }
                                     .onDisappear {
-                                        handleNearBottomVisibility(id: message.id, index: index, isAppearing: false)
+                                        handleLastItemVisibility(id: message.id, index: index, isAppearing: false)
                                     }
                             }
                         }
@@ -430,7 +474,27 @@ struct ChattingScreen: View {
                 .onDisappear {
                     scrollViewProxy = nil
                 }
+                .onPreferenceChange(FirstVisibleItemPreferenceKey.self) { visibleIndex in
+                    // Update date when first visible message changes (matching Android onScrolled)
+                    if let index = visibleIndex, index < messages.count {
+                        updateFirstVisibleMessageIndex(index)
+                    }
+                }
                 .onPreferenceChange(ScrollOffsetPreferenceKey.self) { offset in
+                    // Throttle scroll offset updates to prevent "Bound preference tried to update multiple times per frame" warning
+                    let currentTime = Date()
+                    if let lastUpdate = lastScrollOffsetUpdateTime {
+                        // Only process if at least 0.05 seconds (50ms) have passed since last update
+                        if currentTime.timeIntervalSince(lastUpdate) < 0.05 {
+                            return
+                        }
+                    }
+                    lastScrollOffsetUpdateTime = currentTime
+                    
+                    // Show date when scrolling (matching Android onScrolled)
+                    // Any scroll offset change means user is scrolling
+                    handleScrollStateChanged(isScrolling: true)
+                    
                     // Detect when user scrolls to top (matching Android findFirstVisibleItemPosition == 0)
                     // offset <= 10 means first message is near top of visible area
                     // Prevent loadMore during initial scroll or if already loading
@@ -441,7 +505,7 @@ struct ChattingScreen: View {
                     
                     // Prevent loadMore immediately after initial scroll (wait at least 2 seconds)
                     if let completedTime = initialScrollCompletedTime {
-                        let timeSinceCompletion = Date().timeIntervalSince(completedTime)
+                        let timeSinceCompletion = currentTime.timeIntervalSince(completedTime)
                         if timeSinceCompletion < 2.0 {
                             print("🟡 [SCROLL_DEBUG] loadMore prevented - too soon after initial scroll (\(String(format: "%.1f", timeSinceCompletion))s)")
                             return
@@ -449,18 +513,17 @@ struct ChattingScreen: View {
                     }
                     
                     // Throttle calls to prevent rapid firing
-                    let now = Date()
                     if offset <= 10 && !isLoadingMore && initialLoadDone && searchText.isEmpty && !messages.isEmpty && hasMoreMessages {
                         if let lastCall = lastLoadMoreTime {
                             // Only call if enough time has passed since last call
-                            if now.timeIntervalSince(lastCall) >= LOAD_MORE_THROTTLE {
-                                lastLoadMoreTime = now
+                            if currentTime.timeIntervalSince(lastCall) >= LOAD_MORE_THROTTLE {
+                                lastLoadMoreTime = currentTime
                                 print("🟡 [SCROLL_DEBUG] loadMore triggered from scroll detection")
                                 loadMore(receiverRoom: getReceiverRoom())
                             }
                         } else {
                             // First call
-                            lastLoadMoreTime = now
+                            lastLoadMoreTime = currentTime
                             print("🟡 [SCROLL_DEBUG] loadMore triggered from scroll detection (first call)")
                             loadMore(receiverRoom: getReceiverRoom())
                         }
@@ -533,6 +596,44 @@ struct ChattingScreen: View {
             .padding(.trailing, 15)
             .padding(.bottom, 5)
             .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+    
+    // MARK: - Date View (matching Android datelyt)
+    private var dateView: some View {
+        HStack(spacing: 0) {
+            // Left divider line (matching Android View with layout_weight="1")
+            Rectangle()
+                .fill(Color(red: 0xDE/255.0, green: 0xDD/255.0, blue: 0xDD/255.0))
+                .frame(height: 1)
+                .opacity(0) // invisible (matching Android visibility="invisible")
+                .frame(maxWidth: .infinity)
+                .padding(.trailing, 10)
+            
+            // Date card (matching Android CardView with elevation)
+            VStack(spacing: 0) {
+                Text(dateText)
+                    .font(.custom("Inter18pt-Regular", size: 10))
+                    .foregroundColor(Color("TextColor"))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color("cardBackgroundColornew"))
+                    .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 4) // Elevation shadow (matching Android CardView elevation)
+            )
+            .padding(5)
+            
+            // Right divider line (matching Android View with layout_weight="1")
+            Rectangle()
+                .fill(Color(red: 0xDE/255.0, green: 0xDD/255.0, blue: 0xDD/255.0))
+                .frame(height: 1)
+                .opacity(0) // invisible (matching Android visibility="invisible")
+                .frame(maxWidth: .infinity)
+                .padding(.leading, 10)
+        }
+        .padding(.top, 8)
+        .frame(maxWidth: .infinity)
     }
     
     // MARK: - Scroll Down Button
@@ -1723,27 +1824,19 @@ struct ChattingScreen: View {
         }
     }
     
-    /// Track near-bottom visibility to toggle down arrow (hide when last 3 items are visible)
-    private func handleNearBottomVisibility(id: String, index: Int, isAppearing: Bool) {
-        guard messages.count > 3 else {
-            // If there are 3 or fewer items, always hide button
-            showScrollDownButton = false
-            return
+    /// Track last item visibility to toggle down arrow (matching Android isLastItemVisible logic)
+    private func handleLastItemVisibility(id: String, index: Int, isAppearing: Bool) {
+        // Check if this is the last message (matching Android lastVisiblePosition >= totalItems - 1)
+        let isLastMessage = index == messages.count - 1
+        
+        if isLastMessage {
+            // Update isLastItemVisible flag (matching Android)
+            isLastItemVisible = isAppearing
+            
+            // Update down button visibility (matching Android)
+            // Hide when last item is visible, show when not visible
+            showScrollDownButton = !isLastItemVisible
         }
-        
-        // Near bottom if within last 3 items
-        let isNearBottom = index >= messages.count - 3
-        
-        if isNearBottom {
-            if isAppearing {
-                nearBottomVisibleIds.insert(id)
-            } else {
-                nearBottomVisibleIds.remove(id)
-            }
-        }
-        
-        // Show button only if none of the last 3 are visible
-        showScrollDownButton = nearBottomVisibleIds.isEmpty
     }
     
     private func updateMessageText(_ newValue: String) {
@@ -1908,7 +2001,9 @@ struct ChattingScreen: View {
                     self.hideEmojiAndGalleryPickers()
                     
                     // Hide down arrow cardview when new message is added (user is at bottom)
-                    // TODO: Hide down arrow if visible
+                    // User is at the last message, hide down button (matching Android)
+                    self.isLastItemVisible = true
+                    self.showScrollDownButton = false
                 }
                 
             } catch {
@@ -1954,6 +2049,193 @@ struct ChattingScreen: View {
     private func sendMessage() {
         // Legacy method - keeping for backward compatibility
         handleSendButtonClick()
+    }
+    
+    // MARK: - Date Display Functions (matching Android date functionality)
+    
+    /// Update first visible message index and show date (matching Android onScrolled)
+    private func updateFirstVisibleMessageIndex(_ index: Int) {
+        guard index < messages.count else {
+            print("📅 [DATE_DEBUG] updateFirstVisibleMessageIndex - index \(index) >= messages.count \(messages.count)")
+            return
+        }
+        
+        firstVisibleMessageIndex = index
+        let message = messages[index]
+        
+        print("📅 [DATE_DEBUG] updateFirstVisibleMessageIndex called - index: \(index), message.id: \(message.id), currentDate: \(message.currentDate ?? "nil")")
+        
+        // Get date from first visible message (matching Android)
+        guard let date = message.currentDate else {
+            // If no date, hide immediately
+            print("📅 [DATE_DEBUG] No currentDate in message at index \(index), hiding date view")
+            DispatchQueue.main.async {
+                withAnimation {
+                    self.showDateView = false
+                }
+            }
+            return
+        }
+        
+        // Format date text (matching Android date formatting logic)
+        let formattedDate = formatDateText(date)
+        
+        // Update date text and show date view when scrolling
+        DispatchQueue.main.async {
+            print("📅 [DATE_DEBUG] Setting dateText to: '\(formattedDate)', current showDateView: \(self.showDateView), isScrolling: \(self.isScrolling)")
+            self.dateText = formattedDate
+            
+            // Show date view when scrolling (matching Android onScrolled behavior)
+            // updateFirstVisibleMessageIndex is called when the first visible message changes (during scrolling)
+            // Cancel hide timer is already handled by handleScrollStateChanged (matching Android handler.removeCallbacks)
+            // Always show date view when this function is called (matching Android onScrolled updates date text)
+            if !self.showDateView {
+                print("📅 [DATE_DEBUG] Showing date view with formatted date: '\(formattedDate)'")
+                withAnimation(.easeIn(duration: 0.2)) {
+                    self.showDateView = true
+                }
+            } else {
+                print("📅 [DATE_DEBUG] Date view already visible, just updating text")
+            }
+            // Note: Hiding is handled by debounce timer in handleScrollStateChanged (matching Android SCROLL_STATE_IDLE)
+        }
+    }
+    
+    /// Format date text (matching Android date formatting logic)
+    private func formatDateText(_ date: String) -> String {
+        // Handle dates with ":" prefix (duplicate dates) - matching Android
+        var cleanDate = date
+        if date.contains(":") {
+            cleanDate = date.replacingOccurrences(of: ":", with: "")
+        }
+        
+        // Parse the date string (format: "yyyy-MM-dd")
+        let inputDateFormatter = DateFormatter()
+        inputDateFormatter.dateFormat = "yyyy-MM-dd"
+        inputDateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        
+        guard let parsedDate = inputDateFormatter.date(from: cleanDate) else {
+            // If parsing fails, return the original date
+            return cleanDate
+        }
+        
+        // Get current date and yesterday date for comparison
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
+        let dateToCompare = calendar.startOfDay(for: parsedDate)
+        
+        // Compare dates (matching Android)
+        if dateToCompare == today {
+            return "Today"
+        } else if dateToCompare == yesterday {
+            return "Yesterday"
+        } else {
+            // Format date as "07 December 2025" (matching user's requested format)
+            let outputDateFormatter = DateFormatter()
+            outputDateFormatter.dateFormat = "dd MMMM yyyy"
+            outputDateFormatter.locale = Locale(identifier: "en_US_POSIX")
+            return outputDateFormatter.string(from: parsedDate)
+        }
+    }
+    
+    /// Hide date view immediately (matching Android collapse(binding.date) in hideDateRunnable)
+    private func hideDateView() {
+        // Cancel any pending timers
+        hideDateWorkItem?.cancel()
+        dateScrollDebounceWorkItem?.cancel()
+        
+        print("📅 [DATE_DEBUG] hideDateView called - hiding immediately, isScrolling: \(isScrolling)")
+        
+        // Hide immediately (matching Android collapse function)
+        // The delay is handled by when this function is called (1.5s after scrolling stops)
+        DispatchQueue.main.async {
+            if !self.isScrolling {
+                print("📅 [DATE_DEBUG] Hiding date view - isScrolling: \(self.isScrolling), showDateView: \(self.showDateView)")
+                withAnimation(.easeOut(duration: 0.2)) {
+                    self.showDateView = false
+                }
+                print("📅 [DATE_DEBUG] Date view hidden, showDateView: \(self.showDateView)")
+            } else {
+                print("📅 [DATE_DEBUG] Still scrolling, not hiding date view")
+            }
+        }
+    }
+    
+    // MARK: - Helper Functions (matching Android utility functions)
+    
+    /// Collapse/hide view (matching Android collapse function)
+    /// In SwiftUI, we use @State variables to control visibility
+    private func collapse(_ showFlag: inout Bool) {
+        withAnimation {
+            showFlag = false
+        }
+    }
+    
+    /// Check if file exists (matching Android doesFileExist)
+    private func doesFileExist(filePath: String) -> Bool {
+        let fileManager = FileManager.default
+        return fileManager.fileExists(atPath: filePath)
+    }
+    
+    /// Handle scroll state changes (matching Android onScrolled - cancels hide timer on every scroll)
+    private func handleScrollStateChanged(isScrolling: Bool) {
+        let currentTime = Date()
+        
+        if isScrolling {
+            // Update last scroll event time and isScrolling IMMEDIATELY (before async) so updateFirstVisibleMessageIndex can see it
+            self.lastScrollEventTime = currentTime
+            self.isScrolling = true
+            
+            // User is actively scrolling - show date immediately and cancel hide timer (matching Android onScrolled)
+            DispatchQueue.main.async {
+                // Cancel any pending hide timer (matching Android handler.removeCallbacks(hideDateRunnable))
+                self.hideDateWorkItem?.cancel()
+                
+                // Always show date when scrolling (matching Android onScrolled behavior)
+                if !self.showDateView {
+                    print("📅 [DATE_DEBUG] Scrolling - showing date view")
+                    withAnimation(.easeIn(duration: 0.2)) {
+                        self.showDateView = true
+                    }
+                }
+                
+                // Set up timer to detect when scrolling stops (matching Android SCROLL_STATE_IDLE with 1500ms delay)
+                // Cancel previous timer - this ensures we keep resetting the timer as long as scroll events come in
+                self.dateScrollDebounceWorkItem?.cancel()
+                
+                // Create timer that will fire when scrolling stops (no events for 1.5 seconds)
+                // Matching Android: handler.postDelayed(hideDateRunnable, 1500) in SCROLL_STATE_IDLE
+                let debounceDelay: TimeInterval = 1.5
+                let debounceWorkItem = DispatchWorkItem {
+                    // Check if scrolling has actually stopped (no new scroll events since we set up this timer)
+                    if let lastScroll = self.lastScrollEventTime {
+                        let timeSinceLastScroll = Date().timeIntervalSince(lastScroll)
+                        if timeSinceLastScroll >= debounceDelay {
+                            // Scrolling has stopped - hide date after 1.5 seconds delay (matching Android)
+                            print("📅 [DATE_DEBUG] Scrolling stopped - hiding date view after 1.5s delay")
+                            DispatchQueue.main.async {
+                                self.isScrolling = false
+                                self.hideDateView()
+                            }
+                        } else {
+                            // Still scrolling (new scroll event came in while we were waiting)
+                            print("📅 [DATE_DEBUG] Debounce fired but scrolling continued")
+                        }
+                    } else {
+                        // No recent scroll events - hide date
+                        print("📅 [DATE_DEBUG] No recent scroll events - hiding date view")
+                        DispatchQueue.main.async {
+                            self.isScrolling = false
+                            self.hideDateView()
+                        }
+                    }
+                }
+                
+                self.dateScrollDebounceWorkItem = debounceWorkItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + debounceDelay, execute: debounceWorkItem)
+            }
+        }
     }
 }
 
@@ -2162,11 +2444,25 @@ struct ContactInfo: Codable {
 struct ScrollOffsetPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        // Only update if the new value is significantly different to reduce update frequency
-        // This prevents "Bound preference tried to update multiple times per frame" warning
+        // Improved reduce function to prevent "Bound preference tried to update multiple times per frame" warning
+        // Use a simple approach: always take the latest value without conditional logic
+        // This prevents the warning by ensuring we don't have complex branching in reduce
+        value = nextValue()
+    }
+}
+
+// MARK: - First Visible Item Preference Key (for detecting first visible message for date display)
+struct FirstVisibleItemPreferenceKey: PreferenceKey {
+    static var defaultValue: Int? = nil
+    static func reduce(value: inout Int?, nextValue: () -> Int?) {
+        // Take the minimum index (first visible item)
         let next = nextValue()
-        if abs(value - next) > 5 { // Only update if change is more than 5 points
-            value = next
+        if let nextIndex = next {
+            if let currentIndex = value {
+                value = min(currentIndex, nextIndex)
+            } else {
+                value = nextIndex
+            }
         }
     }
 }
