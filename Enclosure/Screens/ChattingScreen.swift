@@ -818,7 +818,7 @@ struct ChattingScreen: View {
                                     .frame(width: 50, height: 50)
                                 
                                 // Show mic icon when text is empty, send icon when text is present
-                                if messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedCount == 0 {
+                                if messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedCount == 0 && selectedAssetIds.isEmpty {
                                     Image("mikesvg")
                                         .renderingMode(.template)
                                         .resizable()
@@ -997,9 +997,8 @@ struct ChattingScreen: View {
                             }
                         }
                     }
-                    // Match Android dataRecview container insets (5dp all around)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 5)
+                    // Match Android dataRecview container insets with equal spacing on all sides
+                    .padding(10)
                 }
                 .frame(height: 250)
                 
@@ -1022,7 +1021,12 @@ struct ChattingScreen: View {
                                 .foregroundColor(Color("chtbtncolor"))
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(7)
+                        .padding(5) // outer inset like Android parent padding
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color("circlebtnhover")) // gallary_bgcontent.xml
+                        )
+                        .padding(5) // inner container spacing to mirror Android padding="5dp"
                     }
                     
                     // Photo button
@@ -1042,7 +1046,12 @@ struct ChattingScreen: View {
                                 .foregroundColor(Color("chtbtncolor"))
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(7)
+                        .padding(5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color("circlebtnhover"))
+                        )
+                        .padding(5)
                     }
                     
                     // Video button
@@ -1062,7 +1071,12 @@ struct ChattingScreen: View {
                                 .foregroundColor(Color("chtbtncolor"))
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(7)
+                        .padding(5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color("circlebtnhover"))
+                        )
+                        .padding(5)
                     }
                     
                     // File button
@@ -1082,7 +1096,12 @@ struct ChattingScreen: View {
                                 .foregroundColor(Color("chtbtncolor"))
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(7)
+                        .padding(5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color("circlebtnhover"))
+                        )
+                        .padding(5)
                     }
                     
                     // Contact button
@@ -1102,7 +1121,12 @@ struct ChattingScreen: View {
                                 .foregroundColor(Color("chtbtncolor"))
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(7)
+                        .padding(5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color("circlebtnhover"))
+                        )
+                        .padding(5)
                     }
                 }
                 .padding(.horizontal, 7)
@@ -2656,7 +2680,7 @@ private struct GalleryAssetThumbnail: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 20)
-                        .stroke(isSelected ? Color("blue") : Color.clear, lineWidth: 2)
+                        .stroke(isSelected ? Color(hex: Constant.themeColor) : Color.clear, lineWidth: 2)
                 )
                 .onAppear {
                     requestThumbnail()
