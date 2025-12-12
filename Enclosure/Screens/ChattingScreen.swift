@@ -984,6 +984,7 @@ struct ChattingScreen: View {
                                 imageManager: imageManager,
                                 isSelected: selectedAssetIds.contains(asset.localIdentifier)
                             )
+                            .padding(.top, 10) // top margin for each item
                             .overlay(alignment: .topTrailing) {
                                 if selectedAssetIds.contains(asset.localIdentifier) {
                                     Image("multitick")
@@ -998,7 +999,9 @@ struct ChattingScreen: View {
                         }
                     }
                     // Match Android dataRecview container insets with equal spacing on all sides
-                    .padding(10)
+                    .padding(.top, 10)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 10)
                 }
                 .frame(height: 250)
                 
@@ -1130,6 +1133,7 @@ struct ChattingScreen: View {
                     }
                 }
                 .padding(.horizontal, 7)
+                .padding(.bottom,10)
             }
             .frame(height: 300)
             .background(
