@@ -25,6 +25,7 @@ struct CameraGalleryView: View {
     @State private var bottomSheetHeight: CGFloat = 250 // Increased initial height to show half row naturally
     @State private var isBottomSheetExpanded = false
     @State private var dragOffset: CGFloat = 0
+    @State private var isPressed: Bool = false
     private let imageManager = PHCachingImageManager()
     private let maxBottomSheetHeight: CGFloat = 620 // Full height (matching Android height="620dp")
     private let peekHeight: CGFloat = 250 // Increased peek height to show partial row naturally
@@ -50,34 +51,6 @@ struct CameraGalleryView: View {
             // Full-screen camera preview
             CameraPreviewView(cameraManager: cameraManager)
                 .ignoresSafeArea()
-            
-            // Back arrow button at top-left
-            VStack {
-                HStack {
-                    Button(action: {
-                        dismiss()
-                    }) {
-                        ZStack {
-                            Circle()
-                                .fill(Color("circlebtnhover").opacity(0.1))
-                                .frame(width: 40, height: 40)
-                            
-                            Image("leftvector")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 25, height: 18)
-                                .foregroundColor(.white)
-                        }
-                    }
-                    .padding(.leading, 16)
-                    .padding(.top, 16)
-                    
-                    Spacer()
-                }
-                
-                Spacer()
-            }
             
             // Bottom sheet with swipe gesture - full from bottom
             VStack(spacing: 0) {
@@ -125,6 +98,42 @@ struct CameraGalleryView: View {
                     )
             }
             .ignoresSafeArea(edges: .bottom)
+        }
+        .overlay(alignment: .topLeading) {
+            // Back arrow button at top-left (matching editmyProfile.swift)
+            Button(action: handleBackTap) {
+                ZStack {
+                    Circle()
+                        .fill(Color.black.opacity(0.4))
+                        .frame(width: 40, height: 40)
+                    
+                    if isPressed {
+                        Circle()
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(width: 40, height: 40)
+                            .scaleEffect(isPressed ? 1.2 : 1.0)
+                            .animation(.easeOut(duration: 0.3), value: isPressed)
+                    }
+                    
+                    Image("leftvector")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 25, height: 18)
+                        .foregroundColor(.white)
+                }
+            }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onEnded { _ in
+                        withAnimation {
+                            isPressed = false
+                        }
+                    }
+            )
+            .buttonStyle(.plain)
+            .padding(.leading, 16)
+            .padding(.top, 16)
         }
         .onAppear {
             requestCameraPermissionAndSetup()
@@ -527,6 +536,17 @@ struct CameraGalleryView: View {
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         if status == .limited {
             showPermissionText = true
+        }
+    }
+    
+    // MARK: - Back Button Handler (matching editmyProfile.swift)
+    private func handleBackTap() {
+        withAnimation {
+            isPressed = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            dismiss()
+            isPressed = false
         }
     }
 }

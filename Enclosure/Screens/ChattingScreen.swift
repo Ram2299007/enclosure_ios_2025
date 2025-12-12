@@ -23,6 +23,7 @@ struct ChattingScreen: View {
     @State private var showEmojiPicker: Bool = false
     @State private var showGalleryPicker: Bool = false
     @State private var showCameraView: Bool = false
+    @State private var wasGalleryPickerOpenBeforeCamera: Bool = false
     @State private var showMenu: Bool = false
     @State private var showSearch: Bool = false
     @State private var searchText: String = ""
@@ -162,6 +163,15 @@ struct ChattingScreen: View {
         .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showCameraView) {
             CameraGalleryView()
+        }
+        .onChange(of: showCameraView) { isPresented in
+            // When camera view is dismissed, restore gallery picker if it was open before
+            if !isPresented && wasGalleryPickerOpenBeforeCamera {
+                withAnimation {
+                    showGalleryPicker = true
+                }
+                wasGalleryPickerOpenBeforeCamera = false
+            }
         }
         .onAppear {
             // Get receiverRoom (matching Android: receiverUid + uid)
@@ -2103,14 +2113,21 @@ struct ChattingScreen: View {
         isMessageFieldFocused = false
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         
-        // Show emoji picker
-        withAnimation {
-            showEmojiPicker = true
+        // Save gallery picker state before opening camera
+        wasGalleryPickerOpenBeforeCamera = showGalleryPicker
+        
+        // Hide emoji picker if open
+        if showEmojiPicker {
+            withAnimation {
+                showEmojiPicker = false
+            }
         }
         
-        // Hide gallery picker
-        withAnimation {
-            showGalleryPicker = false
+        // Hide gallery picker if open (will restore when camera closes)
+        if showGalleryPicker {
+            withAnimation {
+                showGalleryPicker = false
+            }
         }
         
         // Clear selected assets (hides multi-select counter)
