@@ -11,6 +11,7 @@ import PhotosUI
 import FirebaseDatabase
 import QuartzCore
 import UIKit
+import AVFoundation
 
 struct ChattingScreen: View {
     @Environment(\.dismiss) private var dismiss
@@ -18,8 +19,10 @@ struct ChattingScreen: View {
     let contact: UserActiveContactModel
     
     @State private var messageText: String = ""
+    @FocusState private var isMessageFieldFocused: Bool
     @State private var showEmojiPicker: Bool = false
     @State private var showGalleryPicker: Bool = false
+    @State private var showCameraView: Bool = false
     @State private var showMenu: Bool = false
     @State private var showSearch: Bool = false
     @State private var searchText: String = ""
@@ -157,6 +160,9 @@ struct ChattingScreen: View {
             }
         }
         .navigationBarHidden(true)
+        .fullScreenCover(isPresented: $showCameraView) {
+            CameraGalleryView()
+        }
         .onAppear {
             // Get receiverRoom (matching Android: receiverUid + uid)
             let receiverUid = contact.uid
@@ -773,6 +779,7 @@ struct ChattingScreen: View {
                                 .padding(.top, 5)
                                 .padding(.bottom, 5)
                                 .background(Color.clear)
+                                .focused($isMessageFieldFocused)
                                 .onChange(of: messageText) { newValue in
                                     updateMessageText(newValue)
                                 }
@@ -990,7 +997,7 @@ struct ChattingScreen: View {
                                     Image("multitick")
                                         .resizable()
                                         .frame(width: 20, height: 20)
-                                        .padding(6)
+                                        .padding(10)
                                 }
                             }
                             .onTapGesture {
@@ -1009,7 +1016,7 @@ struct ChattingScreen: View {
                 HStack(spacing: 0) {
                     // Camera button
                     Button(action: {
-                        // TODO: Open camera
+                        handleCameraButtonClick()
                     }) {
                         VStack(spacing: 5) {
                             Image("camera")
@@ -2086,6 +2093,58 @@ struct ChattingScreen: View {
         // TODO: Add @FocusState for message box focus management
     }
     
+    // MARK: - Camera Button Handler
+    private func handleCameraButtonClick() {
+        // Light haptic feedback (Android-style tap vibration)
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Hide keyboard and focus message box
+        isMessageFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        
+        // Show emoji picker
+        withAnimation {
+            showEmojiPicker = true
+        }
+        
+        // Hide gallery picker
+        withAnimation {
+            showGalleryPicker = false
+        }
+        
+        // Clear selected assets (hides multi-select counter)
+        selectedAssetIds.removeAll()
+        
+        // Send button will automatically show mic icon when messageText is empty
+        // and selectedAssetIds is empty (already handled in UI)
+        
+        // Request camera permission and show camera view
+        requestCameraPermission { granted in
+            if granted {
+                DispatchQueue.main.async {
+                    showCameraView = true
+                }
+            }
+        }
+    }
+    
+    // MARK: - Camera Permission
+    private func requestCameraPermission(completion: @escaping (Bool) -> Void = { _ in }) {
+        AVCaptureDevice.requestAccess(for: .video) { granted in
+            DispatchQueue.main.async {
+                if granted {
+                    print("Camera permission granted")
+                    completion(true)
+                } else {
+                    print("Camera permission denied")
+                    completion(false)
+                    // TODO: Show permission denied alert
+                }
+            }
+        }
+    }
+    
     private func sendMessage() {
         // Legacy method - keeping for backward compatibility
         handleSendButtonClick()
@@ -2655,7 +2714,7 @@ struct EmojiIconView: View {
 }
 
 // MARK: - Gallery thumbnail (parity with Android item_image.xml)
-private struct GalleryAssetThumbnail: View {
+struct GalleryAssetThumbnail: View {
     let asset: PHAsset
     let imageManager: PHCachingImageManager
     let isSelected: Bool

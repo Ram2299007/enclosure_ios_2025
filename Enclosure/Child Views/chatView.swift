@@ -149,7 +149,7 @@ struct chatView: View {
                             
                             Text(chat.sentTime)
                                 .font(.custom("Inter18pt-Medium", size: 12))
-                                .foregroundColor(chat.notification > 0 ? Color("blue"): Color("gray3"))
+                                .foregroundColor(chat.notification > 0 ? Color(hex: Constant.themeColor) : Color("gray3"))
                                 .padding(.trailing, 8) // layout_marginEnd="8dp"
                         }
 
@@ -260,12 +260,10 @@ struct chatView: View {
         var count: Int
         var body: some View {
             ZStack {
-                Image("notiiconsvg")
-                    .resizable()
-                    .scaledToFit()
-
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(hex: Constant.themeColor))
                 Text("\(count)")
-                    .foregroundColor(Color(red: 0xF6/255, green: 0xF7/255, blue: 0xFF/255))
+                    .foregroundColor(.white)
                     .font(.custom("Inter18pt-Regular", size: 12))
             }
             .frame(width: 32, height: 20) // Matching Android: 32dp width, 20dp height
@@ -449,7 +447,7 @@ struct chatView: View {
                         Spacer()
                         Text(currentTime)
                             .font(.custom("Inter18pt-Medium", size: 12))
-                            .foregroundColor(Color("blue"))
+                            .foregroundColor(Color(hex: Constant.themeColor))
                             .padding(.trailing, 8)
                     }
                     
