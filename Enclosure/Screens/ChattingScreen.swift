@@ -32,8 +32,10 @@ struct ChattingScreen: View {
     @State private var showWhatsAppVideoPicker: Bool = false
     @State private var showDocumentPicker: Bool = false
     @State private var showUnifiedGalleryPicker: Bool = false
+    @State private var showWhatsAppContactPicker: Bool = false
     @State private var selectedDocuments: [URL] = []
     @State private var showFilePickerActionSheet: Bool = false
+    @State private var wasGalleryPickerOpenBeforeContactPicker: Bool = false
     @State private var showSearch: Bool = false
     @State private var searchText: String = ""
     @State private var showMultiSelectHeader: Bool = false
@@ -232,6 +234,19 @@ struct ChattingScreen: View {
             }
         }) {
             GalleryPicker(selectedDocuments: $selectedDocuments, allowsMultipleSelection: true)
+        }
+        .fullScreenCover(isPresented: $showWhatsAppContactPicker, onDismiss: {
+            // Restore gallery picker when contact picker is dismissed (matching CameraGalleryView behavior)
+            if wasGalleryPickerOpenBeforeContactPicker {
+                withAnimation {
+                    showGalleryPicker = true
+                }
+                wasGalleryPickerOpenBeforeContactPicker = false
+            }
+        }) {
+            WhatsAppLikeContactPicker(maxSelection: 50) { (contacts: [ContactPickerInfo], caption: String) in
+                handleContactPickerResult(selectedContacts: contacts, caption: caption)
+            }
         }
         .overlay(
             CustomActionSheet(
@@ -1211,7 +1226,7 @@ struct ChattingScreen: View {
                     
                     // Contact button
                     Button(action: {
-                        // TODO: Open contact picker
+                        handleContactButtonClick()
                     }) {
                         VStack(spacing: 5) {
                             Image("contact")
@@ -2389,6 +2404,80 @@ struct ChattingScreen: View {
             showMultiSelectHeader = true
             
             // TODO: Process and upload selected documents
+            // For now, we'll just update the UI to show the selected count
+        }
+    }
+    
+    // MARK: - Contact Button Handler (matching Android contact button click)
+    private func handleContactButtonClick() {
+        print("ContactUpload: === CONTACT BUTTON CLICKED (Main) ===")
+        
+        // Light haptic feedback (Android-style tap vibration)
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Hide keyboard and focus message box (matching Android hideKeyboardAndFocusMessageBox)
+        isMessageFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        
+        // Show emoji button (matching Android binding.emoji.setVisibility(View.VISIBLE))
+        // In SwiftUI, emoji button visibility is controlled by showEmojiPicker state
+        
+        // Set message box hint to "Message on Ec" (matching Android)
+        // In SwiftUI, placeholder is set in TextField, but we can update it if needed
+        
+        // Set send button to mic icon (matching Android binding.send.setImageResource(R.drawable.mike))
+        // This is handled automatically by UI when messageText is empty and selectedAssetIds is empty
+        
+        // Hide multi-select counter (matching Android binding.multiSelectSmallCounterText.setVisibility(View.GONE))
+        selectedAssetIds.removeAll()
+        selectedCount = 0
+        
+        // Save gallery picker state before opening contact picker (don't hide it - will restore on back)
+        wasGalleryPickerOpenBeforeContactPicker = showGalleryPicker
+        
+        // Hide emoji picker if open
+        if showEmojiPicker {
+            withAnimation {
+                showEmojiPicker = false
+            }
+        }
+        
+        // Launch WhatsApp-like contact picker (matching Android WhatsAppLikeContactPicker)
+        print("ContactUpload: === LAUNCHING WhatsAppLikeContactPicker ===")
+        print("ContactUpload: PICK_CONTACT_REQUEST_CODE: ContactPicker")
+        
+        DispatchQueue.main.async {
+            showWhatsAppContactPicker = true
+        }
+    }
+    
+    // MARK: - Handle Contact Picker Result
+    private func handleContactPickerResult(selectedContacts: [ContactPickerInfo], caption: String) {
+        print("ContactUpload: === CONTACT PICKER RESULT RECEIVED ===")
+        print("ContactUpload: Selected contacts count: \(selectedContacts.count)")
+        print("ContactUpload: Caption: '\(caption)'")
+        
+        // Convert ContactPickerInfo to ContactInfo (matching existing structure)
+        let contactInfos: [ContactInfo] = selectedContacts.map { pickerInfo in
+            ContactInfo(
+                name: pickerInfo.name,
+                phoneNumber: pickerInfo.phone ?? "",
+                email: pickerInfo.email
+            )
+        }
+        
+        // TODO: Process selected contacts and upload them
+        // This should match Android's onActivityResult handling for PICK_CONTACT_REQUEST_CODE
+        // For now, we just update the UI state
+        
+        if !contactInfos.isEmpty {
+            // Show multi-select counter
+            selectedCount = contactInfos.count
+            showMultiSelectHeader = true
+            
+            // TODO: Process and upload selected contacts to Firebase
+            // This should match Android's WhatsAppLikeContactPicker.uploadContactsToFirebase
             // For now, we'll just update the UI to show the selected count
         }
     }

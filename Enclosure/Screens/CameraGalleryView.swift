@@ -345,73 +345,73 @@ struct CameraGalleryView: View {
             // Caption bar + Send button (only visible when expanded)
             if isBottomSheetExpanded {
                 HStack(spacing: 0) {
-                // Caption input container (matching messageBox design)
-                HStack(spacing: 0) {
-                    // Message input field container - layout_weight="1"
-                    VStack(alignment: .leading, spacing: 0) {
-                        TextField("Add Caption", text: $captionText, axis: .vertical)
-                            .font(messageInputFont)
-                            .foregroundColor(Color("black_white_cross"))
-                            .lineLimit(4)
-                            .frame(maxWidth: 180, alignment: .leading)
-                            .padding(.leading, 10) // start padding 10px
-                            .padding(.trailing, 20)
-                            .padding(.top, 5)
-                            .padding(.bottom, 5)
-                            .background(Color.clear)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(height: 50) // Match send button height (50dp)
-                .background(
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(Color("circlebtnhover")) // match Android backgroundTint on message_box_bg
-                )
-                .padding(.leading, 10)
-                .padding(.trailing, 5)
-                
-                // Send button group (matching sendGrpLyt)
-                ZStack(alignment: .topTrailing) {
-                    VStack(spacing: 0) {
-                        Button(action: {
-                            handleSend()
-                        }) {
-                            ZStack {
-                                Circle()
-                                    .fill(selectedAssetIds.count > 0 ? Color(hex: Constant.themeColor) : Color(hex: Constant.themeColor))
-                                    .frame(width: 50, height: 50)
-                                
-                                // Send icon (keyboard double arrow right) - same as Android
-                                Image("baseline_keyboard_double_arrow_right_24")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 26, height: 26)
-                                    .foregroundColor(.white)
-                                    .padding(.top, 4)
-                                    .padding(.bottom, 8)
-                            }
+                    // Caption input container (matching messageBox design)
+                    HStack(spacing: 0) {
+                        // Message input field container - layout_weight="1"
+                        VStack(alignment: .leading, spacing: 0) {
+                            TextField("Add Caption", text: $captionText, axis: .vertical)
+                                .font(messageInputFont)
+                                .foregroundColor(Color("black_white_cross"))
+                                .lineLimit(4)
+                                .frame(maxWidth: 180, alignment: .leading)
+                                .padding(.leading, 10) // start padding 10px
+                                .padding(.trailing, 20)
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                                .background(Color.clear)
                         }
-                        .disabled(selectedAssetIds.count == 0)
-                        .opacity(selectedAssetIds.count > 0 ? 1.0 : 0.5)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .frame(height: 50) // Match send button height (50dp)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(Color("circlebtnhover")) // match Android backgroundTint on message_box_bg
+                    )
+                    .padding(.leading, 10)
+                    .padding(.trailing, 5)
                     
-                    // Small counter badge (Android multiSelectSmallCounterText)
-                    if selectedAssetIds.count > 0 {
-                        Text("\(selectedAssetIds.count)")
-                            .font(.custom("Inter18pt-Bold", size: 12))
-                            .foregroundColor(.white)
-                            .frame(width: 24, height: 24)
-                            .background(
-                                Circle()
-                                    .fill(Color(hex: Constant.themeColor)) // match Android counter tint
-                            )
-                            .offset(x: -13, y: -30) // lift badge above send button with extra right margin
+                    // Send button group (matching sendGrpLyt)
+                    ZStack(alignment: .topTrailing) {
+                        VStack(spacing: 0) {
+                            Button(action: {
+                                handleSend()
+                            }) {
+                                ZStack {
+                                    Circle()
+                                        .fill(selectedAssetIds.count > 0 ? Color(hex: Constant.themeColor) : Color(hex: Constant.themeColor))
+                                        .frame(width: 50, height: 50)
+                                    
+                                    // Send icon (keyboard double arrow right) - same as Android
+                                    Image("baseline_keyboard_double_arrow_right_24")
+                                        .renderingMode(.template)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 26, height: 26)
+                                        .foregroundColor(.white)
+                                        .padding(.top, 4)
+                                        .padding(.bottom, 8)
+                                }
+                            }
+                            .disabled(selectedAssetIds.count == 0)
+                            .opacity(selectedAssetIds.count > 0 ? 1.0 : 0.5)
+                        }
+                        
+                        // Small counter badge (Android multiSelectSmallCounterText)
+                        if selectedAssetIds.count > 0 {
+                            Text("\(selectedAssetIds.count)")
+                                .font(.custom("Inter18pt-Bold", size: 12))
+                                .foregroundColor(.white)
+                                .frame(width: 24, height: 24)
+                                .background(
+                                    Circle()
+                                        .fill(Color(hex: Constant.themeColor)) // match Android counter tint
+                                )
+                                .offset(x: -13, y: -30) // lift badge above send button with extra right margin
+                        }
                     }
+                    .padding(.horizontal, 5)
                 }
-                .padding(.horizontal, 5)
-            }
-            .padding(.bottom, 16)
+                .padding(.bottom, 50)
             }
         }
     }

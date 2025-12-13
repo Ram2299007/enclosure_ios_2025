@@ -165,7 +165,7 @@ struct WhatsAppLikeVideoPicker: View {
                 
                 // Caption bar + Done button (matching Android captionlyt)
                 captionBarView
-                    .padding(.bottom, keyboardHeight > 0 ? keyboardHeight - 20 : 65)
+                    .padding(.bottom, keyboardHeight > 0 ? keyboardHeight - 20 : 10)
             }
         }
         .navigationBarHidden(true)
