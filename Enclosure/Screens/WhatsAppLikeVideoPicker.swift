@@ -9,6 +9,7 @@ import SwiftUI
 import Photos
 import PhotosUI
 import AVFoundation
+import UIKit
 
 struct WhatsAppLikeVideoPicker: View {
     @Environment(\.dismiss) private var dismiss
@@ -24,6 +25,7 @@ struct WhatsAppLikeVideoPicker: View {
     @State private var showPermissionText: Bool = false
     @State private var isMessageBoxFocused: Bool = false
     @State private var keyboardHeight: CGFloat = 0
+    @State private var isPressed: Bool = false
     @FocusState private var isCaptionFocused: Bool
     
     private let imageManager = PHCachingImageManager()
@@ -55,7 +57,7 @@ struct WhatsAppLikeVideoPicker: View {
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Cancel button - top left (matching Android cancelButton)
+                // Cancel button - top left (matching Android cancelButton and CameraGalleryView)
                 HStack {
                     Button(action: {
                         handleCancel()
@@ -65,6 +67,14 @@ struct WhatsAppLikeVideoPicker: View {
                                 .fill(Color("circlebtnhover").opacity(0.1))
                                 .frame(width: 40, height: 40)
                             
+                            if isPressed {
+                                Circle()
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(width: 40, height: 40)
+                                    .scaleEffect(isPressed ? 1.2 : 1.0)
+                                    .animation(.easeOut(duration: 0.3), value: isPressed)
+                            }
+                            
                             Image("leftvector")
                                 .renderingMode(.template)
                                 .resizable()
@@ -73,6 +83,15 @@ struct WhatsAppLikeVideoPicker: View {
                                 .foregroundColor(Color("TextColor"))
                         }
                     }
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 0)
+                            .onEnded { _ in
+                                withAnimation {
+                                    isPressed = false
+                                }
+                            }
+                    )
+                    .buttonStyle(.plain)
                     .padding(.leading, 16)
                     .padding(.top, 20)
                     
@@ -268,8 +287,14 @@ struct WhatsAppLikeVideoPicker: View {
             isMessageBoxFocused = false
             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         } else {
-            // Dismiss activity
-            dismiss()
+            // Dismiss with animation matching CameraGalleryView
+            withAnimation {
+                isPressed = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                dismiss()
+                isPressed = false
+            }
         }
     }
     

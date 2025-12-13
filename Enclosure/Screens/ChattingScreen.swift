@@ -24,9 +24,16 @@ struct ChattingScreen: View {
     @State private var showGalleryPicker: Bool = false
     @State private var showCameraView: Bool = false
     @State private var wasGalleryPickerOpenBeforeCamera: Bool = false
+    @State private var wasGalleryPickerOpenBeforeImagePicker: Bool = false
+    @State private var wasGalleryPickerOpenBeforeVideoPicker: Bool = false
+    @State private var wasGalleryPickerOpenBeforeDocumentPicker: Bool = false
     @State private var showMenu: Bool = false
     @State private var showWhatsAppImagePicker: Bool = false
     @State private var showWhatsAppVideoPicker: Bool = false
+    @State private var showDocumentPicker: Bool = false
+    @State private var showUnifiedGalleryPicker: Bool = false
+    @State private var selectedDocuments: [URL] = []
+    @State private var showFilePickerActionSheet: Bool = false
     @State private var showSearch: Bool = false
     @State private var searchText: String = ""
     @State private var showMultiSelectHeader: Bool = false
@@ -166,16 +173,82 @@ struct ChattingScreen: View {
         .fullScreenCover(isPresented: $showCameraView) {
             CameraGalleryView()
         }
-        .fullScreenCover(isPresented: $showWhatsAppImagePicker) {
+        .fullScreenCover(isPresented: $showWhatsAppImagePicker, onDismiss: {
+            // Restore gallery picker when image picker is dismissed (matching CameraGalleryView behavior)
+            if wasGalleryPickerOpenBeforeImagePicker {
+                withAnimation {
+                    showGalleryPicker = true
+                }
+                wasGalleryPickerOpenBeforeImagePicker = false
+            }
+        }) {
             WhatsAppLikeImagePicker(maxSelection: 30) { selectedAssets, caption in
                 handleImagePickerResult(selectedAssets: selectedAssets, caption: caption)
             }
         }
-        .fullScreenCover(isPresented: $showWhatsAppVideoPicker) {
+        .fullScreenCover(isPresented: $showWhatsAppVideoPicker, onDismiss: {
+            // Restore gallery picker when video picker is dismissed (matching CameraGalleryView behavior)
+            if wasGalleryPickerOpenBeforeVideoPicker {
+                withAnimation {
+                    showGalleryPicker = true
+                }
+                wasGalleryPickerOpenBeforeVideoPicker = false
+            }
+        }) {
             WhatsAppLikeVideoPicker(maxSelection: 5) { selectedAssets, caption in
                 handleVideoPickerResult(selectedAssets: selectedAssets, caption: caption)
             }
         }
+        .sheet(isPresented: $showDocumentPicker, onDismiss: {
+            // Handle documents when picker is dismissed
+            if !selectedDocuments.isEmpty {
+                handleDocumentPickerResult(selectedDocuments: selectedDocuments)
+                // Clear after handling to avoid re-processing
+                selectedDocuments.removeAll()
+            }
+            // Restore gallery picker when document picker is dismissed (matching CameraGalleryView behavior)
+            if wasGalleryPickerOpenBeforeDocumentPicker {
+                withAnimation {
+                    showGalleryPicker = true
+                }
+                wasGalleryPickerOpenBeforeDocumentPicker = false
+            }
+        }) {
+            DocumentPicker(selectedDocuments: $selectedDocuments, allowsMultipleSelection: true)
+        }
+        .sheet(isPresented: $showUnifiedGalleryPicker, onDismiss: {
+            // Handle gallery items when picker is dismissed
+            if !selectedDocuments.isEmpty {
+                handleDocumentPickerResult(selectedDocuments: selectedDocuments)
+                // Clear after handling to avoid re-processing
+                selectedDocuments.removeAll()
+            }
+            // Restore gallery picker when unified gallery picker is dismissed (matching CameraGalleryView behavior)
+            if wasGalleryPickerOpenBeforeDocumentPicker {
+                withAnimation {
+                    showGalleryPicker = true
+                }
+                wasGalleryPickerOpenBeforeDocumentPicker = false
+            }
+        }) {
+            GalleryPicker(selectedDocuments: $selectedDocuments, allowsMultipleSelection: true)
+        }
+        .overlay(
+            CustomActionSheet(
+                isPresented: $showFilePickerActionSheet,
+                title: "",
+                options: [
+                    ActionSheetOption("Select from Gallery") {
+                        // Open gallery picker (photos and videos)
+                        showUnifiedGalleryPicker = true
+                    },
+                    ActionSheetOption("Select from File") {
+                        // Open document picker
+                        showDocumentPicker = true
+                    }
+                ]
+            )
+        )
         .onChange(of: showCameraView) { isPresented in
             // When camera view is dismissed, restore gallery picker if it was open before
             if !isPresented && wasGalleryPickerOpenBeforeCamera {
@@ -1113,7 +1186,7 @@ struct ChattingScreen: View {
                     
                     // File button
                     Button(action: {
-                        // TODO: Open document picker
+                        handleFileButtonClick()
                     }) {
                         VStack(spacing: 5) {
                             Image("documentsvg")
@@ -2141,12 +2214,8 @@ struct ChattingScreen: View {
         selectedAssetIds.removeAll()
         selectedCount = 0
         
-        // Hide gallery picker if open
-        if showGalleryPicker {
-            withAnimation {
-                showGalleryPicker = false
-            }
-        }
+        // Save gallery picker state before opening image picker (don't hide it - will restore on back)
+        wasGalleryPickerOpenBeforeImagePicker = showGalleryPicker
         
         // Hide emoji picker if open
         if showEmojiPicker {
@@ -2190,12 +2259,8 @@ struct ChattingScreen: View {
         selectedAssetIds.removeAll()
         selectedCount = 0
         
-        // Hide gallery picker if open (matching Android hideGalleryRecentView)
-        if showGalleryPicker {
-            withAnimation {
-                showGalleryPicker = false
-            }
-        }
+        // Save gallery picker state before opening video picker (don't hide it - will restore on back)
+        wasGalleryPickerOpenBeforeVideoPicker = showGalleryPicker
         
         // Hide emoji picker if open
         if showEmojiPicker {
@@ -2258,6 +2323,72 @@ struct ChattingScreen: View {
             showMultiSelectHeader = true
             
             // TODO: Show full-screen dialog for multi-video preview (matching Android)
+            // For now, we'll just update the UI to show the selected count
+        }
+    }
+    
+    // MARK: - File Button Handler
+    private func handleFileButtonClick() {
+        // Light haptic feedback (Android-style tap vibration)
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Hide keyboard and focus message box (matching Android hideKeyboardAndFocusMessageBox)
+        isMessageFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        
+        // Show emoji button (matching Android binding.emoji.setVisibility(View.VISIBLE))
+        // In SwiftUI, emoji button visibility is controlled by showEmojiPicker state
+        
+        // Set message box hint to "Message on Ec" (matching Android)
+        // In SwiftUI, placeholder is set in TextField, but we can update it if needed
+        
+        // Set send button to mic icon (matching Android binding.send.setImageResource(R.drawable.mike))
+        // This is handled automatically by UI when messageText is empty and selectedAssetIds is empty
+        
+        // Hide multi-select counter (matching Android binding.multiSelectSmallCounterText.setVisibility(View.GONE))
+        selectedAssetIds.removeAll()
+        selectedCount = 0
+        
+        // Save gallery picker state before opening file picker (don't hide it - will restore on back)
+        wasGalleryPickerOpenBeforeDocumentPicker = showGalleryPicker
+        
+        // Hide emoji picker if open
+        if showEmojiPicker {
+            withAnimation {
+                showEmojiPicker = false
+            }
+        }
+        
+        // Clear selected documents
+        selectedDocuments.removeAll()
+        
+        // Show action sheet to choose between Gallery and File (matching Telegram behavior)
+        print("DocumentUpload: === SHOWING FILE PICKER ACTION SHEET ===")
+        
+        DispatchQueue.main.async {
+            showFilePickerActionSheet = true
+        }
+    }
+    
+    // MARK: - Handle Document Picker Result
+    private func handleDocumentPickerResult(selectedDocuments: [URL]) {
+        print("DocumentUpload: === DOCUMENT PICKER RESULT RECEIVED ===")
+        print("DocumentUpload: Selected documents count: \(selectedDocuments.count)")
+        
+        // Store selected documents
+        self.selectedDocuments = selectedDocuments
+        
+        // TODO: Process selected documents and upload them
+        // This should match Android's onActivityResult handling for PICK_DOCUMENT_REQUEST_CODE
+        // For now, we just update the UI state
+        
+        if !selectedDocuments.isEmpty {
+            // Show multi-select counter
+            selectedCount = selectedDocuments.count
+            showMultiSelectHeader = true
+            
+            // TODO: Process and upload selected documents
             // For now, we'll just update the UI to show the selected count
         }
     }
