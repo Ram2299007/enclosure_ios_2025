@@ -26,6 +26,7 @@ struct ChattingScreen: View {
     @State private var wasGalleryPickerOpenBeforeCamera: Bool = false
     @State private var showMenu: Bool = false
     @State private var showWhatsAppImagePicker: Bool = false
+    @State private var showWhatsAppVideoPicker: Bool = false
     @State private var showSearch: Bool = false
     @State private var searchText: String = ""
     @State private var showMultiSelectHeader: Bool = false
@@ -56,7 +57,7 @@ struct ChattingScreen: View {
     @State private var lastTimestamp: TimeInterval? = nil // Track oldest timestamp for pagination (matching Android)
     @State private var lastLoadMoreTime: Date? = nil // Track last loadMore call time for throttling
     @State private var hasMoreMessages: Bool = true // Track if there are more messages to load
-    @State private var lastScrollOffsetUpdateTime: Date? = nil // Track last scroll offset update time for throttling
+    @State private var lastScrollOffsetUpdateTime: Date? = nil //ƒvideos Track last scroll offset update time for throttling
     @State private var isInitialScrollInProgress: Bool = false // Prevent loadMore during initial scroll
     @State private var initialScrollCompletedTime: Date? = nil // Track when initial scroll completed
     @State private var scrollDebounceWorkItem: DispatchWorkItem? = nil // Debounce scroll for rapid message additions
@@ -168,6 +169,11 @@ struct ChattingScreen: View {
         .fullScreenCover(isPresented: $showWhatsAppImagePicker) {
             WhatsAppLikeImagePicker(maxSelection: 30) { selectedAssets, caption in
                 handleImagePickerResult(selectedAssets: selectedAssets, caption: caption)
+            }
+        }
+        .fullScreenCover(isPresented: $showWhatsAppVideoPicker) {
+            WhatsAppLikeVideoPicker(maxSelection: 5) { selectedAssets, caption in
+                handleVideoPickerResult(selectedAssets: selectedAssets, caption: caption)
             }
         }
         .onChange(of: showCameraView) { isPresented in
@@ -1082,7 +1088,7 @@ struct ChattingScreen: View {
                     
                     // Video button
                     Button(action: {
-                        // TODO: Open video picker
+                        handleVideoButtonClick()
                     }) {
                         VStack(spacing: 5) {
                             Image("videopng")
@@ -2159,6 +2165,57 @@ struct ChattingScreen: View {
         }
     }
     
+    // MARK: - Video Button Handler (matching Android videoLyt.setOnClickListener)
+    private func handleVideoButtonClick() {
+        print("VideoUpload: === VIDEO BUTTON CLICKED (Main) ===")
+        
+        // Light haptic feedback (Android-style tap vibration)
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Hide keyboard and focus message box (matching Android hideKeyboardAndFocusMessageBox)
+        isMessageFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        
+        // Show emoji button (matching Android binding.emoji.setVisibility(View.VISIBLE))
+        // In SwiftUI, emoji button visibility is controlled by showEmojiPicker state
+        
+        // Set message box hint to "Message on Ec" (matching Android)
+        // In SwiftUI, placeholder is set in TextField, but we can update it if needed
+        
+        // Set send button to mic icon (matching Android binding.send.setImageResource(R.drawable.mike))
+        // This is handled automatically by UI when messageText is empty and selectedAssetIds is empty
+        
+        // Hide multi-select counter (matching Android binding.multiSelectSmallCounterText.setVisibility(View.GONE))
+        selectedAssetIds.removeAll()
+        selectedCount = 0
+        
+        // Hide gallery picker if open (matching Android hideGalleryRecentView)
+        if showGalleryPicker {
+            withAnimation {
+                showGalleryPicker = false
+            }
+        }
+        
+        // Hide emoji picker if open
+        if showEmojiPicker {
+            withAnimation {
+                showEmojiPicker = false
+            }
+        }
+        
+        // Launch WhatsApp-like video picker (matching Android WhatsAppLikeVideoPicker)
+        // Note: Android uses GlobalPermissionPopup.handleVideoClickWithLimitedAccess first
+        // For iOS, we'll request permission directly in the picker
+        print("VideoUpload: === LAUNCHING WhatsAppLikeVideoPicker ===")
+        print("VideoUpload: PICK_VIDEO_REQUEST_CODE: VideoPicker")
+        print("VideoUpload: Current selectedAssetIds size: \(selectedAssetIds.count)")
+        
+        DispatchQueue.main.async {
+            showWhatsAppVideoPicker = true
+        }
+    }
+    
     // MARK: - Handle Image Picker Result
     private func handleImagePickerResult(selectedAssets: [PHAsset], caption: String) {
         print("ImageUpload: === IMAGE PICKER RESULT RECEIVED ===")
@@ -2178,6 +2235,29 @@ struct ChattingScreen: View {
             showMultiSelectHeader = true
             
             // TODO: Show full-screen dialog for multi-image preview (matching Android setupMultiImagePreviewWithData)
+            // For now, we'll just update the UI to show the selected count
+        }
+    }
+    
+    // MARK: - Handle Video Picker Result
+    private func handleVideoPickerResult(selectedAssets: [PHAsset], caption: String) {
+        print("VideoUpload: === VIDEO PICKER RESULT RECEIVED ===")
+        print("VideoUpload: Selected assets count: \(selectedAssets.count)")
+        print("VideoUpload: Caption: '\(caption)'")
+        
+        // Update selected assets
+        selectedAssetIds = Set(selectedAssets.map { $0.localIdentifier })
+        selectedCount = selectedAssets.count
+        
+        // TODO: Process selected videos and upload them
+        // This should match Android's onActivityResult handling for PICK_VIDEO_REQUEST_CODE
+        // For now, we just update the UI state
+        
+        if !selectedAssets.isEmpty {
+            // Show multi-select counter
+            showMultiSelectHeader = true
+            
+            // TODO: Show full-screen dialog for multi-video preview (matching Android)
             // For now, we'll just update the UI to show the selected count
         }
     }
