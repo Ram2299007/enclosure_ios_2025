@@ -25,6 +25,7 @@ struct ChattingScreen: View {
     @State private var showCameraView: Bool = false
     @State private var wasGalleryPickerOpenBeforeCamera: Bool = false
     @State private var showMenu: Bool = false
+    @State private var showWhatsAppImagePicker: Bool = false
     @State private var showSearch: Bool = false
     @State private var searchText: String = ""
     @State private var showMultiSelectHeader: Bool = false
@@ -163,6 +164,11 @@ struct ChattingScreen: View {
         .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showCameraView) {
             CameraGalleryView()
+        }
+        .fullScreenCover(isPresented: $showWhatsAppImagePicker) {
+            WhatsAppLikeImagePicker(maxSelection: 30) { selectedAssets, caption in
+                handleImagePickerResult(selectedAssets: selectedAssets, caption: caption)
+            }
         }
         .onChange(of: showCameraView) { isPresented in
             // When camera view is dismissed, restore gallery picker if it was open before
@@ -1051,7 +1057,7 @@ struct ChattingScreen: View {
                     
                     // Photo button
                     Button(action: {
-                        // TODO: Open photo gallery
+                        handlePhotoButtonClick()
                     }) {
                         VStack(spacing: 5) {
                             Image("gallery")
@@ -2101,6 +2107,79 @@ struct ChattingScreen: View {
         // Request focus on message box (show keyboard)
         // In SwiftUI, we can use @FocusState to manage focus
         // TODO: Add @FocusState for message box focus management
+    }
+    
+    // MARK: - Photo Button Handler (matching Android galleryLyt.setOnClickListener)
+    private func handlePhotoButtonClick() {
+        print("ImageUpload: === GALLERY BUTTON CLICKED (Main) ===")
+        
+        // Light haptic feedback (Android-style tap vibration)
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Hide keyboard and focus message box (matching Android hideKeyboardAndFocusMessageBox)
+        isMessageFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        
+        // Show emoji button (matching Android binding.emoji.setVisibility(View.VISIBLE))
+        // In SwiftUI, emoji button visibility is controlled by showEmojiPicker state
+        // We don't need to explicitly show it here as it's part of the UI
+        
+        // Set message box hint to "Message on Ec" (matching Android)
+        // In SwiftUI, placeholder is set in TextField, but we can update it if needed
+        
+        // Set send button to mic icon (matching Android binding.send.setImageResource(R.drawable.mike))
+        // This is handled automatically by UI when messageText is empty and selectedAssetIds is empty
+        
+        // Hide multi-select counter (matching Android binding.multiSelectSmallCounterText.setVisibility(View.GONE))
+        selectedAssetIds.removeAll()
+        selectedCount = 0
+        
+        // Hide gallery picker if open
+        if showGalleryPicker {
+            withAnimation {
+                showGalleryPicker = false
+            }
+        }
+        
+        // Hide emoji picker if open
+        if showEmojiPicker {
+            withAnimation {
+                showEmojiPicker = false
+            }
+        }
+        
+        // Launch WhatsApp-like image picker (matching Android WhatsAppLikeImagePicker)
+        print("ImageUpload: === LAUNCHING WhatsAppLikeImagePicker ===")
+        print("ImageUpload: PICK_IMAGE_REQUEST_CODE: PhotoPicker")
+        print("ImageUpload: Current selectedAssetIds size: \(selectedAssetIds.count)")
+        
+        DispatchQueue.main.async {
+            showWhatsAppImagePicker = true
+        }
+    }
+    
+    // MARK: - Handle Image Picker Result
+    private func handleImagePickerResult(selectedAssets: [PHAsset], caption: String) {
+        print("ImageUpload: === IMAGE PICKER RESULT RECEIVED ===")
+        print("ImageUpload: Selected assets count: \(selectedAssets.count)")
+        print("ImageUpload: Caption: '\(caption)'")
+        
+        // Update selected assets
+        selectedAssetIds = Set(selectedAssets.map { $0.localIdentifier })
+        selectedCount = selectedAssets.count
+        
+        // TODO: Process selected images and upload them
+        // This should match Android's onActivityResult handling for PICK_IMAGE_REQUEST_CODE
+        // For now, we just update the UI state
+        
+        if !selectedAssets.isEmpty {
+            // Show multi-select counter
+            showMultiSelectHeader = true
+            
+            // TODO: Show full-screen dialog for multi-image preview (matching Android setupMultiImagePreviewWithData)
+            // For now, we'll just update the UI to show the selected count
+        }
     }
     
     // MARK: - Camera Button Handler
