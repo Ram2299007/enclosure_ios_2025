@@ -86,9 +86,6 @@ struct ChattingScreen: View {
     @State private var filteredEmojis: [EmojiData] = []
     @State private var isLoadingEmojis: Bool = false
     @State private var emojiSearchText: String = ""
-    @State private var isEmojiSearchFocused: Bool = false
-    @State private var showEmojiSearchTop: Bool = false
-    @State private var showEmojiSearchBottom: Bool = true
     @State private var showEmojiLeftArrow: Bool = false
     @State private var isEmojiLayoutHorizontal: Bool = false
     @State private var isSyncingEmojiText: Bool = false
@@ -1059,91 +1056,111 @@ struct ChattingScreen: View {
         )
     }
     
-    // MARK: - Emoji Picker View
+    // MARK: - Emoji Picker View (matching Android activity_personalmsg_limit_msg.xml)
     private var emojiPickerView: some View {
         VStack(spacing: 0) {
-            // Emoji Search Box - Top (shown when focused)
-            if showEmojiSearchTop {
-                HStack(spacing: 0) {
-                    // Left arrow (shown when search is focused)
-                    if showEmojiLeftArrow {
-                        Button(action: {
-                            // Hide search and change back to vertical layout
-                            withAnimation {
-                                isEmojiSearchFieldFocused = false
-                                showEmojiLeftArrow = false
-                                isEmojiLayoutHorizontal = false
-                                showEmojiSearchTop = false
-                                showEmojiSearchBottom = true
-                            }
-                        }) {
-                            ZStack {
-                                Circle()
-                                    .fill(Color("circlebtnhover").opacity(0.1))
-                                    .frame(width: 40, height: 40)
-                                
-                                Image("leftvector")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 25, height: 18)
-                                    .foregroundColor(Color("TextColor"))
-                            }
+            // Emoji Search Container - Top (50dp height, always visible, matching emojiSearchContainerTop)
+            // android:layout_marginHorizontal="8dp"
+            HStack(spacing: 0) {
+                // Left arrow (shown when search is focused, matching emojiLeftArrow)
+                // android:layout_width="40dp" android:layout_height="40dp"
+                if showEmojiLeftArrow {
+                    Button(action: {
+                        // Hide keyboard and change back to vertical/grid layout
+                        print("🟡 [EMOJI_PICKER] Back arrow clicked - hiding keyboard and switching to grid")
+                        withAnimation {
+                            isEmojiSearchFieldFocused = false
+                            showEmojiLeftArrow = false
+                            isEmojiLayoutHorizontal = false
                         }
-                        .padding(.leading, 8)
+                    }) {
+                        ZStack {
+                            Circle()
+                                .fill(Color("circlebtnhover").opacity(0.1))
+                                .frame(width: 40, height: 40)
+                            
+                            Image("leftvector")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 25, height: 18)
+                                .foregroundColor(Color("TextColor"))
+                        }
                     }
-                    
-                    TextField("Search emojis...", text: $emojiSearchText)
+                    // No extra padding - arrow is at container edge
+                }
+                
+                // Top search box (matching emojiSearchBox, layout_weight="1")
+                // android:layout_marginStart="8dp" android:layout_marginEnd="8dp"
+                // android:paddingStart="12dp" android:paddingEnd="12dp"
+                ZStack(alignment: .leading) {
+                    if emojiSearchText.isEmpty {
+                        Text("Search emojis...")
+                            .font(.custom("Inter18pt-Regular", size: 14))
+                            .foregroundColor(Color("chtbtncolor"))
+                            .padding(.leading, showEmojiLeftArrow ? 8 + 12 : 12) // marginStart(8dp) + paddingStart(12dp)
+                            .padding(.trailing, 8 + 12) // marginEnd(8dp) + paddingEnd(12dp)
+                    }
+                    TextField("", text: $emojiSearchText)
                         .font(.custom("Inter18pt-Regular", size: 14))
                         .foregroundColor(Color("black_white_cross"))
-                        .padding(.horizontal, 12)
-                        .frame(height: 40)
-                        .padding(.horizontal, 8)
+                        .padding(.leading, 12) // android:paddingStart="12dp"
+                        .padding(.trailing, 12) // android:paddingEnd="12dp"
+                        .frame(height: 40) // android:layout_height="40dp"
+                        .padding(.leading, showEmojiLeftArrow ? 8 : 0) // android:layout_marginStart="8dp" (only when arrow visible)
+                        .padding(.trailing, 8) // android:layout_marginEnd="8dp"
                         .focused($isEmojiSearchFieldFocused)
                         .onChange(of: emojiSearchText) { newValue in
                             handleEmojiSearchTextChanged(newValue)
                         }
                         .onTapGesture {
-                            // When tapped, show top search, hide bottom, show arrow, change to horizontal
-                            withAnimation {
-                                showEmojiSearchTop = true
-                                showEmojiSearchBottom = false
-                                showEmojiLeftArrow = true
-                                isEmojiLayoutHorizontal = true
-                            }
+                            // When tapped, immediately show arrow and change to horizontal layout
+                            print("🟡 [EMOJI_PICKER] Search field tapped - showing horizontal layout and keyboard")
+                            // Immediately switch to horizontal layout
+                            showEmojiLeftArrow = true
+                            isEmojiLayoutHorizontal = true
+                            
                             // Request focus and open keyboard
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                isEmojiSearchFieldFocused = true
+                            DispatchQueue.main.async {
+                                self.isEmojiSearchFieldFocused = true
                             }
                         }
                 }
-                .frame(height: 50)
-                .padding(.horizontal, 8)
+                .frame(maxWidth: .infinity, alignment: .leading) // layout_weight="1"
             }
+            .frame(height: 50) // android:layout_height="50dp"
+            .padding(.horizontal, 8) // android:layout_marginHorizontal="8dp"
             
             // Emoji RecyclerView - height="250dp"
             if isLoadingEmojis {
                 ProgressView()
                     .frame(height: 250)
             } else {
-                ScrollView(isEmojiLayoutHorizontal ? .horizontal : .vertical, showsIndicators: false) {
-                    if isEmojiLayoutHorizontal {
-                        // Horizontal layout (when searching)
-                        LazyHGrid(rows: [GridItem(.adaptive(minimum: 40))], spacing: 8) {
-                            ForEach(filteredEmojis, id: \.codePoint) { emoji in
-                                Button(action: {
-                                    // Insert emoji into message text
-                                    messageText += emoji.character
-                                }) {
-                                    Text(emoji.character)
-                                        .font(.system(size: 30))
-                                        .frame(width: 40, height: 40)
+                if isEmojiLayoutHorizontal {
+                    // Horizontal layout (when searching) - single row, no vertical spacing
+                    GeometryReader { geometry in
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(alignment: .center, spacing: 8) {
+                                ForEach(filteredEmojis, id: \.codePoint) { emoji in
+                                    Button(action: {
+                                        // Insert emoji into message text
+                                        messageText += emoji.character
+                                    }) {
+                                        Text(emoji.character)
+                                            .font(.system(size: 30))
+                                            .frame(width: 40, height: 40)
+                                    }
                                 }
                             }
+                            .padding(.horizontal, 8)
+                            .frame(height: 40) // Exact height to match emoji row
                         }
-                        .padding(8)
-                    } else {
-                        // Vertical layout (default)
+                        .frame(height: 40) // Exact height to match emoji row
+                    }
+                    .frame(height: 40) // Exact height to match emoji row
+                } else {
+                    // Vertical/Grid layout (default)
+                    ScrollView(.vertical, showsIndicators: false) {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 40))], spacing: 8) {
                             ForEach(filteredEmojis, id: \.codePoint) { emoji in
                                 Button(action: {
@@ -1158,56 +1175,23 @@ struct ChattingScreen: View {
                         }
                         .padding(8)
                     }
+                    .frame(height: 250)
                 }
-                .frame(height: 250)
-            }
-            
-            // Emoji Search Box - Bottom (shown when not focused)
-            if showEmojiSearchBottom {
-                HStack(spacing: 0) {
-                    TextField("Search emojis...", text: $emojiSearchText)
-                        .font(.custom("Inter18pt-Regular", size: 14))
-                        .foregroundColor(Color("black_white_cross"))
-                        .padding(.horizontal, 12)
-                        .frame(height: 40)
-                        .padding(.horizontal, 8)
-                        .onChange(of: emojiSearchText) { newValue in
-                            handleEmojiSearchTextChanged(newValue)
-                        }
-                        .onTapGesture {
-                            // When tapped, show top search, hide bottom, show arrow, change to horizontal
-                            withAnimation {
-                                showEmojiSearchTop = true
-                                showEmojiSearchBottom = false
-                                showEmojiLeftArrow = true
-                                isEmojiLayoutHorizontal = true
-                            }
-                            // Request focus and open keyboard
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                isEmojiSearchFieldFocused = true
-                            }
-                        }
-                }
-                .frame(height: 50)
-                .padding(.horizontal, 8)
             }
         }
         .onChange(of: isEmojiSearchFieldFocused) { hasFocus in
             if hasFocus {
-                // Keep search at top, show left arrow, change to horizontal layout
-                withAnimation {
-                    showEmojiSearchTop = true
-                    showEmojiSearchBottom = false
-                    showEmojiLeftArrow = true
-                    isEmojiLayoutHorizontal = true
-                }
+                // Show left arrow and change to horizontal layout when search gets focus
+                print("🟡 [EMOJI_PICKER] Search field focused - showing horizontal layout")
+                // Immediately switch to horizontal layout (no animation delay)
+                showEmojiLeftArrow = true
+                isEmojiLayoutHorizontal = true
             } else {
-                // Hide left arrow and change back to vertical layout when search box loses focus
+                // Hide left arrow and change back to vertical/grid layout when search loses focus
+                print("🟡 [EMOJI_PICKER] Search field lost focus - showing grid layout")
                 withAnimation {
                     showEmojiLeftArrow = false
                     isEmojiLayoutHorizontal = false
-                    showEmojiSearchTop = false
-                    showEmojiSearchBottom = true
                 }
             }
         }
@@ -1599,8 +1583,6 @@ struct ChattingScreen: View {
                 showEmojiPicker = false
                 // Reset emoji search state
                 emojiSearchText = ""
-                showEmojiSearchTop = false
-                showEmojiSearchBottom = true
                 showEmojiLeftArrow = false
                 isEmojiLayoutHorizontal = false
                 isEmojiSearchFieldFocused = false
