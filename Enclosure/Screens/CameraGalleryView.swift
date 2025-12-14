@@ -28,6 +28,9 @@ struct CameraGalleryView: View {
     @State private var isPressed: Bool = false
     @State private var showMultiImagePreview: Bool = false
     @State private var multiImagePreviewCaption: String = ""
+    @State private var showMultiVideoPreview: Bool = false
+    @State private var multiVideoPreviewCaption: String = ""
+    @State private var videoAssets: [PHAsset] = []
     private let imageManager = PHCachingImageManager()
     private let maxBottomSheetHeight: CGFloat = 620 // Full height (matching Android height="620dp")
     private let peekHeight: CGFloat = 250 // Increased peek height to show partial row naturally
@@ -160,6 +163,23 @@ struct CameraGalleryView: View {
                 },
                 onDismiss: {
                     showMultiImagePreview = false
+                }
+            )
+        }
+        .fullScreenCover(isPresented: $showMultiVideoPreview, onDismiss: {
+            // Reset caption when dialog is dismissed
+            multiVideoPreviewCaption = ""
+        }) {
+            MultiVideoPreviewDialog(
+                selectedAssetIds: $selectedAssetIds,
+                videoAssets: videoAssets,
+                imageManager: imageManager,
+                caption: $multiVideoPreviewCaption,
+                onSend: { caption in
+                    handleMultiVideoSend(caption: caption)
+                },
+                onDismiss: {
+                    showMultiVideoPreview = false
                 }
             )
         }
@@ -594,10 +614,130 @@ struct CameraGalleryView: View {
         timer?.invalidate()
         cameraManager.stopVideoRecording { url in
             if let url = url {
-                // Handle recorded video
-                print("Video recorded: \(url)")
+                // Handle recorded video - save to photo library and show preview
+                print("CameraGalleryView: Video recorded: \(url)")
+                saveVideoToLibrary(url: url)
             }
         }
+    }
+    
+    private func saveVideoToLibrary(url: URL) {
+        // Check current authorization status
+        let currentStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        
+        if currentStatus == .notDetermined {
+            PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
+                if status == .authorized || status == .limited {
+                    self.performSaveVideo(url: url)
+                } else {
+                    print("CameraGalleryView: Photo library permission denied for video")
+                }
+            }
+        } else if currentStatus == .authorized || currentStatus == .limited {
+            performSaveVideo(url: url)
+        } else {
+            print("CameraGalleryView: Photo library permission not available for video")
+        }
+    }
+    
+    private func performSaveVideo(url: URL) {
+        var placeholder: PHObjectPlaceholder?
+        
+        PHPhotoLibrary.shared().performChanges({
+            let request = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+            placeholder = request?.placeholderForCreatedAsset
+        }) { success, error in
+            if let error = error {
+                print("CameraGalleryView: Error saving video: \(error.localizedDescription)")
+                return
+            }
+            
+            guard success, let placeholderId = placeholder?.localIdentifier else {
+                print("CameraGalleryView: Failed to save video or get placeholder")
+                return
+            }
+            
+            // Wait a moment for the asset to be fully created, then fetch using placeholder ID
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [placeholderId], options: nil)
+                
+                if let newAsset = fetchResult.firstObject {
+                    DispatchQueue.main.async {
+                        print("CameraGalleryView: Video saved successfully, asset ID: \(newAsset.localIdentifier)")
+                        
+                        // Add to videoAssets if not already there
+                        if !self.videoAssets.contains(where: { $0.localIdentifier == newAsset.localIdentifier }) {
+                            self.videoAssets.insert(newAsset, at: 0) // Insert at beginning
+                            print("CameraGalleryView: Added video asset to videoAssets, count: \(self.videoAssets.count)")
+                        }
+                        
+                        // Select the recorded video
+                        self.selectedAssetIds = [newAsset.localIdentifier]
+                        print("CameraGalleryView: Selected video asset ID: \(newAsset.localIdentifier)")
+                        
+                        // Set caption from CameraGalleryView
+                        self.multiVideoPreviewCaption = self.captionText
+                        print("CameraGalleryView: Caption set: '\(self.multiVideoPreviewCaption)'")
+                        
+                        // Show preview dialog
+                        print("CameraGalleryView: Showing video preview dialog...")
+                        self.showMultiVideoPreview = true
+                    }
+                } else {
+                    print("CameraGalleryView: Could not fetch saved video asset with placeholder ID: \(placeholderId)")
+                    // Try fetching by creation date as fallback
+                    let fetchOptions = PHFetchOptions()
+                    fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+                    fetchOptions.fetchLimit = 1
+                    fetchOptions.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.video.rawValue)
+                    
+                    let recentAssets = PHAsset.fetchAssets(with: fetchOptions)
+                    if let recentAsset = recentAssets.firstObject {
+                        DispatchQueue.main.async {
+                            print("CameraGalleryView: Found video asset by creation date, ID: \(recentAsset.localIdentifier)")
+                            
+                            if !self.videoAssets.contains(where: { $0.localIdentifier == recentAsset.localIdentifier }) {
+                                self.videoAssets.insert(recentAsset, at: 0)
+                            }
+                            
+                            self.selectedAssetIds = [recentAsset.localIdentifier]
+                            self.multiVideoPreviewCaption = self.captionText
+                            self.showMultiVideoPreview = true
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Handle Multi-Video Send (matching Android upload logic)
+    private func handleMultiVideoSend(caption: String) {
+        print("CameraGalleryView: === MULTI-VIDEO SEND ===")
+        print("CameraGalleryView: Selected videos count: \(selectedAssetIds.count)")
+        print("CameraGalleryView: Caption: '\(caption)'")
+        
+        // Get selected assets from videoAssets
+        let selectedAssets = videoAssets.filter { selectedAssetIds.contains($0.localIdentifier) }
+        
+        guard !selectedAssets.isEmpty else {
+            print("CameraGalleryView: No video assets selected, returning")
+            return
+        }
+        
+        // Close the preview dialog
+        showMultiVideoPreview = false
+        
+        // Clear selected assets after sending
+        selectedAssetIds.removeAll()
+        captionText = ""
+        
+        // TODO: Process and upload selected videos with caption
+        // This should match Android's upload logic for multi-video messages
+        // For now, we'll just log the action
+        print("CameraGalleryView: Would upload \(selectedAssets.count) videos with caption: '\(caption)'")
+        
+        // TODO: Implement actual upload logic using MessageUploadService or similar
+        // Similar to how single videos are uploaded
     }
     
     private func formatTime(_ time: TimeInterval) -> String {
@@ -744,6 +884,8 @@ class CameraManager: ObservableObject {
     private var currentCameraPosition: AVCaptureDevice.Position = .back
     private var isFlashOn = false
     private var photoCaptureDelegate: PhotoCaptureDelegate? // Retain delegate until capture completes
+    private var videoRecordingDelegate: VideoRecordingDelegate? // Retain delegate until recording completes
+    var videoRecordingCompletion: ((URL?) -> Void)? // Callback for video recording completion
     
     func setupCamera(isBackCamera: Bool) {
         currentCameraPosition = isBackCamera ? .back : .front
@@ -880,15 +1022,49 @@ class CameraManager: ObservableObject {
     }
     
     func startVideoRecording() {
-        guard let videoOutput = videoOutput else { return }
+        // Add video output if not already added
+        if self.videoOutput == nil {
+            guard let session = captureSession else {
+                print("CameraManager: ERROR - captureSession is nil")
+                return
+            }
+            
+            let videoOut = AVCaptureMovieFileOutput()
+            session.beginConfiguration()
+            if session.canAddOutput(videoOut) {
+                session.addOutput(videoOut)
+                self.videoOutput = videoOut
+                print("CameraManager: Video output added successfully")
+            } else {
+                print("CameraManager: ERROR - Cannot add video output")
+                session.commitConfiguration()
+                return
+            }
+            session.commitConfiguration()
+        }
+        
+        guard let videoOutput = videoOutput else {
+            print("CameraManager: ERROR - videoOutput is nil after setup")
+            return
+        }
         
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("video_\(UUID().uuidString).mov")
-        videoOutput.startRecording(to: url, recordingDelegate: VideoRecordingDelegate())
+        
+        // Create and retain delegate
+        let delegate = VideoRecordingDelegate { [weak self] url in
+            self?.videoRecordingDelegate = nil
+            self?.videoRecordingCompletion?(url)
+        }
+        videoRecordingDelegate = delegate
+        
+        videoOutput.startRecording(to: url, recordingDelegate: delegate)
+        print("CameraManager: Video recording started")
     }
     
     func stopVideoRecording(completion: @escaping (URL?) -> Void) {
+        videoRecordingCompletion = completion
         videoOutput?.stopRecording()
-        // Completion handled in delegate
+        print("CameraManager: Video recording stopped")
     }
     
     func stopSession() {
@@ -1117,9 +1293,26 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
 
 // MARK: - Video Recording Delegate
 class VideoRecordingDelegate: NSObject, AVCaptureFileOutputRecordingDelegate {
+    private let completion: (URL?) -> Void
+    
+    init(completion: @escaping (URL?) -> Void) {
+        self.completion = completion
+        super.init()
+    }
+    
     func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
-        // Handle video recording completion
-        print("Video saved to: \(outputFileURL)")
+        if let error = error {
+            print("VideoRecordingDelegate: ERROR - \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                self.completion(nil)
+            }
+            return
+        }
+        
+        print("VideoRecordingDelegate: Video saved to: \(outputFileURL)")
+        DispatchQueue.main.async {
+            self.completion(outputFileURL)
+        }
     }
 }
 
