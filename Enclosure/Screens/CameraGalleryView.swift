@@ -26,6 +26,8 @@ struct CameraGalleryView: View {
     @State private var isBottomSheetExpanded = false
     @State private var dragOffset: CGFloat = 0
     @State private var isPressed: Bool = false
+    @State private var showMultiImagePreview: Bool = false
+    @State private var multiImagePreviewCaption: String = ""
     private let imageManager = PHCachingImageManager()
     private let maxBottomSheetHeight: CGFloat = 620 // Full height (matching Android height="620dp")
     private let peekHeight: CGFloat = 250 // Increased peek height to show partial row naturally
@@ -143,6 +145,23 @@ struct CameraGalleryView: View {
         .onDisappear {
             cameraManager.stopSession()
             timer?.invalidate()
+        }
+        .fullScreenCover(isPresented: $showMultiImagePreview, onDismiss: {
+            // Reset caption when dialog is dismissed
+            multiImagePreviewCaption = ""
+        }) {
+            MultiImagePreviewDialog(
+                selectedAssetIds: $selectedAssetIds,
+                photoAssets: photoAssets,
+                imageManager: imageManager,
+                caption: $multiImagePreviewCaption,
+                onSend: { caption in
+                    handleMultiImageSend(caption: caption)
+                },
+                onDismiss: {
+                    showMultiImagePreview = false
+                }
+            )
         }
     }
     
@@ -488,9 +507,52 @@ struct CameraGalleryView: View {
     }
     
     private func handleSend() {
-        // Handle send action with selected assets and caption
-        print("Sending \(selectedAssetIds.count) items with caption: \(captionText)")
-        // TODO: Implement send logic
+        // Check if images are selected
+        guard !selectedAssetIds.isEmpty else { return }
+        
+        print("CameraGalleryView: === SEND BUTTON CLICKED ===")
+        print("CameraGalleryView: Selected images count: \(selectedAssetIds.count)")
+        print("CameraGalleryView: Caption: '\(captionText)'")
+        
+        // Light haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Set caption from CameraGalleryView
+        multiImagePreviewCaption = captionText
+        
+        // Show full-screen dialog for multi-image preview (matching Android setupMultiImagePreviewWithData)
+        showMultiImagePreview = true
+    }
+    
+    // MARK: - Handle Multi-Image Send (matching Android upload logic)
+    private func handleMultiImageSend(caption: String) {
+        print("CameraGalleryView: === MULTI-IMAGE SEND ===")
+        print("CameraGalleryView: Selected images count: \(selectedAssetIds.count)")
+        print("CameraGalleryView: Caption: '\(caption)'")
+        
+        // Get selected assets from photoAssets
+        let selectedAssets = photoAssets.filter { selectedAssetIds.contains($0.localIdentifier) }
+        
+        guard !selectedAssets.isEmpty else {
+            print("CameraGalleryView: No assets selected, returning")
+            return
+        }
+        
+        // Close the preview dialog
+        showMultiImagePreview = false
+        
+        // Clear selected assets after sending
+        selectedAssetIds.removeAll()
+        captionText = ""
+        
+        // TODO: Process and upload selected images with caption
+        // This should match Android's upload logic for multi-image messages
+        // For now, we'll just log the action
+        print("CameraGalleryView: Would upload \(selectedAssets.count) images with caption: '\(caption)'")
+        
+        // TODO: Implement actual upload logic using MessageUploadService or similar
+        // Similar to how single images are uploaded
     }
     
     private func requestCameraPermissionAndSetup() {

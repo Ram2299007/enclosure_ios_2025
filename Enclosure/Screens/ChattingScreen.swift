@@ -99,6 +99,7 @@ struct ChattingScreen: View {
     // Multi-image preview dialog state
     @State private var showMultiImagePreview: Bool = false
     @State private var multiImagePreviewCaption: String = ""
+    @State private var multiImagePreviewAssets: [PHAsset] = [] // Store selected assets from WhatsAppLikeImagePicker
     
     // Pagination constants (matching Android)
     private let PAGE_SIZE: UInt = 10
@@ -258,12 +259,13 @@ struct ChattingScreen: View {
             }
         }
         .fullScreenCover(isPresented: $showMultiImagePreview, onDismiss: {
-            // Reset caption when dialog is dismissed
+            // Reset caption and assets when dialog is dismissed
             multiImagePreviewCaption = ""
+            multiImagePreviewAssets = []
         }) {
             MultiImagePreviewDialog(
                 selectedAssetIds: $selectedAssetIds,
-                photoAssets: photoAssets,
+                photoAssets: multiImagePreviewAssets.isEmpty ? photoAssets : multiImagePreviewAssets,
                 imageManager: imageManager,
                 caption: $multiImagePreviewCaption,
                 onSend: { caption in
@@ -2589,18 +2591,20 @@ struct ChattingScreen: View {
         print("ImageUpload: Selected assets count: \(selectedAssets.count)")
         print("ImageUpload: Caption: '\(caption)'")
         
+        guard !selectedAssets.isEmpty else { return }
+        
+        // Store selected assets for preview dialog
+        multiImagePreviewAssets = selectedAssets
+        
         // Update selected assets
         selectedAssetIds = Set(selectedAssets.map { $0.localIdentifier })
         selectedCount = selectedAssets.count
         
-        // TODO: Process selected images and upload them
-        // This should match Android's onActivityResult handling for PICK_IMAGE_REQUEST_CODE
-        // For now, we just update the UI state
+        // Set caption from WhatsAppLikeImagePicker
+        multiImagePreviewCaption = caption
         
-        if !selectedAssets.isEmpty {
-            // TODO: Show full-screen dialog for multi-image preview (matching Android setupMultiImagePreviewWithData)
-            // For now, we'll just update the UI to show the selected count
-        }
+        // Show full-screen dialog for multi-image preview (matching Android setupMultiImagePreviewWithData)
+        showMultiImagePreview = true
     }
     
     // MARK: - Handle Video Picker Result
