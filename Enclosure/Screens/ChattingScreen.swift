@@ -171,11 +171,6 @@ struct ChattingScreen: View {
                     }
                 }
                 
-                // Multi-select counter (hidden by default)
-                if showMultiSelectHeader && selectedCount > 0 {
-                    multiSelectCounterView
-                }
-                
                 // Bottom input area
                 bottomInputView
             }
@@ -335,12 +330,8 @@ struct ChattingScreen: View {
     // MARK: - Header View
     private var headerView: some View {
         VStack(spacing: 0) {
-            // Main header card
-            if !showMultiSelectHeader {
-                headerCardView
-            } else {
-                multiSelectHeaderView
-            }
+            // Main header card (always show normal header)
+            headerCardView
         }
     }
     
@@ -457,61 +448,6 @@ struct ChattingScreen: View {
             }
             .frame(height: 50)
             .background(Color("BackgroundColor"))
-        }
-    }
-    
-    private var multiSelectHeaderView: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                // Close button
-                Button(action: {
-                    withAnimation {
-                        showMultiSelectHeader = false
-                        selectedCount = 0
-                    }
-                }) {
-                    ZStack {
-                        Circle()
-                            .fill(Color("circlebtnhover").opacity(0.1))
-                            .frame(width: 40, height: 40)
-                        
-                        Image("crossimg")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 25, height: 18)
-                            .foregroundColor(Color("TextColor"))
-                    }
-                }
-                .padding(.leading, 20)
-                .padding(.trailing, 5)
-                
-                // Selected count text
-                Text("Selected \(selectedCount)")
-                    .font(.custom("Inter18pt-Medium", size: 16))
-                    .foregroundColor(Color("TextColor"))
-                    .padding(.leading, 21)
-                
-                Spacer()
-                
-                // Forward button
-                Button(action: {
-                    // TODO: Handle forward
-                }) {
-                    Text("forward")
-                        .font(.custom("Inter18pt-Regular", size: 10))
-                        .foregroundColor(Color("TextColor"))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color("dxForward"))
-                        )
-                }
-                .padding(.trailing, 10)
-            }
-            .frame(height: 50)
-            .background(Color("edittextBg"))
         }
     }
     
@@ -708,21 +644,6 @@ struct ChattingScreen: View {
                 }
             }
         }
-    }
-    
-    // MARK: - Multi-select Counter
-    private var multiSelectCounterView: some View {
-        Text("\(selectedCount)")
-            .font(.custom("Inter18pt-Bold", size: 12))
-            .foregroundColor(.white)
-            .frame(width: 24, height: 24)
-            .background(
-                Circle()
-                    .fill(Color("blue"))
-            )
-            .padding(.trailing, 15)
-            .padding(.bottom, 5)
-            .frame(maxWidth: .infinity, alignment: .trailing)
     }
     
     // MARK: - Date View (matching Android datelyt)
@@ -2677,9 +2598,6 @@ struct ChattingScreen: View {
         // For now, we just update the UI state
         
         if !selectedAssets.isEmpty {
-            // Show multi-select counter
-            showMultiSelectHeader = true
-            
             // TODO: Show full-screen dialog for multi-image preview (matching Android setupMultiImagePreviewWithData)
             // For now, we'll just update the UI to show the selected count
         }
@@ -2700,9 +2618,6 @@ struct ChattingScreen: View {
         // For now, we just update the UI state
         
         if !selectedAssets.isEmpty {
-            // Show multi-select counter
-            showMultiSelectHeader = true
-            
             // TODO: Show full-screen dialog for multi-video preview (matching Android)
             // For now, we'll just update the UI to show the selected count
         }
@@ -2765,9 +2680,7 @@ struct ChattingScreen: View {
         // For now, we just update the UI state
         
         if !selectedDocuments.isEmpty {
-            // Show multi-select counter
             selectedCount = selectedDocuments.count
-            showMultiSelectHeader = true
             
             // TODO: Process and upload selected documents
             // For now, we'll just update the UI to show the selected count
@@ -2838,9 +2751,7 @@ struct ChattingScreen: View {
         // For now, we just update the UI state
         
         if !contactInfos.isEmpty {
-            // Show multi-select counter
             selectedCount = contactInfos.count
-            showMultiSelectHeader = true
             
             // TODO: Process and upload selected contacts to Firebase
             // This should match Android's WhatsAppLikeContactPicker.uploadContactsToFirebase
@@ -3068,8 +2979,6 @@ struct ChattingScreen: View {
         }
         // Update selectedCount to match selectedAssetIds.count (matching Android binding.multiSelectSmallCounterText)
         selectedCount = selectedAssetIds.count
-        // Show/hide multi-select header based on selection
-        showMultiSelectHeader = selectedAssetIds.count > 0
     }
     
     // MARK: - Handle Multi-Image Send (matching Android upload logic)
@@ -3097,7 +3006,6 @@ struct ChattingScreen: View {
         // Clear selected assets after sending
         selectedAssetIds.removeAll()
         selectedCount = 0
-        showMultiSelectHeader = false
         
         // TODO: Process and upload selected images with caption
         // This should match Android's upload logic for multi-image messages
@@ -3627,6 +3535,7 @@ struct MultiImagePreviewDialog: View {
     @State private var currentIndex: Int = 0
     @State private var previewImages: [UIImage?] = []
     @State private var isLoading: Bool = true
+    @State private var keyboardHeight: CGFloat = 0
     @FocusState private var isCaptionFocused: Bool
     
     // Typography (match Android messageBox sizing prefs)
@@ -3688,27 +3597,9 @@ struct MultiImagePreviewDialog: View {
                     
                     Spacer()
                     
-                    // Send button
-                    Button(action: {
-                        // Light haptic feedback
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.impactOccurred()
-                        onSend(caption.trimmingCharacters(in: .whitespacesAndNewlines))
-                    }) {
-                        ZStack {
-                            Circle()
-                                .fill(Color(hex: Constant.themeColor))
-                                .frame(width: 40, height: 40)
-                            
-                            Image("baseline_keyboard_double_arrow_right_24")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 24, height: 24)
-                                .foregroundColor(.white)
-                        }
-                    }
-                    .padding(.trailing, 16)
+                    // Spacer to balance layout (send button is in bottom caption bar)
+                    Spacer()
+                        .frame(width: 40)
                 }
                 .frame(height: 60)
                 .background(Color.black.opacity(0.3))
@@ -3746,35 +3637,72 @@ struct MultiImagePreviewDialog: View {
                     }
                 }
                 
-                // Bottom caption input area (matching Android caption input)
-                VStack(spacing: 0) {
-                    // Caption input field
-                    HStack(alignment: .bottom, spacing: 0) {
-                        // Caption input field
+                // Bottom caption input area (matching WhatsAppLikeImagePicker captionBarView design)
+                HStack(spacing: 0) {
+                    // Caption input container (matching messageBox design from WhatsAppLikeImagePicker)
+                    HStack(spacing: 0) {
+                        // Message input field container - layout_weight="1"
                         VStack(alignment: .leading, spacing: 0) {
-                            TextField("Add a caption...", text: $caption, axis: .vertical)
+                            TextField("Add Caption", text: $caption, axis: .vertical)
                                 .font(messageInputFont)
                                 .foregroundColor(Color("black_white_cross"))
                                 .lineLimit(4)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.leading, 12)
-                                .padding(.trailing, 12)
-                                .padding(.top, 10)
-                                .padding(.bottom, 10)
-                                .background(Color("message_box_bg"))
-                                .cornerRadius(20)
+                                .frame(maxWidth: 180, alignment: .leading)
+                                .padding(.leading, 10) // start padding 10px
+                                .padding(.trailing, 20)
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                                .background(Color.clear)
                                 .focused($isCaptionFocused)
                         }
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(Color("edittextBg"))
+                    .frame(height: 50) // Match send button height (50dp)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(Color("circlebtnhover")) // match Android backgroundTint on message_box_bg
+                    )
+                    .padding(.leading, 10)
+                    .padding(.trailing, 5)
+                    
+                    // Send button group (matching sendGrpLyt from WhatsAppLikeImagePicker)
+                    VStack(spacing: 0) {
+                        Button(action: {
+                            // Light haptic feedback
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.impactOccurred()
+                            onSend(caption.trimmingCharacters(in: .whitespacesAndNewlines))
+                        }) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(hex: Constant.themeColor))
+                                    .frame(width: 50, height: 50)
+                                
+                                // Send icon (keyboard double arrow right) - same as Android
+                                Image("baseline_keyboard_double_arrow_right_24")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 26, height: 26)
+                                    .foregroundColor(.white)
+                                    .padding(.top, 4)
+                                    .padding(.bottom, 8)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 5)
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, keyboardHeight > 0 ? keyboardHeight - 20 : 10)
+                .background(Color("edittextBg"))
             }
         }
         .onAppear {
             loadAllImages()
+            setupKeyboardObservers()
+        }
+        .onDisappear {
+            removeKeyboardObservers()
         }
         .gesture(
             DragGesture(minimumDistance: 0)
@@ -3785,6 +3713,30 @@ struct MultiImagePreviewDialog: View {
                     }
                 }
         )
+    }
+    
+    private func setupKeyboardObservers() {
+        NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillShowNotification,
+            object: nil,
+            queue: .main
+        ) { notification in
+            if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+                keyboardHeight = keyboardFrame.height
+            }
+        }
+        
+        NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillHideNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            keyboardHeight = 0
+        }
+    }
+    
+    private func removeKeyboardObservers() {
+        NotificationCenter.default.removeObserver(self)
     }
     
     private func loadAllImages() {
