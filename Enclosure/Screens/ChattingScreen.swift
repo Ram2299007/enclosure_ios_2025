@@ -3643,24 +3643,40 @@ struct MultiImagePreviewDialog: View {
                     HStack(spacing: 0) {
                         // Message input field container - layout_weight="1"
                         VStack(alignment: .leading, spacing: 0) {
-                            TextField("Add Caption", text: $caption, axis: .vertical)
-                                .font(messageInputFont)
-                                .foregroundColor(Color("black_white_cross"))
-                                .lineLimit(4)
-                                .frame(maxWidth: 180, alignment: .leading)
-                                .padding(.leading, 10) // start padding 10px
-                                .padding(.trailing, 20)
-                                .padding(.top, 5)
-                                .padding(.bottom, 5)
-                                .background(Color.clear)
-                                .focused($isCaptionFocused)
+                            ZStack(alignment: .leading) {
+                                // Placeholder text (matching Android textColorHint="#9EA6B9")
+                                if caption.isEmpty {
+                                    Text("Add Caption")
+                                        .font(.custom("Inter18pt-Medium", size: 17))
+                                        .foregroundColor(Color(hex: "#9EA6B9"))
+                                        .padding(.leading, 15)
+                                        .padding(.trailing, 20)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 5)
+                                }
+                                
+                                // TextField (matching Android EditText properties)
+                                TextField("", text: $caption, axis: .vertical)
+                                    .font(.custom("Inter18pt-Medium", size: 17)) // textSize="17sp", textFontWeight="500"
+                                    .foregroundColor(.white) // textColor="@color/white"
+                                    .lineLimit(4) // maxLines="4"
+                                    .lineSpacing(4) // lineHeight="21dp" (21 - 17 = 4dp spacing)
+                                    .frame(maxWidth: 180, alignment: .leading) // maxWidth="180dp"
+                                    .padding(.leading, 15) // paddingStart="15dp"
+                                    .padding(.trailing, 20) // paddingEnd="20dp"
+                                    .padding(.top, 5) // paddingTop="5dp"
+                                    .padding(.bottom, 5) // paddingBottom="5dp"
+                                    .background(Color.clear) // background="#00000000"
+                                    .focused($isCaptionFocused)
+                                    .accentColor(Color("black_white_crossEmoji")) // textColorHighlight
+                            }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .frame(height: 50) // Match send button height (50dp)
                     .background(
                         RoundedRectangle(cornerRadius: 20)
-                            .fill(Color("circlebtnhover")) // match Android backgroundTint on message_box_bg
+                            .fill(Color(hex: "#1B1C1C")) // Use specified color for caption message box
                     )
                     .padding(.leading, 10)
                     .padding(.trailing, 5)
@@ -3692,9 +3708,8 @@ struct MultiImagePreviewDialog: View {
                     }
                     .padding(.horizontal, 5)
                 }
-                .padding(.horizontal, 16)
                 .padding(.bottom, keyboardHeight > 0 ? keyboardHeight - 20 : 10)
-                .background(Color("edittextBg"))
+                .background(Color.black)
             }
         }
         .onAppear {
