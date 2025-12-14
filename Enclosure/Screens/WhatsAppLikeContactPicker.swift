@@ -360,6 +360,7 @@ struct WhatsAppLikeContactPicker: View {
         guard !selectedContactIds.isEmpty else { return }
         
         let selectedContacts = allContacts.filter { selectedContactIds.contains($0.id) }
+        // Pass contacts and caption to callback - the parent will show the preview dialog
         onContactsSelected(selectedContacts, captionText.trimmingCharacters(in: .whitespacesAndNewlines))
         dismiss()
     }

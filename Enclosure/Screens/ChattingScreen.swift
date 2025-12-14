@@ -106,6 +106,11 @@ struct ChattingScreen: View {
     @State private var multiDocumentPreviewCaption: String = ""
     @State private var multiDocumentPreviewURLs: [URL] = [] // Store selected document URLs
     
+    // Multi-contact preview dialog state
+    @State private var showMultiContactPreview: Bool = false
+    @State private var multiContactPreviewCaption: String = ""
+    @State private var multiContactPreviewContacts: [ContactPickerInfo] = [] // Store selected contacts
+    
     // Pagination constants (matching Android)
     private let PAGE_SIZE: UInt = 10
     private let LOAD_MORE_THROTTLE: TimeInterval = 0.5 // Throttle loadMore calls (500ms)
@@ -280,7 +285,13 @@ struct ChattingScreen: View {
             }
         }) {
             WhatsAppLikeContactPicker(maxSelection: 50) { (contacts: [ContactPickerInfo], caption: String) in
-                handleContactPickerResult(selectedContacts: contacts, caption: caption)
+                // Store contacts and caption for preview dialog
+                multiContactPreviewContacts = contacts
+                multiContactPreviewCaption = caption
+                // Show preview dialog after a delay to ensure picker is dismissed
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    showMultiContactPreview = true
+                }
             }
         }
         .fullScreenCover(isPresented: $showMultiImagePreview, onDismiss: {
@@ -324,6 +335,29 @@ struct ChattingScreen: View {
                 print("MultiDocumentPreviewDialog: Captured documents count: \(documentsToShow.count)")
                 print("MultiDocumentPreviewDialog: Captured documents: \(documentsToShow.map { $0.lastPathComponent })")
                 print("MultiDocumentPreviewDialog: Current state documents count: \(multiDocumentPreviewURLs.count)")
+            }
+        }
+        .fullScreenCover(isPresented: $showMultiContactPreview, onDismiss: {
+            // Reset caption and contacts when dialog is dismissed
+            multiContactPreviewCaption = ""
+            multiContactPreviewContacts = []
+        }) {
+            // IMPORTANT: Create a local copy to ensure we capture the current value
+            let contactsToShow = multiContactPreviewContacts
+            MultiContactPreviewDialog(
+                selectedContacts: contactsToShow,
+                caption: $multiContactPreviewCaption,
+                onSend: { caption in
+                    handleMultiContactSend(caption: caption)
+                },
+                onDismiss: {
+                    showMultiContactPreview = false
+                }
+            )
+            .onAppear {
+                print("MultiContactPreviewDialog: fullScreenCover onAppear")
+                print("MultiContactPreviewDialog: Captured contacts count: \(contactsToShow.count)")
+                print("MultiContactPreviewDialog: Current state contacts count: \(multiContactPreviewContacts.count)")
             }
         }
         .overlay(
@@ -2857,6 +2891,42 @@ struct ChattingScreen: View {
     }
     
     // MARK: - Handle Contact Picker Result
+    // MARK: - Handle Multi-Contact Send (matching Android upload logic)
+    private func handleMultiContactSend(caption: String) {
+        print("ContactUpload: === SENDING CONTACTS ===")
+        print("ContactUpload: Selected contacts count: \(multiContactPreviewContacts.count)")
+        print("ContactUpload: Caption: '\(caption)'")
+        
+        // Convert ContactPickerInfo to ContactInfo (matching existing structure)
+        let contactInfos: [ContactInfo] = multiContactPreviewContacts.map { pickerInfo in
+            ContactInfo(
+                name: pickerInfo.name,
+                phoneNumber: pickerInfo.phone ?? "",
+                email: pickerInfo.email
+            )
+        }
+        
+        // TODO: Process selected contacts and upload them
+        // This should match Android's onActivityResult handling for PICK_CONTACT_REQUEST_CODE
+        // For now, we just update the UI state
+        
+        if !contactInfos.isEmpty {
+            selectedCount = contactInfos.count
+            
+            // TODO: Process and upload selected contacts to Firebase
+            // This should match Android's WhatsAppLikeContactPicker.uploadContactsToFirebase
+            // For now, we'll just update the UI to show the selected count
+        }
+        
+        // Dismiss preview dialog
+        showMultiContactPreview = false
+        
+        // Clear selections
+        multiContactPreviewContacts = []
+        multiContactPreviewCaption = ""
+    }
+    
+    // MARK: - Handle Contact Picker Result (deprecated - now using preview dialog)
     private func handleContactPickerResult(selectedContacts: [ContactPickerInfo], caption: String) {
         print("ContactUpload: === CONTACT PICKER RESULT RECEIVED ===")
         print("ContactUpload: Selected contacts count: \(selectedContacts.count)")
