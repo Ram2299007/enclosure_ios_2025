@@ -333,7 +333,7 @@ struct ChattingScreen: View {
     private var headerView: some View {
         VStack(spacing: 0) {
             // Main header card (always show normal header)
-            headerCardView
+                headerCardView
         }
     }
     
@@ -884,8 +884,10 @@ struct ChattingScreen: View {
                             .fill(Color("message_box_bg"))
                     )
                     .padding(.horizontal, 5)
+                    .zIndex(1) // Ensure TextField area has higher z-index than gallery picker
                 }
                 .frame(maxWidth: .infinity) // layout_weight="1"
+                .contentShape(Rectangle()) // Ensure clear hit testing boundary
                 
                 // Send button (sendGrpLyt) - layout_gravity="center_vertical|bottom"
                 ZStack(alignment: .topTrailing) {
@@ -939,6 +941,9 @@ struct ChattingScreen: View {
                 .padding(.horizontal, 5)
             }
             .padding(2) // Inner horizontal container padding="2dp"
+            .contentShape(Rectangle()) // Clear boundary for message input area to prevent gesture interference
+            .background(Color("edittextBg")) // Ensure solid background to prevent visual overlap
+            .clipped() // Clip the message input area to prevent overflow
             
             // Emoji picker layout (emojiLyt) - below horizontal container
             if showEmojiPicker {
@@ -947,12 +952,14 @@ struct ChattingScreen: View {
             
             // Gallery picker layout (galleryRecentLyt) - below horizontal container
             if showGalleryPicker {
-                        galleryPickerView
-                            .onAppear {
-                                requestPhotosAndLoad()
-                            }
+                galleryPickerView
+                    .onAppear {
+                        requestPhotosAndLoad()
+                    }
+                    .zIndex(0) // Lower z-index than TextField area
             }
         }
+        .clipped() // Clip the entire message input container
     }
     
     private var replyLayoutView: some View {
@@ -1146,8 +1153,8 @@ struct ChattingScreen: View {
         VStack(spacing: 0) {
             // Gallery card view - height="300dp"
             VStack(spacing: 0) {
-                // Gallery RecyclerView
-                ScrollView {
+                // Gallery RecyclerView - wrapped in container to prevent gesture interference
+                ScrollView(.vertical, showsIndicators: false) {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 80))], spacing: 2) {
                         ForEach(photoAssets, id: \.localIdentifier) { asset in
                             GalleryAssetThumbnail(
@@ -1174,7 +1181,10 @@ struct ChattingScreen: View {
                     .padding(.horizontal, 10)
                     .padding(.bottom, 10)
                 }
-                .frame(height: 250)
+                .frame(height: 250, alignment: .top) // Strict frame alignment
+                .clipped()
+                .contentShape(Rectangle())
+                .compositingGroup() // Create a compositing group to prevent visual overflow
                 
                 // Bottom view with action buttons
                 HStack(spacing: 0) {
@@ -1312,7 +1322,11 @@ struct ChattingScreen: View {
                     .fill(Color("chattingMessageBox"))
             )
             .padding(2)
+            .clipped() // Ensure the entire container is clipped
         }
+        .contentShape(Rectangle())
+        .allowsHitTesting(true)
+        .clipped() // Additional clipping at the outer level to prevent overflow
     }
     
     // MARK: - Menu Overlay
