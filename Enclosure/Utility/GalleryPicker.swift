@@ -208,7 +208,7 @@ struct GalleryPicker: UIViewControllerRepresentable {
                 // Dismiss after a short delay to ensure binding is updated
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                     print("GalleryPicker: Dismissing picker")
-                    self.parent.presentationMode.wrappedValue.dismiss()
+                self.parent.presentationMode.wrappedValue.dismiss()
                 }
             }
         }

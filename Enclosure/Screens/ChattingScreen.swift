@@ -225,11 +225,11 @@ struct ChattingScreen: View {
             // Handle documents when picker is dismissed
             // Use a small delay to ensure sheet is fully dismissed before showing preview
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                if !selectedDocuments.isEmpty {
+            if !selectedDocuments.isEmpty {
                     let documentsToShow = selectedDocuments // Copy before clearing
                     handleDocumentPickerResult(selectedDocuments: documentsToShow)
-                    // Clear after handling to avoid re-processing
-                    selectedDocuments.removeAll()
+                // Clear after handling to avoid re-processing
+                selectedDocuments.removeAll()
                 }
             }
             // Restore gallery picker when document picker is dismissed (matching CameraGalleryView behavior)
@@ -249,9 +249,9 @@ struct ChattingScreen: View {
             // This onDismiss is just for cleanup
             // Clear selectedDocuments after a delay to avoid conflicts
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                if !selectedDocuments.isEmpty {
+            if !selectedDocuments.isEmpty {
                     print("GalleryPicker: Clearing selectedDocuments in onDismiss")
-                    selectedDocuments.removeAll()
+                selectedDocuments.removeAll()
                 }
             }
             // Restore gallery picker when unified gallery picker is dismissed (matching CameraGalleryView behavior)
@@ -285,12 +285,40 @@ struct ChattingScreen: View {
             }
         }) {
             WhatsAppLikeContactPicker(maxSelection: 50) { (contacts: [ContactPickerInfo], caption: String) in
-                // Store contacts and caption for preview dialog
-                multiContactPreviewContacts = contacts
-                multiContactPreviewCaption = caption
-                // Show preview dialog after a delay to ensure picker is dismissed
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    showMultiContactPreview = true
+                print("ContactUpload: === CONTACT PICKER CALLBACK RECEIVED ===")
+                print("ContactUpload: Selected contacts count: \(contacts.count)")
+                print("ContactUpload: Contacts: \(contacts.map { $0.name })")
+                
+                // Guard: Don't proceed if no contacts selected
+                guard !contacts.isEmpty else {
+                    print("ContactUpload: No contacts selected, skipping preview")
+                    return
+                }
+                
+                // Store contacts and caption for preview dialog on main thread
+                DispatchQueue.main.async {
+                    print("ContactUpload: Setting contacts on main thread, count: \(contacts.count)")
+                    self.multiContactPreviewContacts = contacts
+                    self.multiContactPreviewCaption = caption
+                    
+                    // Verify state was set correctly
+                    print("ContactUpload: State after setting - contacts count: \(self.multiContactPreviewContacts.count)")
+                    
+                    // Show preview dialog after a delay to ensure picker is dismissed and state is committed
+                    // Use a longer delay and verify contacts are still available
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        print("ContactUpload: After delay - contacts count: \(self.multiContactPreviewContacts.count)")
+                        print("ContactUpload: Contacts: \(self.multiContactPreviewContacts.map { $0.name })")
+                        
+                        // Double-check contacts are available before showing
+                        guard !self.multiContactPreviewContacts.isEmpty else {
+                            print("ContactUpload: ERROR - Contacts array is empty after delay, not showing preview")
+                            return
+                        }
+                        
+                        print("ContactUpload: Showing preview dialog with \(self.multiContactPreviewContacts.count) contacts")
+                        self.showMultiContactPreview = true
+                    }
                 }
             }
         }
@@ -342,10 +370,9 @@ struct ChattingScreen: View {
             multiContactPreviewCaption = ""
             multiContactPreviewContacts = []
         }) {
-            // IMPORTANT: Create a local copy to ensure we capture the current value
-            let contactsToShow = multiContactPreviewContacts
+            // IMPORTANT: Use current state value - SwiftUI will evaluate this when showMultiContactPreview becomes true
             MultiContactPreviewDialog(
-                selectedContacts: contactsToShow,
+                selectedContacts: multiContactPreviewContacts,
                 caption: $multiContactPreviewCaption,
                 onSend: { caption in
                     handleMultiContactSend(caption: caption)
@@ -356,8 +383,8 @@ struct ChattingScreen: View {
             )
             .onAppear {
                 print("MultiContactPreviewDialog: fullScreenCover onAppear")
-                print("MultiContactPreviewDialog: Captured contacts count: \(contactsToShow.count)")
                 print("MultiContactPreviewDialog: Current state contacts count: \(multiContactPreviewContacts.count)")
+                print("MultiContactPreviewDialog: Contacts: \(multiContactPreviewContacts.map { $0.name })")
             }
         }
         .overlay(
@@ -1040,10 +1067,10 @@ struct ChattingScreen: View {
             
             // Gallery picker layout (galleryRecentLyt) - below horizontal container
             if showGalleryPicker {
-                galleryPickerView
-                    .onAppear {
-                        requestPhotosAndLoad()
-                    }
+                        galleryPickerView
+                            .onAppear {
+                                requestPhotosAndLoad()
+                            }
                     .zIndex(0) // Lower z-index than TextField area
             }
         }
@@ -2836,7 +2863,7 @@ struct ChattingScreen: View {
         withAnimation {
             showGalleryPicker = false
         }
-        
+            
         // TODO: Process and upload selected documents with caption
         // This should match Android's upload logic for multi-document messages
         // For now, we'll just log the action
