@@ -15,9 +15,21 @@ struct DocumentPicker: UIViewControllerRepresentable {
     var allowsMultipleSelection: Bool = true
     
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        // Use UIDocumentPickerViewController for files/documents only
+        // Use UIDocumentPickerViewController for files/documents/photos/videos
         // Support all file types (matching Android Intent.ACTION_GET_CONTENT with "*/*")
         var contentTypes: [UTType] = [
+            // Images
+            .image,
+            .jpeg,
+            .png,
+            .gif,
+            .heic,
+            .heif,
+            // Videos
+            .movie,
+            .mpeg4Movie,
+            .quickTimeMovie,
+            .avi,
             // Documents
             .pdf,
             .text,
