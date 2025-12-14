@@ -437,12 +437,134 @@ struct CameraGalleryView: View {
     
     // MARK: - Helper Functions
     private func capturePhoto() {
+        print("CameraGalleryView: === CAPTURE PHOTO CALLED ===")
         cameraManager.capturePhoto { image in
             // Handle captured photo
             if let image = image {
-                // Save and process photo
-                print("Photo captured: \(image)")
+                print("CameraGalleryView: Photo captured successfully, size: \(image.size)")
+                // Save photo to photo library and get PHAsset
+                savePhotoToLibrary(image: image)
+            } else {
+                print("CameraGalleryView: ERROR - No image returned from capture")
             }
+        }
+    }
+    
+    private func savePhotoToLibrary(image: UIImage) {
+        // Check current authorization status
+        let currentStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        
+        if currentStatus == .notDetermined {
+            PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
+                if status == .authorized || status == .limited {
+                    self.performSavePhoto(image: image)
+                } else {
+                    print("CameraGalleryView: Photo library permission denied")
+                    // Show preview with UIImage directly if permission denied
+                    DispatchQueue.main.async {
+                        self.showPreviewWithImage(image: image)
+                    }
+                }
+            }
+        } else if currentStatus == .authorized || currentStatus == .limited {
+            performSavePhoto(image: image)
+        } else {
+            print("CameraGalleryView: Photo library permission not available")
+            // Show preview with UIImage directly if permission not available
+            DispatchQueue.main.async {
+                self.showPreviewWithImage(image: image)
+            }
+        }
+    }
+    
+    private func performSavePhoto(image: UIImage) {
+        var placeholder: PHObjectPlaceholder?
+        
+        PHPhotoLibrary.shared().performChanges({
+            let request = PHAssetChangeRequest.creationRequestForAsset(from: image)
+            placeholder = request.placeholderForCreatedAsset
+        }) { success, error in
+            if let error = error {
+                print("CameraGalleryView: Error saving photo: \(error.localizedDescription)")
+                // Show preview with UIImage directly if save fails
+                DispatchQueue.main.async {
+                    self.showPreviewWithImage(image: image)
+                }
+                return
+            }
+            
+            guard success, let placeholderId = placeholder?.localIdentifier else {
+                print("CameraGalleryView: Failed to save photo or get placeholder")
+                DispatchQueue.main.async {
+                    self.showPreviewWithImage(image: image)
+                }
+                return
+            }
+            
+            // Wait a moment for the asset to be fully created, then fetch using placeholder ID
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [placeholderId], options: nil)
+                
+                if let newAsset = fetchResult.firstObject {
+                    DispatchQueue.main.async {
+                        print("CameraGalleryView: Photo saved successfully, asset ID: \(newAsset.localIdentifier)")
+                        print("CameraGalleryView: Asset creation date: \(newAsset.creationDate?.description ?? "nil")")
+                        
+                        // Add to photoAssets if not already there
+                        if !self.photoAssets.contains(where: { $0.localIdentifier == newAsset.localIdentifier }) {
+                            self.photoAssets.insert(newAsset, at: 0) // Insert at beginning
+                            print("CameraGalleryView: Added asset to photoAssets, count: \(self.photoAssets.count)")
+                        }
+                        
+                        // Select the captured image
+                        self.selectedAssetIds = [newAsset.localIdentifier]
+                        print("CameraGalleryView: Selected asset ID: \(newAsset.localIdentifier)")
+                        
+                        // Set caption (empty initially)
+                        self.multiImagePreviewCaption = self.captionText
+                        print("CameraGalleryView: Caption set: '\(self.multiImagePreviewCaption)'")
+                        
+                        // Show preview dialog
+                        print("CameraGalleryView: Showing preview dialog...")
+                        self.showMultiImagePreview = true
+                    }
+                } else {
+                    print("CameraGalleryView: Could not fetch saved asset with placeholder ID: \(placeholderId)")
+                    // Try fetching by creation date as fallback
+                    let fetchOptions = PHFetchOptions()
+                    fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+                    fetchOptions.fetchLimit = 1
+                    
+                    let recentAssets = PHAsset.fetchAssets(with: fetchOptions)
+                    if let recentAsset = recentAssets.firstObject {
+                        DispatchQueue.main.async {
+                            print("CameraGalleryView: Found asset by creation date, ID: \(recentAsset.localIdentifier)")
+                            
+                            if !self.photoAssets.contains(where: { $0.localIdentifier == recentAsset.localIdentifier }) {
+                                self.photoAssets.insert(recentAsset, at: 0)
+                            }
+                            
+                            self.selectedAssetIds = [recentAsset.localIdentifier]
+                            self.multiImagePreviewCaption = self.captionText
+                            self.showMultiImagePreview = true
+                        }
+                    } else {
+                        print("CameraGalleryView: Could not find asset by creation date either")
+                        DispatchQueue.main.async {
+                            self.showPreviewWithImage(image: image)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private func showPreviewWithImage(image: UIImage) {
+        // Fallback: Try to save again after a short delay
+        // This handles cases where the photo library might need a moment to process
+        print("CameraGalleryView: Retrying save after delay...")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.performSavePhoto(image: image)
         }
     }
     
@@ -621,12 +743,14 @@ class CameraManager: ObservableObject {
     @Published var previewLayer: AVCaptureVideoPreviewLayer?
     private var currentCameraPosition: AVCaptureDevice.Position = .back
     private var isFlashOn = false
+    private var photoCaptureDelegate: PhotoCaptureDelegate? // Retain delegate until capture completes
     
     func setupCamera(isBackCamera: Bool) {
         currentCameraPosition = isBackCamera ? .back : .front
         
         let session = AVCaptureSession()
-        session.sessionPreset = .high
+        // Use photo preset for 4:3 aspect ratio (matching Android camera aspect ratio)
+        session.sessionPreset = .photo
         
         guard let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: currentCameraPosition),
               let videoInput = try? AVCaptureDeviceInput(device: videoDevice) else {
@@ -642,19 +766,29 @@ class CameraManager: ObservableObject {
         if session.canAddOutput(photoOut) {
             session.addOutput(photoOut)
             photoOutput = photoOut
+            print("CameraManager: Photo output added successfully")
+        } else {
+            print("CameraManager: ERROR - Cannot add photo output")
         }
         
-        // Video output
-        let videoOut = AVCaptureMovieFileOutput()
-        if session.canAddOutput(videoOut) {
-            session.addOutput(videoOut)
-            videoOutput = videoOut
-        }
+        // Video output (only add if needed for video recording)
+        // Note: Having both outputs can sometimes cause issues, so we'll add video output conditionally
+        // For now, we'll skip video output to avoid conflicts with photo capture
+        // Video output can be added dynamically when needed for video recording
+        // let videoOut = AVCaptureMovieFileOutput()
+        // if session.canAddOutput(videoOut) {
+        //     session.addOutput(videoOut)
+        //     videoOutput = videoOut
+        //     print("CameraManager: Video output added successfully")
+        // } else {
+        //     print("CameraManager: WARNING - Cannot add video output")
+        // }
         
         captureSession = session
         
         DispatchQueue.global(qos: .userInitiated).async {
             session.startRunning()
+            print("CameraManager: Capture session started, isRunning: \(session.isRunning)")
         }
     }
     
@@ -696,15 +830,53 @@ class CameraManager: ObservableObject {
     }
     
     func capturePhoto(completion: @escaping (UIImage?) -> Void) {
-        guard let photoOutput = photoOutput else { return }
+        print("CameraManager: capturePhoto called")
+        guard let photoOutput = photoOutput else {
+            print("CameraManager: ERROR - photoOutput is nil")
+            completion(nil)
+            return
+        }
         
+        guard let captureSession = captureSession, captureSession.isRunning else {
+            print("CameraManager: ERROR - Capture session is not running")
+            completion(nil)
+            return
+        }
+        
+        print("CameraManager: photoOutput exists, creating settings...")
+        print("CameraManager: Session isRunning: \(captureSession.isRunning)")
+        print("CameraManager: Session inputs: \(captureSession.inputs.count)")
+        print("CameraManager: Session outputs: \(captureSession.outputs.count)")
+        
+        // Create photo settings
         let settings = AVCapturePhotoSettings()
+        
+        // Enable high-resolution capture if available
+        if photoOutput.isHighResolutionCaptureEnabled {
+            settings.isHighResolutionPhotoEnabled = true
+            print("CameraManager: High resolution enabled")
+        }
+        
         if let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: currentCameraPosition),
            device.hasFlash {
             settings.flashMode = isFlashOn ? .on : .off
+            print("CameraManager: Flash mode set to: \(isFlashOn ? "on" : "off")")
         }
         
-        photoOutput.capturePhoto(with: settings, delegate: PhotoCaptureDelegate(completion: completion))
+        // Retain the delegate to prevent deallocation
+        let isFront = currentCameraPosition == .front
+        let delegate = PhotoCaptureDelegate(isFrontCamera: isFront) { [weak self] image in
+            print("CameraManager: Delegate completion called")
+            // Clear the retained delegate after completion
+            self?.photoCaptureDelegate = nil
+            completion(image)
+        }
+        photoCaptureDelegate = delegate
+        
+        print("CameraManager: Calling capturePhoto with delegate...")
+        // Capture photo - should be called from main thread
+        photoOutput.capturePhoto(with: settings, delegate: delegate)
+        print("CameraManager: capturePhoto call completed")
     }
     
     func startVideoRecording() {
@@ -755,18 +927,191 @@ struct CameraPreviewView: UIViewRepresentable {
 // MARK: - Photo Capture Delegate
 class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
     private let completion: (UIImage?) -> Void
+    private let isFrontCamera: Bool
     
-    init(completion: @escaping (UIImage?) -> Void) {
+    init(isFrontCamera: Bool, completion: @escaping (UIImage?) -> Void) {
+        print("PhotoCaptureDelegate: Initialized, isFrontCamera: \(isFrontCamera)")
+        self.isFrontCamera = isFrontCamera
         self.completion = completion
+        super.init()
     }
     
+    // iOS 11+ method with error parameter
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        guard let imageData = photo.fileDataRepresentation(),
-              let image = UIImage(data: imageData) else {
-            completion(nil)
+        print("PhotoCaptureDelegate: didFinishProcessingPhoto called (with error parameter)")
+        handlePhoto(photo: photo, error: error)
+    }
+    
+    // Alternative method that might be called in some iOS versions
+    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto) {
+        print("PhotoCaptureDelegate: didFinishProcessingPhoto called (without error parameter)")
+        handlePhoto(photo: photo, error: nil)
+    }
+    
+    private func handlePhoto(photo: AVCapturePhoto, error: Error?) {
+        if let error = error {
+            print("PhotoCaptureDelegate: ERROR - \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                self.completion(nil)
+            }
             return
         }
-        completion(image)
+        
+        print("PhotoCaptureDelegate: Processing photo data...")
+        guard let imageData = photo.fileDataRepresentation() else {
+            print("PhotoCaptureDelegate: ERROR - No image data from fileDataRepresentation()")
+            // Try using cgImageRepresentation() as fallback
+            if let cgImage = photo.cgImageRepresentation() {
+                var image = UIImage(cgImage: cgImage)
+                // Apply 4:3 crop and mirror if front camera
+                image = processImage(image: image)
+                print("PhotoCaptureDelegate: Image created from CGImage, size: \(image.size)")
+                DispatchQueue.main.async {
+                    self.completion(image)
+                }
+            } else {
+                print("PhotoCaptureDelegate: ERROR - Could not get image from either method")
+                DispatchQueue.main.async {
+                    self.completion(nil)
+                }
+            }
+            return
+        }
+        
+        guard var image = UIImage(data: imageData) else {
+            print("PhotoCaptureDelegate: ERROR - Could not create UIImage from data, data size: \(imageData.count)")
+            DispatchQueue.main.async {
+                self.completion(nil)
+            }
+            return
+        }
+        
+        // Process image: crop to 4:3 and mirror if front camera
+        image = processImage(image: image)
+        
+        print("PhotoCaptureDelegate: Image processed successfully, final size: \(image.size)")
+        DispatchQueue.main.async {
+            self.completion(image)
+        }
+    }
+    
+    private func processImage(image: UIImage) -> UIImage {
+        var processedImage = image
+        
+        // For front camera, mirror first before cropping to ensure proper centering
+        if isFrontCamera {
+            processedImage = flipImageHorizontally(image: processedImage)
+            print("PhotoCaptureDelegate: Image mirrored for front camera")
+        }
+        
+        // Crop to 4:3 aspect ratio (after mirroring for front camera)
+        let targetAspectRatio: CGFloat = 4.0 / 3.0
+        let imageSize = processedImage.size
+        let imageAspectRatio = imageSize.width / imageSize.height
+        
+        var cropRect: CGRect
+        
+        if imageAspectRatio > targetAspectRatio {
+            // Image is wider than 4:3, crop width (center the crop)
+            let newWidth = imageSize.height * targetAspectRatio
+            let xOffset = (imageSize.width - newWidth) / 2.0
+            cropRect = CGRect(x: xOffset, y: 0, width: newWidth, height: imageSize.height)
+        } else {
+            // Image is taller than 4:3, crop height (center the crop)
+            let newHeight = imageSize.width / targetAspectRatio
+            let yOffset = (imageSize.height - newHeight) / 2.0
+            cropRect = CGRect(x: 0, y: yOffset, width: imageSize.width, height: newHeight)
+        }
+        
+        // Crop the image
+        if let cgImage = processedImage.cgImage?.cropping(to: cropRect) {
+            processedImage = UIImage(cgImage: cgImage, scale: processedImage.scale, orientation: processedImage.imageOrientation)
+        }
+        
+        // Rotate if needed for front camera to match preview orientation
+        if isFrontCamera {
+            processedImage = rotateImageRight(image: processedImage)
+            print("PhotoCaptureDelegate: Image rotated for front camera")
+        }
+        
+        return processedImage
+    }
+    
+    private func flipImageHorizontally(image: UIImage) -> UIImage {
+        guard let cgImage = image.cgImage else {
+            return image
+        }
+        
+        let width = cgImage.width
+        let height = cgImage.height
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
+        
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: bitmapInfo.rawValue
+        ) else {
+            return image
+        }
+        
+        // Apply horizontal flip transformation
+        context.translateBy(x: CGFloat(width), y: 0)
+        context.scaleBy(x: -1.0, y: 1.0)
+        
+        // Draw the image
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        
+        // Create new image from context
+        guard let flippedCGImage = context.makeImage() else {
+            return image
+        }
+        
+        return UIImage(cgImage: flippedCGImage, scale: image.scale, orientation: .up)
+    }
+    
+    private func rotateImageRight(image: UIImage) -> UIImage {
+        guard let cgImage = image.cgImage else {
+            return image
+        }
+        
+        let width = cgImage.width
+        let height = cgImage.height
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
+        
+        // Swap width and height for 90-degree rotation
+        guard let context = CGContext(
+            data: nil,
+            width: height,
+            height: width,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: bitmapInfo.rawValue
+        ) else {
+            return image
+        }
+        
+        // Rotate 90 degrees clockwise (to the right) - centered
+        // Translate to center of new dimensions, rotate, then translate back
+        context.translateBy(x: CGFloat(height) / 2.0, y: CGFloat(width) / 2.0)
+        context.rotate(by: .pi / 2)
+        context.translateBy(x: -CGFloat(width) / 2.0, y: -CGFloat(height) / 2.0)
+        
+        // Draw the image centered
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        
+        // Create new image from context
+        guard let rotatedCGImage = context.makeImage() else {
+            return image
+        }
+        
+        return UIImage(cgImage: rotatedCGImage, scale: image.scale, orientation: .up)
     }
 }
 

@@ -3594,7 +3594,7 @@ struct MultiImagePreviewDialog: View {
                     
                     Spacer()
                     
-                    // Image count indicator (matching Android counter)
+                    // Image count indicator (matching Android counter) - always show
                     Text("\(currentIndex + 1) / \(selectedAssets.count)")
                         .font(.custom("Inter18pt-Medium", size: 16))
                         .foregroundColor(.white)
@@ -3640,6 +3640,10 @@ struct MultiImagePreviewDialog: View {
                         }
                     }
                 }
+                
+                // Spacing between photo and caption area (5px)
+                Spacer()
+                    .frame(height: 5)
                 
                 // Bottom caption input area (matching WhatsAppLikeImagePicker captionBarView design)
                 HStack(spacing: 0) {
