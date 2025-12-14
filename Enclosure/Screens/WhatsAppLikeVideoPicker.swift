@@ -26,6 +26,8 @@ struct WhatsAppLikeVideoPicker: View {
     @State private var isMessageBoxFocused: Bool = false
     @State private var keyboardHeight: CGFloat = 0
     @State private var isPressed: Bool = false
+    @State private var showMultiVideoPreview: Bool = false
+    @State private var multiVideoPreviewCaption: String = ""
     @FocusState private var isCaptionFocused: Bool
     
     private let imageManager = PHCachingImageManager()
@@ -183,6 +185,26 @@ struct WhatsAppLikeVideoPicker: View {
         .onDisappear {
             removeKeyboardObservers()
         }
+        .fullScreenCover(isPresented: $showMultiVideoPreview, onDismiss: {
+            // Reset caption when dialog is dismissed
+            multiVideoPreviewCaption = ""
+        }) {
+            MultiVideoPreviewDialog(
+                selectedAssetIds: $selectedAssetIds,
+                videoAssets: videoAssets,
+                imageManager: imageManager,
+                caption: $multiVideoPreviewCaption,
+                onSend: { caption in
+                    let selectedAssets = videoAssets.filter { selectedAssetIds.contains($0.localIdentifier) }
+                    onVideosSelected(selectedAssets, caption.trimmingCharacters(in: .whitespacesAndNewlines))
+                    showMultiVideoPreview = false
+                    dismiss()
+                },
+                onDismiss: {
+                    showMultiVideoPreview = false
+                }
+            )
+        }
     }
     
     // MARK: - Caption Bar View (matching CameraGalleryView design)
@@ -274,9 +296,9 @@ struct WhatsAppLikeVideoPicker: View {
     private func handleDone() {
         guard !selectedAssetIds.isEmpty else { return }
         
-        let selectedAssets = videoAssets.filter { selectedAssetIds.contains($0.localIdentifier) }
-        onVideosSelected(selectedAssets, captionText.trimmingCharacters(in: .whitespacesAndNewlines))
-        dismiss()
+        // Set caption and show preview dialog
+        multiVideoPreviewCaption = captionText
+        showMultiVideoPreview = true
     }
     
     private func handleCancel() {
