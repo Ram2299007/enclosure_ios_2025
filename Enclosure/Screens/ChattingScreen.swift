@@ -96,6 +96,10 @@ struct ChattingScreen: View {
     @State private var selectedAssetIds: Set<String> = []
     private let imageManager = PHCachingImageManager()
     
+    // Multi-image preview dialog state
+    @State private var showMultiImagePreview: Bool = false
+    @State private var multiImagePreviewCaption: String = ""
+    
     // Pagination constants (matching Android)
     private let PAGE_SIZE: UInt = 10
     private let LOAD_MORE_THROTTLE: TimeInterval = 0.5 // Throttle loadMore calls (500ms)
@@ -257,6 +261,23 @@ struct ChattingScreen: View {
             WhatsAppLikeContactPicker(maxSelection: 50) { (contacts: [ContactPickerInfo], caption: String) in
                 handleContactPickerResult(selectedContacts: contacts, caption: caption)
             }
+        }
+        .fullScreenCover(isPresented: $showMultiImagePreview, onDismiss: {
+            // Reset caption when dialog is dismissed
+            multiImagePreviewCaption = ""
+        }) {
+            MultiImagePreviewDialog(
+                selectedAssetIds: $selectedAssetIds,
+                photoAssets: photoAssets,
+                imageManager: imageManager,
+                caption: $multiImagePreviewCaption,
+                onSend: { caption in
+                    handleMultiImageSend(caption: caption)
+                },
+                onDismiss: {
+                    showMultiImagePreview = false
+                }
+            )
         }
         .overlay(
             CustomActionSheet(
@@ -954,8 +975,8 @@ struct ChattingScreen: View {
                                     .fill(Color(hex: Constant.themeColor)) // theme color like Android
                                     .frame(width: 50, height: 50)
                                 
-                                // Show mic icon when text is empty, send icon when text is present
-                                if messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedCount == 0 && selectedAssetIds.isEmpty {
+                                // Show mic icon when text is empty and no images selected, send icon when text is present or images selected
+                                if messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedAssetIds.isEmpty {
                                     Image("mikesvg")
                                         .renderingMode(.template)
                                         .resizable()
@@ -980,7 +1001,7 @@ struct ChattingScreen: View {
                     }
                     
                     // Small counter badge (Android multiSelectSmallCounterText)
-                    if showGalleryPicker && selectedAssetIds.count > 0 {
+                    if selectedAssetIds.count > 0 {
                         Text("\(selectedAssetIds.count)")
                             .font(.custom("Inter18pt-Bold", size: 12))
                             .foregroundColor(.white)
@@ -2359,11 +2380,17 @@ struct ChattingScreen: View {
     private func handleSendButtonClick() {
         print("DIALOGUE_DEBUG: === SEND BUTTON CLICKED ===")
         
-        // Check if multi-select mode is active
-        if selectedCount > 0 {
+        // Check if multi-select mode is active (matching Android binding.multiSelectSmallCounterText.getText().toString())
+        if selectedAssetIds.count > 0 {
             print("DIALOGUE_DEBUG: Send button clicked for multi-images!")
-            // TODO: Show full-screen dialog for multi-image preview
-            // setupMultiImagePreviewWithData()
+            print("DIALOGUE_DEBUG: Selected images count: \(selectedAssetIds.count)")
+            
+            // Light haptic feedback (Android-style tap vibration)
+            let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.impactOccurred()
+            
+            // Show full-screen dialog for multi-image preview (matching Android setupMultiImagePreviewWithData)
+            showMultiImagePreview = true
             return
         }
         
@@ -3039,6 +3066,46 @@ struct ChattingScreen: View {
             guard selectedAssetIds.count < 30 else { return }
             selectedAssetIds.insert(id)
         }
+        // Update selectedCount to match selectedAssetIds.count (matching Android binding.multiSelectSmallCounterText)
+        selectedCount = selectedAssetIds.count
+        // Show/hide multi-select header based on selection
+        showMultiSelectHeader = selectedAssetIds.count > 0
+    }
+    
+    // MARK: - Handle Multi-Image Send (matching Android upload logic)
+    private func handleMultiImageSend(caption: String) {
+        print("DIALOGUE_DEBUG: === MULTI-IMAGE SEND ===")
+        print("DIALOGUE_DEBUG: Selected images count: \(selectedAssetIds.count)")
+        print("DIALOGUE_DEBUG: Caption: '\(caption)'")
+        
+        // Get selected assets from photoAssets
+        let selectedAssets = photoAssets.filter { selectedAssetIds.contains($0.localIdentifier) }
+        
+        guard !selectedAssets.isEmpty else {
+            print("DIALOGUE_DEBUG: No assets selected, returning")
+            return
+        }
+        
+        // Close the preview dialog
+        showMultiImagePreview = false
+        
+        // Hide gallery picker
+        withAnimation {
+            showGalleryPicker = false
+        }
+        
+        // Clear selected assets after sending
+        selectedAssetIds.removeAll()
+        selectedCount = 0
+        showMultiSelectHeader = false
+        
+        // TODO: Process and upload selected images with caption
+        // This should match Android's upload logic for multi-image messages
+        // For now, we'll just log the action
+        print("DIALOGUE_DEBUG: Would upload \(selectedAssets.count) images with caption: '\(caption)'")
+        
+        // TODO: Implement actual upload logic using MessageUploadService or similar
+        // Similar to how single images are uploaded in handleImagePickerResult
     }
     
     // Scroll-based date visibility removed per latest requirements
@@ -3541,6 +3608,233 @@ struct GalleryAssetThumbnail: View {
         ) { image, _ in
             if let image = image {
                 self.thumbnail = image
+            }
+        }
+    }
+}
+
+// MARK: - Multi-Image Preview Dialog (matching Android dialogue_full_screen_dialogue)
+struct MultiImagePreviewDialog: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+    @Binding var selectedAssetIds: Set<String>
+    let photoAssets: [PHAsset]
+    let imageManager: PHCachingImageManager
+    @Binding var caption: String
+    let onSend: (String) -> Void
+    let onDismiss: () -> Void
+    
+    @State private var currentIndex: Int = 0
+    @State private var previewImages: [UIImage?] = []
+    @State private var isLoading: Bool = true
+    @FocusState private var isCaptionFocused: Bool
+    
+    // Typography (match Android messageBox sizing prefs)
+    private var messageInputFont: Font {
+        let pref = UserDefaults.standard.string(forKey: "Font_Size") ?? "medium"
+        let size: CGFloat
+        switch pref {
+        case "small":
+            size = 13
+        case "large":
+            size = 19
+        default:
+            size = 16
+        }
+        return .custom("Inter18pt-Regular", size: size)
+    }
+    
+    private var selectedAssets: [PHAsset] {
+        photoAssets.filter { selectedAssetIds.contains($0.localIdentifier) }
+    }
+    
+    var body: some View {
+        ZStack {
+            // Full-screen background (matching Android transparent background)
+            Color.black
+                .ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // Top bar with back button and image count (matching Android header)
+                HStack {
+                    // Back button
+                    Button(action: {
+                        // Light haptic feedback
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+                        onDismiss()
+                    }) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.white.opacity(0.2))
+                                .frame(width: 40, height: 40)
+                            
+                            Image("leftvector")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 25, height: 18)
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .padding(.leading, 16)
+                    
+                    Spacer()
+                    
+                    // Image count indicator (matching Android counter)
+                    Text("\(currentIndex + 1) / \(selectedAssets.count)")
+                        .font(.custom("Inter18pt-Medium", size: 16))
+                        .foregroundColor(.white)
+                    
+                    Spacer()
+                    
+                    // Send button
+                    Button(action: {
+                        // Light haptic feedback
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+                        onSend(caption.trimmingCharacters(in: .whitespacesAndNewlines))
+                    }) {
+                        ZStack {
+                            Circle()
+                                .fill(Color(hex: Constant.themeColor))
+                                .frame(width: 40, height: 40)
+                            
+                            Image("baseline_keyboard_double_arrow_right_24")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 24, height: 24)
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .padding(.trailing, 16)
+                }
+                .frame(height: 60)
+                .background(Color.black.opacity(0.3))
+                
+                // Image preview area (matching Android image preview)
+                GeometryReader { geometry in
+                    if isLoading {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        TabView(selection: $currentIndex) {
+                            ForEach(Array(selectedAssets.enumerated()), id: \.element.localIdentifier) { index, asset in
+                                ZStack {
+                                    Color.black
+                                    
+                                    if index < previewImages.count, let image = previewImages[index] {
+                                        Image(uiImage: image)
+                                            .resizable()
+                                            .scaledToFit()
+                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    } else {
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    }
+                                }
+                                .tag(index)
+                            }
+                        }
+                        .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+                        .onChange(of: currentIndex) { newIndex in
+                            // Load image if not already loaded
+                            loadImageIfNeeded(at: newIndex)
+                        }
+                    }
+                }
+                
+                // Bottom caption input area (matching Android caption input)
+                VStack(spacing: 0) {
+                    // Caption input field
+                    HStack(alignment: .bottom, spacing: 0) {
+                        // Caption input field
+                        VStack(alignment: .leading, spacing: 0) {
+                            TextField("Add a caption...", text: $caption, axis: .vertical)
+                                .font(messageInputFont)
+                                .foregroundColor(Color("black_white_cross"))
+                                .lineLimit(4)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.leading, 12)
+                                .padding(.trailing, 12)
+                                .padding(.top, 10)
+                                .padding(.bottom, 10)
+                                .background(Color("message_box_bg"))
+                                .cornerRadius(20)
+                                .focused($isCaptionFocused)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color("edittextBg"))
+                }
+            }
+        }
+        .onAppear {
+            loadAllImages()
+        }
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onEnded { value in
+                    // Handle swipe down to dismiss (optional)
+                    if value.translation.height > 100 {
+                        onDismiss()
+                    }
+                }
+        )
+    }
+    
+    private func loadAllImages() {
+        isLoading = true
+        previewImages = Array(repeating: nil, count: selectedAssets.count)
+        
+        let group = DispatchGroup()
+        
+        for (index, asset) in selectedAssets.enumerated() {
+            group.enter()
+            loadImageForAsset(asset, at: index) {
+                group.leave()
+            }
+        }
+        
+        group.notify(queue: .main) {
+            isLoading = false
+            // Load first image immediately
+            if !selectedAssets.isEmpty {
+                loadImageIfNeeded(at: 0)
+            }
+        }
+    }
+    
+    private func loadImageIfNeeded(at index: Int) {
+        guard index < selectedAssets.count else { return }
+        guard index >= previewImages.count || previewImages[index] == nil else { return }
+        
+        let asset = selectedAssets[index]
+        loadImageForAsset(asset, at: index)
+    }
+    
+    private func loadImageForAsset(_ asset: PHAsset, at index: Int, completion: (() -> Void)? = nil) {
+        let targetSize = CGSize(width: UIScreen.main.bounds.width * 2, height: UIScreen.main.bounds.height * 2)
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.resizeMode = .exact
+        options.isSynchronous = false
+        
+        imageManager.requestImage(
+            for: asset,
+            targetSize: targetSize,
+            contentMode: .aspectFit,
+            options: options
+        ) { image, _ in
+            DispatchQueue.main.async {
+                if index < self.previewImages.count {
+                    self.previewImages[index] = image
+                }
+                completion?()
             }
         }
     }
