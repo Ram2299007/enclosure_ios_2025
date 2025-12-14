@@ -260,13 +260,46 @@ struct chatView: View {
         var count: Int
         var body: some View {
             ZStack {
-                RoundedRectangle(cornerRadius: 10)
+                // Custom shape with rounded corners only on the left side
+                LeftRoundedRectangle(cornerRadius: 10)
                     .fill(Color(hex: Constant.themeColor))
                 Text("\(count)")
                     .foregroundColor(.white)
                     .font(.custom("Inter18pt-Regular", size: 12))
             }
             .frame(width: 32, height: 20) // Matching Android: 32dp width, 20dp height
+        }
+    }
+    
+    // Custom shape that rounds only the left corners (top-left and bottom-left)
+    struct LeftRoundedRectangle: Shape {
+        var cornerRadius: CGFloat
+        
+        func path(in rect: CGRect) -> Path {
+            var path = Path()
+            
+            let radius = min(cornerRadius, rect.height / 2)
+            
+            // Start from top-left corner (rounded)
+            path.move(to: CGPoint(x: rect.minX, y: rect.minY + radius))
+            path.addQuadCurve(to: CGPoint(x: rect.minX + radius, y: rect.minY), control: CGPoint(x: rect.minX, y: rect.minY))
+            
+            // Top edge
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+            
+            // Right edge (no rounding)
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+            
+            // Bottom edge
+            path.addLine(to: CGPoint(x: rect.minX + radius, y: rect.maxY))
+            
+            // Bottom-left corner (rounded)
+            path.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.maxY - radius), control: CGPoint(x: rect.minX, y: rect.maxY))
+            
+            // Left edge
+            path.closeSubpath()
+            
+            return path
         }
     }
     
