@@ -9,7 +9,6 @@ import SwiftUI
 import AVFoundation
 import Photos
 import FirebaseStorage
-import CoreHaptics
 
 struct CameraGalleryView: View {
     let contact: UserActiveContactModel
@@ -786,9 +785,8 @@ struct CameraGalleryView: View {
     
     // MARK: - Haptics
     private func triggerLightHapticIfAvailable() {
-        // Avoid CHHapticPattern errors on devices/simulators without haptics
-        let capabilities = CHHapticEngine.capabilitiesForHardware()
-        guard capabilities.supportsHaptics else { return }
+        // Avoid CHHapticPattern errors - use UIImpactFeedbackGenerator directly
+        // It handles unsupported devices gracefully without throwing errors
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.prepare()
         generator.impactOccurred()
@@ -841,23 +839,29 @@ struct CameraGalleryView: View {
         
         print("CameraGalleryView: === SEND BUTTON CLICKED ===")
         print("CameraGalleryView: Selected images count: \(selectedAssetIds.count)")
-        print("CameraGalleryView: Caption: '\(captionText)'")
+        print("CameraGalleryView: Caption from bottom sheet: '\(captionText)'")
         
-        // Light haptic feedback (guarded to avoid CHHaptic errors on devices without haptics)
+        // Light haptic feedback
         triggerLightHapticIfAvailable()
         
-        // Set caption from CameraGalleryView
+        // Set caption from CameraGalleryView bottom sheet to preview dialog
+        // CRITICAL: Set this synchronously before showing dialog to ensure binding is initialized
         multiImagePreviewCaption = captionText
+        print("CameraGalleryView: Set multiImagePreviewCaption to: '\(multiImagePreviewCaption)'")
+        print("CameraGalleryView: multiImagePreviewCaption length: \(multiImagePreviewCaption.count)")
         
         // Show full-screen dialog for multi-image preview (matching Android setupMultiImagePreviewWithData)
+        // Show synchronously after setting caption to ensure binding is ready
         showMultiImagePreview = true
+        print("CameraGalleryView: Showing preview dialog with caption: '\(multiImagePreviewCaption)'")
     }
     
     // MARK: - Handle Multi-Image Send (matching Android upload logic)
     private func handleMultiImageSend(caption: String) {
         print("CameraGalleryView: === MULTI-IMAGE SEND ===")
         print("CameraGalleryView: Selected images count: \(selectedAssetIds.count)")
-        print("CameraGalleryView: Caption: '\(caption)'")
+        print("CameraGalleryView: Caption received from dialog: '\(caption)'")
+        print("CameraGalleryView: Caption length: \(caption.count)")
         
         let selectedAssets = photoAssets.filter { selectedAssetIds.contains($0.localIdentifier) }
         guard !selectedAssets.isEmpty else {
@@ -869,6 +873,7 @@ struct CameraGalleryView: View {
         showMultiImagePreview = false
         
         let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        print("CameraGalleryView: Trimmed caption: '\(trimmedCaption)' (length: \(trimmedCaption.count))")
         let receiverUid = contact.uid
         let senderId = Constant.SenderIdMy
         let userName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
@@ -955,6 +960,7 @@ struct CameraGalleryView: View {
                 aspectRatioValue = ""
             }
             
+            print("CameraGalleryView: Creating ChatMessage with caption: '\(trimmedCaption)'")
             let newMessage = ChatMessage(
                 id: modelId,
                 uid: senderId,
@@ -993,6 +999,7 @@ struct CameraGalleryView: View {
                 selectionBunch: selectionBunchModels,
                 receiverLoader: 0
             )
+            print("CameraGalleryView: ChatMessage created with caption: '\(newMessage.caption ?? "nil")'")
             
             // Clear selected assets after sending
             self.selectedAssetIds.removeAll()
@@ -1015,8 +1022,13 @@ struct CameraGalleryView: View {
                 }
             }
             
-            // Dismiss CameraGalleryView after initiating upload (matches user request)
-            dismiss()
+            // Dismiss keyboard first to avoid constraint warnings, then dismiss view
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            
+            // Small delay to let keyboard dismiss animation complete before dismissing view
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.dismiss()
+            }
         }
     }
     

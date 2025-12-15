@@ -4141,7 +4141,10 @@ struct MultiImagePreviewDialog: View {
                             // Light haptic feedback
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.impactOccurred()
-                            onSend(caption.trimmingCharacters(in: .whitespacesAndNewlines))
+                            let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+                            print("MultiImagePreviewDialog: Send button clicked - Caption before trim: '\(caption)' (length: \(caption.count))")
+                            print("MultiImagePreviewDialog: Send button clicked - Caption after trim: '\(trimmedCaption)' (length: \(trimmedCaption.count))")
+                            onSend(trimmedCaption)
                         }) {
                             ZStack {
                                 Circle()
@@ -4167,6 +4170,7 @@ struct MultiImagePreviewDialog: View {
             }
         }
         .onAppear {
+            print("MultiImagePreviewDialog: onAppear - Initial caption: '\(caption)' (length: \(caption.count))")
             loadAllImages()
             setupKeyboardObservers()
         }
