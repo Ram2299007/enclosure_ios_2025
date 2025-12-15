@@ -9,6 +9,7 @@ import SwiftUI
 import Photos
 import PhotosUI
 import FirebaseDatabase
+import FirebaseStorage
 import QuartzCore
 import UIKit
 import AVFoundation
@@ -80,6 +81,12 @@ struct ChattingScreen: View {
     @State private var showScrollDownButton: Bool = false // Show when user is away from bottom
     @State private var isLastItemVisible: Bool = false // Track if last message is visible (matching Android)
     @State private var isTouchGestureActive: Bool = false // Track touch to debounce touch gesture
+    
+    // MARK: - Errors
+    private enum MultiImageUploadError: Error {
+        case dataUnavailable
+        case downloadURLMissing
+    }
     
     // Emoji picker state
     @State private var emojis: [EmojiData] = []
@@ -3209,6 +3216,12 @@ struct ChattingScreen: View {
         print("DIALOGUE_DEBUG: Selected images count: \(selectedAssetIds.count)")
         print("DIALOGUE_DEBUG: Caption: '\(caption)'")
         
+        // Respect message limit (same guard as text flow)
+        guard limitStatus == "0" else {
+            Constant.showToast(message: "Msg limit set for privacy in a day - \(totalMsgLimit)")
+            return
+        }
+        
         // Get selected assets from photoAssets
         let selectedAssets = photoAssets.filter { selectedAssetIds.contains($0.localIdentifier) }
         
@@ -3229,13 +3242,209 @@ struct ChattingScreen: View {
         selectedAssetIds.removeAll()
         selectedCount = 0
         
-        // TODO: Process and upload selected images with caption
-        // This should match Android's upload logic for multi-image messages
-        // For now, we'll just log the action
-        print("DIALOGUE_DEBUG: Would upload \(selectedAssets.count) images with caption: '\(caption)'")
+        let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        let receiverUid = contact.uid
+        let senderId = Constant.SenderIdMy
+        let userName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
+        let micPhoto = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
         
-        // TODO: Implement actual upload logic using MessageUploadService or similar
-        // Similar to how single images are uploaded in handleImagePickerResult
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "hh:mm a"
+        let currentDateTimeString = timeFormatter.string(from: Date())
+        
+        let currentDateFormatter = DateFormatter()
+        currentDateFormatter.dateFormat = "yyyy-MM-dd"
+        let currentDateString = currentDateFormatter.string(from: Date())
+        
+        let timestamp = Date().timeIntervalSince1970
+        let modelId = UUID().uuidString
+        
+        // Capture reply context if present
+        let replyMsg = replyMessage
+        let replyType = replyDataType
+        
+        // Upload all images to Firebase Storage, then push to API + RTDB
+        let dispatchGroup = DispatchGroup()
+        let lockQueue = DispatchQueue(label: "com.enclosure.multiImageUpload.lock")
+        
+        struct UploadedImageResult {
+            let index: Int
+            let downloadURL: String
+            let fileName: String
+            let width: Int
+            let height: Int
+        }
+        
+        var uploadResults: [UploadedImageResult] = []
+        var uploadErrors: [Error] = []
+        
+        for (index, asset) in selectedAssets.enumerated() {
+            dispatchGroup.enter()
+            let remoteFileName = "\(modelId)_\(index).jpg"
+            
+            exportImageAsset(asset, fileName: remoteFileName) { exportResult in
+                switch exportResult {
+                case .failure(let error):
+                    lockQueue.sync { uploadErrors.append(error) }
+                    dispatchGroup.leave()
+                case .success(let export):
+                    self.uploadImageFileToFirebase(data: export.data, remoteFileName: remoteFileName) { uploadResult in
+                        switch uploadResult {
+                        case .failure(let error):
+                            lockQueue.sync { uploadErrors.append(error) }
+                        case .success(let downloadURL):
+                            let result = UploadedImageResult(
+                                index: index,
+                                downloadURL: downloadURL,
+                                fileName: remoteFileName,
+                                width: export.width,
+                                height: export.height
+                            )
+                            lockQueue.sync { uploadResults.append(result) }
+                        }
+                        dispatchGroup.leave()
+                    }
+                }
+            }
+        }
+        
+        dispatchGroup.notify(queue: .main) {
+            if uploadResults.isEmpty {
+                print("❌ [MULTI_IMAGE] Upload failed - no results")
+                Constant.showToast(message: "Unable to upload images. Please try again.")
+                return
+            }
+            
+            if !uploadErrors.isEmpty {
+                print("⚠️ [MULTI_IMAGE] Some uploads failed: \(uploadErrors.count) errors")
+            }
+            
+            let sortedResults = uploadResults.sorted { $0.index < $1.index }
+            let selectionBunchModels = sortedResults.map { SelectionBunchModel(imgUrl: $0.downloadURL, fileName: $0.fileName) }
+            
+            guard let first = sortedResults.first else {
+                Constant.showToast(message: "Unable to prepare images. Please try again.")
+                return
+            }
+            
+            let aspectRatioValue: String
+            if first.height > 0 {
+                aspectRatioValue = String(format: "%.2f", Double(first.width) / Double(first.height))
+            } else {
+                aspectRatioValue = ""
+            }
+            
+            let newMessage = ChatMessage(
+                id: modelId,
+                uid: senderId,
+                message: "",
+                time: currentDateTimeString,
+                document: first.downloadURL,
+                dataType: Constant.img,
+                fileExtension: "jpg",
+                name: nil,
+                phone: nil,
+                micPhoto: micPhoto,
+                miceTiming: nil,
+                userName: userName,
+                receiverId: receiverUid,
+                replytextData: replyMsg.isEmpty ? nil : replyMsg,
+                replyKey: replyMsg.isEmpty ? nil : modelId,
+                replyType: replyType.isEmpty ? nil : replyType,
+                replyOldData: nil,
+                replyCrtPostion: nil,
+                forwaredKey: nil,
+                groupName: nil,
+                docSize: nil,
+                fileName: first.fileName,
+                thumbnail: nil,
+                fileNameThumbnail: nil,
+                caption: trimmedCaption,
+                notification: 1,
+                currentDate: currentDateString,
+                emojiModel: [EmojiModel(name: "", emoji: "")],
+                emojiCount: nil,
+                timestamp: timestamp,
+                imageWidth: "\(first.width)",
+                imageHeight: "\(first.height)",
+                aspectRatio: aspectRatioValue,
+                selectionCount: "\(sortedResults.count)",
+                selectionBunch: selectionBunchModels,
+                receiverLoader: 0
+            )
+            
+            // Add to UI immediately
+            self.messages.append(newMessage)
+            self.isLastItemVisible = true
+            self.showScrollDownButton = false
+            
+            let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
+            
+            MessageUploadService.shared.uploadMessage(
+                model: newMessage,
+                filePath: nil,
+                userFTokenKey: userFTokenKey,
+                deviceType: "2"
+            ) { success, errorMessage in
+                if success {
+                    print("✅ [MULTI_IMAGE] Uploaded \(sortedResults.count) images for modelId=\(modelId)")
+                } else {
+                    print("❌ [MULTI_IMAGE] Upload error: \(errorMessage ?? "Unknown error")")
+                    Constant.showToast(message: "Failed to send images. Please try again.")
+                }
+            }
+        }
+    }
+    
+    // Export PHAsset to a temporary JPEG file
+    private func exportImageAsset(_ asset: PHAsset, fileName: String, completion: @escaping (Result<(data: Data, width: Int, height: Int), Error>) -> Void) {
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.isNetworkAccessAllowed = true
+        options.version = .current
+        
+        PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
+            guard let data = data else {
+                completion(.failure(MultiImageUploadError.dataUnavailable))
+                return
+            }
+            
+            // Convert to JPEG to match Android flow and reduce size
+            let image = UIImage(data: data)
+            let jpegData = image?.jpegData(compressionQuality: 0.85) ?? data
+            let width = image?.cgImage?.width ?? Int(asset.pixelWidth)
+            let height = image?.cgImage?.height ?? Int(asset.pixelHeight)
+            completion(.success((jpegData, width, height)))
+        }
+    }
+    
+    // Upload image data to Firebase Storage and return its download URL
+    private func uploadImageFileToFirebase(data: Data, remoteFileName: String, completion: @escaping (Result<String, Error>) -> Void) {
+        let storagePath = "\(Constant.CHAT)/\(Constant.SenderIdMy)_\(contact.uid)/\(remoteFileName)"
+        let ref = Storage.storage().reference().child(storagePath)
+        let metadata = StorageMetadata()
+        metadata.contentType = "image/jpeg"
+        
+        ref.putData(data, metadata: metadata) { _, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            ref.downloadURL { url, error in
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+                
+                guard let url = url else {
+                    completion(.failure(MultiImageUploadError.downloadURLMissing))
+                    return
+                }
+                
+                completion(.success(url.absoluteString))
+            }
+        }
     }
     
     // Scroll-based date visibility removed per latest requirements
