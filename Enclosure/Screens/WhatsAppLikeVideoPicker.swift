@@ -16,6 +16,7 @@ struct WhatsAppLikeVideoPicker: View {
     @Environment(\.colorScheme) var colorScheme
     
     let maxSelection: Int
+    let contact: UserActiveContactModel
     let onVideosSelected: ([PHAsset], String) -> Void
     
     @State private var videoAssets: [PHAsset] = []
@@ -47,8 +48,9 @@ struct WhatsAppLikeVideoPicker: View {
         return .custom("Inter18pt-Regular", size: size)
     }
     
-    init(maxSelection: Int = 5, onVideosSelected: @escaping ([PHAsset], String) -> Void) {
+    init(maxSelection: Int = 5, contact: UserActiveContactModel, onVideosSelected: @escaping ([PHAsset], String) -> Void) {
         self.maxSelection = maxSelection
+        self.contact = contact
         self.onVideosSelected = onVideosSelected
     }
     
@@ -194,6 +196,7 @@ struct WhatsAppLikeVideoPicker: View {
                 videoAssets: videoAssets,
                 imageManager: imageManager,
                 caption: $multiVideoPreviewCaption,
+                contact: contact,
                 onSend: { caption in
                     let selectedAssets = videoAssets.filter { selectedAssetIds.contains($0.localIdentifier) }
                     onVideosSelected(selectedAssets, caption.trimmingCharacters(in: .whitespacesAndNewlines))

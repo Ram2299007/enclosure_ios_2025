@@ -224,7 +224,7 @@ struct ChattingScreen: View {
                 wasGalleryPickerOpenBeforeVideoPicker = false
             }
         }) {
-            WhatsAppLikeVideoPicker(maxSelection: 5) { selectedAssets, caption in
+            WhatsAppLikeVideoPicker(maxSelection: 5, contact: contact) { selectedAssets, caption in
                 handleVideoPickerResult(selectedAssets: selectedAssets, caption: caption)
             }
         }
@@ -2749,17 +2749,17 @@ struct ChattingScreen: View {
         print("VideoUpload: Selected assets count: \(selectedAssets.count)")
         print("VideoUpload: Caption: '\(caption)'")
         
-        // Update selected assets
-        selectedAssetIds = Set(selectedAssets.map { $0.localIdentifier })
-        selectedCount = selectedAssets.count
+        // Videos are uploaded directly from MultiVideoPreviewDialog (matching Android flow)
+        // This callback is called after videos are sent, so we just need to clear selections
+        selectedAssetIds.removeAll()
+        selectedCount = 0
         
-        // TODO: Process selected videos and upload them
-        // This should match Android's onActivityResult handling for PICK_VIDEO_REQUEST_CODE
-        // For now, we just update the UI state
-        
-        if !selectedAssets.isEmpty {
-            // TODO: Show full-screen dialog for multi-video preview (matching Android)
-            // For now, we'll just update the UI to show the selected count
+        // Scroll to bottom to show new video messages (matching Android behavior)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            if !self.messages.isEmpty {
+                self.isLastItemVisible = true
+                self.showScrollDownButton = false
+            }
         }
     }
     

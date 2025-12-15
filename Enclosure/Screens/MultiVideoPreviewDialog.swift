@@ -9,6 +9,7 @@ import SwiftUI
 import AVFoundation
 import AVKit
 import Photos
+import FirebaseStorage
 
 // MARK: - Multi-Video Preview Dialog (matching MultiImagePreviewDialog design)
 struct MultiVideoPreviewDialog: View {
@@ -18,6 +19,7 @@ struct MultiVideoPreviewDialog: View {
     let videoAssets: [PHAsset]
     let imageManager: PHCachingImageManager
     @Binding var caption: String
+    let contact: UserActiveContactModel
     let onSend: (String) -> Void
     let onDismiss: () -> Void
     
@@ -208,11 +210,22 @@ struct MultiVideoPreviewDialog: View {
                     // Send button group (matching sendGrpLyt from WhatsAppLikeImagePicker)
                     VStack(spacing: 0) {
                         Button(action: {
-                            // Light haptic feedback
+                            // Light haptic feedback (guarded to avoid errors on unsupported devices)
                             let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.prepare()
                             generator.impactOccurred()
                             pauseAllVideos()
-                            onSend(caption.trimmingCharacters(in: .whitespacesAndNewlines))
+                            
+                            // Dismiss keyboard first to avoid constraint warnings
+                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                            
+                            let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+                            print("MultiVideoPreviewDialog: Send button clicked - Caption: '\(trimmedCaption)' (length: \(trimmedCaption.count))")
+                            
+                            // Small delay to let keyboard dismiss animation complete
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                self.handleMultiVideoSend(caption: trimmedCaption)
+                            }
                         }) {
                             ZStack {
                                 Circle()
@@ -238,6 +251,7 @@ struct MultiVideoPreviewDialog: View {
             }
         }
         .onAppear {
+            print("MultiVideoPreviewDialog: onAppear - Initial caption: '\(caption)' (length: \(caption.count))")
             loadAllVideos()
             setupKeyboardObservers()
         }
@@ -379,6 +393,357 @@ struct MultiVideoPreviewDialog: View {
     private func pauseAllVideos() {
         for player in videoPlayers {
             player?.pause()
+        }
+    }
+    
+    // MARK: - Video Upload Functions (matching Android sendMultipleVideos)
+    
+    enum MultiVideoUploadError: Error {
+        case dataUnavailable
+        case thumbnailGenerationFailed
+        case downloadURLMissing
+        case uploadFailed(String)
+    }
+    
+    private func handleMultiVideoSend(caption: String) {
+        print("MultiVideoPreviewDialog: === MULTI-VIDEO SEND ===")
+        print("MultiVideoPreviewDialog: Selected videos count: \(selectedAssets.count)")
+        print("MultiVideoPreviewDialog: Caption: '\(caption)'")
+        
+        guard !selectedAssets.isEmpty else {
+            print("MultiVideoPreviewDialog: No videos selected, returning")
+            return
+        }
+        
+        // Close the preview dialog
+        onDismiss()
+        
+        let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        let receiverUid = contact.uid
+        let senderId = Constant.SenderIdMy
+        let userName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
+        let micPhoto = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
+        
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "hh:mm a"
+        let currentDateTimeString = timeFormatter.string(from: Date())
+        
+        let currentDateFormatter = DateFormatter()
+        currentDateFormatter.dateFormat = "yyyy-MM-dd"
+        let currentDateString = currentDateFormatter.string(from: Date())
+        
+        let timestamp = Date().timeIntervalSince1970
+        
+        // Upload all videos to Firebase Storage, then push to API + RTDB
+        let dispatchGroup = DispatchGroup()
+        let lockQueue = DispatchQueue(label: "com.enclosure.multiVideoUpload.lock")
+        
+        struct UploadedVideoResult {
+            let index: Int
+            let videoDownloadURL: String
+            let thumbnailDownloadURL: String
+            let videoFileName: String
+            let thumbnailFileName: String
+            let width: Int
+            let height: Int
+        }
+        
+        var uploadResults: [UploadedVideoResult] = []
+        var uploadErrors: [Error] = []
+        
+        for (index, asset) in selectedAssets.enumerated() {
+            dispatchGroup.enter()
+            let videoModelId = UUID().uuidString
+            let videoFileName = "\(videoModelId).mp4"
+            let thumbnailFileName = "thumb_\(videoModelId).jpg"
+            
+            // Step 1: Generate thumbnail
+            generateVideoThumbnail(asset: asset) { thumbnailResult in
+                switch thumbnailResult {
+                case .failure(let error):
+                    lockQueue.sync { uploadErrors.append(error) }
+                    dispatchGroup.leave()
+                case .success(let thumbnailData):
+                    // Step 2: Upload thumbnail
+                    self.uploadThumbnailToFirebase(data: thumbnailData, remoteFileName: thumbnailFileName) { thumbnailUploadResult in
+                        switch thumbnailUploadResult {
+                        case .failure(let error):
+                            lockQueue.sync { uploadErrors.append(error) }
+                            dispatchGroup.leave()
+                        case .success(let thumbnailURL):
+                            // Step 3: Export and upload video
+                            self.exportVideoAsset(asset, fileName: videoFileName) { videoExportResult in
+                                switch videoExportResult {
+                                case .failure(let error):
+                                    lockQueue.sync { uploadErrors.append(error) }
+                                    dispatchGroup.leave()
+                                case .success(let videoData):
+                                    self.uploadVideoFileToFirebase(data: videoData, remoteFileName: videoFileName) { videoUploadResult in
+                                        switch videoUploadResult {
+                                        case .failure(let error):
+                                            lockQueue.sync { uploadErrors.append(error) }
+                                        case .success(let videoURL):
+                                            // Get dimensions from thumbnail
+                                            let image = UIImage(data: thumbnailData)
+                                            let width = image?.cgImage?.width ?? Int(asset.pixelWidth)
+                                            let height = image?.cgImage?.height ?? Int(asset.pixelHeight)
+                                            
+                                            let result = UploadedVideoResult(
+                                                index: index,
+                                                videoDownloadURL: videoURL,
+                                                thumbnailDownloadURL: thumbnailURL,
+                                                videoFileName: videoFileName,
+                                                thumbnailFileName: thumbnailFileName,
+                                                width: width,
+                                                height: height
+                                            )
+                                            lockQueue.sync { uploadResults.append(result) }
+                                        }
+                                        dispatchGroup.leave()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        dispatchGroup.notify(queue: .main) {
+            if uploadResults.isEmpty {
+                print("❌ [MULTI_VIDEO] Upload failed - no results")
+                Constant.showToast(message: "Unable to upload videos. Please try again.")
+                return
+            }
+            
+            if !uploadErrors.isEmpty {
+                print("⚠️ [MULTI_VIDEO] Some uploads failed: \(uploadErrors.count) errors")
+            }
+            
+            let sortedResults = uploadResults.sorted { $0.index < $1.index }
+            
+            // Send each video as a separate message (matching Android behavior)
+            for result in sortedResults {
+                let videoModelId = UUID().uuidString
+                
+                let aspectRatioValue: String
+                if result.height > 0 {
+                    aspectRatioValue = String(format: "%.2f", Double(result.width) / Double(result.height))
+                } else {
+                    aspectRatioValue = ""
+                }
+                
+                print("MultiVideoPreviewDialog: Creating ChatMessage \(result.index + 1)/\(sortedResults.count) with caption: '\(trimmedCaption)'")
+                let newMessage = ChatMessage(
+                    id: videoModelId,
+                    uid: senderId,
+                    message: "",
+                    time: currentDateTimeString,
+                    document: result.videoDownloadURL,
+                    dataType: Constant.video,
+                    fileExtension: "mp4",
+                    name: nil,
+                    phone: nil,
+                    micPhoto: micPhoto,
+                    miceTiming: nil,
+                    userName: userName,
+                    receiverId: receiverUid,
+                    replytextData: nil,
+                    replyKey: nil,
+                    replyType: nil,
+                    replyOldData: nil,
+                    replyCrtPostion: nil,
+                    forwaredKey: nil,
+                    groupName: nil,
+                    docSize: nil,
+                    fileName: result.videoFileName,
+                    thumbnail: result.thumbnailDownloadURL,
+                    fileNameThumbnail: result.thumbnailFileName,
+                    caption: trimmedCaption,
+                    notification: 1,
+                    currentDate: currentDateString,
+                    emojiModel: [EmojiModel(name: "", emoji: "")],
+                    emojiCount: nil,
+                    timestamp: timestamp,
+                    imageWidth: "\(result.width)",
+                    imageHeight: "\(result.height)",
+                    aspectRatio: aspectRatioValue,
+                    selectionCount: "1",
+                    selectionBunch: nil,
+                    receiverLoader: 0
+                )
+                print("MultiVideoPreviewDialog: ChatMessage created with caption: '\(newMessage.caption ?? "nil")'")
+                
+                let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
+                
+                MessageUploadService.shared.uploadMessage(
+                    model: newMessage,
+                    filePath: nil,
+                    userFTokenKey: userFTokenKey,
+                    deviceType: "2"
+                ) { success, errorMessage in
+                    if success {
+                        print("✅ [MULTI_VIDEO] Uploaded video \(result.index + 1)/\(sortedResults.count) for modelId=\(videoModelId)")
+                    } else {
+                        print("❌ [MULTI_VIDEO] Upload error: \(errorMessage ?? "Unknown error")")
+                        Constant.showToast(message: "Failed to send video. Please try again.")
+                    }
+                }
+            }
+            
+            // Clear selected assets after sending
+            self.selectedAssetIds.removeAll()
+            
+            // Call the original onSend callback for any additional handling
+            onSend(trimmedCaption)
+        }
+    }
+    
+    // Generate thumbnail from video asset
+    private func generateVideoThumbnail(asset: PHAsset, completion: @escaping (Result<Data, Error>) -> Void) {
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.isNetworkAccessAllowed = true
+        options.resizeMode = .exact
+        
+        let thumbnailSize = CGSize(width: 800, height: 800)
+        
+        imageManager.requestImage(
+            for: asset,
+            targetSize: thumbnailSize,
+            contentMode: .aspectFit,
+            options: options
+        ) { image, _ in
+            guard let image = image else {
+                completion(.failure(MultiVideoUploadError.thumbnailGenerationFailed))
+                return
+            }
+            
+            // Convert to JPEG
+            guard let jpegData = image.jpegData(compressionQuality: 0.85) else {
+                completion(.failure(MultiVideoUploadError.thumbnailGenerationFailed))
+                return
+            }
+            
+            completion(.success(jpegData))
+        }
+    }
+    
+    // Export video asset to Data
+    private func exportVideoAsset(_ asset: PHAsset, fileName: String, completion: @escaping (Result<Data, Error>) -> Void) {
+        let videoOptions = PHVideoRequestOptions()
+        videoOptions.deliveryMode = .highQualityFormat
+        videoOptions.isNetworkAccessAllowed = true
+        
+        PHImageManager.default().requestAVAsset(forVideo: asset, options: videoOptions) { avAsset, _, _ in
+            guard let avAsset = avAsset else {
+                completion(.failure(MultiVideoUploadError.dataUnavailable))
+                return
+            }
+            
+            // Export AVAsset to Data
+            if let urlAsset = avAsset as? AVURLAsset {
+                // Direct file URL available
+                do {
+                    let videoData = try Data(contentsOf: urlAsset.url)
+                    completion(.success(videoData))
+                } catch {
+                    completion(.failure(error))
+                }
+            } else {
+                // Need to export the asset
+                self.exportAVAssetToData(avAsset, completion: completion)
+            }
+        }
+    }
+    
+    // Export AVAsset to Data using AVAssetExportSession
+    private func exportAVAssetToData(_ asset: AVAsset, completion: @escaping (Result<Data, Error>) -> Void) {
+        guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else {
+            completion(.failure(MultiVideoUploadError.dataUnavailable))
+            return
+        }
+        
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
+        exportSession.outputURL = tempURL
+        exportSession.outputFileType = .mp4
+        
+        exportSession.exportAsynchronously {
+            switch exportSession.status {
+            case .completed:
+                do {
+                    let videoData = try Data(contentsOf: tempURL)
+                    try? FileManager.default.removeItem(at: tempURL) // Clean up temp file
+                    completion(.success(videoData))
+                } catch {
+                    completion(.failure(error))
+                }
+            case .failed, .cancelled:
+                completion(.failure(exportSession.error ?? MultiVideoUploadError.dataUnavailable))
+            default:
+                completion(.failure(MultiVideoUploadError.dataUnavailable))
+            }
+        }
+    }
+    
+    // Upload thumbnail to Firebase Storage
+    // Note: Firebase Storage handles background uploads automatically, so we don't need background tasks
+    private func uploadThumbnailToFirebase(data: Data, remoteFileName: String, completion: @escaping (Result<String, Error>) -> Void) {
+        let storagePath = "\(Constant.CHAT)/\(Constant.SenderIdMy)_\(contact.uid)/\(remoteFileName)"
+        let ref = Storage.storage().reference().child(storagePath)
+        let metadata = StorageMetadata()
+        metadata.contentType = "image/jpeg"
+        
+        ref.putData(data, metadata: metadata) { _, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            ref.downloadURL { url, error in
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+                
+                guard let url = url else {
+                    completion(.failure(MultiVideoUploadError.downloadURLMissing))
+                    return
+                }
+                
+                completion(.success(url.absoluteString))
+            }
+        }
+    }
+    
+    // Upload video to Firebase Storage
+    // Note: Firebase Storage handles background uploads automatically, so we don't need background tasks
+    // Video uploads can take minutes, which exceeds the 30-second background task limit
+    private func uploadVideoFileToFirebase(data: Data, remoteFileName: String, completion: @escaping (Result<String, Error>) -> Void) {
+        let storagePath = "\(Constant.CHAT)/\(Constant.SenderIdMy)_\(contact.uid)/\(remoteFileName)"
+        let ref = Storage.storage().reference().child(storagePath)
+        let metadata = StorageMetadata()
+        metadata.contentType = "video/mp4"
+        
+        ref.putData(data, metadata: metadata) { _, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            ref.downloadURL { url, error in
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+                
+                guard let url = url else {
+                    completion(.failure(MultiVideoUploadError.downloadURLMissing))
+                    return
+                }
+                
+                completion(.success(url.absoluteString))
+            }
         }
     }
 }

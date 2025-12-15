@@ -248,6 +248,7 @@ struct CameraGalleryView: View {
                 videoAssets: videoAssets,
                 imageManager: imageManager,
                 caption: $multiVideoPreviewCaption,
+                contact: contact,
                 onSend: { caption in
                     handleMultiVideoSend(caption: caption)
                 },
