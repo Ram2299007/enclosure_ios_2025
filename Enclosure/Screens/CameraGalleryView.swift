@@ -933,6 +933,7 @@ struct CameraGalleryView: View {
             if uploadResults.isEmpty {
                 print("❌ [CAMERA_MULTI_IMAGE] Upload failed - no results")
                 Constant.showToast(message: "Unable to upload images. Please try again.")
+                self.dismiss()
                 return
             }
             
@@ -1012,6 +1013,11 @@ struct CameraGalleryView: View {
                 } else {
                     print("❌ [CAMERA_MULTI_IMAGE] Upload error: \(errorMessage ?? "Unknown error")")
                     Constant.showToast(message: "Failed to send images. Please try again.")
+                }
+                
+                // Dismiss camera view after sending attempt
+                DispatchQueue.main.async {
+                    self.dismiss()
                 }
             }
         }
