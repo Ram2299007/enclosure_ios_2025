@@ -8,8 +8,11 @@
 import SwiftUI
 import AVFoundation
 import Photos
+import FirebaseStorage
+import CoreHaptics
 
 struct CameraGalleryView: View {
+    let contact: UserActiveContactModel
     @Environment(\.dismiss) private var dismiss
     @StateObject private var cameraManager = CameraManager()
     @State private var isPhotoMode = true
@@ -34,6 +37,77 @@ struct CameraGalleryView: View {
     private let imageManager = PHCachingImageManager()
     private let maxBottomSheetHeight: CGFloat = 620 // Full height (matching Android height="620dp")
     private let peekHeight: CGFloat = 250 // Increased peek height to show partial row naturally
+
+    private enum MultiImageUploadError: Error {
+        case dataUnavailable
+        case downloadURLMissing
+    }
+    
+    // MARK: - Helpers (shared with ChattingScreen)
+    private func exportImageAsset(_ asset: PHAsset, fileName: String, completion: @escaping (Result<(data: Data, width: Int, height: Int), Error>) -> Void) {
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.isNetworkAccessAllowed = true
+        options.version = .current
+        
+        PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
+            guard let data = data else {
+                completion(.failure(MultiImageUploadError.dataUnavailable))
+                return
+            }
+            
+            let image = UIImage(data: data)
+            let jpegData = image?.jpegData(compressionQuality: 0.85) ?? data
+            let width = image?.cgImage?.width ?? Int(asset.pixelWidth)
+            let height = image?.cgImage?.height ?? Int(asset.pixelHeight)
+            completion(.success((jpegData, width, height)))
+        }
+    }
+    
+    private func uploadImageFileToFirebase(data: Data, remoteFileName: String, completion: @escaping (Result<String, Error>) -> Void) {
+        let storagePath = "\(Constant.CHAT)/\(Constant.SenderIdMy)_\(contact.uid)/\(remoteFileName)"
+        let ref = Storage.storage().reference().child(storagePath)
+        let metadata = StorageMetadata()
+        metadata.contentType = "image/jpeg"
+        
+        var bgTask: UIBackgroundTaskIdentifier = .invalid
+        DispatchQueue.main.async {
+            bgTask = UIApplication.shared.beginBackgroundTask(withName: "UploadImage") {
+                UIApplication.shared.endBackgroundTask(bgTask)
+                bgTask = .invalid
+            }
+        }
+        let endTask: () -> Void = {
+            if bgTask != .invalid {
+                UIApplication.shared.endBackgroundTask(bgTask)
+                bgTask = .invalid
+            }
+        }
+        
+        ref.putData(data, metadata: metadata) { _, error in
+            if let error = error {
+                endTask()
+                completion(.failure(error))
+                return
+            }
+            
+            ref.downloadURL { url, error in
+                endTask()
+                
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+                
+                guard let url = url else {
+                    completion(.failure(MultiImageUploadError.downloadURLMissing))
+                    return
+                }
+                
+                completion(.success(url.absoluteString))
+            }
+        }
+    }
     
     // Typography (match Android messageBox sizing prefs)
     private var messageInputFont: Font {
@@ -710,34 +784,27 @@ struct CameraGalleryView: View {
         }
     }
     
+    // MARK: - Haptics
+    private func triggerLightHapticIfAvailable() {
+        // Avoid CHHapticPattern errors on devices/simulators without haptics
+        let capabilities = CHHapticEngine.capabilitiesForHardware()
+        guard capabilities.supportsHaptics else { return }
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.prepare()
+        generator.impactOccurred()
+    }
+    
     // MARK: - Handle Multi-Video Send (matching Android upload logic)
     private func handleMultiVideoSend(caption: String) {
         print("CameraGalleryView: === MULTI-VIDEO SEND ===")
         print("CameraGalleryView: Selected videos count: \(selectedAssetIds.count)")
         print("CameraGalleryView: Caption: '\(caption)'")
         
-        // Get selected assets from videoAssets
-        let selectedAssets = videoAssets.filter { selectedAssetIds.contains($0.localIdentifier) }
-        
-        guard !selectedAssets.isEmpty else {
-            print("CameraGalleryView: No video assets selected, returning")
-            return
-        }
-        
-        // Close the preview dialog
+        // Not implemented yet (parity work pending)
         showMultiVideoPreview = false
-        
-        // Clear selected assets after sending
         selectedAssetIds.removeAll()
         captionText = ""
-        
-        // TODO: Process and upload selected videos with caption
-        // This should match Android's upload logic for multi-video messages
-        // For now, we'll just log the action
-        print("CameraGalleryView: Would upload \(selectedAssets.count) videos with caption: '\(caption)'")
-        
-        // TODO: Implement actual upload logic using MessageUploadService or similar
-        // Similar to how single videos are uploaded
+        Constant.showToast(message: "Video upload from camera is not yet supported on iOS.")
     }
     
     private func formatTime(_ time: TimeInterval) -> String {
@@ -776,9 +843,8 @@ struct CameraGalleryView: View {
         print("CameraGalleryView: Selected images count: \(selectedAssetIds.count)")
         print("CameraGalleryView: Caption: '\(captionText)'")
         
-        // Light haptic feedback
-        let generator = UIImpactFeedbackGenerator(style: .light)
-        generator.impactOccurred()
+        // Light haptic feedback (guarded to avoid CHHaptic errors on devices without haptics)
+        triggerLightHapticIfAvailable()
         
         // Set caption from CameraGalleryView
         multiImagePreviewCaption = captionText
@@ -793,9 +859,7 @@ struct CameraGalleryView: View {
         print("CameraGalleryView: Selected images count: \(selectedAssetIds.count)")
         print("CameraGalleryView: Caption: '\(caption)'")
         
-        // Get selected assets from photoAssets
         let selectedAssets = photoAssets.filter { selectedAssetIds.contains($0.localIdentifier) }
-        
         guard !selectedAssets.isEmpty else {
             print("CameraGalleryView: No assets selected, returning")
             return
@@ -804,17 +868,153 @@ struct CameraGalleryView: View {
         // Close the preview dialog
         showMultiImagePreview = false
         
-        // Clear selected assets after sending
-        selectedAssetIds.removeAll()
-        captionText = ""
+        let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        let receiverUid = contact.uid
+        let senderId = Constant.SenderIdMy
+        let userName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
+        let micPhoto = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
         
-        // TODO: Process and upload selected images with caption
-        // This should match Android's upload logic for multi-image messages
-        // For now, we'll just log the action
-        print("CameraGalleryView: Would upload \(selectedAssets.count) images with caption: '\(caption)'")
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "hh:mm a"
+        let currentDateTimeString = timeFormatter.string(from: Date())
         
-        // TODO: Implement actual upload logic using MessageUploadService or similar
-        // Similar to how single images are uploaded
+        let currentDateFormatter = DateFormatter()
+        currentDateFormatter.dateFormat = "yyyy-MM-dd"
+        let currentDateString = currentDateFormatter.string(from: Date())
+        
+        let timestamp = Date().timeIntervalSince1970
+        let modelId = UUID().uuidString
+        
+        let dispatchGroup = DispatchGroup()
+        let lockQueue = DispatchQueue(label: "com.enclosure.camera.multiImage.lock")
+        
+        struct UploadedImageResult {
+            let index: Int
+            let downloadURL: String
+            let fileName: String
+            let width: Int
+            let height: Int
+        }
+        
+        var uploadResults: [UploadedImageResult] = []
+        var uploadErrors: [Error] = []
+        
+        for (index, asset) in selectedAssets.enumerated() {
+            dispatchGroup.enter()
+            let remoteFileName = "\(modelId)_\(index).jpg"
+            
+            exportImageAsset(asset, fileName: remoteFileName) { exportResult in
+                switch exportResult {
+                case .failure(let error):
+                    lockQueue.sync { uploadErrors.append(error) }
+                    dispatchGroup.leave()
+                case .success(let export):
+                    self.uploadImageFileToFirebase(data: export.data, remoteFileName: remoteFileName) { uploadResult in
+                        switch uploadResult {
+                        case .failure(let error):
+                            lockQueue.sync { uploadErrors.append(error) }
+                        case .success(let downloadURL):
+                            let result = UploadedImageResult(
+                                index: index,
+                                downloadURL: downloadURL,
+                                fileName: remoteFileName,
+                                width: export.width,
+                                height: export.height
+                            )
+                            lockQueue.sync { uploadResults.append(result) }
+                        }
+                        dispatchGroup.leave()
+                    }
+                }
+            }
+        }
+        
+        dispatchGroup.notify(queue: .main) {
+            if uploadResults.isEmpty {
+                print("❌ [CAMERA_MULTI_IMAGE] Upload failed - no results")
+                Constant.showToast(message: "Unable to upload images. Please try again.")
+                return
+            }
+            
+            if !uploadErrors.isEmpty {
+                print("⚠️ [CAMERA_MULTI_IMAGE] Some uploads failed: \(uploadErrors.count) errors")
+            }
+            
+            let sortedResults = uploadResults.sorted { $0.index < $1.index }
+            let selectionBunchModels = sortedResults.map { SelectionBunchModel(imgUrl: $0.downloadURL, fileName: $0.fileName) }
+            
+            guard let first = sortedResults.first else {
+                Constant.showToast(message: "Unable to prepare images. Please try again.")
+                return
+            }
+            
+            let aspectRatioValue: String
+            if first.height > 0 {
+                aspectRatioValue = String(format: "%.2f", Double(first.width) / Double(first.height))
+            } else {
+                aspectRatioValue = ""
+            }
+            
+            let newMessage = ChatMessage(
+                id: modelId,
+                uid: senderId,
+                message: "",
+                time: currentDateTimeString,
+                document: first.downloadURL,
+                dataType: Constant.img,
+                fileExtension: "jpg",
+                name: nil,
+                phone: nil,
+                micPhoto: micPhoto,
+                miceTiming: nil,
+                userName: userName,
+                receiverId: receiverUid,
+                replytextData: nil,
+                replyKey: nil,
+                replyType: nil,
+                replyOldData: nil,
+                replyCrtPostion: nil,
+                forwaredKey: nil,
+                groupName: nil,
+                docSize: nil,
+                fileName: first.fileName,
+                thumbnail: nil,
+                fileNameThumbnail: nil,
+                caption: trimmedCaption,
+                notification: 1,
+                currentDate: currentDateString,
+                emojiModel: [EmojiModel(name: "", emoji: "")],
+                emojiCount: nil,
+                timestamp: timestamp,
+                imageWidth: "\(first.width)",
+                imageHeight: "\(first.height)",
+                aspectRatio: aspectRatioValue,
+                selectionCount: "\(sortedResults.count)",
+                selectionBunch: selectionBunchModels,
+                receiverLoader: 0
+            )
+            
+            // Clear selected assets after sending
+            self.selectedAssetIds.removeAll()
+            self.captionText = ""
+            
+            // Add to UI is not applicable here (this view is modal); we just upload
+            let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
+            
+            MessageUploadService.shared.uploadMessage(
+                model: newMessage,
+                filePath: nil,
+                userFTokenKey: userFTokenKey,
+                deviceType: "2"
+            ) { success, errorMessage in
+                if success {
+                    print("✅ [CAMERA_MULTI_IMAGE] Uploaded \(sortedResults.count) images for modelId=\(modelId)")
+                } else {
+                    print("❌ [CAMERA_MULTI_IMAGE] Upload error: \(errorMessage ?? "Unknown error")")
+                    Constant.showToast(message: "Failed to send images. Please try again.")
+                }
+            }
+        }
     }
     
     private func requestCameraPermissionAndSetup() {

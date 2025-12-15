@@ -200,7 +200,7 @@ struct ChattingScreen: View {
         }
         .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showCameraView) {
-            CameraGalleryView()
+            CameraGalleryView(contact: contact)
         }
         .fullScreenCover(isPresented: $showWhatsAppImagePicker, onDismiss: {
             // Restore gallery picker when image picker is dismissed (matching CameraGalleryView behavior)
@@ -3425,13 +3425,32 @@ struct ChattingScreen: View {
         let metadata = StorageMetadata()
         metadata.contentType = "image/jpeg"
         
+        // Begin background task to avoid watchdog termination during uploads
+        var bgTask: UIBackgroundTaskIdentifier = .invalid
+        DispatchQueue.main.async {
+            bgTask = UIApplication.shared.beginBackgroundTask(withName: "UploadImage") {
+                UIApplication.shared.endBackgroundTask(bgTask)
+                bgTask = .invalid
+            }
+        }
+        
+        let endTask: () -> Void = {
+            if bgTask != .invalid {
+                UIApplication.shared.endBackgroundTask(bgTask)
+                bgTask = .invalid
+            }
+        }
+        
         ref.putData(data, metadata: metadata) { _, error in
             if let error = error {
+                endTask()
                 completion(.failure(error))
                 return
             }
             
             ref.downloadURL { url, error in
+                endTask()
+                
                 if let error = error {
                     completion(.failure(error))
                     return
