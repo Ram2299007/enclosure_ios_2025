@@ -118,6 +118,16 @@ struct ChattingScreen: View {
     @State private var multiContactPreviewCaption: String = ""
     @State private var multiContactPreviewContacts: [ContactPickerInfo] = [] // Store selected contacts
     
+    // Voice recording state
+    @State private var showVoiceRecordingBottomSheet: Bool = false
+    @State private var audioRecorder: AVAudioRecorder?
+    @State private var recordingTimer: Timer?
+    @State private var recordingDuration: TimeInterval = 0
+    @State private var recordingProgress: Double = 0.0
+    @State private var audioFileURL: URL?
+    @State private var isRecording: Bool = false
+    @State private var sendButtonScale: CGFloat = 1.0
+    
     // Pagination constants (matching Android)
     private let PAGE_SIZE: UInt = 10
     private let LOAD_MORE_THROTTLE: TimeInterval = 0.5 // Throttle loadMore calls (500ms)
@@ -395,6 +405,20 @@ struct ChattingScreen: View {
                 print("MultiContactPreviewDialog: Current state contacts count: \(multiContactPreviewContacts.count)")
                 print("MultiContactPreviewDialog: Contacts: \(multiContactPreviewContacts.map { $0.name })")
             }
+        }
+        .sheet(isPresented: $showVoiceRecordingBottomSheet) {
+            VoiceRecordingBottomSheet(
+                recordingDuration: $recordingDuration,
+                recordingProgress: $recordingProgress,
+                isRecording: $isRecording,
+                onCancel: {
+                    cancelRecording()
+                },
+                onSend: {
+                    sendAndStopRecording()
+                }
+            )
+            .interactiveDismissDisabled(true) // Prevent swipe to dismiss (matching Android setCanceledOnTouchOutside(false))
         }
         .overlay(
             CustomActionSheet(
@@ -1046,7 +1070,14 @@ struct ChattingScreen: View {
                                         .padding(.bottom, 8)
                                 }
                             }
+                            .scaleEffect(sendButtonScale)
                         }
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0.1)
+                                .onEnded { _ in
+                                    handleSendButtonLongPress()
+                                }
+                        )
                     }
                     
                     // Small counter badge (Android multiSelectSmallCounterText)
@@ -3446,6 +3477,372 @@ struct ChattingScreen: View {
     }
     
     // Scroll-based date visibility removed per latest requirements
+    
+    // MARK: - Voice Recording Functions
+    
+    /// Handle long press on send button (matching Android onLongClickListener)
+    private func handleSendButtonLongPress() {
+        print("VoiceRecording: === SEND BUTTON LONG PRESS ===")
+        
+        // Check if multi-select is active (matching Android)
+        if selectedAssetIds.count > 0 {
+            print("VoiceRecording: Multi-select active, ignoring long press")
+            return
+        }
+        
+        // Hide keyboard (matching Android)
+        isMessageFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        
+        // Check message limit (matching Android)
+        guard limitStatus == "0" else {
+            Constant.showToast(message: "Msg limit set for privacy in a day - \(totalMsgLimit)")
+            return
+        }
+        
+        // Vibrate (matching Android Constant.Vibrator50)
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+        
+        // Animate send button (matching Android ObjectAnimator 1.3f -> 0.8f)
+        withAnimation(.easeInOut(duration: 0.2)) {
+            sendButtonScale = 1.3
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                self.sendButtonScale = 0.8
+            }
+        }
+        
+        // Show bottom sheet dialog
+        showVoiceRecordingBottomSheet = true
+        
+        // Start recording after a short delay to allow bottom sheet to appear
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.startRecording()
+        }
+    }
+    
+    /// Start voice recording (matching Android startRecording)
+    private func startRecording() {
+        print("VoiceRecording: === START RECORDING ===")
+        
+        // Request microphone permission
+        AVAudioSession.sharedInstance().requestRecordPermission { granted in
+            guard granted else {
+                DispatchQueue.main.async {
+                    Constant.showToast(message: "Microphone permission is required for voice recording")
+                    self.showVoiceRecordingBottomSheet = false
+                    self.resetSendButtonScale()
+                }
+                return
+            }
+            
+            DispatchQueue.main.async {
+                do {
+                    // Configure audio session
+                    let audioSession = AVAudioSession.sharedInstance()
+                    try audioSession.setCategory(.playAndRecord, mode: .default)
+                    try audioSession.setActive(true)
+                    
+                    // Create audio file URL (matching Android file path structure)
+                    let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                    let audiosDir = documentsPath.appendingPathComponent("Enclosure/Media/Audios", isDirectory: true)
+                    
+                    // Create directory if it doesn't exist
+                    try FileManager.default.createDirectory(at: audiosDir, withIntermediateDirectories: true, attributes: nil)
+                    
+                    // Generate filename with timestamp (matching Android format)
+                    let dateFormatter = DateFormatter()
+                    dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
+                    let timestamp = dateFormatter.string(from: Date())
+                    // Note: iOS saves AAC as .m4a, but Android uses .mp3 extension
+                    // We'll use .m4a (correct format) and backend should handle it
+                    let fileName = "\(timestamp).m4a"
+                    let fileURL = audiosDir.appendingPathComponent(fileName)
+                    
+                    self.audioFileURL = fileURL
+                    
+                    // Configure audio recorder settings (matching Android: MPEG_4, AAC)
+                    let settings: [String: Any] = [
+                        AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                        AVSampleRateKey: 44100,
+                        AVNumberOfChannelsKey: 1,
+                        AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+                    ]
+                    
+                    // Create recorder
+                    self.audioRecorder = try AVAudioRecorder(url: fileURL, settings: settings)
+                    self.audioRecorder?.prepareToRecord()
+                    self.audioRecorder?.record()
+                    
+                    self.isRecording = true
+                    self.recordingDuration = 0
+                    // Progress bar starts at 100% (full) and decreases to 0% as time runs out (matching Android CountDownTimer)
+                    self.recordingProgress = 100.0
+                    
+                    // Start timer for countdown (60 seconds max, matching Android)
+                    // Note: No [weak self] needed since ChattingScreen is a struct (value type)
+                    self.recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+                        // Update duration
+                        self.recordingDuration += 0.1
+                        
+                        // Update progress bar: progress decreases from 100 to 0 as time increases (matching Android CountDownTimer)
+                        // Android: progress = (int) (millisUntilFinished / (60000 / 100))
+                        // millisUntilFinished starts at 60000 and decreases to 0
+                        // So: progress = millisUntilFinished / 600, which gives 100 to 0
+                        // In our case: progress = ((60.0 - elapsedSeconds) / 60.0) * 100.0
+                        let elapsedSeconds = self.recordingDuration
+                        let maxSeconds: Double = 60.0
+                        let remainingSeconds = max(0, maxSeconds - elapsedSeconds)
+                        self.recordingProgress = max(0, min(100, (remainingSeconds / maxSeconds) * 100.0))
+                        
+                        // Auto-stop at 60 seconds (matching Android countDownTimer)
+                        if self.recordingDuration >= 60.0 {
+                            timer.invalidate()
+                            self.recordingDuration = 60.0 // Cap at exactly 60 seconds
+                            self.recordingProgress = 0.0 // Progress bar at 0% when time is up
+                            self.sendAndStopRecording()
+                            self.showVoiceRecordingBottomSheet = false
+                            self.resetSendButtonScale()
+                        }
+                    }
+                    
+                    print("VoiceRecording: Recording started, file: \(fileURL.path)")
+                } catch {
+                    print("VoiceRecording: Error starting recording: \(error.localizedDescription)")
+                    Constant.showToast(message: "Failed to start recording")
+                    self.showVoiceRecordingBottomSheet = false
+                    self.resetSendButtonScale()
+                }
+            }
+        }
+    }
+    
+    /// Cancel recording (matching Android cancelRecording)
+    private func cancelRecording() {
+        print("VoiceRecording: === CANCEL RECORDING ===")
+        
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+        
+        audioRecorder?.stop()
+        audioRecorder = nil
+        
+        // Delete audio file (matching Android mFilePath.delete())
+        if let fileURL = audioFileURL {
+            try? FileManager.default.removeItem(at: fileURL)
+            print("VoiceRecording: Deleted audio file: \(fileURL.path)")
+        }
+        
+        audioFileURL = nil
+        isRecording = false
+        recordingDuration = 0
+        recordingProgress = 0.0
+        
+        // Reset audio session
+        try? AVAudioSession.sharedInstance().setActive(false)
+        
+        // Reset send button scale (matching Android ObjectAnimator 1f, 1f, 1f)
+        resetSendButtonScale()
+        
+        showVoiceRecordingBottomSheet = false
+    }
+    
+    /// Send and stop recording (matching Android sendAndStopRecording)
+    private func sendAndStopRecording() {
+        print("VoiceRecording: === SEND AND STOP RECORDING ===")
+        
+        guard let recorder = audioRecorder, let fileURL = audioFileURL else {
+            print("VoiceRecording: Recorder or file URL is nil")
+            cancelRecording()
+            return
+        }
+        
+        // Stop recording
+        recorder.stop()
+        audioRecorder = nil
+        
+        // Stop timer
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+        
+        isRecording = false
+        
+        // Verify audio file exists and has content
+        guard FileManager.default.fileExists(atPath: fileURL.path),
+              let fileAttributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+              let fileSize = fileAttributes[.size] as? Int64,
+              fileSize > 0 else {
+            print("VoiceRecording: Audio file not found or empty")
+            Constant.showToast(message: "Failed to record audio")
+            cancelRecording()
+            return
+        }
+        
+        print("VoiceRecording: Audio file exists, size: \(fileSize) bytes")
+        
+        // Get audio duration
+        let audioDuration = getAudioDuration(fileURL: fileURL)
+        print("VoiceRecording: Audio duration: \(audioDuration)")
+        
+        // Reset send button scale (matching Android ObjectAnimator 1f, 1f, 1f)
+        resetSendButtonScale()
+        
+        // Hide bottom sheet
+        showVoiceRecordingBottomSheet = false
+        
+        // Upload audio file
+        uploadAudioToFirebase(fileURL: fileURL, duration: audioDuration, fileName: fileURL.lastPathComponent)
+        
+        // Reset audio session
+        try? AVAudioSession.sharedInstance().setActive(false)
+    }
+    
+    /// Get audio duration (matching Android getAudioDuration)
+    private func getAudioDuration(fileURL: URL) -> String {
+        do {
+            let audioPlayer = try AVAudioPlayer(contentsOf: fileURL)
+            let durationSeconds = Int(audioPlayer.duration)
+            let minutes = durationSeconds / 60
+            let seconds = durationSeconds % 60
+            return String(format: "%02d:%02d", minutes, seconds)
+        } catch {
+            print("VoiceRecording: Error getting audio duration: \(error.localizedDescription)")
+            return "00:00"
+        }
+    }
+    
+    /// Upload audio to Firebase Storage and send message (matching Android upload logic)
+    private func uploadAudioToFirebase(fileURL: URL, duration: String, fileName: String) {
+        print("VoiceRecording: === UPLOAD AUDIO TO FIREBASE ===")
+        print("VoiceRecording: File: \(fileURL.path), Duration: \(duration), FileName: \(fileName)")
+        
+        guard let audioData = try? Data(contentsOf: fileURL) else {
+            print("VoiceRecording: Failed to read audio file data")
+            Constant.showToast(message: "Failed to read audio file")
+            return
+        }
+        
+        let receiverUid = contact.uid
+        let senderId = Constant.SenderIdMy
+        let userName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
+        let micPhoto = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
+        
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "hh:mm a"
+        let currentDateTimeString = timeFormatter.string(from: Date())
+        
+        let currentDateFormatter = DateFormatter()
+        currentDateFormatter.dateFormat = "yyyy-MM-dd"
+        let currentDateString = currentDateFormatter.string(from: Date())
+        
+        let timestamp = Date().timeIntervalSince1970
+        let modelId = UUID().uuidString
+        
+        // Upload to Firebase Storage
+        // Use .m4a extension (iOS AAC format) - backend should handle both .mp3 and .m4a
+        let storagePath = "\(Constant.CHAT)/\(senderId)_\(receiverUid)/\(modelId).m4a"
+        let ref = Storage.storage().reference().child(storagePath)
+        let metadata = StorageMetadata()
+        metadata.contentType = "audio/m4a"
+        
+        ref.putData(audioData, metadata: metadata) { metadata, error in
+            if let error = error {
+                print("VoiceRecording: Upload error: \(error.localizedDescription)")
+                Constant.showToast(message: "Failed to upload audio")
+                return
+            }
+            
+            // Get download URL
+            ref.downloadURL { url, error in
+                if let error = error {
+                    print("VoiceRecording: Download URL error: \(error.localizedDescription)")
+                    Constant.showToast(message: "Failed to get download URL")
+                    return
+                }
+                
+                guard let downloadURL = url else {
+                    print("VoiceRecording: Download URL is nil")
+                    Constant.showToast(message: "Failed to get download URL")
+                    return
+                }
+                
+                print("VoiceRecording: Upload successful, URL: \(downloadURL.absoluteString)")
+                
+                // Create ChatMessage (matching Android messageModel with voiceAudio dataType)
+                let newMessage = ChatMessage(
+                    id: modelId,
+                    uid: senderId,
+                    message: "",
+                    time: currentDateTimeString,
+                    document: downloadURL.absoluteString,
+                    dataType: Constant.voiceAudio,
+                    fileExtension: "m4a", // iOS AAC format (Android uses .mp3 but same AAC codec)
+                    name: nil,
+                    phone: nil,
+                    micPhoto: micPhoto,
+                    miceTiming: duration, // Audio duration in format "MM:SS"
+                    userName: userName,
+                    receiverId: receiverUid,
+                    replytextData: nil,
+                    replyKey: nil,
+                    replyType: nil,
+                    replyOldData: nil,
+                    replyCrtPostion: nil,
+                    forwaredKey: nil,
+                    groupName: nil,
+                    docSize: nil,
+                    fileName: fileName,
+                    thumbnail: nil,
+                    fileNameThumbnail: nil,
+                    caption: nil,
+                    notification: 1,
+                    currentDate: currentDateString,
+                    emojiModel: [EmojiModel(name: "", emoji: "")],
+                    emojiCount: nil,
+                    timestamp: timestamp,
+                    imageWidth: nil,
+                    imageHeight: nil,
+                    aspectRatio: nil,
+                    selectionCount: nil,
+                    selectionBunch: nil,
+                    receiverLoader: 0
+                )
+                
+                // Add to UI immediately
+                DispatchQueue.main.async {
+                    self.messages.append(newMessage)
+                    self.isLastItemVisible = true
+                    self.showScrollDownButton = false
+                }
+                
+                // Upload via MessageUploadService
+                let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
+                
+                MessageUploadService.shared.uploadMessage(
+                    model: newMessage,
+                    filePath: fileURL.path,
+                    userFTokenKey: userFTokenKey,
+                    deviceType: "2"
+                ) { success, errorMessage in
+                    if success {
+                        print("✅ [VOICE_RECORDING] Uploaded audio for modelId=\(modelId)")
+                    } else {
+                        print("❌ [VOICE_RECORDING] Upload error: \(errorMessage ?? "Unknown error")")
+                        Constant.showToast(message: "Failed to send audio. Please try again.")
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Reset send button scale animation (matching Android ObjectAnimator 1f, 1f, 1f)
+    private func resetSendButtonScale() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            sendButtonScale = 1.0
+        }
+    }
 }
 
 // MARK: - Chat Message Model (matching Android messageModel.java)
@@ -4241,6 +4638,131 @@ struct MultiImagePreviewDialog: View {
                 completion?()
             }
         }
+    }
+}
+
+// MARK: - Voice Recording Bottom Sheet (matching Android bottom_sheet_dialogue_rec.xml)
+struct VoiceRecordingBottomSheet: View {
+    @Binding var recordingDuration: TimeInterval
+    @Binding var recordingProgress: Double
+    @Binding var isRecording: Bool
+    let onCancel: () -> Void
+    let onSend: () -> Void
+    
+    @Environment(\.dismiss) private var dismiss
+    
+    private var formattedTime: String {
+        let minutes = Int(recordingDuration) / 60
+        let seconds = Int(recordingDuration) % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Progress bar container (matching Android LinearLayout with orientation="vertical")
+            VStack(spacing: 0) {
+                // Progress bar (matching Android LinearProgressIndicator)
+                // Rounded corner box with stroke border
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        // Rounded rectangle box with stroke (border)
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color("gray"), lineWidth: 2) // Rounded stroke border (box outline)
+                            .frame(height: 3)
+                            .background(
+                                // Background fill for empty area
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color("gray").opacity(0.1))
+                                    .frame(height: 3)
+                            )
+                        
+                        // Progress indicator fill inside the stroked box
+                        // Progress bar fills from left to right as time decreases (matching Android CountDownTimer)
+                        // When recordingProgress = 100%, bar is full (time remaining = 60s)
+                        // When recordingProgress = 0%, bar is empty (time remaining = 0s)
+                        let strokeWidth: CGFloat = 2
+                        let innerWidth = geometry.size.width - (strokeWidth * 2)
+                        let progressWidth = max(0, min(innerWidth, innerWidth * (recordingProgress / 100.0)))
+                        
+                        RoundedRectangle(cornerRadius: 8) // Rounded corners matching inner box
+                            .fill(Color("gray")) // Solid gray indicator fill
+                            .frame(width: progressWidth, height: 1) // Inner fill height (accounting for stroke)
+                            .padding(.leading, strokeWidth) // Padding to account for left stroke
+                            .padding(.vertical, strokeWidth) // Vertical padding to center inside stroke
+                    }
+                }
+                .frame(height: 3)
+                .padding(.horizontal, 30) // layout_marginHorizontal="30dp"
+                .padding(.top, 10) // layout_marginTop="10dp"
+                
+                // Bottom controls layout (matching Android galleryLyt LinearLayoutCompat)
+                HStack(spacing: 0) {
+                    // Cancel button container (matching Android layout_weight="1.6")
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            // Light haptic feedback
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.impactOccurred()
+                            onCancel()
+                        }) {
+                            // ImageView matching Android: 35dp x 35dp container, 24dp image
+                            Image("baseline_cancel_24")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 24, height: 24)
+                                .foregroundColor(Color("red_to_black_tint")) // app:tint="@color/red_to_black_tint"
+                                .frame(width: 35, height: 35) // android:layout_width="35dp" android:layout_height="35dp"
+                        }
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity) // layout_weight="1.6"
+                    
+                    // Chronometer - centered in the middle (matching Android but visually centered)
+                    Text(formattedTime)
+                        .font(.custom("Inter18pt-Bold", size: 18)) // android:textSize="18sp" android:textStyle="bold"
+                        .foregroundColor(Color("TextColor")) // style="@style/TextColor"
+                        .frame(maxWidth: .infinity) // layout_weight="0.5" but we'll center it visually
+                        .multilineTextAlignment(.center) // android:gravity="center"
+                    
+                    // Send button container (matching Android sendGrpLyt layout_weight="1.5")
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            // Light haptic feedback (matching Android Vibrator50)
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.impactOccurred()
+                            onSend()
+                        }) {
+                            // Send button (matching Android sendGrpBtm: 56dp x 56dp)
+                            ZStack {
+                                // Background matching Android callbg drawable with theme color tint
+                                Circle()
+                                    .fill(Color(hex: Constant.themeColor)) // Theme color (matching Android backgroundTintList)
+                                    .frame(width: 56, height: 56) // android:layout_width="56dp" android:layout_height="56dp"
+                                
+                                // Send icon (matching Android ImageView: 26dp x 24dp)
+                                Image("baseline_keyboard_double_arrow_right_24")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 26, height: 24) // android:layout_width="26dp" android:layout_height="24dp"
+                                    .foregroundColor(.white)
+                                    .padding(.top, 4) // android:layout_marginTop="4dp"
+                                    .padding(.bottom, 8) // android:layout_marginBottom="8dp"
+                            }
+                        }
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity) // layout_weight="1.5"
+                }
+                .padding(15) // android:padding="15dp"
+            }
+        }
+        .background(Color("bottom_sheet_background")) // Matching Android bottom_sheet_background drawable
+        .presentationDetents([.height(110)]) // Approximate height: progress bar (3dp + 10dp top + 20dp bottom) + controls (56dp button + 15dp padding * 2) ≈ 110dp
+        .presentationDragIndicator(.hidden)
     }
 }
 
