@@ -8,12 +8,14 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import QuickLook
+import FirebaseStorage
 
 struct MultiDocumentPreviewDialog: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) var colorScheme
     let selectedDocuments: [URL]
     @Binding var caption: String
+    let contact: UserActiveContactModel
     let onSend: (String) -> Void
     let onDismiss: () -> Void
     
@@ -152,10 +154,21 @@ struct MultiDocumentPreviewDialog: View {
                     // Send button group (matching sendGrpLyt from WhatsAppLikeImagePicker)
                     VStack(spacing: 0) {
                         Button(action: {
-                            // Light haptic feedback
+                            // Light haptic feedback (guarded to avoid errors on unsupported devices)
                             let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.prepare()
                             generator.impactOccurred()
-                            onSend(caption.trimmingCharacters(in: .whitespacesAndNewlines))
+                            
+                            // Dismiss keyboard first to avoid constraint warnings
+                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                            
+                            let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+                            print("MultiDocumentPreviewDialog: Send button clicked - Caption: '\(trimmedCaption)' (length: \(trimmedCaption.count))")
+                            
+                            // Small delay to let keyboard dismiss animation complete
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                self.handleMultiDocumentSend(caption: trimmedCaption)
+                            }
                         }) {
                             ZStack {
                                 Circle()
@@ -184,6 +197,7 @@ struct MultiDocumentPreviewDialog: View {
         .onAppear {
             print("MultiDocumentPreviewDialog: onAppear - documents count: \(selectedDocuments.count)")
             print("MultiDocumentPreviewDialog: documents: \(selectedDocuments.map { $0.lastPathComponent })")
+            print("MultiDocumentPreviewDialog: onAppear - Initial caption: '\(caption)' (length: \(caption.count))")
             setupKeyboardObservers()
         }
         .onDisappear {
@@ -222,6 +236,258 @@ struct MultiDocumentPreviewDialog: View {
     
     private func removeKeyboardObservers() {
         NotificationCenter.default.removeObserver(self)
+    }
+    
+    // MARK: - Document Upload Functions (matching Android sendMultipleDocuments)
+    
+    enum MultiDocumentUploadError: Error {
+        case fileNotFound
+        case dataUnavailable
+        case downloadURLMissing
+        case uploadFailed(String)
+    }
+    
+    private func handleMultiDocumentSend(caption: String) {
+        print("MultiDocumentPreviewDialog: === MULTI-DOCUMENT SEND ===")
+        print("MultiDocumentPreviewDialog: Selected documents count: \(selectedDocuments.count)")
+        print("MultiDocumentPreviewDialog: Caption: '\(caption)'")
+        
+        guard !selectedDocuments.isEmpty else {
+            print("MultiDocumentPreviewDialog: No documents selected, returning")
+            return
+        }
+        
+        // Close the preview dialog
+        onDismiss()
+        
+        let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        let receiverUid = contact.uid
+        let senderId = Constant.SenderIdMy
+        let userName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
+        let micPhoto = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
+        
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "hh:mm a"
+        let currentDateTimeString = timeFormatter.string(from: Date())
+        
+        let currentDateFormatter = DateFormatter()
+        currentDateFormatter.dateFormat = "yyyy-MM-dd"
+        let currentDateString = currentDateFormatter.string(from: Date())
+        
+        let timestamp = Date().timeIntervalSince1970
+        
+        // Upload all documents to Firebase Storage, then push to API + RTDB
+        let dispatchGroup = DispatchGroup()
+        let lockQueue = DispatchQueue(label: "com.enclosure.multiDocumentUpload.lock")
+        
+        struct UploadedDocumentResult {
+            let index: Int
+            let downloadURL: String
+            let fileName: String
+            let fileSize: Int64
+            let fileExtension: String
+        }
+        
+        var uploadResults: [UploadedDocumentResult] = []
+        var uploadErrors: [Error] = []
+        
+        for (index, documentURL) in selectedDocuments.enumerated() {
+            dispatchGroup.enter()
+            
+            // Verify file exists
+            guard FileManager.default.fileExists(atPath: documentURL.path) else {
+                lockQueue.sync { uploadErrors.append(MultiDocumentUploadError.fileNotFound) }
+                dispatchGroup.leave()
+                continue
+            }
+            
+            let fileName = documentURL.lastPathComponent
+            let fileExtension = getFileExtension(from: fileName)
+            let documentModelId = UUID().uuidString
+            let remoteFileName = "\(documentModelId).\(fileExtension)"
+            
+            // Get file size
+            let fileSize: Int64
+            if let attributes = try? FileManager.default.attributesOfItem(atPath: documentURL.path),
+               let size = attributes[.size] as? Int64 {
+                fileSize = size
+            } else {
+                fileSize = 0
+            }
+            
+            // Read file data
+            guard let fileData = try? Data(contentsOf: documentURL) else {
+                lockQueue.sync { uploadErrors.append(MultiDocumentUploadError.dataUnavailable) }
+                dispatchGroup.leave()
+                continue
+            }
+            
+            // Upload to Firebase Storage
+            uploadDocumentToFirebase(data: fileData, remoteFileName: remoteFileName, mimeType: getMimeType(for: fileExtension)) { uploadResult in
+                switch uploadResult {
+                case .failure(let error):
+                    lockQueue.sync { uploadErrors.append(error) }
+                    dispatchGroup.leave()
+                case .success(let downloadURL):
+                    let result = UploadedDocumentResult(
+                        index: index,
+                        downloadURL: downloadURL,
+                        fileName: fileName,
+                        fileSize: fileSize,
+                        fileExtension: fileExtension
+                    )
+                    lockQueue.sync { uploadResults.append(result) }
+                    dispatchGroup.leave()
+                }
+            }
+        }
+        
+        dispatchGroup.notify(queue: .main) {
+            if uploadResults.isEmpty {
+                print("❌ [MULTI_DOCUMENT] Upload failed - no results")
+                Constant.showToast(message: "Unable to upload documents. Please try again.")
+                return
+            }
+            
+            if !uploadErrors.isEmpty {
+                print("⚠️ [MULTI_DOCUMENT] Some uploads failed: \(uploadErrors.count) errors")
+            }
+            
+            let sortedResults = uploadResults.sorted { $0.index < $1.index }
+            
+            // Send each document as a separate message (matching Android behavior)
+            // Only first document gets caption, others get empty caption
+            for (index, result) in sortedResults.enumerated() {
+                let documentModelId = UUID().uuidString
+                let documentCaption = (index == 0) ? trimmedCaption : ""
+                
+                print("MultiDocumentPreviewDialog: Creating ChatMessage \(index + 1)/\(sortedResults.count) with caption: '\(documentCaption)'")
+                
+                let newMessage = ChatMessage(
+                    id: documentModelId,
+                    uid: senderId,
+                    message: documentCaption,
+                    time: currentDateTimeString,
+                    document: result.downloadURL,
+                    dataType: Constant.doc,
+                    fileExtension: result.fileExtension,
+                    name: nil,
+                    phone: nil,
+                    micPhoto: micPhoto,
+                    miceTiming: nil,
+                    userName: userName,
+                    receiverId: receiverUid,
+                    replytextData: nil,
+                    replyKey: nil,
+                    replyType: nil,
+                    replyOldData: nil,
+                    replyCrtPostion: nil,
+                    forwaredKey: nil,
+                    groupName: nil,
+                    docSize: "\(result.fileSize)",
+                    fileName: result.fileName,
+                    thumbnail: nil,
+                    fileNameThumbnail: nil,
+                    caption: documentCaption,
+                    notification: 1,
+                    currentDate: currentDateString,
+                    emojiModel: [EmojiModel(name: "", emoji: "")],
+                    emojiCount: nil,
+                    timestamp: timestamp,
+                    imageWidth: nil,
+                    imageHeight: nil,
+                    aspectRatio: nil,
+                    selectionCount: "1",
+                    selectionBunch: nil,
+                    receiverLoader: 0
+                )
+                
+                print("MultiDocumentPreviewDialog: ChatMessage created with caption: '\(newMessage.caption ?? "nil")'")
+                
+                let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
+                
+                MessageUploadService.shared.uploadMessage(
+                    model: newMessage,
+                    filePath: nil,
+                    userFTokenKey: userFTokenKey,
+                    deviceType: "2"
+                ) { success, errorMessage in
+                    if success {
+                        print("✅ [MULTI_DOCUMENT] Uploaded document \(index + 1)/\(sortedResults.count) for modelId=\(documentModelId)")
+                    } else {
+                        print("❌ [MULTI_DOCUMENT] Upload error: \(errorMessage ?? "Unknown error")")
+                        Constant.showToast(message: "Failed to send document. Please try again.")
+                    }
+                }
+            }
+            
+            // Call the original onSend callback for any additional handling
+            onSend(trimmedCaption)
+        }
+    }
+    
+    // Upload document to Firebase Storage
+    private func uploadDocumentToFirebase(data: Data, remoteFileName: String, mimeType: String, completion: @escaping (Result<String, Error>) -> Void) {
+        let storagePath = "\(Constant.CHAT)/\(Constant.SenderIdMy)_\(contact.uid)/\(remoteFileName)"
+        let ref = Storage.storage().reference().child(storagePath)
+        let metadata = StorageMetadata()
+        metadata.contentType = mimeType
+        
+        ref.putData(data, metadata: metadata) { _, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            ref.downloadURL { url, error in
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+                
+                guard let url = url else {
+                    completion(.failure(MultiDocumentUploadError.downloadURLMissing))
+                    return
+                }
+                
+                completion(.success(url.absoluteString))
+            }
+        }
+    }
+    
+    // Get file extension from filename
+    private func getFileExtension(from fileName: String) -> String {
+        if let lastDotIndex = fileName.lastIndex(of: ".") {
+            let extensionStart = fileName.index(after: lastDotIndex)
+            return String(fileName[extensionStart...]).lowercased()
+        }
+        return ""
+    }
+    
+    // Get MIME type from file extension
+    private func getMimeType(for fileExtension: String) -> String {
+        switch fileExtension.lowercased() {
+        case "pdf": return "application/pdf"
+        case "doc": return "application/msword"
+        case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        case "xls": return "application/vnd.ms-excel"
+        case "xlsx": return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        case "ppt": return "application/vnd.ms-powerpoint"
+        case "pptx": return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        case "txt": return "text/plain"
+        case "rtf": return "application/rtf"
+        case "zip": return "application/zip"
+        case "rar": return "application/x-rar-compressed"
+        case "7z": return "application/x-7z-compressed"
+        case "jpg", "jpeg": return "image/jpeg"
+        case "png": return "image/png"
+        case "gif": return "image/gif"
+        case "mp4": return "video/mp4"
+        case "mov": return "video/quicktime"
+        case "mp3": return "audio/mpeg"
+        case "wav": return "audio/wav"
+        default: return "application/octet-stream"
+        }
     }
 }
 

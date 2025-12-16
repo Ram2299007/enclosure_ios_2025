@@ -358,6 +358,7 @@ struct ChattingScreen: View {
             MultiDocumentPreviewDialog(
                 selectedDocuments: documentsToShow,
                 caption: $multiDocumentPreviewCaption,
+                contact: contact,
                 onSend: { caption in
                     handleMultiDocumentSend(caption: caption)
                 },
@@ -2858,26 +2859,18 @@ struct ChattingScreen: View {
         print("DocumentUpload: Selected documents count: \(multiDocumentPreviewURLs.count)")
         print("DocumentUpload: Caption: '\(caption)'")
         
-        guard !multiDocumentPreviewURLs.isEmpty else {
-            print("DocumentUpload: No documents selected, returning")
-            return
+        // Documents are uploaded directly from MultiDocumentPreviewDialog (matching Android flow)
+        // This callback is called after documents are sent, so we just need to clear selections
+        multiDocumentPreviewURLs.removeAll()
+        multiDocumentPreviewCaption = ""
+        
+        // Scroll to bottom to show new document messages (matching Android behavior)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            if !self.messages.isEmpty {
+                self.isLastItemVisible = true
+                self.showScrollDownButton = false
+            }
         }
-        
-        // Close the preview dialog
-        showMultiDocumentPreview = false
-        
-        // Hide gallery picker
-        withAnimation {
-            showGalleryPicker = false
-        }
-            
-        // TODO: Process and upload selected documents with caption
-        // This should match Android's upload logic for multi-document messages
-        // For now, we'll just log the action
-        print("DocumentUpload: Would upload \(multiDocumentPreviewURLs.count) documents with caption: '\(caption)'")
-        
-        // TODO: Implement actual upload logic using MessageUploadService or similar
-        // Similar to how images are uploaded in handleMultiImageSend
     }
     
     // MARK: - Contact Button Handler (matching Android contact button click)
