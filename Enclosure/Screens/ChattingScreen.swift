@@ -382,6 +382,7 @@ struct ChattingScreen: View {
             MultiContactPreviewDialog(
                 selectedContacts: multiContactPreviewContacts,
                 caption: $multiContactPreviewCaption,
+                contact: contact,
                 onSend: { caption in
                     handleMultiContactSend(caption: caption)
                 },
@@ -2920,37 +2921,22 @@ struct ChattingScreen: View {
     // MARK: - Handle Contact Picker Result
     // MARK: - Handle Multi-Contact Send (matching Android upload logic)
     private func handleMultiContactSend(caption: String) {
-        print("ContactUpload: === SENDING CONTACTS ===")
+        print("ContactUpload: === MULTI-CONTACT SEND ===")
         print("ContactUpload: Selected contacts count: \(multiContactPreviewContacts.count)")
         print("ContactUpload: Caption: '\(caption)'")
         
-        // Convert ContactPickerInfo to ContactInfo (matching existing structure)
-        let contactInfos: [ContactInfo] = multiContactPreviewContacts.map { pickerInfo in
-            ContactInfo(
-                name: pickerInfo.name,
-                phoneNumber: pickerInfo.phone ?? "",
-                email: pickerInfo.email
-            )
-        }
-        
-        // TODO: Process selected contacts and upload them
-        // This should match Android's onActivityResult handling for PICK_CONTACT_REQUEST_CODE
-        // For now, we just update the UI state
-        
-        if !contactInfos.isEmpty {
-            selectedCount = contactInfos.count
-            
-            // TODO: Process and upload selected contacts to Firebase
-            // This should match Android's WhatsAppLikeContactPicker.uploadContactsToFirebase
-            // For now, we'll just update the UI to show the selected count
-        }
-        
-        // Dismiss preview dialog
-        showMultiContactPreview = false
-        
-        // Clear selections
-        multiContactPreviewContacts = []
+        // Contacts are uploaded directly from MultiContactPreviewDialog (matching Android flow)
+        // This callback is called after contacts are sent, so we just need to clear selections
+        multiContactPreviewContacts.removeAll()
         multiContactPreviewCaption = ""
+        
+        // Scroll to bottom to show new contact messages (matching Android behavior)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            if !self.messages.isEmpty {
+                self.isLastItemVisible = true
+                self.showScrollDownButton = false
+            }
+        }
     }
     
     // MARK: - Handle Contact Picker Result (deprecated - now using preview dialog)

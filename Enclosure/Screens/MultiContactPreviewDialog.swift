@@ -12,6 +12,7 @@ struct MultiContactPreviewDialog: View {
     @Environment(\.colorScheme) var colorScheme
     let selectedContacts: [ContactPickerInfo]
     @Binding var caption: String
+    let contact: UserActiveContactModel
     let onSend: (String) -> Void
     let onDismiss: () -> Void
     
@@ -150,10 +151,21 @@ struct MultiContactPreviewDialog: View {
                         // Send button group (matching sendGrpLyt from WhatsAppLikeImagePicker)
                         VStack(spacing: 0) {
                             Button(action: {
-                                // Light haptic feedback
+                                // Light haptic feedback (guarded to avoid errors on unsupported devices)
                                 let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.prepare()
                                 generator.impactOccurred()
-                                onSend(caption.trimmingCharacters(in: .whitespacesAndNewlines))
+                                
+                                // Dismiss keyboard first to avoid constraint warnings
+                                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                                
+                                let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+                                print("MultiContactPreviewDialog: Send button clicked - Caption: '\(trimmedCaption)' (length: \(trimmedCaption.count))")
+                                
+                                // Small delay to let keyboard dismiss animation complete
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    self.handleMultiContactSend(caption: trimmedCaption)
+                                }
                             }) {
                                 ZStack {
                                     Circle()
@@ -182,6 +194,7 @@ struct MultiContactPreviewDialog: View {
         .onAppear {
             print("MultiContactPreviewDialog: onAppear - contacts count: \(selectedContacts.count)")
             print("MultiContactPreviewDialog: contacts: \(selectedContacts.map { $0.name })")
+            print("MultiContactPreviewDialog: onAppear - Initial caption: '\(caption)' (length: \(caption.count))")
             setupKeyboardObservers()
         }
         .onDisappear {
@@ -220,6 +233,109 @@ struct MultiContactPreviewDialog: View {
     
     private func removeKeyboardObservers() {
         NotificationCenter.default.removeObserver(self)
+    }
+    
+    // MARK: - Contact Send Functions (matching Android sendMultipleContacts)
+    
+    private func handleMultiContactSend(caption: String) {
+        print("MultiContactPreviewDialog: === MULTI-CONTACT SEND ===")
+        print("MultiContactPreviewDialog: Selected contacts count: \(selectedContacts.count)")
+        print("MultiContactPreviewDialog: Caption: '\(caption)'")
+        
+        guard !selectedContacts.isEmpty else {
+            print("MultiContactPreviewDialog: No contacts selected, returning")
+            return
+        }
+        
+        // Close the preview dialog
+        onDismiss()
+        
+        let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        let receiverUid = contact.uid
+        let senderId = Constant.SenderIdMy
+        let userName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
+        let micPhoto = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
+        
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "hh:mm a"
+        let currentDateTimeString = timeFormatter.string(from: Date())
+        
+        let currentDateFormatter = DateFormatter()
+        currentDateFormatter.dateFormat = "yyyy-MM-dd"
+        let currentDateString = currentDateFormatter.string(from: Date())
+        
+        let timestamp = Date().timeIntervalSince1970
+        
+        // Send each contact as a separate message (matching Android behavior)
+        // Only first contact gets caption, others get empty caption
+        for (index, contactInfo) in selectedContacts.enumerated() {
+            let contactModelId = UUID().uuidString
+            let contactCaption = (index == 0) ? trimmedCaption : ""
+            
+            print("MultiContactPreviewDialog: Creating ChatMessage \(index + 1)/\(selectedContacts.count) with caption: '\(contactCaption)'")
+            print("MultiContactPreviewDialog: Contact: name='\(contactInfo.name)', phone='\(contactInfo.phone ?? "nil")', email='\(contactInfo.email ?? "nil")'")
+            
+            let newMessage = ChatMessage(
+                id: contactModelId,
+                uid: senderId,
+                message: contactCaption,
+                time: currentDateTimeString,
+                document: "",
+                dataType: Constant.contact,
+                fileExtension: nil,
+                name: contactInfo.name,
+                phone: contactInfo.phone,
+                micPhoto: micPhoto,
+                miceTiming: nil,
+                userName: userName,
+                receiverId: receiverUid,
+                replytextData: nil,
+                replyKey: nil,
+                replyType: nil,
+                replyOldData: nil,
+                replyCrtPostion: nil,
+                forwaredKey: nil,
+                groupName: nil,
+                docSize: nil,
+                fileName: nil,
+                thumbnail: nil,
+                fileNameThumbnail: nil,
+                caption: contactCaption,
+                notification: 1,
+                currentDate: currentDateString,
+                emojiModel: [EmojiModel(name: "", emoji: "")],
+                emojiCount: nil,
+                timestamp: timestamp,
+                imageWidth: nil,
+                imageHeight: nil,
+                aspectRatio: nil,
+                selectionCount: "1",
+                selectionBunch: nil,
+                receiverLoader: 0
+            )
+            
+            print("MultiContactPreviewDialog: ChatMessage created with caption: '\(newMessage.caption ?? "nil")'")
+            print("MultiContactPreviewDialog: ChatMessage name: '\(newMessage.name ?? "nil")', phone: '\(newMessage.phone ?? "nil")'")
+            
+            let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
+            
+            MessageUploadService.shared.uploadMessage(
+                model: newMessage,
+                filePath: nil,
+                userFTokenKey: userFTokenKey,
+                deviceType: "2"
+            ) { success, errorMessage in
+                if success {
+                    print("✅ [MULTI_CONTACT] Uploaded contact \(index + 1)/\(selectedContacts.count) for modelId=\(contactModelId)")
+                } else {
+                    print("❌ [MULTI_CONTACT] Upload error: \(errorMessage ?? "Unknown error")")
+                    Constant.showToast(message: "Failed to send contact. Please try again.")
+                }
+            }
+        }
+        
+        // Call the original onSend callback for any additional handling
+        onSend(trimmedCaption)
     }
 }
 
