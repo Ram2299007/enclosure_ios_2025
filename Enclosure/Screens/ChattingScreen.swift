@@ -3299,6 +3299,9 @@ struct ChattingScreen: View {
                     lockQueue.sync { uploadErrors.append(error) }
                     dispatchGroup.leave()
                 case .success(let export):
+                    // Save image to local storage (matching Android Enclosure/Media/Images)
+                    self.saveImageToLocalStorage(data: export.data, fileName: remoteFileName)
+                    
                     self.uploadImageFileToFirebase(data: export.data, remoteFileName: remoteFileName) { uploadResult in
                         switch uploadResult {
                         case .failure(let error):
@@ -3404,6 +3407,51 @@ struct ChattingScreen: View {
                     Constant.showToast(message: "Failed to send images. Please try again.")
                 }
             }
+        }
+    }
+    
+    // MARK: - Local Storage Helpers (matching Android getExternalFilesDir)
+    
+    /// Get local images directory path (matching Android Enclosure/Media/Images)
+    private func getLocalImagesDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let imagesDir = documentsPath.appendingPathComponent("Enclosure/Media/Images", isDirectory: true)
+        
+        // Create directory if it doesn't exist (matching Android mkdirs)
+        try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true, attributes: nil)
+        
+        return imagesDir
+    }
+    
+    /// Check if local image file exists (matching Android doesFileExist)
+    private func doesLocalImageExist(fileName: String) -> Bool {
+        let imagesDir = getLocalImagesDirectory()
+        let fileURL = imagesDir.appendingPathComponent(fileName)
+        return FileManager.default.fileExists(atPath: fileURL.path)
+    }
+    
+    /// Get local image file URL (matching Android exactPath2 + "/" + fileName)
+    private func getLocalImageURL(fileName: String) -> URL {
+        let imagesDir = getLocalImagesDirectory()
+        return imagesDir.appendingPathComponent(fileName)
+    }
+    
+    /// Save image to local storage (matching Android file saving logic)
+    private func saveImageToLocalStorage(data: Data, fileName: String) {
+        let imagesDir = getLocalImagesDirectory()
+        let fileURL = imagesDir.appendingPathComponent(fileName)
+        
+        // Check if file already exists (matching Android doesFileExist check)
+        guard !FileManager.default.fileExists(atPath: fileURL.path) else {
+            print("📱 [LOCAL_STORAGE] Image already exists locally: \(fileName)")
+            return
+        }
+        
+        do {
+            try data.write(to: fileURL, options: .atomic)
+            print("📱 [LOCAL_STORAGE] Saved image to local storage: \(fileURL.path)")
+        } catch {
+            print("❌ [LOCAL_STORAGE] Error saving image to local storage: \(error.localizedDescription)")
         }
     }
     
@@ -4117,10 +4165,39 @@ struct FirstVisibleItemPreferenceKey: PreferenceKey {
 // MARK: - Dynamic Image View (matching Android loadImageIntoView)
 struct DynamicImageView: View {
     let imageUrl: String
+    let fileName: String?
     let imageWidth: String?
     let imageHeight: String?
     let aspectRatio: String?
     let backgroundColor: Color
+    
+    // Get local images directory path (matching Android Enclosure/Media/Images)
+    private func getLocalImagesDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let imagesDir = documentsPath.appendingPathComponent("Enclosure/Media/Images", isDirectory: true)
+        try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true, attributes: nil)
+        return imagesDir
+    }
+    
+    // Check if local image file exists and get URL (matching Android doesFileExist)
+    private var imageSourceURL: URL? {
+        // Check if local file exists first (matching Android: doesFileExist(exactPath2 + "/" + fileName))
+        if let fileName = fileName, !fileName.isEmpty {
+            let localURL = getLocalImagesDirectory().appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: localURL.path) {
+                print("📱 [DynamicImageView] Using local image: \(localURL.path)")
+                return localURL
+            }
+        }
+        
+        // Fallback to online URL (matching Android: model.getDocument())
+        if let url = URL(string: imageUrl) {
+            print("📱 [DynamicImageView] Using online image: \(imageUrl)")
+            return url
+        }
+        
+        return nil
+    }
     
     // Calculate dynamic image size based on imageWidth, imageHeight, and aspectRatio (matching Android loadImageIntoView)
     private var imageSize: CGSize {
@@ -4222,26 +4299,39 @@ struct DynamicImageView: View {
                 .frame(width: imageSize.width, height: imageSize.height) // Dynamic size based on image dimensions
                 .overlay(
                     // Image view (matching Android senderImg: dynamic size, centerCrop, background="#000000")
-                    CachedAsyncImage(
-                        url: URL(string: imageUrl),
-                        content: { image in
-                            // Display image with centerCrop (aspectFill) and black background
+                    // Check local file first, then use online URL (matching Android doesFileExist logic)
+                    Group {
+                        if let sourceURL = imageSourceURL {
+                            // Use CachedAsyncImage for both local and remote URLs
+                            CachedAsyncImage(
+                                url: sourceURL,
+                                content: { image in
+                                    // Display image with centerCrop (aspectFill) and black background
+                                    ZStack {
+                                        Color.black // background="#000000"
+                                        image
+                                            .resizable()
+                                            .scaledToFill() // centerCrop equivalent (scaleType="centerCrop")
+                                    }
+                                },
+                                placeholder: {
+                                    // Loading placeholder with black background (matching Android background="#000000")
+                                    ZStack {
+                                        Color.black // background="#000000"
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    }
+                                }
+                            )
+                        } else {
+                            // Fallback: show placeholder if no URL available
                             ZStack {
-                                Color.black // background="#000000"
-                                image
-                                    .resizable()
-                                    .scaledToFill() // centerCrop equivalent (scaleType="centerCrop")
-                            }
-                        },
-                        placeholder: {
-                            // Loading placeholder with black background (matching Android background="#000000")
-                            ZStack {
-                                Color.black // background="#000000"
+                                Color.black
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             }
                         }
-                    )
+                    }
                     .frame(width: imageSize.width, height: imageSize.height) // Dynamic size based on image dimensions
                     .clipShape(RoundedRectangle(cornerRadius: 12)) // Clip to card corner radius
                 )
@@ -4279,6 +4369,7 @@ struct MessageBubbleView: View {
                             VStack(alignment: .trailing, spacing: 0) {
                                 DynamicImageView(
                                     imageUrl: message.document,
+                                    fileName: message.fileName,
                                     imageWidth: message.imageWidth,
                                     imageHeight: message.imageHeight,
                                     aspectRatio: message.aspectRatio,

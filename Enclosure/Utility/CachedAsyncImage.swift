@@ -80,6 +80,21 @@ final class ImageLoader: ObservableObject {
             return
         }
 
+        // Handle local file URLs (matching Android local file loading)
+        if url.isFileURL {
+            // Load directly from file system
+            if let data = try? Data(contentsOf: url), let uiImage = UIImage(data: data) {
+                LocalImageCache.shared.save(image: uiImage, for: url)
+                DispatchQueue.main.async {
+                    if self.currentURL == url {
+                        self.image = uiImage
+                    }
+                }
+            }
+            return
+        }
+
+        // Handle remote URLs
         task?.cancel()
         task = URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
             guard let self = self, let data = data, let uiImage = UIImage(data: data) else { return }
