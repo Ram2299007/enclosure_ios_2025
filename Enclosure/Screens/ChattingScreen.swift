@@ -1096,6 +1096,7 @@ struct ChattingScreen: View {
                 .padding(.horizontal, 5)
             }
             .padding(2) // Inner horizontal container padding="2dp"
+            .padding(.top, 30) // Add top padding to make room for counter badge
             .contentShape(Rectangle()) // Clear boundary for message input area to prevent gesture interference
             .background(Color("edittextBg")) // Ensure solid background to prevent visual overlap
             .clipped() // Clip the message input area to prevent overflow
