@@ -4937,6 +4937,7 @@ struct SenderImageBunchView: View {
     @State private var isDownloading: Bool = false
     @State private var downloadProgress: Double = 0.0
     @State private var showDownloadProgress: Bool = false
+    @State private var progressTimer: Timer? = nil
     
     // Image dimensions based on selectionCount (matching Android)
     private var imageSize: CGFloat {
@@ -4967,13 +4968,13 @@ struct SenderImageBunchView: View {
                         fileName: selectionBunch[0].fileName,
                         width: imageSize,
                         height: selectionCount == "2" || selectionCount == "3" ? fullHeightSize : imageSize,
-                        corners: selectionCount == "4" ? .topLeft : [.topLeft, .bottomLeft],
+                        corners: (Int(selectionCount) ?? 0) >= 4 ? .topLeft : [.topLeft, .bottomLeft],
                         cornerRadius: cornerRadius
                     )
                     
-                    // img2 - Bottom left (only for selectionCount == "4")
-                    // Android: img2 uses selectionBunch[3] for count=4
-                    if selectionCount == "4" && selectionBunch.count > 3 {
+                    // img2 - Bottom left (for selectionCount >= "4" or selectionBunch.count >= 4)
+                    // Android: img2 uses selectionBunch[3] for count=4 and 5+
+                    if (Int(selectionCount) ?? 0) >= 4 && selectionBunch.count > 3 {
                         BunchImageView(
                             imageUrl: selectionBunch[3].imgUrl,
                             fileName: selectionBunch[3].fileName,
@@ -4999,9 +5000,9 @@ struct SenderImageBunchView: View {
                         cornerRadius: cornerRadius
                     )
                     
-                    // img4 - Bottom right (for selectionCount == "3" or "4")
-                    // Android: img4 uses selectionBunch[2] for both count=3 and count=4
-                    if (selectionCount == "3" || selectionCount == "4") && selectionBunch.count > 2 {
+                    // img4 - Bottom right (for selectionCount >= "3" or selectionBunch.count >= 3)
+                    // Android: img4 uses selectionBunch[2] for count=3, 4, and 5+
+                    if (Int(selectionCount) ?? 0) >= 3 && selectionBunch.count > 2 {
                         ZStack {
                             BunchImageView(
                                 imageUrl: selectionBunch[2].imgUrl,
@@ -5073,6 +5074,11 @@ struct SenderImageBunchView: View {
         }
         .onAppear {
             checkDownloadState()
+            startProgressTimer()
+        }
+        .onDisappear {
+            progressTimer?.invalidate()
+            progressTimer = nil
         }
     }
     
@@ -5101,8 +5107,135 @@ struct SenderImageBunchView: View {
     }
     
     private func downloadAllImages() {
-        // TODO: Implement download all images functionality
-        print("📱 [BUNCH] Downloading all images...")
+        // Get local images directory
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let imagesDir = documentsPath.appendingPathComponent("Enclosure/Media/Images", isDirectory: true)
+        try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true, attributes: nil)
+        
+        // Filter images that need to be downloaded
+        var imagesToDownload: [SelectionBunchModel] = []
+        for bunch in selectionBunch {
+            if !doesLocalImageExist(fileName: bunch.fileName) && !BackgroundDownloadManager.shared.isDownloading(fileName: bunch.fileName) {
+                imagesToDownload.append(bunch)
+            }
+        }
+        
+        // If all images already exist or are downloading, return
+        if imagesToDownload.isEmpty {
+            print("📱 [BUNCH] All images already exist or are downloading")
+            return
+        }
+        
+        // Light haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Update UI
+        isDownloading = true
+        showDownloadButton = false
+        showDownloadProgress = true
+        downloadProgress = 0.0
+        
+        // Download each image
+        var completedCount = 0
+        let totalCount = imagesToDownload.count
+        
+        for bunch in imagesToDownload {
+            let destinationFile = imagesDir.appendingPathComponent(bunch.fileName)
+            
+            BackgroundDownloadManager.shared.downloadImage(
+                imageUrl: bunch.imgUrl,
+                fileName: bunch.fileName,
+                destinationFile: destinationFile,
+                onProgress: { progress in
+                    // Update overall progress (average of all downloads)
+                    DispatchQueue.main.async {
+                        self.updateOverallProgress()
+                    }
+                },
+                onSuccess: {
+                    completedCount += 1
+                    print("✅ [BUNCH] Image downloaded: \(bunch.fileName) (\(completedCount)/\(totalCount))")
+                    
+                    // Check if all downloads are complete
+                    DispatchQueue.main.async {
+                        if completedCount >= totalCount {
+                            self.isDownloading = false
+                            self.showDownloadProgress = false
+                            self.showDownloadButton = false
+                            self.downloadProgress = 0.0
+                            self.checkDownloadState()
+                        } else {
+                            self.updateOverallProgress()
+                        }
+                    }
+                },
+                onFailure: { error in
+                    completedCount += 1
+                    print("❌ [BUNCH] Download failed: \(bunch.fileName) - \(error.localizedDescription)")
+                    
+                    // Check if all downloads are complete (even if some failed)
+                    DispatchQueue.main.async {
+                        if completedCount >= totalCount {
+                            self.isDownloading = false
+                            self.showDownloadProgress = false
+                            self.checkDownloadState()
+                        } else {
+                            self.updateOverallProgress()
+                        }
+                    }
+                }
+            )
+        }
+    }
+    
+    private func updateOverallProgress() {
+        // Calculate average progress across all images in the bunch
+        var totalProgress: Double = 0.0
+        var activeDownloads: Int = 0
+        
+        for bunch in selectionBunch {
+            if let progress = BackgroundDownloadManager.shared.getProgress(fileName: bunch.fileName) {
+                totalProgress += progress
+                activeDownloads += 1
+            } else if BackgroundDownloadManager.shared.isDownloading(fileName: bunch.fileName) {
+                // Download started but no progress yet
+                activeDownloads += 1
+            }
+        }
+        
+        if activeDownloads > 0 {
+            downloadProgress = totalProgress / Double(activeDownloads)
+            isDownloading = true
+            showDownloadProgress = true
+            showDownloadButton = false
+        } else {
+            // Check if all downloads completed
+            var allExist = true
+            for bunch in selectionBunch {
+                if !doesLocalImageExist(fileName: bunch.fileName) {
+                    allExist = false
+                    break
+                }
+            }
+            
+            if allExist {
+                isDownloading = false
+                showDownloadProgress = false
+                showDownloadButton = false
+            } else {
+                isDownloading = false
+                showDownloadProgress = false
+                showDownloadButton = true
+            }
+        }
+    }
+    
+    private func startProgressTimer() {
+        progressTimer?.invalidate()
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            updateOverallProgress()
+        }
     }
 }
 
@@ -5115,6 +5248,7 @@ struct ReceiverImageBunchView: View {
     @State private var isDownloading: Bool = false
     @State private var downloadProgress: Double = 0.0
     @State private var showDownloadProgress: Bool = false
+    @State private var progressTimer: Timer? = nil
     
     // Image dimensions based on selectionCount (matching Android)
     private var imageSize: CGFloat {
@@ -5145,13 +5279,13 @@ struct ReceiverImageBunchView: View {
                         fileName: selectionBunch[0].fileName,
                         width: imageSize,
                         height: selectionCount == "2" || selectionCount == "3" ? fullHeightSize : imageSize,
-                        corners: selectionCount == "4" ? .topLeft : [.topLeft, .bottomLeft],
+                        corners: (Int(selectionCount) ?? 0) >= 4 ? .topLeft : [.topLeft, .bottomLeft],
                         cornerRadius: cornerRadius
                     )
                     
-                    // img2 - Bottom left (only for selectionCount == "4")
-                    // Android: img2 uses selectionBunch[3] for count=4
-                    if selectionCount == "4" && selectionBunch.count > 3 {
+                    // img2 - Bottom left (for selectionCount >= "4" or selectionBunch.count >= 4)
+                    // Android: img2 uses selectionBunch[3] for count=4 and 5+
+                    if (Int(selectionCount) ?? 0) >= 4 && selectionBunch.count > 3 {
                         BunchImageView(
                             imageUrl: selectionBunch[3].imgUrl,
                             fileName: selectionBunch[3].fileName,
@@ -5177,9 +5311,9 @@ struct ReceiverImageBunchView: View {
                         cornerRadius: cornerRadius
                     )
                     
-                    // img4 - Bottom right (for selectionCount == "3" or "4")
-                    // Android: img4 uses selectionBunch[2] for both count=3 and count=4
-                    if (selectionCount == "3" || selectionCount == "4") && selectionBunch.count > 2 {
+                    // img4 - Bottom right (for selectionCount >= "3" or selectionBunch.count >= 3)
+                    // Android: img4 uses selectionBunch[2] for count=3, 4, and 5+
+                    if (Int(selectionCount) ?? 0) >= 3 && selectionBunch.count > 2 {
                         ZStack {
                             BunchImageView(
                                 imageUrl: selectionBunch[2].imgUrl,
@@ -5251,6 +5385,11 @@ struct ReceiverImageBunchView: View {
         }
         .onAppear {
             checkDownloadState()
+            startProgressTimer()
+        }
+        .onDisappear {
+            progressTimer?.invalidate()
+            progressTimer = nil
         }
     }
     
@@ -5272,8 +5411,130 @@ struct ReceiverImageBunchView: View {
     }
     
     private func downloadAllImages() {
-        // TODO: Implement download all images functionality
-        print("📱 [BUNCH] Downloading all images to Photos library...")
+        // Filter images that need to be downloaded
+        var imagesToDownload: [SelectionBunchModel] = []
+        for bunch in selectionBunch {
+            let downloadKey = "photos_\(bunch.fileName)"
+            if !PhotosLibraryHelper.shared.imageExistsInPhotosLibrary(fileName: bunch.fileName) &&
+               !BackgroundDownloadManager.shared.isDownloadingWithKey(key: downloadKey) {
+                imagesToDownload.append(bunch)
+            }
+        }
+        
+        // If all images already exist or are downloading, return
+        if imagesToDownload.isEmpty {
+            print("📱 [BUNCH] All images already exist or are downloading")
+            return
+        }
+        
+        // Light haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Update UI
+        isDownloading = true
+        showDownloadButton = false
+        showDownloadProgress = true
+        downloadProgress = 0.0
+        
+        // Download each image to Photos library
+        var completedCount = 0
+        let totalCount = imagesToDownload.count
+        
+        for bunch in imagesToDownload {
+            BackgroundDownloadManager.shared.downloadImageToPhotosLibrary(
+                imageUrl: bunch.imgUrl,
+                fileName: bunch.fileName,
+                onProgress: { progress in
+                    // Update overall progress (average of all downloads)
+                    DispatchQueue.main.async {
+                        self.updateOverallProgress()
+                    }
+                },
+                onSuccess: {
+                    completedCount += 1
+                    print("✅ [BUNCH] Image downloaded to Photos: \(bunch.fileName) (\(completedCount)/\(totalCount))")
+                    
+                    // Check if all downloads are complete
+                    DispatchQueue.main.async {
+                        if completedCount >= totalCount {
+                            self.isDownloading = false
+                            self.showDownloadProgress = false
+                            self.showDownloadButton = false
+                            self.downloadProgress = 0.0
+                            self.checkDownloadState()
+                        } else {
+                            self.updateOverallProgress()
+                        }
+                    }
+                },
+                onFailure: { error in
+                    completedCount += 1
+                    print("❌ [BUNCH] Download failed: \(bunch.fileName) - \(error.localizedDescription)")
+                    
+                    // Check if all downloads are complete (even if some failed)
+                    DispatchQueue.main.async {
+                        if completedCount >= totalCount {
+                            self.isDownloading = false
+                            self.showDownloadProgress = false
+                            self.checkDownloadState()
+                        } else {
+                            self.updateOverallProgress()
+                        }
+                    }
+                }
+            )
+        }
+    }
+    
+    private func updateOverallProgress() {
+        // Calculate average progress across all images in the bunch
+        var totalProgress: Double = 0.0
+        var activeDownloads: Int = 0
+        
+        for bunch in selectionBunch {
+            let downloadKey = "photos_\(bunch.fileName)"
+            if let progress = BackgroundDownloadManager.shared.getProgressWithKey(key: downloadKey) {
+                totalProgress += progress
+                activeDownloads += 1
+            } else if BackgroundDownloadManager.shared.isDownloadingWithKey(key: downloadKey) {
+                // Download started but no progress yet
+                activeDownloads += 1
+            }
+        }
+        
+        if activeDownloads > 0 {
+            downloadProgress = totalProgress / Double(activeDownloads)
+            isDownloading = true
+            showDownloadProgress = true
+            showDownloadButton = false
+        } else {
+            // Check if all downloads completed
+            var allExist = true
+            for bunch in selectionBunch {
+                if !PhotosLibraryHelper.shared.imageExistsInPhotosLibrary(fileName: bunch.fileName) {
+                    allExist = false
+                    break
+                }
+            }
+            
+            if allExist {
+                isDownloading = false
+                showDownloadProgress = false
+                showDownloadButton = false
+            } else {
+                isDownloading = false
+                showDownloadProgress = false
+                showDownloadButton = true
+            }
+        }
+    }
+    
+    private func startProgressTimer() {
+        progressTimer?.invalidate()
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            updateOverallProgress()
+        }
     }
 }
 
@@ -5366,16 +5627,18 @@ struct MessageBubbleView: View {
                 // Main message bubble container (matching Android MainSenderBox)
                 if isSentByMe {
                     // Check if this is an image bunch message (matching Android senderImgBunchLyt)
+                    // Allow selectionCount >= 2 (including 5+ images which show 2x2 grid with +N overlay)
                     if message.dataType == Constant.img,
                        let selectionCount = message.selectionCount,
                        let selectionBunch = message.selectionBunch,
-                       (selectionCount == "2" || selectionCount == "3" || selectionCount == "4"),
+                       (Int(selectionCount) ?? 0) >= 2,
                        selectionBunch.count >= 2 {
                         // Sender image bunch message (matching Android senderImgBunchLyt design)
                         HStack {
                             Spacer(minLength: 0) // Push content to end
                             
                             // Container wrapping image bunch and caption with same background as Constant.Text sender messages
+                            // Container width matches bunch width exactly (2 images side by side + spacing)
                             VStack(alignment: .trailing, spacing: 0) {
                                 SenderImageBunchView(
                                     selectionBunch: selectionBunch,
@@ -5403,6 +5666,7 @@ struct MessageBubbleView: View {
                                     .padding(.bottom, 5)
                                 }
                             }
+                            .frame(width: calculateBunchWidth(selectionCount: selectionCount)) // Container width matches bunch width exactly
                             .background(
                                 RoundedRectangle(cornerRadius: 20)
                                     .fill(getSenderMessageBackgroundColor())
@@ -5483,10 +5747,11 @@ struct MessageBubbleView: View {
                     
                 } else {
                     // Check if this is an image bunch message (matching Android recImgBunchLyt)
+                    // Allow selectionCount >= 2 (including 5+ images which show 2x2 grid with +N overlay)
                     if message.dataType == Constant.img,
                        let selectionCount = message.selectionCount,
                        let selectionBunch = message.selectionBunch,
-                       (selectionCount == "2" || selectionCount == "3" || selectionCount == "4"),
+                       (Int(selectionCount) ?? 0) >= 2,
                        selectionBunch.count >= 2 {
                         // Receiver image bunch message (matching Android recImgBunchLyt design)
                         HStack {
@@ -5512,10 +5777,10 @@ struct MessageBubbleView: View {
                                             .padding(.horizontal, 12)
                                             .padding(.top, 5)
                                             .padding(.bottom, 6)
-                                            .padding(.top, 5)
-                                            .padding(.bottom, 5)
                                         Spacer(minLength: 0)
                                     }
+                                    .padding(.top, 5)
+                                    .padding(.bottom, 5)
                                 }
                             }
                             .frame(width: calculateBunchWidth(selectionCount: selectionCount)) // Container width matches bunch width exactly
