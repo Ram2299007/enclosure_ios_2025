@@ -4927,6 +4927,424 @@ struct ReceiverDynamicImageView: View {
     }
 }
 
+// MARK: - Sender Image Bunch View (matching Android senderImgBunchLyt)
+struct SenderImageBunchView: View {
+    let selectionBunch: [SelectionBunchModel]
+    let selectionCount: String
+    let backgroundColor: Color
+    
+    @State private var showDownloadButton: Bool = false
+    @State private var isDownloading: Bool = false
+    @State private var downloadProgress: Double = 0.0
+    @State private var showDownloadProgress: Bool = false
+    
+    // Image dimensions based on selectionCount (matching Android)
+    private var imageSize: CGFloat {
+        return 120 // 120dp
+    }
+    
+    private var fullHeightSize: CGFloat {
+        return 241.5 // 241.5dp for full height images
+    }
+    
+    private var cornerRadius: CGFloat {
+        return 20 // 20dp corner radius
+    }
+    
+    private var spacing: CGFloat {
+        return 1.5 // 1.5dp spacing between images
+    }
+    
+    var body: some View {
+        ZStack {
+            // Main grid layout (matching Android LinearLayout horizontal)
+            HStack(spacing: spacing) {
+                // Left column (matching Android vertical LinearLayout)
+                VStack(spacing: spacing) {
+                    // img1 - Top left (always visible)
+                    BunchImageView(
+                        imageUrl: selectionBunch[0].imgUrl,
+                        fileName: selectionBunch[0].fileName,
+                        width: imageSize,
+                        height: selectionCount == "2" || selectionCount == "3" ? fullHeightSize : imageSize,
+                        corners: selectionCount == "4" ? .topLeft : [.topLeft, .bottomLeft],
+                        cornerRadius: cornerRadius
+                    )
+                    
+                    // img2 - Bottom left (only for selectionCount == "4")
+                    // Android: img2 uses selectionBunch[3] for count=4
+                    if selectionCount == "4" && selectionBunch.count > 3 {
+                        BunchImageView(
+                            imageUrl: selectionBunch[3].imgUrl,
+                            fileName: selectionBunch[3].fileName,
+                            width: imageSize,
+                            height: imageSize,
+                            corners: .bottomLeft,
+                            cornerRadius: cornerRadius
+                        )
+                    }
+                }
+                
+                // Right column (matching Android vertical LinearLayout)
+                VStack(spacing: spacing) {
+                    // img3 - Top right (always visible)
+                    // Android: img3 uses selectionBunch[1]
+                    // For selectionCount == "2", img3 should be full height (stretched) like img1
+                    BunchImageView(
+                        imageUrl: selectionBunch[1].imgUrl,
+                        fileName: selectionBunch[1].fileName,
+                        width: imageSize,
+                        height: selectionCount == "2" ? fullHeightSize : imageSize,
+                        corners: selectionCount == "2" ? [.topRight, .bottomRight] : .topRight,
+                        cornerRadius: cornerRadius
+                    )
+                    
+                    // img4 - Bottom right (for selectionCount == "3" or "4")
+                    // Android: img4 uses selectionBunch[2] for both count=3 and count=4
+                    if (selectionCount == "3" || selectionCount == "4") && selectionBunch.count > 2 {
+                        ZStack {
+                            BunchImageView(
+                                imageUrl: selectionBunch[2].imgUrl,
+                                fileName: selectionBunch[2].fileName,
+                                width: imageSize,
+                                height: imageSize,
+                                corners: .bottomRight,
+                                cornerRadius: cornerRadius
+                            )
+                            
+                            // Overlay text for +N (if more than 4 images) - matching Android overlayTextImg
+                            if selectionBunch.count > 4 {
+                                Text("+\(selectionBunch.count - 4)")
+                                    .font(.custom("Inter18pt-Regular", size: 15))
+                                    .foregroundColor(Color(hex: "#e7ebf4"))
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .background(Color.black.opacity(0.5))
+                                    .cornerRadius(cornerRadius, corners: .bottomRight)
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Download button overlay (matching Android downlaodImgBunch FloatingActionButton)
+            // Centered on the bunch layout (matching Android layout_centerInParent="true")
+            if showDownloadButton && !isDownloading {
+                Button(action: {
+                    downloadAllImages()
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 35, height: 35)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                        
+                        Image("downloaddown")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 20, height: 20)
+                            .foregroundColor(Color(hex: "#e7ebf4"))
+                    }
+                }
+            }
+            
+            // Download progress overlay (matching Android downloadPercentageImageSenderBunch)
+            // Centered on the bunch layout (matching Android layout_centerInParent="true")
+            if showDownloadProgress && isDownloading {
+                ZStack {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 60, height: 60)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
+                        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                    
+                    Text("\(Int(downloadProgress))%")
+                        .font(.custom("Inter18pt-Bold", size: 15))
+                        .foregroundColor(.white)
+                }
+            }
+        }
+        .onAppear {
+            checkDownloadState()
+        }
+    }
+    
+    private func checkDownloadState() {
+        // Check if all images exist locally
+        var allExist = true
+        for bunch in selectionBunch {
+            if !doesLocalImageExist(fileName: bunch.fileName) {
+                allExist = false
+                break
+            }
+        }
+        
+        if allExist {
+            showDownloadButton = false
+        } else {
+            showDownloadButton = true
+        }
+    }
+    
+    private func doesLocalImageExist(fileName: String) -> Bool {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let imagesDir = documentsPath.appendingPathComponent("Enclosure/Media/Images", isDirectory: true)
+        let localURL = imagesDir.appendingPathComponent(fileName)
+        return FileManager.default.fileExists(atPath: localURL.path)
+    }
+    
+    private func downloadAllImages() {
+        // TODO: Implement download all images functionality
+        print("📱 [BUNCH] Downloading all images...")
+    }
+}
+
+// MARK: - Receiver Image Bunch View (matching Android recImgBunchLyt)
+struct ReceiverImageBunchView: View {
+    let selectionBunch: [SelectionBunchModel]
+    let selectionCount: String
+    
+    @State private var showDownloadButton: Bool = false
+    @State private var isDownloading: Bool = false
+    @State private var downloadProgress: Double = 0.0
+    @State private var showDownloadProgress: Bool = false
+    
+    // Image dimensions based on selectionCount (matching Android)
+    private var imageSize: CGFloat {
+        return 120 // 120dp
+    }
+    
+    private var fullHeightSize: CGFloat {
+        return 241.5 // 241.5dp for full height images
+    }
+    
+    private var cornerRadius: CGFloat {
+        return 20 // 20dp corner radius
+    }
+    
+    private var spacing: CGFloat {
+        return 1.5 // 1.5dp spacing between images
+    }
+    
+    var body: some View {
+        ZStack {
+            // Main grid layout (matching Android LinearLayout horizontal)
+            HStack(spacing: spacing) {
+                // Left column (matching Android vertical LinearLayout)
+                VStack(spacing: spacing) {
+                    // img1 - Top left (always visible)
+                    BunchImageView(
+                        imageUrl: selectionBunch[0].imgUrl,
+                        fileName: selectionBunch[0].fileName,
+                        width: imageSize,
+                        height: selectionCount == "2" || selectionCount == "3" ? fullHeightSize : imageSize,
+                        corners: selectionCount == "4" ? .topLeft : [.topLeft, .bottomLeft],
+                        cornerRadius: cornerRadius
+                    )
+                    
+                    // img2 - Bottom left (only for selectionCount == "4")
+                    // Android: img2 uses selectionBunch[3] for count=4
+                    if selectionCount == "4" && selectionBunch.count > 3 {
+                        BunchImageView(
+                            imageUrl: selectionBunch[3].imgUrl,
+                            fileName: selectionBunch[3].fileName,
+                            width: imageSize,
+                            height: imageSize,
+                            corners: .bottomLeft,
+                            cornerRadius: cornerRadius
+                        )
+                    }
+                }
+                
+                // Right column (matching Android vertical LinearLayout)
+                VStack(spacing: spacing) {
+                    // img3 - Top right (always visible)
+                    // Android: img3 uses selectionBunch[1]
+                    // For selectionCount == "2", img3 should be full height (stretched) like img1
+                    BunchImageView(
+                        imageUrl: selectionBunch[1].imgUrl,
+                        fileName: selectionBunch[1].fileName,
+                        width: imageSize,
+                        height: selectionCount == "2" ? fullHeightSize : imageSize,
+                        corners: selectionCount == "2" ? [.topRight, .bottomRight] : .topRight,
+                        cornerRadius: cornerRadius
+                    )
+                    
+                    // img4 - Bottom right (for selectionCount == "3" or "4")
+                    // Android: img4 uses selectionBunch[2] for both count=3 and count=4
+                    if (selectionCount == "3" || selectionCount == "4") && selectionBunch.count > 2 {
+                        ZStack {
+                            BunchImageView(
+                                imageUrl: selectionBunch[2].imgUrl,
+                                fileName: selectionBunch[2].fileName,
+                                width: imageSize,
+                                height: imageSize,
+                                corners: .bottomRight,
+                                cornerRadius: cornerRadius
+                            )
+                            
+                            // Overlay text for +N (if more than 4 images) - matching Android overlayTextImg
+                            if selectionBunch.count > 4 {
+                                Text("+\(selectionBunch.count - 4)")
+                                    .font(.custom("Inter18pt-Regular", size: 15))
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .background(Color.black.opacity(0.5))
+                                    .cornerRadius(cornerRadius, corners: .bottomRight)
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Download button overlay (matching Android downlaodImgBunch FloatingActionButton)
+            // Centered on the bunch layout (matching Android layout_centerInParent="true")
+            if showDownloadButton && !isDownloading {
+                Button(action: {
+                    downloadAllImages()
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 35, height: 35)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                        
+                        Image("downloaddown")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 20, height: 20)
+                            .foregroundColor(.white)
+                    }
+                }
+            }
+            
+            // Download progress overlay (matching Android downloadPercentageImageSenderBunch)
+            // Centered on the bunch layout (matching Android layout_centerInParent="true")
+            if showDownloadProgress && isDownloading {
+                ZStack {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 60, height: 60)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
+                        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                    
+                    Text("\(Int(downloadProgress))%")
+                        .font(.custom("Inter18pt-Bold", size: 15))
+                        .foregroundColor(.white)
+                }
+            }
+        }
+        .onAppear {
+            checkDownloadState()
+        }
+    }
+    
+    private func checkDownloadState() {
+        // Check if all images exist in Photos library
+        var allExist = true
+        for bunch in selectionBunch {
+            if !PhotosLibraryHelper.shared.imageExistsInPhotosLibrary(fileName: bunch.fileName) {
+                allExist = false
+                break
+            }
+        }
+        
+        if allExist {
+            showDownloadButton = false
+        } else {
+            showDownloadButton = true
+        }
+    }
+    
+    private func downloadAllImages() {
+        // TODO: Implement download all images functionality
+        print("📱 [BUNCH] Downloading all images to Photos library...")
+    }
+}
+
+// MARK: - Bunch Image View (individual image in bunch with rounded corners)
+struct BunchImageView: View {
+    let imageUrl: String
+    let fileName: String
+    let width: CGFloat
+    let height: CGFloat
+    let corners: UIRectCorner
+    let cornerRadius: CGFloat
+    
+    // Check if local file exists (for sender)
+    private var hasLocalFile: Bool {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let imagesDir = documentsPath.appendingPathComponent("Enclosure/Media/Images", isDirectory: true)
+        let localURL = imagesDir.appendingPathComponent(fileName)
+        return FileManager.default.fileExists(atPath: localURL.path)
+    }
+    
+    // Get image source URL (local first, then online)
+    private var sourceURL: URL? {
+        // Check local file first
+        if hasLocalFile {
+            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let imagesDir = documentsPath.appendingPathComponent("Enclosure/Media/Images", isDirectory: true)
+            return imagesDir.appendingPathComponent(fileName)
+        }
+        
+        // Fallback to online URL
+        if let url = URL(string: imageUrl), !imageUrl.isEmpty {
+            return url
+        }
+        
+        return nil
+    }
+    
+    var body: some View {
+        Group {
+            if let url = sourceURL {
+                CachedAsyncImage(
+                    url: url,
+                    content: { image in
+                        ZStack {
+                            Color.black
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        }
+                    },
+                    placeholder: {
+                        ZStack {
+                            Color.black
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        }
+                    }
+                )
+            } else {
+                ZStack {
+                    Color.black
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                }
+            }
+        }
+        .frame(width: width, height: height)
+        .clipShape(RoundedCorner(radius: cornerRadius, corners: corners))
+    }
+}
+
 // MARK: - Message Bubble View (matching Android sample_sender.xml)
 struct MessageBubbleView: View {
     let message: ChatMessage
@@ -4947,8 +5365,51 @@ struct MessageBubbleView: View {
             VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
                 // Main message bubble container (matching Android MainSenderBox)
                 if isSentByMe {
-                    // Check if this is an image message (matching Android senderImgLyt)
-                    if message.dataType == Constant.img && !message.document.isEmpty {
+                    // Check if this is an image bunch message (matching Android senderImgBunchLyt)
+                    if message.dataType == Constant.img,
+                       let selectionCount = message.selectionCount,
+                       let selectionBunch = message.selectionBunch,
+                       (selectionCount == "2" || selectionCount == "3" || selectionCount == "4"),
+                       selectionBunch.count >= 2 {
+                        // Sender image bunch message (matching Android senderImgBunchLyt design)
+                        HStack {
+                            Spacer(minLength: 0) // Push content to end
+                            
+                            // Container wrapping image bunch and caption with same background as Constant.Text sender messages
+                            VStack(alignment: .trailing, spacing: 0) {
+                                SenderImageBunchView(
+                                    selectionBunch: selectionBunch,
+                                    selectionCount: selectionCount,
+                                    backgroundColor: getSenderMessageBackgroundColor()
+                                )
+                                
+                                // Caption text if present (matching Android caption display)
+                                if let caption = message.caption, !caption.isEmpty {
+                                    HStack {
+                                        Text(caption)
+                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .fontWeight(.regular)
+                                            .foregroundColor(Color(hex: "#e7ebf4"))
+                                            .lineSpacing(7)
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.horizontal, 12)
+                                            .padding(.top, 5)
+                                            .padding(.bottom, 6)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.top, 5)
+                                    .padding(.bottom, 5)
+                                }
+                            }
+                            .background(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(getSenderMessageBackgroundColor())
+                            )
+                        }
+                        .frame(maxWidth: 250)
+                    } else if message.dataType == Constant.img && !message.document.isEmpty {
                         // Sender image message (matching Android senderImg design)
                         HStack {
                             Spacer(minLength: 0) // Push content to end
@@ -5021,8 +5482,51 @@ struct MessageBubbleView: View {
                     }
                     
                 } else {
-                    // Check if this is an image message (matching Android receiverImgLyt)
-                    if message.dataType == Constant.img && !message.document.isEmpty {
+                    // Check if this is an image bunch message (matching Android recImgBunchLyt)
+                    if message.dataType == Constant.img,
+                       let selectionCount = message.selectionCount,
+                       let selectionBunch = message.selectionBunch,
+                       (selectionCount == "2" || selectionCount == "3" || selectionCount == "4"),
+                       selectionBunch.count >= 2 {
+                        // Receiver image bunch message (matching Android recImgBunchLyt design)
+                        HStack {
+                            // Container wrapping image bunch and caption with same background as Constant.Text receiver messages
+                            // Container width matches bunch width exactly (2 images side by side + spacing)
+                            VStack(alignment: .leading, spacing: 0) {
+                                ReceiverImageBunchView(
+                                    selectionBunch: selectionBunch,
+                                    selectionCount: selectionCount
+                                )
+                                
+                                // Caption text if present (matching Android caption display)
+                                if let caption = message.caption, !caption.isEmpty {
+                                    HStack {
+                                        Text(caption)
+                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .fontWeight(.regular)
+                                            .foregroundColor(Color("TextColor"))
+                                            .lineSpacing(7)
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.horizontal, 12)
+                                            .padding(.top, 5)
+                                            .padding(.bottom, 6)
+                                            .padding(.top, 5)
+                                            .padding(.bottom, 5)
+                                        Spacer(minLength: 0)
+                                    }
+                                }
+                            }
+                            .frame(width: calculateBunchWidth(selectionCount: selectionCount)) // Container width matches bunch width exactly
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color("message_box_bg"))
+                            )
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: 250)
+                    } else if message.dataType == Constant.img && !message.document.isEmpty {
                         // Receiver image message (matching Android receiverImg design)
                         HStack {
                             // Container wrapping image and caption with same background as Constant.Text receiver messages
@@ -5121,6 +5625,13 @@ struct MessageBubbleView: View {
     }
     
     // Calculate image size (matching DynamicImageView logic)
+    // Calculate bunch width (2 images side by side + spacing)
+    private func calculateBunchWidth(selectionCount: String) -> CGFloat {
+        let imageSize: CGFloat = 120 // 120dp per image
+        let spacing: CGFloat = 1.5 // 1.5dp spacing between columns
+        return (imageSize * 2) + spacing // Total width = 2 images + spacing
+    }
+    
     private func calculateImageSize(imageWidth: String?, imageHeight: String?, aspectRatio: String?) -> CGSize {
         var imageWidthPx: CGFloat = 300
         var imageHeightPx: CGFloat = 300
