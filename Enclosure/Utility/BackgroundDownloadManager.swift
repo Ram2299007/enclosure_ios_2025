@@ -9,6 +9,7 @@ import Foundation
 import UIKit
 import UserNotifications
 import FirebaseStorage
+import Photos
 
 class BackgroundDownloadManager: NSObject {
     static let shared = BackgroundDownloadManager()
@@ -385,6 +386,352 @@ class BackgroundDownloadManager: NSObject {
     // Check if downloading
     func isDownloading(fileName: String) -> Bool {
         return activeDownloads[fileName] != nil
+    }
+    
+    // Check if downloading with a specific key (for Photos library downloads)
+    func isDownloadingWithKey(key: String) -> Bool {
+        return activeDownloads[key] != nil
+    }
+    
+    // Get progress with a specific key
+    func getProgressWithKey(key: String) -> Double? {
+        return downloadProgress[key]
+    }
+    
+    // Download image to Photos library (for receiver side - public directory equivalent)
+    func downloadImageToPhotosLibrary(
+        imageUrl: String,
+        fileName: String,
+        onProgress: ((Double) -> Void)? = nil,
+        onSuccess: (() -> Void)? = nil,
+        onFailure: ((Error) -> Void)? = nil
+    ) {
+        // Check if already downloading
+        let downloadKey = "photos_\(fileName)"
+        if activeDownloads[downloadKey] != nil {
+            print("📱 [BackgroundDownload] Already downloading to Photos: \(fileName)")
+            return
+        }
+        
+        // Check if file already exists in Photos library
+        if PhotosLibraryHelper.shared.imageExistsInPhotosLibrary(fileName: fileName) ||
+           PhotosLibraryHelper.shared.fileExistsInCache(fileName: fileName) {
+            print("📱 [BackgroundDownload] File already exists in Photos: \(fileName)")
+            onSuccess?()
+            return
+        }
+        
+        // Show initial notification
+        showDownloadNotification(fileName: fileName, progress: 0, isComplete: false)
+        
+        // Download to temporary location first, then save to Photos
+        let tempDir = FileManager.default.temporaryDirectory
+        let tempFile = tempDir.appendingPathComponent(fileName)
+        
+        // Download using Firebase Storage or HTTP
+        if imageUrl.hasPrefix("gs://") {
+            // Firebase Storage download
+            downloadFromFirebaseStorageToPhotos(
+                imageUrl: imageUrl,
+                fileName: fileName,
+                tempFile: tempFile,
+                downloadKey: downloadKey,
+                onProgress: onProgress,
+                onSuccess: onSuccess,
+                onFailure: onFailure
+            )
+        } else {
+            // HTTP/HTTPS download
+            downloadViaHTTPToPhotos(
+                imageUrl: imageUrl,
+                fileName: fileName,
+                tempFile: tempFile,
+                downloadKey: downloadKey,
+                onProgress: onProgress,
+                onSuccess: onSuccess,
+                onFailure: onFailure
+            )
+        }
+    }
+    
+    // Download from Firebase Storage to Photos library
+    private func downloadFromFirebaseStorageToPhotos(
+        imageUrl: String,
+        fileName: String,
+        tempFile: URL,
+        downloadKey: String,
+        onProgress: ((Double) -> Void)?,
+        onSuccess: (() -> Void)?,
+        onFailure: ((Error) -> Void)?
+    ) {
+        let storageRef = Storage.storage().reference(forURL: imageUrl)
+        let downloadTask = storageRef.write(toFile: tempFile)
+        
+        // Store task
+        activeDownloads[downloadKey] = downloadTask
+        
+        // Track progress
+        _ = downloadTask.observe(.progress) { snapshot in
+            guard let progress = snapshot.progress else { return }
+            let totalBytes = Double(progress.totalUnitCount)
+            let downloadedBytes = Double(progress.completedUnitCount)
+            
+            if totalBytes > 0 {
+                let progressPercent = (downloadedBytes / totalBytes) * 100.0
+                self.downloadProgress[downloadKey] = progressPercent
+                
+                // Update notification
+                self.showDownloadNotification(fileName: fileName, progress: progressPercent, isComplete: false)
+                
+                // Call progress callback
+                DispatchQueue.main.async {
+                    onProgress?(progressPercent)
+                }
+            }
+        }
+        
+        // Handle success
+        downloadTask.observe(.success) { _ in
+            // Read downloaded file and save to Photos library
+            if let imageData = try? Data(contentsOf: tempFile) {
+                PhotosLibraryHelper.shared.saveImageToPhotosLibrary(imageData: imageData, fileName: fileName) { success, error in
+                    if success {
+                        // Save to cache to track
+                        PhotosLibraryHelper.shared.saveToCache(fileName: fileName, imageData: imageData)
+                    }
+                    
+                    self.activeDownloads.removeValue(forKey: downloadKey)
+                    self.downloadProgress.removeValue(forKey: downloadKey)
+                    
+                    // Remove notification when download completes
+                    if let notificationId = self.downloadNotifications[fileName] {
+                        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [notificationId])
+                        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationId])
+                        self.downloadNotifications.removeValue(forKey: fileName)
+                        print("📱 [BackgroundDownload] Removed notification for completed Photos download: \(fileName)")
+                    }
+                    
+                    // Clean up temp file
+                    try? FileManager.default.removeItem(at: tempFile)
+                    
+                    DispatchQueue.main.async {
+                        if success {
+                            onSuccess?()
+                        } else {
+                            onFailure?(error ?? NSError(domain: "DownloadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to save to Photos library"]))
+                        }
+                    }
+                }
+            } else {
+                self.activeDownloads.removeValue(forKey: downloadKey)
+                self.downloadProgress.removeValue(forKey: downloadKey)
+                
+                let error = NSError(domain: "DownloadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to read downloaded file"])
+                self.showErrorNotification(fileName: fileName, error: error)
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    self.downloadNotifications.removeValue(forKey: fileName)
+                }
+                
+                DispatchQueue.main.async {
+                    onFailure?(error)
+                }
+            }
+        }
+        
+        // Handle failure
+        downloadTask.observe(.failure) { snapshot in
+            self.activeDownloads.removeValue(forKey: downloadKey)
+            self.downloadProgress.removeValue(forKey: downloadKey)
+            
+            let error = snapshot.error ?? NSError(domain: "DownloadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unknown error"])
+            
+            // Show error notification
+            self.showErrorNotification(fileName: fileName, error: error)
+            
+            // Clean up temp file
+            try? FileManager.default.removeItem(at: tempFile)
+            
+            // Remove notification ID after a delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                self.downloadNotifications.removeValue(forKey: fileName)
+            }
+            
+            DispatchQueue.main.async {
+                onFailure?(error)
+            }
+        }
+    }
+    
+    // Download via HTTP/HTTPS to Photos library
+    private func downloadViaHTTPToPhotos(
+        imageUrl: String,
+        fileName: String,
+        tempFile: URL,
+        downloadKey: String,
+        onProgress: ((Double) -> Void)?,
+        onSuccess: (() -> Void)?,
+        onFailure: ((Error) -> Void)?
+    ) {
+        guard let url = URL(string: imageUrl) else {
+            let error = NSError(domain: "DownloadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])
+            DispatchQueue.main.async {
+                onFailure?(error)
+            }
+            return
+        }
+        
+        // Create download task
+        let task = URLSession.shared.downloadTask(with: url) { tempURL, response, error in
+            if let error = error {
+                self.activeDownloads.removeValue(forKey: downloadKey)
+                self.downloadProgress.removeValue(forKey: downloadKey)
+                
+                // Remove progress notification
+                if let notificationId = self.downloadNotifications[fileName] {
+                    UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [notificationId])
+                    UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationId])
+                }
+                
+                // Show error notification
+                self.showErrorNotification(fileName: fileName, error: error)
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    self.downloadNotifications.removeValue(forKey: fileName)
+                }
+                
+                DispatchQueue.main.async {
+                    onFailure?(error)
+                }
+                return
+            }
+            
+            guard let downloadedTempURL = tempURL else {
+                let error = NSError(domain: "DownloadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data received"])
+                self.activeDownloads.removeValue(forKey: downloadKey)
+                self.downloadProgress.removeValue(forKey: downloadKey)
+                
+                // Remove progress notification
+                if let notificationId = self.downloadNotifications[fileName] {
+                    UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [notificationId])
+                    UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationId])
+                }
+                
+                // Show error notification
+                self.showErrorNotification(fileName: fileName, error: error)
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    self.downloadNotifications.removeValue(forKey: fileName)
+                }
+                
+                DispatchQueue.main.async {
+                    onFailure?(error)
+                }
+                return
+            }
+            
+            // Move to temp file location
+            do {
+                // Remove existing temp file if any
+                if FileManager.default.fileExists(atPath: tempFile.path) {
+                    try FileManager.default.removeItem(at: tempFile)
+                }
+                
+                // Create directory if needed
+                try FileManager.default.createDirectory(at: tempFile.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: nil)
+                
+                // Move file
+                try FileManager.default.moveItem(at: downloadedTempURL, to: tempFile)
+                
+                // Read file and save to Photos library
+                if let imageData = try? Data(contentsOf: tempFile) {
+                    PhotosLibraryHelper.shared.saveImageToPhotosLibrary(imageData: imageData, fileName: fileName) { success, error in
+                        if success {
+                            // Save to cache to track
+                            PhotosLibraryHelper.shared.saveToCache(fileName: fileName, imageData: imageData)
+                        }
+                        
+                        self.activeDownloads.removeValue(forKey: downloadKey)
+                        self.downloadProgress.removeValue(forKey: downloadKey)
+                        
+                        // Remove notification when download completes
+                        if let notificationId = self.downloadNotifications[fileName] {
+                            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [notificationId])
+                            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationId])
+                            self.downloadNotifications.removeValue(forKey: fileName)
+                            print("📱 [BackgroundDownload] Removed notification for completed Photos download: \(fileName)")
+                        }
+                        
+                        // Clean up temp file
+                        try? FileManager.default.removeItem(at: tempFile)
+                        
+                        DispatchQueue.main.async {
+                            if success {
+                                onSuccess?()
+                            } else {
+                                onFailure?(error ?? NSError(domain: "DownloadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to save to Photos library"]))
+                            }
+                        }
+                    }
+                } else {
+                    self.activeDownloads.removeValue(forKey: downloadKey)
+                    self.downloadProgress.removeValue(forKey: downloadKey)
+                    
+                    let error = NSError(domain: "DownloadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to read downloaded file"])
+                    self.showErrorNotification(fileName: fileName, error: error)
+                    
+                    // Clean up temp file
+                    try? FileManager.default.removeItem(at: tempFile)
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                        self.downloadNotifications.removeValue(forKey: fileName)
+                    }
+                    
+                    DispatchQueue.main.async {
+                        onFailure?(error)
+                    }
+                }
+            } catch {
+                self.activeDownloads.removeValue(forKey: downloadKey)
+                self.downloadProgress.removeValue(forKey: downloadKey)
+                
+                self.showErrorNotification(fileName: fileName, error: error)
+                
+                // Clean up temp file
+                try? FileManager.default.removeItem(at: tempFile)
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    self.downloadNotifications.removeValue(forKey: fileName)
+                }
+                
+                DispatchQueue.main.async {
+                    onFailure?(error)
+                }
+            }
+        }
+        
+        // Store task
+        activeDownloads[downloadKey] = task
+        
+        // Track progress
+        let observation = task.progress.observe(\.fractionCompleted) { progress, _ in
+            let progressPercent = progress.fractionCompleted * 100.0
+            self.downloadProgress[downloadKey] = progressPercent
+            
+            // Update notification
+            self.showDownloadNotification(fileName: fileName, progress: progressPercent, isComplete: false)
+            
+            // Call progress callback
+            DispatchQueue.main.async {
+                onProgress?(progressPercent)
+            }
+        }
+        
+        // Keep observation alive
+        _ = observation
+        
+        // Start download
+        task.resume()
     }
 }
 

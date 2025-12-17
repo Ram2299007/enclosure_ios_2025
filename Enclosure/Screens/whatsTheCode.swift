@@ -137,12 +137,9 @@ struct whatsTheCode: View {
                                     .foregroundColor(Color("TextColor")) // style="@style/TextColor" - adapts to dark/light mode
                                     .multilineTextAlignment(.center)
                                     .keyboardType(.numberPad)
+                                    .textContentType(.oneTimeCode) // Helps iOS optimize keyboard
                                     .focused($focusedField, equals: index)
-                                    .onTapGesture {
-                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                            focusedField = index
-                                        }
-                                    }
+                                    .submitLabel(.done)
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .center)
@@ -249,7 +246,7 @@ struct whatsTheCode: View {
             .onAppear {
                 print("UID: \(uid), Country Code: \(country_Code), Mobile No: \(mobile_no)")
                 
-                // Get FCM token
+                // Get FCM token (non-blocking)
                 FirebaseManager.shared.getFCMToken { token in
                     if let token = token {
                         DispatchQueue.main.async {
@@ -265,10 +262,16 @@ struct whatsTheCode: View {
                     }
                 }
                 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                // Delay permission requests to avoid blocking UI initialization
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     requestPermissions()
                 }
-
+            }
+            .onAppear {
+                // Auto-focus first OTP field when screen appears
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    focusedField = 0
+                }
             }
         }
     }
@@ -308,34 +311,33 @@ struct whatsTheCode: View {
 
     /// Request Contacts Permission
     private func requestContactsPermission() {
-        DispatchQueue.main.async {
-            let store = CNContactStore()
-            store.requestAccess(for: .contacts) { granted, error in
-                if granted {
-                    print("Contacts permission granted")
+        let store = CNContactStore()
+        store.requestAccess(for: .contacts) { granted, error in
+            if granted {
+                print("Contacts permission granted")
 
+                // Delay contact fetching to avoid blocking UI - do it in background after a delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     // Provide the necessary parameters for getContactList
-                    let uidKey = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? "Not Found" // Assuming 'uid' is a property of your struct
-                    let countryCodeKey = UserDefaults.standard.string(forKey: Constant.country_Code) ?? "Not Found" // Assuming 'country_Code' is a property of your struct
-                    let phoneKey = UserDefaults.standard.string(forKey: Constant.PHONE_NUMBERKEY) ?? "Not Found" // Assuming 'mobile_no' is a property of your struct
-
-
+                    let uidKey = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? "Not Found"
+                    let countryCodeKey = UserDefaults.standard.string(forKey: Constant.country_Code) ?? "Not Found"
+                    let phoneKey = UserDefaults.standard.string(forKey: Constant.PHONE_NUMBERKEY) ?? "Not Found"
 
                     self.getContactList(uidKey: uidKey, countryCodeKey: countryCodeKey, phoneKey: phoneKey) { contacts, error in
                         if let contacts = contacts {
                             // Handle the list of contacts
                             print("1 \(contacts.count) contacts")
-                            print("uid \(uid)")
-                            print("mobile_no \(mobile_no)")
+                            print("uid \(self.uid)")
+                            print("mobile_no \(self.mobile_no)")
                             //Process the contacts here.
                         } else if let error = error {
                             // Handle the error
                             print("Error retrieving contacts: \(error)")
                         }
                     }
-                } else {
-                    print("Contacts permission denied: \(error?.localizedDescription ?? "Unknown error")")
                 }
+            } else {
+                print("Contacts permission denied: \(error?.localizedDescription ?? "Unknown error")")
             }
         }
     }
@@ -343,18 +345,16 @@ struct whatsTheCode: View {
 
     /// Request Photo Library Permission
     private func requestPhotoLibraryPermission() {
-        DispatchQueue.main.async {
-            PHPhotoLibrary.requestAuthorization { status in
-                switch status {
-                case .authorized, .limited:
-                    print("Photo Library permission granted")
-                case .denied, .restricted:
-                    print("Photo Library permission denied")
-                case .notDetermined:
-                    print("Photo Library permission not determined yet")
-                @unknown default:
-                    break
-                }
+        PHPhotoLibrary.requestAuthorization { status in
+            switch status {
+            case .authorized, .limited:
+                print("Photo Library permission granted")
+            case .denied, .restricted:
+                print("Photo Library permission denied")
+            case .notDetermined:
+                print("Photo Library permission not determined yet")
+            @unknown default:
+                break
             }
         }
     }
@@ -378,8 +378,11 @@ struct whatsTheCode: View {
 
     /// Request Notification Permission
     private func requestNotificationPermission() {
+        // Request notification permission asynchronously without blocking
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            print(granted ? "Notification permission granted" : "Notification permission denied: \(error?.localizedDescription ?? "Unknown error")")
+            DispatchQueue.main.async {
+                print(granted ? "Notification permission granted" : "Notification permission denied: \(error?.localizedDescription ?? "Unknown error")")
+            }
         }
     }
 
@@ -576,9 +579,12 @@ struct whatsTheCode: View {
                 otp[current] = String(digit)
                 current += 1
             }
-            focusedField = min(current, otp.count - 1)
-            if current >= otp.count {
-                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            // Delay focus change to avoid keyboard constraint conflicts
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.focusedField = min(current, self.otp.count - 1)
+                if current >= self.otp.count {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
             }
             return
         }
@@ -587,7 +593,10 @@ struct whatsTheCode: View {
         if newValue.isEmpty {
             otp[index] = ""
             if oldValue.isEmpty && index > 0 {
-                focusedField = index - 1
+                // Delay focus change to avoid keyboard constraint conflicts
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.focusedField = index - 1
+                }
             }
             return
         }
@@ -600,12 +609,14 @@ struct whatsTheCode: View {
 
         otp[index] = String(firstDigit)
 
-        // Move focus forward without animation to avoid flicker
-        if index < otp.count - 1 {
-            focusedField = index + 1
-        } else {
-            focusedField = nil
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        // Move focus forward with a small delay to avoid keyboard constraint conflicts
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            if index < self.otp.count - 1 {
+                self.focusedField = index + 1
+            } else {
+                self.focusedField = nil
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
         }
     }
 

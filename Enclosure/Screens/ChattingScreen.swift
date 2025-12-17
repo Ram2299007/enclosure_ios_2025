@@ -4612,6 +4612,321 @@ struct DynamicImageView: View {
     }
 }
 
+// MARK: - Receiver Dynamic Image View (matching Android receiverImg design)
+struct ReceiverDynamicImageView: View {
+    let imageUrl: String
+    let fileName: String?
+    let imageWidth: String?
+    let imageHeight: String?
+    let aspectRatio: String?
+    
+    @State private var isDownloading: Bool = false
+    @State private var downloadProgress: Double = 0.0
+    @State private var showDownloadButton: Bool = false
+    @State private var showDownloadProgress: Bool = false
+    @State private var progressTimer: Timer? = nil
+    
+    // Check if image exists in Photos library (public directory equivalent)
+    private var hasPublicFile: Bool {
+        guard let fileName = fileName, !fileName.isEmpty else { return false }
+        return PhotosLibraryHelper.shared.imageExistsInPhotosLibrary(fileName: fileName) ||
+               PhotosLibraryHelper.shared.fileExistsInCache(fileName: fileName)
+    }
+    
+    // Calculate dynamic image size (same logic as sender)
+    private var imageSize: CGSize {
+        var imageWidthPx: CGFloat = 300
+        var imageHeightPx: CGFloat = 300
+        var aspectRatioValue: CGFloat = 1.0
+        
+        if let widthStr = imageWidth, !widthStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let width = Float(widthStr) {
+                imageWidthPx = CGFloat(width)
+            }
+        }
+        
+        if let heightStr = imageHeight, !heightStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let height = Float(heightStr) {
+                imageHeightPx = CGFloat(height)
+            }
+        }
+        
+        if let ratioStr = aspectRatio, !ratioStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let ratio = Float(ratioStr), ratio > 0 {
+                aspectRatioValue = CGFloat(ratio)
+            } else {
+                if imageHeightPx > 0 {
+                    aspectRatioValue = imageWidthPx / imageHeightPx
+                }
+            }
+        } else {
+            if imageHeightPx > 0 {
+                aspectRatioValue = imageWidthPx / imageHeightPx
+            }
+        }
+        
+        let MAX_WIDTH_PT: CGFloat = 210
+        let MAX_HEIGHT_PT: CGFloat = 250
+        let scale = UIScreen.main.scale
+        var maxWidthPx = MAX_WIDTH_PT * scale
+        var maxHeightPx = MAX_HEIGHT_PT * scale
+        
+        maxWidthPx = min(maxWidthPx, 600)
+        maxHeightPx = min(maxHeightPx, 600)
+        
+        var finalWidthPx: CGFloat = 0
+        var finalHeightPx: CGFloat = 0
+        
+        let orientation = UIDevice.current.orientation
+        let isLandscape = orientation.isLandscape || (UIScreen.main.bounds.width > UIScreen.main.bounds.height)
+        
+        if isLandscape {
+            finalWidthPx = maxWidthPx
+            finalHeightPx = maxWidthPx / aspectRatioValue
+            if finalHeightPx > maxHeightPx {
+                finalHeightPx = maxHeightPx
+                finalWidthPx = maxHeightPx * aspectRatioValue
+            }
+        } else {
+            finalHeightPx = maxHeightPx
+            finalWidthPx = maxHeightPx * aspectRatioValue
+            if finalWidthPx > maxWidthPx {
+                finalWidthPx = maxWidthPx
+                finalHeightPx = maxWidthPx / aspectRatioValue
+            }
+        }
+        
+        finalWidthPx = min(finalWidthPx, maxWidthPx)
+        finalHeightPx = min(finalHeightPx, maxHeightPx)
+        
+        let finalWidthPt = finalWidthPx / scale
+        let finalHeightPt = finalHeightPx / scale
+        
+        return CGSize(width: finalWidthPt, height: finalHeightPt)
+    }
+    
+    // Download image to Photos library (public directory)
+    private func downloadImage() {
+        guard let fileName = fileName, !fileName.isEmpty else {
+            print("❌ [DOWNLOAD] No fileName available")
+            return
+        }
+        
+        // Check if file already exists in Photos library
+        if hasPublicFile {
+            print("📱 [DOWNLOAD] Image already exists in Photos library")
+            return
+        }
+        
+        // Check if already downloading (use downloadKey for Photos library downloads)
+        let downloadKey = "photos_\(fileName)"
+        if BackgroundDownloadManager.shared.isDownloadingWithKey(key: downloadKey) {
+            print("📱 [DOWNLOAD] Already downloading: \(fileName)")
+            return
+        }
+        
+        // Light haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Update UI
+        isDownloading = true
+        showDownloadButton = false
+        showDownloadProgress = true
+        downloadProgress = 0.0
+        
+        // Use BackgroundDownloadManager to download to Photos library
+        BackgroundDownloadManager.shared.downloadImageToPhotosLibrary(
+            imageUrl: imageUrl,
+            fileName: fileName,
+            onProgress: { progress in
+                DispatchQueue.main.async {
+                    self.downloadProgress = progress
+                    print("📱 [DOWNLOAD] Progress: \(Int(progress))%")
+                }
+            },
+            onSuccess: {
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showDownloadButton = false
+                    self.downloadProgress = 0.0
+                    print("✅ [DOWNLOAD] Image downloaded to Photos library: \(fileName)")
+                }
+            },
+            onFailure: { error in
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showDownloadButton = true
+                    self.downloadProgress = 0.0
+                    print("❌ [DOWNLOAD] Download failed: \(error.localizedDescription)")
+                }
+            }
+        )
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // CardView wrapper (matching Android CardView with white background and cornerRadius="12dp")
+            ZStack {
+                RoundedRectangle(cornerRadius: 12) // cardCornerRadius="12dp"
+                    .fill(Color.white) // app:cardBackgroundColor="@color/white"
+                    .frame(width: imageSize.width, height: imageSize.height)
+                
+                // Image view (matching Android recImg: dynamic size, centerCrop, background="#000000")
+                Group {
+                    if let url = URL(string: imageUrl) {
+                        CachedAsyncImage(
+                            url: url,
+                            content: { image in
+                                // Display image with centerCrop (aspectFill) and black background
+                                ZStack {
+                                    Color.black // background="#000000"
+                                    image
+                                        .resizable()
+                                        .scaledToFill() // centerCrop equivalent
+                                }
+                            },
+                            placeholder: {
+                                // Loading placeholder with black background
+                                ZStack {
+                                    Color.black // background="#000000"
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                }
+                            }
+                        )
+                    } else {
+                        // Fallback: show placeholder if no URL available
+                        ZStack {
+                            Color.black
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        }
+                    }
+                }
+                .frame(width: imageSize.width, height: imageSize.height)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                
+                // Download button overlay (matching Android downlaod FloatingActionButton)
+                // Show when public file doesn't exist
+                if !hasPublicFile && !isDownloading {
+                    Button(action: {
+                        downloadImage()
+                    }) {
+                        ZStack {
+                            // iOS glassmorphism background (iOS 26 glass style)
+                            Circle()
+                                .fill(.ultraThinMaterial)
+                                .frame(width: 35, height: 35)
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                )
+                                .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                            
+                            // Download icon (using Android downloaddown.png icon)
+                            Image("downloaddown")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20)
+                                .foregroundColor(Color.white)
+                                .shadow(color: Color.black.opacity(0.3), radius: 2, x: 0, y: 1)
+                        }
+                    }
+                    .onAppear {
+                        showDownloadButton = true
+                    }
+                }
+                
+                // Download progress overlay (matching Android downloadPercentageImage)
+                if showDownloadProgress && isDownloading {
+                    ZStack {
+                        // iOS glassmorphism background
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 60, height: 60)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                        
+                        // Progress percentage text
+                        Text("\(Int(downloadProgress))%")
+                            .font(.custom("Inter18pt-Bold", size: 15))
+                            .foregroundColor(.white)
+                            .shadow(color: Color.black.opacity(0.3), radius: 2, x: 0, y: 1)
+                    }
+                }
+            }
+            .frame(width: imageSize.width, height: imageSize.height)
+        }
+        .onAppear {
+            // Check if download is in progress from BackgroundDownloadManager
+            if let fileName = fileName, !fileName.isEmpty {
+                syncDownloadState(fileName: fileName)
+                startProgressTimer(fileName: fileName)
+            }
+        }
+        .onDisappear {
+            progressTimer?.invalidate()
+            progressTimer = nil
+        }
+    }
+    
+    // Sync download state from BackgroundDownloadManager
+    private func syncDownloadState(fileName: String) {
+        let downloadKey = "photos_\(fileName)"
+        if BackgroundDownloadManager.shared.isDownloadingWithKey(key: downloadKey) {
+            isDownloading = true
+            showDownloadButton = false
+            showDownloadProgress = true
+            if let progress = BackgroundDownloadManager.shared.getProgressWithKey(key: downloadKey) {
+                downloadProgress = progress
+            }
+        } else if hasPublicFile {
+            isDownloading = false
+            showDownloadButton = false
+            showDownloadProgress = false
+        } else {
+            isDownloading = false
+            showDownloadButton = true
+            showDownloadProgress = false
+        }
+    }
+    
+    // Start timer to periodically check download progress
+    private func startProgressTimer(fileName: String) {
+        progressTimer?.invalidate()
+        let downloadKey = "photos_\(fileName)"
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            if BackgroundDownloadManager.shared.isDownloadingWithKey(key: downloadKey) {
+                if let progress = BackgroundDownloadManager.shared.getProgressWithKey(key: downloadKey) {
+                    downloadProgress = progress
+                    isDownloading = true
+                    showDownloadProgress = true
+                    showDownloadButton = false
+                }
+            } else {
+                if hasPublicFile {
+                    isDownloading = false
+                    showDownloadProgress = false
+                    showDownloadButton = false
+                } else {
+                    isDownloading = false
+                    showDownloadProgress = false
+                    showDownloadButton = true
+                }
+                progressTimer?.invalidate()
+                progressTimer = nil
+            }
+        }
+    }
+}
+
 // MARK: - Message Bubble View (matching Android sample_sender.xml)
 struct MessageBubbleView: View {
     let message: ChatMessage
@@ -4638,7 +4953,9 @@ struct MessageBubbleView: View {
                         HStack {
                             Spacer(minLength: 0) // Push content to end
                             
-                            // Image container (matching Android CardView structure)
+                            // Container wrapping image and caption with same background as Constant.Text sender messages
+                            // Android: wrap_content height, vertical orientation, spacing: 0
+                            // Container width matches image width exactly
                             VStack(alignment: .trailing, spacing: 0) {
                                 DynamicImageView(
                                     imageUrl: message.document,
@@ -4650,24 +4967,34 @@ struct MessageBubbleView: View {
                                 )
                                 
                                 // Caption text if present (matching Android caption display)
+                                // Android: layout_width="match_parent", maxWidth="220dp", layout_marginTop="5dp", layout_marginBottom="5dp", paddingHorizontal="12dp"
+                                // Android: textColor="#e7ebf4", textSize="15sp", textFontWeight="400", lineHeight="22dp"
+                                // Caption is left-aligned like receiver side
                                 if let caption = message.caption, !caption.isEmpty {
-                                    Text(caption)
-                                        .font(.custom("Inter18pt-Regular", size: 15))
-                                        .fontWeight(.light)
-                                        .foregroundColor(Color(hex: "#e7ebf4"))
-                                        .lineSpacing(7)
-                                        .multilineTextAlignment(.leading)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                        .padding(.horizontal, 12)
-                                        .padding(.top, 5)
-                                        .padding(.bottom, 6)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 20)
-                                                .fill(getSenderMessageBackgroundColor())
-                                        )
-                                        .padding(.top, 4) // Spacing between image and caption
+                                    HStack {
+                                        Text(caption)
+                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .fontWeight(.regular) // Android: textFontWeight="400"
+                                            .foregroundColor(Color(hex: "#e7ebf4")) // Android: textColor="#e7ebf4"
+                                            .lineSpacing(7) // Android: lineHeight="22dp" (22/15 ≈ 1.47, lineSpacing ≈ 7)
+                                            .multilineTextAlignment(.leading) // Left-aligned like receiver
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .frame(maxWidth: .infinity, alignment: .leading) // Fill container width, left-aligned
+                                            .padding(.horizontal, 12) // Android: paddingHorizontal="12dp"
+                                            .padding(.top, 5) // Android: paddingTop="5dp"
+                                            .padding(.bottom, 6) // Android: paddingBottom="6dp"
+                                        Spacer(minLength: 0) // Don't expand beyond content
+                                    }
+                                    .padding(.top, 5) // Android: layout_marginTop="5dp" - spacing between image and caption
+                                    .padding(.bottom, 5) // Android: layout_marginBottom="5dp"
                                 }
                             }
+                            .frame(width: calculateImageSize(imageWidth: message.imageWidth, imageHeight: message.imageHeight, aspectRatio: message.aspectRatio).width) // Container width matches image width exactly
+                            .background(
+                                // Container background matching sender text message (same as Constant.Text sender messages)
+                                RoundedRectangle(cornerRadius: 20) // matching sender text message corner radius
+                                    .fill(getSenderMessageBackgroundColor()) // Same background as sender text messages
+                            )
                         }
                         .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
                     } else {
@@ -4694,7 +5021,57 @@ struct MessageBubbleView: View {
                     }
                     
                 } else {
-                    // Receiver message (matching Android recMessage TextView) - wrap content with maxWidth
+                    // Check if this is an image message (matching Android receiverImgLyt)
+                    if message.dataType == Constant.img && !message.document.isEmpty {
+                        // Receiver image message (matching Android receiverImg design)
+                        HStack {
+                            // Container wrapping image and caption with same background as Constant.Text receiver messages
+                            // Android: wrap_content height, vertical orientation, spacing: 0
+                            // Container width matches image width exactly
+                            VStack(alignment: .leading, spacing: 0) {
+                                ReceiverDynamicImageView(
+                                    imageUrl: message.document,
+                                    fileName: message.fileName,
+                                    imageWidth: message.imageWidth,
+                                    imageHeight: message.imageHeight,
+                                    aspectRatio: message.aspectRatio
+                                )
+                                
+                                // Caption text if present (matching Android caption display)
+                                // Android: captionText is a direct child of MainReceiverBox (same container as text messages)
+                                // Android: layout_width="match_parent", maxWidth="220dp", layout_marginTop="5dp", layout_marginBottom="5dp", paddingHorizontal="12dp"
+                                // Android: style="@style/TextColor", textSize="15sp", textFontWeight="400", lineHeight="22dp"
+                                // Android: Text is left-aligned (default alignment for receiver)
+                                if let caption = message.caption, !caption.isEmpty {
+                                    HStack {
+                                        Text(caption)
+                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .fontWeight(.regular) // Android: textFontWeight="400"
+                                            .foregroundColor(Color("TextColor")) // Android: style="@style/TextColor"
+                                            .lineSpacing(7) // Android: lineHeight="22dp" (22/15 ≈ 1.47, lineSpacing ≈ 7)
+                                            .multilineTextAlignment(.leading) // Left-aligned for receiver
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .frame(maxWidth: .infinity, alignment: .leading) // Fill container width, left-aligned
+                                            .padding(.horizontal, 12) // Android: paddingHorizontal="12dp"
+                                            .padding(.top, 5) // Android: paddingTop="5dp"
+                                            .padding(.bottom, 6) // Android: paddingBottom="6dp"
+                                        Spacer(minLength: 0) // Don't expand beyond content
+                                    }
+                                    .padding(.top, 5) // Android: layout_marginTop="5dp" - spacing between image and caption
+                                    .padding(.bottom, 5) // Android: layout_marginBottom="5dp"
+                                }
+                            }
+                            .frame(width: calculateImageSize(imageWidth: message.imageWidth, imageHeight: message.imageHeight, aspectRatio: message.aspectRatio).width) // Container width matches image width exactly
+                            .background(
+                                // Container background matching receiver text message (same as Constant.Text receiver messages)
+                                RoundedRectangle(cornerRadius: 12) // matching receiver text message corner radius
+                                    .fill(Color("message_box_bg")) // Same background as receiver text messages
+                            )
+                            Spacer(minLength: 0) // Don't expand beyond content
+                        }
+                        .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
+                    } else {
+                        // Receiver text message (matching Android recMessage TextView) - wrap content with maxWidth
                     HStack {
                         Text(message.message)
                             .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp" (matching Android)
@@ -4713,6 +5090,7 @@ struct MessageBubbleView: View {
                         Spacer(minLength: 0) // Don't expand beyond content
                     }
                     .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
+                    }
                 }
                 
                 // Time row with progress indicator beside time (matching Android placement)
@@ -4740,6 +5118,78 @@ struct MessageBubbleView: View {
         }
         .padding(.horizontal, 10) // side margin like Android screen margins
        
+    }
+    
+    // Calculate image size (matching DynamicImageView logic)
+    private func calculateImageSize(imageWidth: String?, imageHeight: String?, aspectRatio: String?) -> CGSize {
+        var imageWidthPx: CGFloat = 300
+        var imageHeightPx: CGFloat = 300
+        var aspectRatioValue: CGFloat = 1.0
+        
+        if let widthStr = imageWidth, !widthStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let width = Float(widthStr) {
+                imageWidthPx = CGFloat(width)
+            }
+        }
+        
+        if let heightStr = imageHeight, !heightStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let height = Float(heightStr) {
+                imageHeightPx = CGFloat(height)
+            }
+        }
+        
+        if let ratioStr = aspectRatio, !ratioStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let ratio = Float(ratioStr), ratio > 0 {
+                aspectRatioValue = CGFloat(ratio)
+            } else {
+                if imageHeightPx > 0 {
+                    aspectRatioValue = imageWidthPx / imageHeightPx
+                }
+            }
+        } else {
+            if imageHeightPx > 0 {
+                aspectRatioValue = imageWidthPx / imageHeightPx
+            }
+        }
+        
+        let MAX_WIDTH_PT: CGFloat = 210
+        let MAX_HEIGHT_PT: CGFloat = 250
+        let scale = UIScreen.main.scale
+        var maxWidthPx = MAX_WIDTH_PT * scale
+        var maxHeightPx = MAX_HEIGHT_PT * scale
+        
+        maxWidthPx = min(maxWidthPx, 600)
+        maxHeightPx = min(maxHeightPx, 600)
+        
+        var finalWidthPx: CGFloat = 0
+        var finalHeightPx: CGFloat = 0
+        
+        let orientation = UIDevice.current.orientation
+        let isLandscape = orientation.isLandscape || (UIScreen.main.bounds.width > UIScreen.main.bounds.height)
+        
+        if isLandscape {
+            finalWidthPx = maxWidthPx
+            finalHeightPx = maxWidthPx / aspectRatioValue
+            if finalHeightPx > maxHeightPx {
+                finalHeightPx = maxHeightPx
+                finalWidthPx = maxHeightPx * aspectRatioValue
+            }
+        } else {
+            finalHeightPx = maxHeightPx
+            finalWidthPx = maxHeightPx * aspectRatioValue
+            if finalWidthPx > maxWidthPx {
+                finalWidthPx = maxWidthPx
+                finalHeightPx = maxWidthPx / aspectRatioValue
+            }
+        }
+        
+        finalWidthPx = min(finalWidthPx, maxWidthPx)
+        finalHeightPx = min(finalHeightPx, maxHeightPx)
+        
+        let finalWidthPt = finalWidthPx / scale
+        let finalHeightPt = finalHeightPx / scale
+        
+        return CGSize(width: finalWidthPt, height: finalHeightPt)
     }
     
     // Get sender message background color based on theme (matching Android dark mode tint colors)
