@@ -1851,8 +1851,8 @@ struct ChattingScreen: View {
                         // Parse message from Firebase snapshot (matching Android child.getValue(messageModel.class))
                         if let messageDict = child.value as? [String: Any] {
                             if let model = self.parseMessageFromDict(messageDict, messageId: childKey) {
-                                // Only add Text datatype messages (as requested)
-                                if model.dataType == Constant.Text {
+                                // Add Text and Image datatype messages
+                                if model.dataType == Constant.Text || model.dataType == Constant.img {
                                     tempList.append(model)
                                 }
                             }
@@ -1976,8 +1976,8 @@ struct ChattingScreen: View {
             if let messageDict = snapshot.value as? [String: Any],
                let updatedModel = self.parseMessageFromDict(messageDict, messageId: changedKey) {
                 
-                // Only handle Text datatype messages
-                if updatedModel.dataType == Constant.Text {
+                // Handle Text and Image datatype messages
+                if updatedModel.dataType == Constant.Text || updatedModel.dataType == Constant.img {
                     // Find and update existing message (matching Android)
                     if let index = self.messages.firstIndex(where: { $0.id == changedKey }) {
                         let oldModel = self.messages[index]
@@ -1985,7 +1985,8 @@ struct ChattingScreen: View {
                         // Check if message actually changed (matching Android)
                         let isChanged = oldModel.message != updatedModel.message ||
                                       oldModel.emojiCount != updatedModel.emojiCount ||
-                                      oldModel.timestamp != updatedModel.timestamp
+                                      oldModel.timestamp != updatedModel.timestamp ||
+                                      oldModel.document != updatedModel.document
                         
                         if isChanged {
                             DispatchQueue.main.async {
@@ -2029,9 +2030,9 @@ struct ChattingScreen: View {
             return
         }
         
-        // Only handle Text datatype messages (as requested)
-        guard model.dataType == Constant.Text else {
-            print("📱 [handleChildAdded] Skipping non-Text message type: \(model.dataType)")
+        // Handle Text and Image datatype messages
+        guard model.dataType == Constant.Text || model.dataType == Constant.img else {
+            print("📱 [handleChildAdded] Skipping unsupported message type: \(model.dataType)")
             return
         }
         
@@ -2334,8 +2335,8 @@ struct ChattingScreen: View {
                 if let messageDict = child.value as? [String: Any],
                    let model = self.parseMessageFromDict(messageDict, messageId: childKey) {
                     
-                    // Only add Text datatype messages
-                    if model.dataType == Constant.Text {
+                    // Add Text and Image datatype messages
+                    if model.dataType == Constant.Text || model.dataType == Constant.img {
                         // ✅ Filter: only add messages older than lastTimestamp (matching Android endBefore)
                         if model.timestamp < lastTs {
                             // ✅ Avoid duplicate messages (matching Android)
@@ -4113,6 +4114,141 @@ struct FirstVisibleItemPreferenceKey: PreferenceKey {
     }
 }
 
+// MARK: - Dynamic Image View (matching Android loadImageIntoView)
+struct DynamicImageView: View {
+    let imageUrl: String
+    let imageWidth: String?
+    let imageHeight: String?
+    let aspectRatio: String?
+    let backgroundColor: Color
+    
+    // Calculate dynamic image size based on imageWidth, imageHeight, and aspectRatio (matching Android loadImageIntoView)
+    private var imageSize: CGSize {
+        // Parse dimensions with error handling (matching Android)
+        var imageWidthPx: CGFloat = 300
+        var imageHeightPx: CGFloat = 300
+        var aspectRatioValue: CGFloat = 1.0
+        
+        // Parse width
+        if let widthStr = imageWidth, !widthStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let width = Float(widthStr) {
+                imageWidthPx = CGFloat(width)
+            }
+        }
+        
+        // Parse height
+        if let heightStr = imageHeight, !heightStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let height = Float(heightStr) {
+                imageHeightPx = CGFloat(height)
+            }
+        }
+        
+        // Parse aspect ratio
+        if let ratioStr = aspectRatio, !ratioStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let ratio = Float(ratioStr), ratio > 0 {
+                aspectRatioValue = CGFloat(ratio)
+            } else {
+                // Fallback to calculated aspect ratio
+                if imageHeightPx > 0 {
+                    aspectRatioValue = imageWidthPx / imageHeightPx
+                }
+            }
+        } else {
+            // Fallback to calculated aspect ratio
+            if imageHeightPx > 0 {
+                aspectRatioValue = imageWidthPx / imageHeightPx
+            }
+        }
+        
+        // Define maximum dimensions in points (matching Android MAX_WIDTH_DP = 210f, MAX_HEIGHT_DP = 250f)
+        let MAX_WIDTH_PT: CGFloat = 210
+        let MAX_HEIGHT_PT: CGFloat = 250
+        
+        // Convert to pixels (iOS uses points, but we'll use the same logic)
+        // On iOS, 1 point = 1 pixel on non-retina, 2 pixels on retina, 3 pixels on retina HD
+        let scale = UIScreen.main.scale
+        var maxWidthPx = MAX_WIDTH_PT * scale
+        var maxHeightPx = MAX_HEIGHT_PT * scale
+        
+        // Further limit pixel dimensions for better compression (matching Android: cap at 600px)
+        maxWidthPx = min(maxWidthPx, 600)
+        maxHeightPx = min(maxHeightPx, 600)
+        
+        // Calculate dimensions based on orientation and aspect ratio (matching Android)
+        var finalWidthPx: CGFloat = 0
+        var finalHeightPx: CGFloat = 0
+        
+        // Check orientation
+        let orientation = UIDevice.current.orientation
+        let isLandscape = orientation.isLandscape || (UIScreen.main.bounds.width > UIScreen.main.bounds.height)
+        
+        if isLandscape {
+            // Landscape: Prioritize width for wide images
+            finalWidthPx = maxWidthPx
+            finalHeightPx = maxWidthPx / aspectRatioValue
+            // Ensure height doesn't exceed maxHeightPx
+            if finalHeightPx > maxHeightPx {
+                finalHeightPx = maxHeightPx
+                finalWidthPx = maxHeightPx * aspectRatioValue
+            }
+        } else {
+            // Portrait: Prioritize height for wide images
+            finalHeightPx = maxHeightPx
+            finalWidthPx = maxHeightPx * aspectRatioValue
+            // Ensure width doesn't exceed maxWidthPx
+            if finalWidthPx > maxWidthPx {
+                finalWidthPx = maxWidthPx
+                finalHeightPx = maxWidthPx / aspectRatioValue
+            }
+        }
+        
+        // Ensure final dimensions are within bounds
+        finalWidthPx = min(finalWidthPx, maxWidthPx)
+        finalHeightPx = min(finalHeightPx, maxHeightPx)
+        
+        // Convert back to points for SwiftUI (divide by scale)
+        let finalWidthPt = finalWidthPx / scale
+        let finalHeightPt = finalHeightPx / scale
+        
+        return CGSize(width: finalWidthPt, height: finalHeightPt)
+    }
+    
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 0) {
+            // CardView wrapper (matching Android CardView with cornerRadius="12dp" and background color)
+            // Background color matching sender message background (matching Android cardBackgroundColor)
+            RoundedRectangle(cornerRadius: 12) // cardCornerRadius="12dp"
+                .fill(backgroundColor) // Use same background as text messages
+                .frame(width: imageSize.width, height: imageSize.height) // Dynamic size based on image dimensions
+                .overlay(
+                    // Image view (matching Android senderImg: dynamic size, centerCrop, background="#000000")
+                    CachedAsyncImage(
+                        url: URL(string: imageUrl),
+                        content: { image in
+                            // Display image with centerCrop (aspectFill) and black background
+                            ZStack {
+                                Color.black // background="#000000"
+                                image
+                                    .resizable()
+                                    .scaledToFill() // centerCrop equivalent (scaleType="centerCrop")
+                            }
+                        },
+                        placeholder: {
+                            // Loading placeholder with black background (matching Android background="#000000")
+                            ZStack {
+                                Color.black // background="#000000"
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            }
+                        }
+                    )
+                    .frame(width: imageSize.width, height: imageSize.height) // Dynamic size based on image dimensions
+                    .clipShape(RoundedRectangle(cornerRadius: 12)) // Clip to card corner radius
+                )
+        }
+    }
+}
+
 // MARK: - Message Bubble View (matching Android sample_sender.xml)
 struct MessageBubbleView: View {
     let message: ChatMessage
@@ -4133,26 +4269,65 @@ struct MessageBubbleView: View {
             VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
                 // Main message bubble container (matching Android MainSenderBox)
                 if isSentByMe {
-                    // Sender message (matching Android sendMessage TextView) - wrap content with maxWidth, gravity="end"
-                    HStack {
-                        Spacer(minLength: 0) // Push content to end
-                        Text(message.message)
-                            .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp", textFontWeight="200" (light)
-                            .fontWeight(.light) // textFontWeight="200" = Light weight
-                            .foregroundColor(Color(hex: "#e7ebf4")) // textColor="#e7ebf4"
-                            .lineSpacing(7) // lineHeight="22dp" (22 - 15 = 7dp spacing)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true) // allow wrapping
-                            .padding(.horizontal, 12) // layout_marginHorizontal="12dp"
-                            .padding(.top, 5) // paddingTop="5dp"
-                            .padding(.bottom, 6) // paddingBottom="6dp"
-                            .background(
-                                // Background matching message_bg_blue.xml with theme color support
-                                RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
-                                    .fill(getSenderMessageBackgroundColor()) // Theme-based background color
-                            )
+                    // Check if this is an image message (matching Android senderImgLyt)
+                    if message.dataType == Constant.img && !message.document.isEmpty {
+                        // Sender image message (matching Android senderImg design)
+                        HStack {
+                            Spacer(minLength: 0) // Push content to end
+                            
+                            // Image container (matching Android CardView structure)
+                            VStack(alignment: .trailing, spacing: 0) {
+                                DynamicImageView(
+                                    imageUrl: message.document,
+                                    imageWidth: message.imageWidth,
+                                    imageHeight: message.imageHeight,
+                                    aspectRatio: message.aspectRatio,
+                                    backgroundColor: getSenderMessageBackgroundColor()
+                                )
+                                
+                                // Caption text if present (matching Android caption display)
+                                if let caption = message.caption, !caption.isEmpty {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.light)
+                                        .foregroundColor(Color(hex: "#e7ebf4"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 20)
+                                                .fill(getSenderMessageBackgroundColor())
+                                        )
+                                        .padding(.top, 4) // Spacing between image and caption
+                                }
+                            }
+                        }
+                        .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
+                    } else {
+                        // Sender text message (matching Android sendMessage TextView) - wrap content with maxWidth, gravity="end"
+                        HStack {
+                            Spacer(minLength: 0) // Push content to end
+                            Text(message.message)
+                                .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp", textFontWeight="200" (light)
+                                .fontWeight(.light) // textFontWeight="200" = Light weight
+                                .foregroundColor(Color(hex: "#e7ebf4")) // textColor="#e7ebf4"
+                                .lineSpacing(7) // lineHeight="22dp" (22 - 15 = 7dp spacing)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true) // allow wrapping
+                                .padding(.horizontal, 12) // layout_marginHorizontal="12dp"
+                                .padding(.top, 5) // paddingTop="5dp"
+                                .padding(.bottom, 6) // paddingBottom="6dp"
+                                .background(
+                                    // Background matching message_bg_blue.xml with theme color support
+                                    RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
+                                        .fill(getSenderMessageBackgroundColor()) // Theme-based background color
+                                )
+                        }
+                        .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
                     }
-                    .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
                     
                 } else {
                     // Receiver message (matching Android recMessage TextView) - wrap content with maxWidth
