@@ -3449,10 +3449,75 @@ struct ChattingScreen: View {
         
         do {
             try data.write(to: fileURL, options: .atomic)
-            print("📱 [LOCAL_STORAGE] Saved image to local storage: \(fileURL.path)")
+            print("📱 [LOCAL_STORAGE] ✅ Saved image to local storage")
+            print("📱 [LOCAL_STORAGE] File: \(fileName)")
+            print("📱 [LOCAL_STORAGE] File Path: \(fileURL.path)")
+            print("📱 [LOCAL_STORAGE] Size: \(data.count) bytes (\(String(format: "%.2f", Double(data.count) / 1024.0)) KB)")
+            print("")
+            print("═══════════════════════════════════════════════════════════")
+            print("📱 [LOCAL_STORAGE] FULL DIRECTORY PATH:")
+            print("═══════════════════════════════════════════════════════════")
+            print("📍 \(imagesDir.path)")
+            print("═══════════════════════════════════════════════════════════")
+            
+            #if targetEnvironment(simulator)
+            // Extract and print APP_ID and DEVICE_ID for easy access
+            let pathComponents = imagesDir.path.components(separatedBy: "/")
+            if let appIdIndex = pathComponents.firstIndex(of: "Application"),
+               appIdIndex + 1 < pathComponents.count {
+                let appId = pathComponents[appIdIndex + 1]
+                print("📱 APP_ID: \(appId)")
+            }
+            if let deviceIdIndex = pathComponents.firstIndex(of: "Devices"),
+               deviceIdIndex + 1 < pathComponents.count {
+                let deviceId = pathComponents[deviceIdIndex + 1]
+                print("📱 DEVICE_ID: \(deviceId)")
+            }
+            print("")
+            print("💡 TO ACCESS IN FINDER:")
+            print("   1. Press Cmd + Shift + G")
+            print("   2. Paste: \(imagesDir.path)")
+            print("   3. Press Enter")
+            print("═══════════════════════════════════════════════════════════")
+            #endif
+            print("")
         } catch {
             print("❌ [LOCAL_STORAGE] Error saving image to local storage: \(error.localizedDescription)")
         }
+    }
+    
+    /// Debug function: List all saved images in local storage
+    private func listSavedImages() {
+        let imagesDir = getLocalImagesDirectory()
+        
+        do {
+            let files = try FileManager.default.contentsOfDirectory(at: imagesDir, includingPropertiesForKeys: [.fileSizeKey, .creationDateKey])
+            
+            print("📱 [LOCAL_STORAGE] ===== Saved Images List =====")
+            print("📱 [LOCAL_STORAGE] Directory: \(imagesDir.path)")
+            print("📱 [LOCAL_STORAGE] Total files: \(files.count)")
+            
+            for (index, file) in files.enumerated() {
+                let fileName = file.lastPathComponent
+                let fileSize = (try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+                let creationDate = (try? file.resourceValues(forKeys: [.creationDateKey]))?.creationDate
+                
+                print("📱 [LOCAL_STORAGE] \(index + 1). \(fileName)")
+                print("   Size: \(fileSize) bytes (\(fileSize / 1024) KB)")
+                if let date = creationDate {
+                    print("   Created: \(date)")
+                }
+            }
+            print("📱 [LOCAL_STORAGE] ==============================")
+        } catch {
+            print("❌ [LOCAL_STORAGE] Error listing images: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Debug function: Get local images directory path (for manual checking)
+    private func getLocalImagesDirectoryPath() -> String {
+        let imagesDir = getLocalImagesDirectory()
+        return imagesDir.path
     }
     
     // Export PHAsset to a temporary JPEG file
@@ -4171,6 +4236,12 @@ struct DynamicImageView: View {
     let aspectRatio: String?
     let backgroundColor: Color
     
+    @State private var isDownloading: Bool = false
+    @State private var downloadProgress: Double = 0.0
+    @State private var showDownloadButton: Bool = false
+    @State private var showDownloadProgress: Bool = false
+    @State private var progressTimer: Timer? = nil
+    
     // Get local images directory path (matching Android Enclosure/Media/Images)
     private func getLocalImagesDirectory() -> URL {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -4197,6 +4268,83 @@ struct DynamicImageView: View {
         }
         
         return nil
+    }
+    
+    // Check if local file exists (matching Android doesFileExist)
+    private var hasLocalFile: Bool {
+        guard let fileName = fileName, !fileName.isEmpty else { return false }
+        let localURL = getLocalImagesDirectory().appendingPathComponent(fileName)
+        return FileManager.default.fileExists(atPath: localURL.path)
+    }
+    
+    // Download image using BackgroundDownloadManager (matching Android startSenderImageDownloadWithProgress)
+    private func downloadImage() {
+        guard let fileName = fileName, !fileName.isEmpty else {
+            print("❌ [DOWNLOAD] No fileName available")
+            return
+        }
+        
+        let imagesDir = getLocalImagesDirectory()
+        let destinationFile = imagesDir.appendingPathComponent(fileName)
+        
+        // Check if file already exists (matching Android)
+        if FileManager.default.fileExists(atPath: destinationFile.path) {
+            print("📱 [DOWNLOAD] Image already exists locally")
+            // No toast - just return silently
+            return
+        }
+        
+        // Check if already downloading
+        if BackgroundDownloadManager.shared.isDownloading(fileName: fileName) {
+            print("📱 [DOWNLOAD] Already downloading: \(fileName)")
+            return
+        }
+        
+        // Light haptic feedback (matching Android Vibrator)
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Update UI: hide download button, show progress (matching Android)
+        isDownloading = true
+        showDownloadButton = false
+        showDownloadProgress = true
+        downloadProgress = 0.0
+        
+        // Use BackgroundDownloadManager for background downloads with notifications
+        BackgroundDownloadManager.shared.downloadImage(
+            imageUrl: imageUrl,
+            fileName: fileName,
+            destinationFile: destinationFile,
+            onProgress: { progress in
+                // Update UI progress
+                DispatchQueue.main.async {
+                    self.downloadProgress = progress
+                    print("📱 [DOWNLOAD] Progress: \(Int(progress))%")
+                }
+            },
+            onSuccess: {
+                // Update UI on success
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showDownloadButton = false
+                    self.downloadProgress = 0.0
+                    print("✅ [DOWNLOAD] Image downloaded successfully: \(destinationFile.path)")
+                    // No toast - notification will show instead
+                }
+            },
+            onFailure: { error in
+                // Update UI on failure
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showDownloadButton = true
+                    self.downloadProgress = 0.0
+                    print("❌ [DOWNLOAD] Download failed: \(error.localizedDescription)")
+                    // No toast - notification will show instead
+                }
+            }
+        )
     }
     
     // Calculate dynamic image size based on imageWidth, imageHeight, and aspectRatio (matching Android loadImageIntoView)
@@ -4294,47 +4442,172 @@ struct DynamicImageView: View {
         VStack(alignment: .trailing, spacing: 0) {
             // CardView wrapper (matching Android CardView with cornerRadius="12dp" and background color)
             // Background color matching sender message background (matching Android cardBackgroundColor)
-            RoundedRectangle(cornerRadius: 12) // cardCornerRadius="12dp"
-                .fill(backgroundColor) // Use same background as text messages
-                .frame(width: imageSize.width, height: imageSize.height) // Dynamic size based on image dimensions
-                .overlay(
-                    // Image view (matching Android senderImg: dynamic size, centerCrop, background="#000000")
-                    // Check local file first, then use online URL (matching Android doesFileExist logic)
-                    Group {
-                        if let sourceURL = imageSourceURL {
-                            // Use CachedAsyncImage for both local and remote URLs
-                            CachedAsyncImage(
-                                url: sourceURL,
-                                content: { image in
-                                    // Display image with centerCrop (aspectFill) and black background
-                                    ZStack {
-                                        Color.black // background="#000000"
-                                        image
-                                            .resizable()
-                                            .scaledToFill() // centerCrop equivalent (scaleType="centerCrop")
-                                    }
-                                },
-                                placeholder: {
-                                    // Loading placeholder with black background (matching Android background="#000000")
-                                    ZStack {
-                                        Color.black // background="#000000"
-                                        ProgressView()
-                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                    }
+            ZStack {
+                RoundedRectangle(cornerRadius: 12) // cardCornerRadius="12dp"
+                    .fill(backgroundColor) // Use same background as text messages
+                    .frame(width: imageSize.width, height: imageSize.height) // Dynamic size based on image dimensions
+                
+                // Image view (matching Android senderImg: dynamic size, centerCrop, background="#000000")
+                // Check local file first, then use online URL (matching Android doesFileExist logic)
+                Group {
+                    if let sourceURL = imageSourceURL {
+                        // Use CachedAsyncImage for both local and remote URLs
+                        CachedAsyncImage(
+                            url: sourceURL,
+                            content: { image in
+                                // Display image with centerCrop (aspectFill) and black background
+                                ZStack {
+                                    Color.black // background="#000000"
+                                    image
+                                        .resizable()
+                                        .scaledToFill() // centerCrop equivalent (scaleType="centerCrop")
                                 }
-                            )
-                        } else {
-                            // Fallback: show placeholder if no URL available
-                            ZStack {
-                                Color.black
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            },
+                            placeholder: {
+                                // Loading placeholder with black background (matching Android background="#000000")
+                                ZStack {
+                                    Color.black // background="#000000"
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                }
                             }
+                        )
+                    } else {
+                        // Fallback: show placeholder if no URL available
+                        ZStack {
+                            Color.black
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
                         }
                     }
-                    .frame(width: imageSize.width, height: imageSize.height) // Dynamic size based on image dimensions
-                    .clipShape(RoundedRectangle(cornerRadius: 12)) // Clip to card corner radius
-                )
+                }
+                .frame(width: imageSize.width, height: imageSize.height) // Dynamic size based on image dimensions
+                .clipShape(RoundedRectangle(cornerRadius: 12)) // Clip to card corner radius
+                
+                // Download button overlay (matching Android downlaod FloatingActionButton)
+                // Show when local file doesn't exist (matching Android visibility logic)
+                // Centered on image (matching Android layout_centerInParent="true")
+                // Using iOS glassmorphism effect (iOS 26 glass style)
+                if !hasLocalFile && !isDownloading {
+                    // Download button with iOS glass effect (matching Android downloaddown icon)
+                    Button(action: {
+                        downloadImage()
+                    }) {
+                        ZStack {
+                            // iOS glassmorphism background (iOS 26 glass style)
+                            Circle()
+                                .fill(.ultraThinMaterial) // Glass effect
+                                .frame(width: 35, height: 35)
+                                .overlay(
+                                    // Subtle border for glass effect
+                                    Circle()
+                                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                )
+                                .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                            
+                            // Download icon (using Android downloaddown.png icon)
+                            Image("downloaddown")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20)
+                                .foregroundColor(Color.white)
+                                .shadow(color: Color.black.opacity(0.3), radius: 2, x: 0, y: 1)
+                        }
+                    }
+                    .onAppear {
+                        showDownloadButton = true
+                    }
+                }
+                
+                // Download progress overlay (matching Android downloadPercentageImageSender)
+                // Centered on image (matching Android layout_centerInParent="true")
+                // Using iOS glassmorphism effect (iOS 26 glass style)
+                if showDownloadProgress && isDownloading {
+                    ZStack {
+                        // iOS glassmorphism background (iOS 26 glass style)
+                        Circle()
+                            .fill(.ultraThinMaterial) // Glass effect
+                            .frame(width: 60, height: 60)
+                            .overlay(
+                                // Subtle border for glass effect
+                                Circle()
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                        
+                        // Progress percentage text (matching Android downloadPercentageImageSender)
+                        Text("\(Int(downloadProgress))%")
+                            .font(.custom("Inter18pt-Bold", size: 15))
+                            .foregroundColor(.white)
+                            .shadow(color: Color.black.opacity(0.3), radius: 2, x: 0, y: 1)
+                    }
+                }
+            }
+            .frame(width: imageSize.width, height: imageSize.height) // Dynamic size based on image dimensions
+        }
+        .onAppear {
+            // Check if download is in progress from BackgroundDownloadManager
+            if let fileName = fileName, !fileName.isEmpty {
+                syncDownloadState(fileName: fileName)
+                // Start timer to periodically check download progress
+                startProgressTimer(fileName: fileName)
+            }
+        }
+        .onDisappear {
+            // Stop timer when view disappears
+            progressTimer?.invalidate()
+            progressTimer = nil
+        }
+    }
+    
+    // Sync download state from BackgroundDownloadManager
+    private func syncDownloadState(fileName: String) {
+        if BackgroundDownloadManager.shared.isDownloading(fileName: fileName) {
+            isDownloading = true
+            showDownloadButton = false
+            showDownloadProgress = true
+            if let progress = BackgroundDownloadManager.shared.getProgress(fileName: fileName) {
+                downloadProgress = progress
+            }
+        } else if hasLocalFile {
+            // File exists locally
+            isDownloading = false
+            showDownloadButton = false
+            showDownloadProgress = false
+        } else {
+            // File doesn't exist and not downloading
+            isDownloading = false
+            showDownloadButton = true
+            showDownloadProgress = false
+        }
+    }
+    
+    // Start timer to periodically check download progress
+    private func startProgressTimer(fileName: String) {
+        progressTimer?.invalidate()
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            if BackgroundDownloadManager.shared.isDownloading(fileName: fileName) {
+                if let progress = BackgroundDownloadManager.shared.getProgress(fileName: fileName) {
+                    downloadProgress = progress
+                    isDownloading = true
+                    showDownloadProgress = true
+                    showDownloadButton = false
+                }
+            } else {
+                // Download completed or not in progress
+                if hasLocalFile {
+                    isDownloading = false
+                    showDownloadProgress = false
+                    showDownloadButton = false
+                } else {
+                    isDownloading = false
+                    showDownloadProgress = false
+                    showDownloadButton = true
+                }
+                progressTimer?.invalidate()
+                progressTimer = nil
+            }
         }
     }
 }
@@ -4399,25 +4672,25 @@ struct MessageBubbleView: View {
                         .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
                     } else {
                         // Sender text message (matching Android sendMessage TextView) - wrap content with maxWidth, gravity="end"
-                        HStack {
-                            Spacer(minLength: 0) // Push content to end
-                            Text(message.message)
-                                .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp", textFontWeight="200" (light)
-                                .fontWeight(.light) // textFontWeight="200" = Light weight
-                                .foregroundColor(Color(hex: "#e7ebf4")) // textColor="#e7ebf4"
-                                .lineSpacing(7) // lineHeight="22dp" (22 - 15 = 7dp spacing)
-                                .multilineTextAlignment(.leading)
-                                .fixedSize(horizontal: false, vertical: true) // allow wrapping
-                                .padding(.horizontal, 12) // layout_marginHorizontal="12dp"
-                                .padding(.top, 5) // paddingTop="5dp"
-                                .padding(.bottom, 6) // paddingBottom="6dp"
-                                .background(
-                                    // Background matching message_bg_blue.xml with theme color support
-                                    RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
-                                        .fill(getSenderMessageBackgroundColor()) // Theme-based background color
-                                )
-                        }
-                        .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
+                    HStack {
+                        Spacer(minLength: 0) // Push content to end
+                        Text(message.message)
+                            .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp", textFontWeight="200" (light)
+                            .fontWeight(.light) // textFontWeight="200" = Light weight
+                            .foregroundColor(Color(hex: "#e7ebf4")) // textColor="#e7ebf4"
+                            .lineSpacing(7) // lineHeight="22dp" (22 - 15 = 7dp spacing)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true) // allow wrapping
+                            .padding(.horizontal, 12) // layout_marginHorizontal="12dp"
+                            .padding(.top, 5) // paddingTop="5dp"
+                            .padding(.bottom, 6) // paddingBottom="6dp"
+                            .background(
+                                // Background matching message_bg_blue.xml with theme color support
+                                RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
+                                    .fill(getSenderMessageBackgroundColor()) // Theme-based background color
+                            )
+                    }
+                    .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
                     }
                     
                 } else {
