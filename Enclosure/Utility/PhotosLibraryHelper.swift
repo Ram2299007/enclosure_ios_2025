@@ -66,6 +66,51 @@ class PhotosLibraryHelper {
         }
     }
     
+    // Save video to Photos library (public directory equivalent)
+    func saveVideoToPhotosLibrary(videoData: Data, fileName: String, completion: @escaping (Bool, Error?) -> Void) {
+        // Request photo library access
+        PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
+            guard status == .authorized || status == .limited else {
+                DispatchQueue.main.async {
+                    completion(false, NSError(domain: "PhotosLibraryHelper", code: -1, userInfo: [NSLocalizedDescriptionKey: "Photo library access denied"]))
+                }
+                return
+            }
+            
+            // Save video data to temporary file first
+            let tempDir = FileManager.default.temporaryDirectory
+            let tempFile = tempDir.appendingPathComponent(fileName)
+            
+            do {
+                // Write video data to temp file
+                try videoData.write(to: tempFile, options: .atomic)
+                
+                // Save to Photos library
+                PHPhotoLibrary.shared().performChanges({
+                    PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: tempFile)
+                }, completionHandler: { success, error in
+                    // Clean up temp file
+                    try? FileManager.default.removeItem(at: tempFile)
+                    
+                    DispatchQueue.main.async {
+                        if success {
+                            // Save to cache to track
+                            PhotosLibraryHelper.shared.saveToCache(fileName: fileName, imageData: videoData)
+                            print("📱 [PhotosLibraryHelper] ✅ Video saved to Photos library: \(fileName)")
+                        } else {
+                            print("❌ [PhotosLibraryHelper] Failed to save video: \(error?.localizedDescription ?? "Unknown error")")
+                        }
+                        completion(success, error)
+                    }
+                })
+            } catch {
+                DispatchQueue.main.async {
+                    completion(false, error)
+                }
+            }
+        }
+    }
+    
     // Get local file path for checking (we'll use a combination of Photos check + local cache)
     // Since iOS Photos library doesn't expose file paths directly, we maintain a local cache
     func getLocalCachePath(fileName: String) -> URL {

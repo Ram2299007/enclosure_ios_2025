@@ -34,6 +34,13 @@ class BackgroundDownloadManager: NSObject {
         }
     }
     
+    // Check if file is a video based on extension
+    private func isVideoFile(fileName: String) -> Bool {
+        let videoExtensions = ["mp4", "mov", "avi", "m4v", "mkv", "3gp", "webm"]
+        let fileExtension = (fileName as NSString).pathExtension.lowercased()
+        return videoExtensions.contains(fileExtension)
+    }
+    
     // Download image with background support and notifications
     func downloadImage(
         imageUrl: String,
@@ -378,6 +385,20 @@ class BackgroundDownloadManager: NSObject {
         }
     }
     
+    // Cancel download with a specific key (for Photos library downloads)
+    func cancelDownloadWithKey(key: String) {
+        if let task = activeDownloads[key] {
+            if let urlTask = task as? URLSessionDownloadTask {
+                urlTask.cancel()
+            } else {
+                print("📱 [BackgroundDownload] Removing download from tracking: \(key)")
+            }
+            activeDownloads.removeValue(forKey: key)
+            downloadProgress.removeValue(forKey: key)
+            downloadNotifications.removeValue(forKey: key)
+        }
+    }
+    
     // Get download progress
     func getProgress(fileName: String) -> Double? {
         return downloadProgress[fileName]
@@ -493,32 +514,63 @@ class BackgroundDownloadManager: NSObject {
         // Handle success
         downloadTask.observe(.success) { _ in
             // Read downloaded file and save to Photos library
-            if let imageData = try? Data(contentsOf: tempFile) {
-                PhotosLibraryHelper.shared.saveImageToPhotosLibrary(imageData: imageData, fileName: fileName) { success, error in
-                    if success {
-                        // Save to cache to track
-                        PhotosLibraryHelper.shared.saveToCache(fileName: fileName, imageData: imageData)
+            if let fileData = try? Data(contentsOf: tempFile) {
+                // Check if it's a video file
+                let isVideo = self.isVideoFile(fileName: fileName)
+                
+                if isVideo {
+                    // Save video to Photos library
+                    PhotosLibraryHelper.shared.saveVideoToPhotosLibrary(videoData: fileData, fileName: fileName) { success, error in
+                        self.activeDownloads.removeValue(forKey: downloadKey)
+                        self.downloadProgress.removeValue(forKey: downloadKey)
+                        
+                        // Remove notification when download completes
+                        if let notificationId = self.downloadNotifications[fileName] {
+                            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [notificationId])
+                            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationId])
+                            self.downloadNotifications.removeValue(forKey: fileName)
+                            print("📱 [BackgroundDownload] Removed notification for completed Photos download: \(fileName)")
+                        }
+                        
+                        // Clean up temp file
+                        try? FileManager.default.removeItem(at: tempFile)
+                        
+                        DispatchQueue.main.async {
+                            if success {
+                                onSuccess?()
+                            } else {
+                                onFailure?(error ?? NSError(domain: "DownloadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to save video to Photos library"]))
+                            }
+                        }
                     }
-                    
-                    self.activeDownloads.removeValue(forKey: downloadKey)
-                    self.downloadProgress.removeValue(forKey: downloadKey)
-                    
-                    // Remove notification when download completes
-                    if let notificationId = self.downloadNotifications[fileName] {
-                        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [notificationId])
-                        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationId])
-                        self.downloadNotifications.removeValue(forKey: fileName)
-                        print("📱 [BackgroundDownload] Removed notification for completed Photos download: \(fileName)")
-                    }
-                    
-                    // Clean up temp file
-                    try? FileManager.default.removeItem(at: tempFile)
-                    
-                    DispatchQueue.main.async {
+                } else {
+                    // Save image to Photos library
+                    PhotosLibraryHelper.shared.saveImageToPhotosLibrary(imageData: fileData, fileName: fileName) { success, error in
                         if success {
-                            onSuccess?()
-                        } else {
-                            onFailure?(error ?? NSError(domain: "DownloadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to save to Photos library"]))
+                            // Save to cache to track
+                            PhotosLibraryHelper.shared.saveToCache(fileName: fileName, imageData: fileData)
+                        }
+                        
+                        self.activeDownloads.removeValue(forKey: downloadKey)
+                        self.downloadProgress.removeValue(forKey: downloadKey)
+                        
+                        // Remove notification when download completes
+                        if let notificationId = self.downloadNotifications[fileName] {
+                            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [notificationId])
+                            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationId])
+                            self.downloadNotifications.removeValue(forKey: fileName)
+                            print("📱 [BackgroundDownload] Removed notification for completed Photos download: \(fileName)")
+                        }
+                        
+                        // Clean up temp file
+                        try? FileManager.default.removeItem(at: tempFile)
+                        
+                        DispatchQueue.main.async {
+                            if success {
+                                onSuccess?()
+                            } else {
+                                onFailure?(error ?? NSError(domain: "DownloadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to save to Photos library"]))
+                            }
                         }
                     }
                 }
@@ -644,32 +696,63 @@ class BackgroundDownloadManager: NSObject {
                 try FileManager.default.moveItem(at: downloadedTempURL, to: tempFile)
                 
                 // Read file and save to Photos library
-                if let imageData = try? Data(contentsOf: tempFile) {
-                    PhotosLibraryHelper.shared.saveImageToPhotosLibrary(imageData: imageData, fileName: fileName) { success, error in
-                        if success {
-                            // Save to cache to track
-                            PhotosLibraryHelper.shared.saveToCache(fileName: fileName, imageData: imageData)
+                if let fileData = try? Data(contentsOf: tempFile) {
+                    // Check if it's a video file
+                    let isVideo = self.isVideoFile(fileName: fileName)
+                    
+                    if isVideo {
+                        // Save video to Photos library
+                        PhotosLibraryHelper.shared.saveVideoToPhotosLibrary(videoData: fileData, fileName: fileName) { success, error in
+                            self.activeDownloads.removeValue(forKey: downloadKey)
+                            self.downloadProgress.removeValue(forKey: downloadKey)
+                            
+                            // Remove notification when download completes
+                            if let notificationId = self.downloadNotifications[fileName] {
+                                UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [notificationId])
+                                UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationId])
+                                self.downloadNotifications.removeValue(forKey: fileName)
+                                print("📱 [BackgroundDownload] Removed notification for completed Photos download: \(fileName)")
+                            }
+                            
+                            // Clean up temp file
+                            try? FileManager.default.removeItem(at: tempFile)
+                            
+                            DispatchQueue.main.async {
+                                if success {
+                                    onSuccess?()
+                                } else {
+                                    onFailure?(error ?? NSError(domain: "DownloadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to save video to Photos library"]))
+                                }
+                            }
                         }
-                        
-                        self.activeDownloads.removeValue(forKey: downloadKey)
-                        self.downloadProgress.removeValue(forKey: downloadKey)
-                        
-                        // Remove notification when download completes
-                        if let notificationId = self.downloadNotifications[fileName] {
-                            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [notificationId])
-                            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationId])
-                            self.downloadNotifications.removeValue(forKey: fileName)
-                            print("📱 [BackgroundDownload] Removed notification for completed Photos download: \(fileName)")
-                        }
-                        
-                        // Clean up temp file
-                        try? FileManager.default.removeItem(at: tempFile)
-                        
-                        DispatchQueue.main.async {
+                    } else {
+                        // Save image to Photos library
+                        PhotosLibraryHelper.shared.saveImageToPhotosLibrary(imageData: fileData, fileName: fileName) { success, error in
                             if success {
-                                onSuccess?()
-                            } else {
-                                onFailure?(error ?? NSError(domain: "DownloadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to save to Photos library"]))
+                                // Save to cache to track
+                                PhotosLibraryHelper.shared.saveToCache(fileName: fileName, imageData: fileData)
+                            }
+                            
+                            self.activeDownloads.removeValue(forKey: downloadKey)
+                            self.downloadProgress.removeValue(forKey: downloadKey)
+                            
+                            // Remove notification when download completes
+                            if let notificationId = self.downloadNotifications[fileName] {
+                                UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [notificationId])
+                                UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationId])
+                                self.downloadNotifications.removeValue(forKey: fileName)
+                                print("📱 [BackgroundDownload] Removed notification for completed Photos download: \(fileName)")
+                            }
+                            
+                            // Clean up temp file
+                            try? FileManager.default.removeItem(at: tempFile)
+                            
+                            DispatchQueue.main.async {
+                                if success {
+                                    onSuccess?()
+                                } else {
+                                    onFailure?(error ?? NSError(domain: "DownloadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to save to Photos library"]))
+                                }
                             }
                         }
                     }

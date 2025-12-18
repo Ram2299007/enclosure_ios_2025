@@ -13,6 +13,7 @@ import FirebaseStorage
 import QuartzCore
 import UIKit
 import AVFoundation
+import AVKit
 
 struct ChattingScreen: View {
     @Environment(\.dismiss) private var dismiss
@@ -1852,8 +1853,8 @@ struct ChattingScreen: View {
                         // Parse message from Firebase snapshot (matching Android child.getValue(messageModel.class))
                         if let messageDict = child.value as? [String: Any] {
                             if let model = self.parseMessageFromDict(messageDict, messageId: childKey) {
-                                // Add Text and Image datatype messages
-                                if model.dataType == Constant.Text || model.dataType == Constant.img {
+                                // Add Text, Image, and Video datatype messages
+                                if model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video {
                                     tempList.append(model)
                                 }
                             }
@@ -2031,8 +2032,8 @@ struct ChattingScreen: View {
             return
         }
         
-        // Handle Text and Image datatype messages
-        guard model.dataType == Constant.Text || model.dataType == Constant.img else {
+        // Handle Text, Image, and Video datatype messages
+        guard model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video else {
             print("📱 [handleChildAdded] Skipping unsupported message type: \(model.dataType)")
             return
         }
@@ -2156,7 +2157,8 @@ struct ChattingScreen: View {
             let micPhoto = dict["micPhoto"] as? String
             let miceTiming = dict["miceTiming"] as? String
             let userName = dict["userName"] as? String
-            let receiverId = dict["receiverId"] as? String ?? ""
+            // Handle both receiverId and receiverUid (Android uses receiverUid in Firebase)
+            let receiverId = (dict["receiverId"] as? String) ?? (dict["receiverUid"] as? String) ?? ""
             let replytextData = dict["replytextData"] as? String
             let replyKey = dict["replyKey"] as? String
             let replyType = dict["replyType"] as? String
@@ -2336,8 +2338,8 @@ struct ChattingScreen: View {
                 if let messageDict = child.value as? [String: Any],
                    let model = self.parseMessageFromDict(messageDict, messageId: childKey) {
                     
-                    // Add Text and Image datatype messages
-                    if model.dataType == Constant.Text || model.dataType == Constant.img {
+                    // Add Text, Image, and Video datatype messages
+                    if model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video {
                         // ✅ Filter: only add messages older than lastTimestamp (matching Android endBefore)
                         if model.timestamp < lastTs {
                             // ✅ Avoid duplicate messages (matching Android)
@@ -4512,8 +4514,7 @@ struct DynamicImageView: View {
                                 .resizable()
                                 .scaledToFit()
                                 .frame(width: 20, height: 20)
-                                .foregroundColor(Color.white)
-                                .shadow(color: Color.black.opacity(0.3), radius: 2, x: 0, y: 1)
+                                .foregroundColor(Color(hex: "#e7ebf4"))
                         }
                     }
                     .onAppear {
@@ -4834,7 +4835,6 @@ struct ReceiverDynamicImageView: View {
                                 .scaledToFit()
                                 .frame(width: 20, height: 20)
                                 .foregroundColor(Color.white)
-                                .shadow(color: Color.black.opacity(0.3), radius: 2, x: 0, y: 1)
                         }
                     }
                     .onAppear {
@@ -4919,6 +4919,964 @@ struct ReceiverDynamicImageView: View {
                 } else {
                     isDownloading = false
                     showDownloadProgress = false
+                    showDownloadButton = true
+                }
+                progressTimer?.invalidate()
+                progressTimer = nil
+            }
+        }
+    }
+}
+
+// MARK: - Sender Video View (matching Android sendervideoLyt)
+struct SenderVideoView: View {
+    let videoUrl: String
+    let thumbnailUrl: String?
+    let fileName: String?
+    let imageWidth: String?
+    let imageHeight: String?
+    let aspectRatio: String?
+    let backgroundColor: Color
+    
+    @State private var isDownloading: Bool = false
+    @State private var downloadProgress: Double = 0.0
+    @State private var showDownloadButton: Bool = false
+    @State private var showDownloadProgress: Bool = false
+    @State private var showProgressBar: Bool = false
+    @State private var showPauseButton: Bool = false
+    @State private var progressTimer: Timer? = nil
+    @State private var showVideoPlayer: Bool = false
+    @State private var videoPlayer: AVPlayer? = nil
+    
+    // Calculate dynamic video size based on imageWidth, imageHeight, and aspectRatio (matching image sizing)
+    private var videoSize: CGSize {
+        // Parse dimensions with error handling (matching Android)
+        var imageWidthPx: CGFloat = 300
+        var imageHeightPx: CGFloat = 300
+        var aspectRatioValue: CGFloat = 1.0
+        
+        // Parse width
+        if let widthStr = imageWidth, !widthStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let width = Float(widthStr) {
+                imageWidthPx = CGFloat(width)
+            }
+        }
+        
+        // Parse height
+        if let heightStr = imageHeight, !heightStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let height = Float(heightStr) {
+                imageHeightPx = CGFloat(height)
+            }
+        }
+        
+        // Parse aspect ratio
+        if let ratioStr = aspectRatio, !ratioStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let ratio = Float(ratioStr), ratio > 0 {
+                aspectRatioValue = CGFloat(ratio)
+            } else {
+                // Fallback to calculated aspect ratio
+                if imageHeightPx > 0 {
+                    aspectRatioValue = imageWidthPx / imageHeightPx
+                }
+            }
+        } else {
+            // Fallback to calculated aspect ratio
+            if imageHeightPx > 0 {
+                aspectRatioValue = imageWidthPx / imageHeightPx
+            }
+        }
+        
+        // Define maximum dimensions in points (matching Android MAX_WIDTH_DP = 210f, MAX_HEIGHT_DP = 250f)
+        let MAX_WIDTH_PT: CGFloat = 210
+        let MAX_HEIGHT_PT: CGFloat = 250
+        
+        // Convert to pixels (iOS uses points, but we'll use the same logic)
+        let scale = UIScreen.main.scale
+        var maxWidthPx = MAX_WIDTH_PT * scale
+        var maxHeightPx = MAX_HEIGHT_PT * scale
+        
+        // Further limit pixel dimensions for better compression (matching Android: cap at 600px)
+        maxWidthPx = min(maxWidthPx, 600)
+        maxHeightPx = min(maxHeightPx, 600)
+        
+        // Calculate dimensions based on orientation and aspect ratio (matching Android)
+        var finalWidthPx: CGFloat = 0
+        var finalHeightPx: CGFloat = 0
+        
+        // Check orientation
+        let orientation = UIDevice.current.orientation
+        let isLandscape = orientation.isLandscape || (UIScreen.main.bounds.width > UIScreen.main.bounds.height)
+        
+        if isLandscape {
+            // Landscape: Prioritize width for wide images
+            finalWidthPx = maxWidthPx
+            finalHeightPx = maxWidthPx / aspectRatioValue
+            // Ensure height doesn't exceed maxHeightPx
+            if finalHeightPx > maxHeightPx {
+                finalHeightPx = maxHeightPx
+                finalWidthPx = maxHeightPx * aspectRatioValue
+            }
+        } else {
+            // Portrait: Prioritize height for wide images
+            finalHeightPx = maxHeightPx
+            finalWidthPx = maxHeightPx * aspectRatioValue
+            // Ensure width doesn't exceed maxWidthPx
+            if finalWidthPx > maxWidthPx {
+                finalWidthPx = maxWidthPx
+                finalHeightPx = maxWidthPx / aspectRatioValue
+            }
+        }
+        
+        // Ensure final dimensions are within bounds
+        finalWidthPx = min(finalWidthPx, maxWidthPx)
+        finalHeightPx = min(finalHeightPx, maxHeightPx)
+        
+        // Convert back to points for SwiftUI (divide by scale)
+        let finalWidthPt = finalWidthPx / scale
+        let finalHeightPt = finalHeightPx / scale
+        
+        return CGSize(width: finalWidthPt, height: finalHeightPt)
+    }
+    
+    private var videoWidth: CGFloat {
+        videoSize.width
+    }
+    
+    private var videoHeight: CGFloat {
+        videoSize.height
+    }
+    
+    // Check if local file exists
+    private var hasLocalFile: Bool {
+        guard let fileName = fileName, !fileName.isEmpty else { return false }
+        let localURL = getLocalVideosDirectory().appendingPathComponent(fileName)
+        return FileManager.default.fileExists(atPath: localURL.path)
+    }
+    
+    // Get local videos directory
+    private func getLocalVideosDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let videosDir = documentsPath.appendingPathComponent("Enclosure/Media/Videos")
+        if !FileManager.default.fileExists(atPath: videosDir.path) {
+            try? FileManager.default.createDirectory(at: videosDir, withIntermediateDirectories: true)
+        }
+        return videosDir
+    }
+    
+    // Get video URL for playback (prefer local file, fallback to online URL)
+    private func getVideoURL() -> URL? {
+        // Check local file first
+        if hasLocalFile, let fileName = fileName, !fileName.isEmpty {
+            let localURL = getLocalVideosDirectory().appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: localURL.path) {
+                print("📱 [VIDEO] Using local file: \(localURL.path)")
+                return localURL
+            }
+        }
+        
+        // Fallback to online URL
+        if !videoUrl.isEmpty, let url = URL(string: videoUrl) {
+            print("📱 [VIDEO] Using online URL: \(videoUrl)")
+            return url
+        }
+        
+        print("❌ [VIDEO] No valid video URL found. hasLocalFile: \(hasLocalFile), videoUrl: \(videoUrl)")
+        return nil
+    }
+    
+    // Play video
+    private func playVideo() {
+        print("▶️ [VIDEO] Play button tapped")
+        
+        guard let videoURL = getVideoURL() else {
+            print("❌ [VIDEO] No video URL available")
+            return
+        }
+        
+        print("▶️ [VIDEO] Creating player with URL: \(videoURL)")
+        print("▶️ [VIDEO] File exists: \(FileManager.default.fileExists(atPath: videoURL.path))")
+        
+        // Create player item and player (matching MultiVideoPreviewDialog pattern)
+        let playerItem = AVPlayerItem(url: videoURL)
+        let player = AVPlayer(playerItem: playerItem)
+        videoPlayer = player
+        
+        print("▶️ [VIDEO] Player created: \(player)")
+        print("▶️ [VIDEO] Current showVideoPlayer state: \(showVideoPlayer)")
+        
+        // Show video player on main thread (matching MultiVideoPreviewDialog)
+        DispatchQueue.main.async {
+            print("▶️ [VIDEO] Setting showVideoPlayer to true on main thread")
+            self.showVideoPlayer = true
+            print("▶️ [VIDEO] showVideoPlayer is now: \(self.showVideoPlayer)")
+            print("▶️ [VIDEO] videoPlayer is: \(self.videoPlayer != nil ? "set" : "nil")")
+        }
+    }
+    
+    // Download video to local storage
+    private func downloadVideo() {
+        guard let fileName = fileName, !fileName.isEmpty else {
+            print("❌ [DOWNLOAD] No fileName available")
+            return
+        }
+        
+        let videosDir = getLocalVideosDirectory()
+        let destinationFile = videosDir.appendingPathComponent(fileName)
+        
+        // Check if file already exists
+        if FileManager.default.fileExists(atPath: destinationFile.path) {
+            print("📱 [DOWNLOAD] Video already exists locally")
+            return
+        }
+        
+        // Check if already downloading
+        if BackgroundDownloadManager.shared.isDownloading(fileName: fileName) {
+            print("📱 [DOWNLOAD] Already downloading: \(fileName)")
+            return
+        }
+        
+        // Light haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Update UI
+        isDownloading = true
+        showDownloadButton = false
+        showDownloadProgress = true
+        showProgressBar = false // Remove horizontal progress bar
+        downloadProgress = 0.0
+        
+        // Use BackgroundDownloadManager for video downloads
+        BackgroundDownloadManager.shared.downloadImage(
+            imageUrl: videoUrl,
+            fileName: fileName,
+            destinationFile: destinationFile,
+            onProgress: { progress in
+                DispatchQueue.main.async {
+                    self.downloadProgress = progress
+                    if progress > 0 {
+                        self.showDownloadProgress = true
+                        self.showProgressBar = false
+                    }
+                }
+            },
+            onSuccess: {
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showProgressBar = false
+                    self.showDownloadButton = false
+                    self.downloadProgress = 0.0
+                    print("✅ [DOWNLOAD] Video downloaded successfully")
+                }
+            },
+            onFailure: { error in
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showProgressBar = false
+                    self.showDownloadButton = true
+                    self.downloadProgress = 0.0
+                    print("❌ [DOWNLOAD] Download failed: \(error.localizedDescription)")
+                }
+            }
+        )
+    }
+    
+    var body: some View {
+        ZStack {
+            // CardView wrapper (matching Android CardView with background #e7ebf4 and cornerRadius="12dp")
+            RoundedRectangle(cornerRadius: 12)
+                .fill(backgroundColor)
+                .frame(width: videoWidth, height: videoHeight)
+            
+            // Video frame (matching Android videoFrame FrameLayout)
+            ZStack {
+                // Video thumbnail (matching Android senderVideo ImageView)
+                if let thumbnailUrl = thumbnailUrl, let url = URL(string: thumbnailUrl) {
+                    CachedAsyncImage(
+                        url: url,
+                        content: { image in
+                            ZStack {
+                                Color.black
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            }
+                        },
+                        placeholder: {
+                            ZStack {
+                                Color.black
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            }
+                        }
+                    )
+                } else {
+                    Color.black
+                }
+                
+                // Blur overlay (matching Android blurVideo View - visibility="gone" by default)
+                // Not shown by default
+            }
+            .frame(width: videoWidth, height: videoHeight)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            
+            // Play icon (matching MultiVideoPreviewDialog play icon design)
+            Button(action: {
+                playVideo()
+            }) {
+                ZStack {
+                    // Black circle background (matching MultiVideoPreviewDialog)
+                    Circle()
+                        .fill(Color.black.opacity(0.7))
+                        .frame(width: 44, height: 44)
+                    
+                    // Play arrow icon (matching MultiVideoPreviewDialog Image(systemName: "play.fill"))
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundColor(.white)
+                        .offset(x: 1) // Slight offset to center the play icon better
+                }
+            }
+            .sheet(isPresented: $showVideoPlayer, onDismiss: {
+                // Clean up player when sheet is dismissed (swipe down)
+                print("▶️ [VIDEO] Sheet dismissed, cleaning up player")
+                if let player = videoPlayer {
+                    player.pause()
+                    player.replaceCurrentItem(with: nil)
+                    print("▶️ [VIDEO] Player paused and cleared")
+                }
+                videoPlayer = nil
+                print("▶️ [VIDEO] Player reference cleared")
+            }) {
+                Group {
+                    if let player = videoPlayer {
+                        VideoPlayerViewController(player: player)
+                            .onAppear {
+                                print("▶️ [VIDEO] VideoPlayerViewController appeared")
+                            }
+                    } else {
+                        Text("Loading...")
+                            .onAppear {
+                                print("❌ [VIDEO] Player is nil in sheet")
+                            }
+                    }
+                }
+            }
+            .onChange(of: showVideoPlayer) { newValue in
+                print("▶️ [VIDEO] showVideoPlayer changed to: \(newValue)")
+                if !newValue {
+                    // Also clean up when showVideoPlayer becomes false
+                    if let player = videoPlayer {
+                        player.pause()
+                        player.replaceCurrentItem(with: nil)
+                        print("▶️ [VIDEO] Player cleaned up on state change")
+                    }
+                    videoPlayer = nil
+                }
+            }
+            
+            // Download button (matching image bunch download button design)
+            // Only show if file doesn't exist locally and not downloading
+            if showDownloadButton && !isDownloading && !hasLocalFile {
+                Button(action: {
+                    downloadVideo()
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 35, height: 35)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                        
+                        Image("downloaddown")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 20, height: 20)
+                            .foregroundColor(Color(hex: "#e7ebf4"))
+                    }
+                }
+            }
+            
+            // Progress bar removed - only show download percentage circle
+            
+            // Download percentage (matching Android downloadPercentageVideoSender TextView)
+            if showDownloadProgress && isDownloading {
+                ZStack {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 60, height: 60)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
+                        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                    
+                    Text("\(Int(downloadProgress))%")
+                        .font(.custom("Inter18pt-Bold", size: 15))
+                        .foregroundColor(.white)
+                }
+            }
+            
+            // Pause button (matching Android pauseButtonVideoSender ImageButton)
+            if showPauseButton && isDownloading {
+                Button(action: {
+                    // Pause download logic
+                    if let fileName = fileName {
+                        BackgroundDownloadManager.shared.cancelDownload(fileName: fileName)
+                        isDownloading = false
+                        showDownloadProgress = false
+                        showProgressBar = false
+                        showPauseButton = false
+                        showDownloadButton = true
+                    }
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 30, height: 30)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
+                        
+                        Image(systemName: "pause.fill")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 12, height: 12)
+                            .foregroundColor(.white)
+                    }
+                }
+                .offset(y: 40) // layout_marginTop="40dp"
+            }
+        }
+        .frame(width: videoWidth, height: videoHeight)
+        .onAppear {
+            if let fileName = fileName, !fileName.isEmpty {
+                syncDownloadState(fileName: fileName)
+                startProgressTimer(fileName: fileName)
+            }
+        }
+        .onDisappear {
+            progressTimer?.invalidate()
+            progressTimer = nil
+        }
+    }
+    
+    private func syncDownloadState(fileName: String) {
+        if BackgroundDownloadManager.shared.isDownloading(fileName: fileName) {
+            isDownloading = true
+            showDownloadButton = false
+            showDownloadProgress = true
+            showProgressBar = false
+            if let progress = BackgroundDownloadManager.shared.getProgress(fileName: fileName) {
+                downloadProgress = progress
+            }
+        } else if hasLocalFile {
+            isDownloading = false
+            showDownloadButton = false
+            showDownloadProgress = false
+            showProgressBar = false
+        } else {
+            isDownloading = false
+            showDownloadButton = true
+            showDownloadProgress = false
+            showProgressBar = false
+        }
+    }
+    
+    private func startProgressTimer(fileName: String) {
+        progressTimer?.invalidate()
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            if BackgroundDownloadManager.shared.isDownloading(fileName: fileName) {
+                if let progress = BackgroundDownloadManager.shared.getProgress(fileName: fileName) {
+                    downloadProgress = progress
+                    isDownloading = true
+                    showDownloadProgress = true
+                    showProgressBar = false
+                    showDownloadButton = false
+                }
+            } else {
+                if hasLocalFile {
+                    isDownloading = false
+                    showDownloadProgress = false
+                    showProgressBar = false
+                    showDownloadButton = false
+                } else {
+                    isDownloading = false
+                    showDownloadProgress = false
+                    showProgressBar = false
+                    showDownloadButton = true
+                }
+                progressTimer?.invalidate()
+                progressTimer = nil
+            }
+        }
+    }
+}
+
+// MARK: - Receiver Video View (matching Android receivervideoLyt)
+struct ReceiverVideoView: View {
+    let videoUrl: String
+    let thumbnailUrl: String?
+    let fileName: String?
+    let imageWidth: String?
+    let imageHeight: String?
+    let aspectRatio: String?
+    
+    @State private var isDownloading: Bool = false
+    @State private var downloadProgress: Double = 0.0
+    @State private var showDownloadButton: Bool = false
+    @State private var showDownloadProgress: Bool = false
+    @State private var showProgressBar: Bool = false
+    @State private var showPauseButton: Bool = false
+    @State private var progressTimer: Timer? = nil
+    @State private var showVideoPlayer: Bool = false
+    @State private var videoPlayer: AVPlayer? = nil
+    
+    // Calculate dynamic video size based on imageWidth, imageHeight, and aspectRatio (matching image sizing)
+    private var videoSize: CGSize {
+        // Parse dimensions with error handling (matching Android)
+        var imageWidthPx: CGFloat = 300
+        var imageHeightPx: CGFloat = 300
+        var aspectRatioValue: CGFloat = 1.0
+        
+        // Parse width
+        if let widthStr = imageWidth, !widthStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let width = Float(widthStr) {
+                imageWidthPx = CGFloat(width)
+            }
+        }
+        
+        // Parse height
+        if let heightStr = imageHeight, !heightStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let height = Float(heightStr) {
+                imageHeightPx = CGFloat(height)
+            }
+        }
+        
+        // Parse aspect ratio
+        if let ratioStr = aspectRatio, !ratioStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let ratio = Float(ratioStr), ratio > 0 {
+                aspectRatioValue = CGFloat(ratio)
+            } else {
+                // Fallback to calculated aspect ratio
+                if imageHeightPx > 0 {
+                    aspectRatioValue = imageWidthPx / imageHeightPx
+                }
+            }
+        } else {
+            // Fallback to calculated aspect ratio
+            if imageHeightPx > 0 {
+                aspectRatioValue = imageWidthPx / imageHeightPx
+            }
+        }
+        
+        // Define maximum dimensions in points (matching Android MAX_WIDTH_DP = 210f, MAX_HEIGHT_DP = 250f)
+        let MAX_WIDTH_PT: CGFloat = 210
+        let MAX_HEIGHT_PT: CGFloat = 250
+        
+        // Convert to pixels (iOS uses points, but we'll use the same logic)
+        let scale = UIScreen.main.scale
+        var maxWidthPx = MAX_WIDTH_PT * scale
+        var maxHeightPx = MAX_HEIGHT_PT * scale
+        
+        // Further limit pixel dimensions for better compression (matching Android: cap at 600px)
+        maxWidthPx = min(maxWidthPx, 600)
+        maxHeightPx = min(maxHeightPx, 600)
+        
+        // Calculate dimensions based on orientation and aspect ratio (matching Android)
+        var finalWidthPx: CGFloat = 0
+        var finalHeightPx: CGFloat = 0
+        
+        // Check orientation
+        let orientation = UIDevice.current.orientation
+        let isLandscape = orientation.isLandscape || (UIScreen.main.bounds.width > UIScreen.main.bounds.height)
+        
+        if isLandscape {
+            // Landscape: Prioritize width for wide images
+            finalWidthPx = maxWidthPx
+            finalHeightPx = maxWidthPx / aspectRatioValue
+            // Ensure height doesn't exceed maxHeightPx
+            if finalHeightPx > maxHeightPx {
+                finalHeightPx = maxHeightPx
+                finalWidthPx = maxHeightPx * aspectRatioValue
+            }
+        } else {
+            // Portrait: Prioritize height for wide images
+            finalHeightPx = maxHeightPx
+            finalWidthPx = maxHeightPx * aspectRatioValue
+            // Ensure width doesn't exceed maxWidthPx
+            if finalWidthPx > maxWidthPx {
+                finalWidthPx = maxWidthPx
+                finalHeightPx = maxWidthPx / aspectRatioValue
+            }
+        }
+        
+        // Ensure final dimensions are within bounds
+        finalWidthPx = min(finalWidthPx, maxWidthPx)
+        finalHeightPx = min(finalHeightPx, maxHeightPx)
+        
+        // Convert back to points for SwiftUI (divide by scale)
+        let finalWidthPt = finalWidthPx / scale
+        let finalHeightPt = finalHeightPx / scale
+        
+        return CGSize(width: finalWidthPt, height: finalHeightPt)
+    }
+    
+    private var videoWidth: CGFloat {
+        videoSize.width
+    }
+    
+    private var videoHeight: CGFloat {
+        videoSize.height
+    }
+    
+    // Check if video exists in Photos library (public directory)
+    private var hasPublicFile: Bool {
+        guard let fileName = fileName, !fileName.isEmpty else { return false }
+        return PhotosLibraryHelper.shared.imageExistsInPhotosLibrary(fileName: fileName) ||
+               PhotosLibraryHelper.shared.fileExistsInCache(fileName: fileName)
+    }
+    
+    // Get video URL for playback (prefer Photos library cache, fallback to online URL)
+    private func getVideoURL() -> URL? {
+        // Check Photos library cache first
+        if hasPublicFile, let fileName = fileName, !fileName.isEmpty {
+            let cachePath = PhotosLibraryHelper.shared.getLocalCachePath(fileName: fileName)
+            if FileManager.default.fileExists(atPath: cachePath.path) {
+                return cachePath
+            }
+        }
+        
+        // Fallback to online URL
+        if !videoUrl.isEmpty, let url = URL(string: videoUrl) {
+            return url
+        }
+        
+        return nil
+    }
+    
+    // Play video
+    private func playVideo() {
+        guard let videoURL = getVideoURL() else {
+            print("❌ [VIDEO] No video URL available")
+            return
+        }
+        
+        print("▶️ [VIDEO] Playing video from URL: \(videoURL)")
+        
+        // Create player with URL (same as MultiVideoPreviewDialog)
+        let player = AVPlayer(url: videoURL)
+        videoPlayer = player
+        
+        // Show video player immediately (VideoPlayerViewController will auto-play)
+        showVideoPlayer = true
+    }
+    
+    // Download video to Photos library
+    private func downloadVideo() {
+        guard let fileName = fileName, !fileName.isEmpty else {
+            print("❌ [DOWNLOAD] No fileName available")
+            return
+        }
+        
+        // Check if file already exists in Photos library
+        if hasPublicFile {
+            print("📱 [DOWNLOAD] Video already exists in Photos library")
+            return
+        }
+        
+        // Check if already downloading
+        let downloadKey = "photos_\(fileName)"
+        if BackgroundDownloadManager.shared.isDownloadingWithKey(key: downloadKey) {
+            print("📱 [DOWNLOAD] Already downloading: \(fileName)")
+            return
+        }
+        
+        // Light haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Update UI
+        isDownloading = true
+        showDownloadButton = false
+        showDownloadProgress = true
+        showProgressBar = false // Remove horizontal progress bar
+        downloadProgress = 0.0
+        
+        // Use BackgroundDownloadManager to download to Photos library
+        BackgroundDownloadManager.shared.downloadImageToPhotosLibrary(
+            imageUrl: videoUrl,
+            fileName: fileName,
+            onProgress: { progress in
+                DispatchQueue.main.async {
+                    self.downloadProgress = progress
+                    if progress > 0 {
+                        self.showDownloadProgress = true
+                        self.showProgressBar = false
+                    }
+                }
+            },
+            onSuccess: {
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showProgressBar = false
+                    self.showDownloadButton = false
+                    self.downloadProgress = 0.0
+                    print("✅ [DOWNLOAD] Video downloaded to Photos library")
+                }
+            },
+            onFailure: { error in
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showProgressBar = false
+                    self.showDownloadButton = true
+                    self.downloadProgress = 0.0
+                    print("❌ [DOWNLOAD] Download failed: \(error.localizedDescription)")
+                }
+            }
+        )
+    }
+    
+    var body: some View {
+        ZStack {
+            // CardView wrapper (matching Android CardView with white background and cornerRadius="12dp")
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.white)
+                .frame(width: videoWidth, height: videoHeight)
+            
+            // Video frame (matching Android videoFrame FrameLayout)
+            ZStack {
+                // Video thumbnail (matching Android recVideo ImageView)
+                if let thumbnailUrl = thumbnailUrl, let url = URL(string: thumbnailUrl) {
+                    CachedAsyncImage(
+                        url: url,
+                        content: { image in
+                            ZStack {
+                                Color.black
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            }
+                        },
+                        placeholder: {
+                            ZStack {
+                                Color.black
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            }
+                        }
+                    )
+                } else {
+                    Color.black
+                }
+                
+                // Blur overlay (matching Android blurVideo View - visibility="gone" by default)
+                // Not shown by default
+            }
+            .frame(width: videoWidth, height: videoHeight)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            
+            // Play icon (matching MultiVideoPreviewDialog play icon design)
+            Button(action: {
+                playVideo()
+            }) {
+                ZStack {
+                    // Black circle background (matching MultiVideoPreviewDialog)
+                    Circle()
+                        .fill(Color.black.opacity(0.7))
+                        .frame(width: 44, height: 44)
+                    
+                    // Play arrow icon (matching MultiVideoPreviewDialog Image(systemName: "play.fill"))
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundColor(.white)
+                        .offset(x: 1) // Slight offset to center the play icon better
+                }
+            }
+            .sheet(isPresented: $showVideoPlayer, onDismiss: {
+                // Clean up player when sheet is dismissed (swipe down)
+                print("▶️ [VIDEO] Sheet dismissed, cleaning up player")
+                if let player = videoPlayer {
+                    player.pause()
+                    player.replaceCurrentItem(with: nil)
+                    print("▶️ [VIDEO] Player paused and cleared")
+                }
+                videoPlayer = nil
+                print("▶️ [VIDEO] Player reference cleared")
+            }) {
+                Group {
+                    if let player = videoPlayer {
+                        VideoPlayerViewController(player: player)
+                            .onAppear {
+                                print("▶️ [VIDEO] VideoPlayerViewController appeared")
+                            }
+                    } else {
+                        Text("Loading...")
+                            .onAppear {
+                                print("❌ [VIDEO] Player is nil in sheet")
+                            }
+                    }
+                }
+            }
+            .onChange(of: showVideoPlayer) { newValue in
+                print("▶️ [VIDEO] showVideoPlayer changed to: \(newValue)")
+                if !newValue {
+                    // Also clean up when showVideoPlayer becomes false
+                    if let player = videoPlayer {
+                        player.pause()
+                        player.replaceCurrentItem(with: nil)
+                        print("▶️ [VIDEO] Player cleaned up on state change")
+                    }
+                    videoPlayer = nil
+                }
+            }
+            
+            // Download button (matching image bunch download button design)
+            // Only show if file doesn't exist in Photos library and not downloading
+            if showDownloadButton && !isDownloading && !hasPublicFile {
+                Button(action: {
+                    downloadVideo()
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 35, height: 35)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                        
+                        Image("downloaddown")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 20, height: 20)
+                            .foregroundColor(.white)
+                    }
+                }
+            }
+            
+            // Download percentage (matching Android downloadPercentageVideo TextView)
+            if showDownloadProgress && isDownloading {
+                ZStack {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 60, height: 60)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
+                        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                    
+                    Text("\(Int(downloadProgress))%")
+                        .font(.custom("Inter18pt-Bold", size: 15))
+                        .foregroundColor(.white)
+                }
+            }
+            
+            // Pause button (matching Android pauseButtonVideo ImageButton)
+            if showPauseButton && isDownloading {
+                Button(action: {
+                    // Pause download logic
+                    if let fileName = fileName {
+                        let downloadKey = "photos_\(fileName)"
+                        BackgroundDownloadManager.shared.cancelDownloadWithKey(key: downloadKey)
+                        isDownloading = false
+                        showDownloadProgress = false
+                        showProgressBar = false
+                        showPauseButton = false
+                        showDownloadButton = true
+                    }
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 30, height: 30)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
+                        
+                        Image(systemName: "pause.fill")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 12, height: 12)
+                            .foregroundColor(.white)
+                    }
+                }
+                .offset(y: 40) // layout_marginTop="40dp"
+            }
+            
+            // Progress bar removed - only show download percentage circle
+        }
+        .frame(width: videoWidth, height: videoHeight)
+        .onAppear {
+            if let fileName = fileName, !fileName.isEmpty {
+                syncDownloadState(fileName: fileName)
+                startProgressTimer(fileName: fileName)
+            }
+        }
+        .onDisappear {
+            progressTimer?.invalidate()
+            progressTimer = nil
+        }
+    }
+    
+    private func syncDownloadState(fileName: String) {
+        let downloadKey = "photos_\(fileName)"
+        if BackgroundDownloadManager.shared.isDownloadingWithKey(key: downloadKey) {
+            isDownloading = true
+            showDownloadButton = false
+            showDownloadProgress = true
+            showProgressBar = false
+            if let progress = BackgroundDownloadManager.shared.getProgressWithKey(key: downloadKey) {
+                downloadProgress = progress
+            }
+        } else if hasPublicFile {
+            isDownloading = false
+            showDownloadButton = false
+            showDownloadProgress = false
+            showProgressBar = false
+        } else {
+            isDownloading = false
+            showDownloadButton = true
+            showDownloadProgress = false
+            showProgressBar = false
+        }
+    }
+    
+    private func startProgressTimer(fileName: String) {
+        progressTimer?.invalidate()
+        let downloadKey = "photos_\(fileName)"
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            if BackgroundDownloadManager.shared.isDownloadingWithKey(key: downloadKey) {
+                if let progress = BackgroundDownloadManager.shared.getProgressWithKey(key: downloadKey) {
+                    downloadProgress = progress
+                    isDownloading = true
+                    showDownloadProgress = true
+                    showProgressBar = false
+                    showDownloadButton = false
+                }
+            } else {
+                if hasPublicFile {
+                    isDownloading = false
+                    showDownloadProgress = false
+                    showProgressBar = false
+                    showDownloadButton = false
+                } else {
+                    isDownloading = false
+                    showDownloadProgress = false
+                    showProgressBar = false
                     showDownloadButton = true
                 }
                 progressTimer?.invalidate()
@@ -5723,6 +6681,50 @@ struct MessageBubbleView: View {
                             )
                         }
                         .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
+                    } else if message.dataType == Constant.video && !message.document.isEmpty {
+                        // Sender video message (matching Android sendervideoLyt design)
+                        HStack {
+                            Spacer(minLength: 0) // Push content to end
+                            
+                            // Container wrapping video and caption with same background as Constant.Text sender messages
+                            VStack(alignment: .trailing, spacing: 0) {
+                                SenderVideoView(
+                                    videoUrl: message.document,
+                                    thumbnailUrl: message.thumbnail,
+                                    fileName: message.fileName,
+                                    imageWidth: message.imageWidth,
+                                    imageHeight: message.imageHeight,
+                                    aspectRatio: message.aspectRatio,
+                                    backgroundColor: getSenderMessageBackgroundColor()
+                                )
+                                
+                                // Caption text if present (matching Android caption display)
+                                if let caption = message.caption, !caption.isEmpty {
+                                    HStack {
+                                        Text(caption)
+                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .fontWeight(.regular)
+                                            .foregroundColor(Color(hex: "#e7ebf4"))
+                                            .lineSpacing(7)
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.horizontal, 12)
+                                            .padding(.top, 5)
+                                            .padding(.bottom, 6)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.top, 5)
+                                    .padding(.bottom, 5)
+                                }
+                            }
+                            .frame(width: calculateImageSize(imageWidth: message.imageWidth, imageHeight: message.imageHeight, aspectRatio: message.aspectRatio).width) // Container width matches video width exactly
+                            .background(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(getSenderMessageBackgroundColor())
+                            )
+                        }
+                        .frame(maxWidth: 250)
                     } else {
                         // Sender text message (matching Android sendMessage TextView) - wrap content with maxWidth, gravity="end"
                     HStack {
@@ -5840,6 +6842,48 @@ struct MessageBubbleView: View {
                             Spacer(minLength: 0) // Don't expand beyond content
                         }
                         .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
+                    } else if message.dataType == Constant.video && !message.document.isEmpty {
+                        // Receiver video message (matching Android receivervideoLyt design)
+                        HStack {
+                            // Container wrapping video and caption with same background as Constant.Text receiver messages
+                            VStack(alignment: .leading, spacing: 0) {
+                                ReceiverVideoView(
+                                    videoUrl: message.document,
+                                    thumbnailUrl: message.thumbnail,
+                                    fileName: message.fileName,
+                                    imageWidth: message.imageWidth,
+                                    imageHeight: message.imageHeight,
+                                    aspectRatio: message.aspectRatio
+                                )
+                                
+                                // Caption text if present (matching Android caption display)
+                                if let caption = message.caption, !caption.isEmpty {
+                                    HStack {
+                                        Text(caption)
+                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .fontWeight(.regular)
+                                            .foregroundColor(Color("TextColor"))
+                                            .lineSpacing(7)
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.horizontal, 12)
+                                            .padding(.top, 5)
+                                            .padding(.bottom, 6)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.top, 5)
+                                    .padding(.bottom, 5)
+                                }
+                            }
+                            .frame(width: calculateImageSize(imageWidth: message.imageWidth, imageHeight: message.imageHeight, aspectRatio: message.aspectRatio).width) // Container width matches video width exactly
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color("message_box_bg"))
+                            )
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: 250)
                     } else {
                         // Receiver text message (matching Android recMessage TextView) - wrap content with maxWidth
                     HStack {
@@ -6552,5 +7596,4 @@ struct VoiceRecordingBottomSheet: View {
         )
     )
 }
-
 
