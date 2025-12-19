@@ -6085,8 +6085,7 @@ struct SenderDocumentView: View {
                         .foregroundColor(.black) // textColor="@color/black"
                         .lineLimit(1) // singleLine="true"
                         .truncationMode(.tail) // Add ellipsis at end when truncated (matching Android)
-                        .frame(maxWidth: 170, alignment: .leading) // maxWidth="170dp" (wrap_content up to 170dp)
-                        .frame(maxWidth: .infinity, alignment: .leading) // layout_width="match_parent" (fills parent container)
+                         // maxWidth="170dp" (wrap_content up to 170dp)
                         .fixedSize(horizontal: false, vertical: true) // layout_height="wrap_content" - minimize vertical space
                         .padding(.vertical, 0) // Remove any implicit vertical padding
                     
@@ -6114,8 +6113,9 @@ struct SenderDocumentView: View {
                             .foregroundColor(Color(hex: "#212121")) // textColor="@color/grey_900"
                             .textCase(.uppercase) // textAllCaps="true"
                             .lineLimit(1) // singleLine="true"
+                        
+                        Spacer(minLength: 0) // Push content to left, no extra space on right
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading) // layout_width="match_parent"
                 }
                 .padding(.leading, 7) // paddingStart="7dp" (inside background)
                 .padding(.top, 2) // paddingTop="3dp" - reduced to minimize vertical space
@@ -6132,74 +6132,81 @@ struct SenderDocumentView: View {
                 .frame(maxWidth: .infinity, alignment: .leading) // layout_weight="1" (expands to fill space horizontally)
                 
                 // Right-side download/progress controls - matching Android docDownloadControls RelativeLayout
-                ZStack {
-                    // Download button - matching Android downlaodDoc FloatingActionButton
-                    if !hasLocalFile && !isDownloading && showDownloadButton {
-                        Button(action: {
-                            downloadDocument()
-                        }) {
+                // Only show container when there's content to display (matching Android visibility="gone" when empty)
+                // Show if: download button visible OR progress bar visible OR download percentage visible OR pause button visible
+                if (!hasLocalFile && !isDownloading && showDownloadButton) || 
+                   (showProgressBar && isDownloading) || 
+                   (showDownloadProgress && isDownloading) || 
+                   isDownloading {
+                    ZStack {
+                        // Download button - matching Android downlaodDoc FloatingActionButton
+                        if !hasLocalFile && !isDownloading && showDownloadButton {
+                            Button(action: {
+                                downloadDocument()
+                            }) {
+                                ZStack {
+                                    // Background matching modern_play_button_bg_sender
+                                    Circle()
+                                        .fill(backgroundColor)
+                                        .frame(width: 35, height: 35)
+                                    
+                                    Image("downloaddown")
+                                        .renderingMode(.template)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 20, height: 20)
+                                        .foregroundColor(.white)
+                                }
+                            }
+                        }
+                        
+                        // Progress bar - matching Android progressBarDoc ProgressBar
+                        if showProgressBar && isDownloading {
+                            ProgressView()
+                                .progressViewStyle(LinearProgressViewStyle(tint: Color("TextColor")))
+                                .frame(width: 40, height: 4)
+                        }
+                        
+                        // Download percentage - matching Android downloadPercentageDocSender TextView
+                        if showDownloadProgress && isDownloading {
                             ZStack {
-                                // Background matching modern_play_button_bg_sender
                                 Circle()
                                     .fill(backgroundColor)
-                                    .frame(width: 35, height: 35)
+                                    .frame(width: 60, height: 60)
                                 
-                                Image("downloaddown")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 20, height: 20)
+                                Text("\(Int(downloadProgress))%")
+                                    .font(.custom("Inter18pt-Regular", size: 15))
+                                    .fontWeight(.bold)
                                     .foregroundColor(.white)
                             }
                         }
-                    }
-                    
-                    // Progress bar - matching Android progressBarDoc ProgressBar
-                    if showProgressBar && isDownloading {
-                        ProgressView()
-                            .progressViewStyle(LinearProgressViewStyle(tint: Color("TextColor")))
-                            .frame(width: 40, height: 4)
-                    }
-                    
-                    // Download percentage - matching Android downloadPercentageDocSender TextView
-                    if showDownloadProgress && isDownloading {
-                        ZStack {
-                            Circle()
-                                .fill(backgroundColor)
-                                .frame(width: 60, height: 60)
-                            
-                            Text("\(Int(downloadProgress))%")
-                                .font(.custom("Inter18pt-Regular", size: 15))
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
+                        
+                        // Pause button - matching Android pauseButtonDocSender ImageButton
+                        if isDownloading {
+                            Button(action: {
+                                // Pause download logic here
+                            }) {
+                                Image(systemName: "pause.fill")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 18, height: 18)
+                                    .foregroundColor(.white)
+                                    .padding(6)
+                                    .background(
+                                        Circle()
+                                            .fill(backgroundColor)
+                                    )
+                            }
+                            .offset(y: 40)
                         }
                     }
-                    
-                    // Pause button - matching Android pauseButtonDocSender ImageButton
-                    if isDownloading {
-                        Button(action: {
-                            // Pause download logic here
-                        }) {
-                            Image(systemName: "pause.fill")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 18, height: 18)
-                                .foregroundColor(.white)
-                                .padding(6)
-                                .background(
-                                    Circle()
-                                        .fill(backgroundColor)
-                                )
-                        }
-                        .offset(y: 40)
-                    }
+                    .frame(width: 60, height: 60)
                 }
-                .frame(width: 60, height: 60)
             }
             .padding(.horizontal, 7)
-            .padding(.vertical, 0)
-            .frame(minWidth: 200)
+            .padding(.vertical, 7)
+          
         }
         .frame(minHeight: 40)
         .onAppear {
@@ -6227,6 +6234,7 @@ struct SenderDocumentView: View {
 
 // MARK: - Receiver Document View (matching Android docLyt design)
 struct ReceiverDocumentView: View {
+    @Environment(\.colorScheme) var colorScheme
     let documentUrl: String
     let fileName: String
     let docSize: String?
@@ -6393,136 +6401,156 @@ struct ReceiverDocumentView: View {
             // Row: download controls (left) | doc info (center, weight) | file icon (right) - matching Android LinearLayout
             HStack(alignment: .center, spacing: 0) {
                 // Left-side download/progress controls - matching Android docDownloadControlsReceiver RelativeLayout
-                ZStack {
-                    // Download button - matching Android downlaodDocReceiver FloatingActionButton
-                    if !hasLocalFile && !isDownloading && showDownloadButton {
-                        Button(action: {
-                            downloadDocument()
-                        }) {
+                // Only show container when there's content to display (matching Android visibility="gone" when empty)
+                // Show if: download button visible OR progress bar visible OR download percentage visible OR pause button visible
+                if (!hasLocalFile && !isDownloading && showDownloadButton) || 
+                   (showProgressBar && isDownloading) || 
+                   (showDownloadProgress && isDownloading) || 
+                   isDownloading {
+                    ZStack {
+                        // Download button - matching Android downlaodDocReceiver FloatingActionButton
+                        if !hasLocalFile && !isDownloading && showDownloadButton {
+                            Button(action: {
+                                downloadDocument()
+                            }) {
+                                ZStack {
+                                    // Background matching modern_play_button_bg
+                                    Circle()
+                                        .fill(Color("TextColor"))
+                                        .frame(width: 35, height: 35)
+                                    
+                                    Image("downloaddown")
+                                        .renderingMode(.template)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 20, height: 20)
+                                        .foregroundColor(.white)
+                                }
+                            }
+                        }
+                        
+                        // Progress bar - matching Android progressBarDocReceiver ProgressBar
+                        if showProgressBar && isDownloading {
+                            ProgressView()
+                                .progressViewStyle(LinearProgressViewStyle(tint: Color("TextColor")))
+                                .frame(width: 40, height: 4)
+                        }
+                        
+                        // Download percentage - matching Android downloadPercentageDocReceiver TextView
+                        if showDownloadProgress && isDownloading {
                             ZStack {
-                                // Background matching modern_play_button_bg
                                 Circle()
                                     .fill(Color("TextColor"))
-                                    .frame(width: 35, height: 35)
+                                    .frame(width: 60, height: 60)
                                 
-                                Image("downloaddown")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 20, height: 20)
+                                Text("\(Int(downloadProgress))%")
+                                    .font(.custom("Inter18pt-Regular", size: 15))
+                                    .fontWeight(.bold)
                                     .foregroundColor(.white)
                             }
                         }
-                    }
-                    
-                    // Progress bar - matching Android progressBarDocReceiver ProgressBar
-                    if showProgressBar && isDownloading {
-                        ProgressView()
-                            .progressViewStyle(LinearProgressViewStyle(tint: Color("TextColor")))
-                            .frame(width: 40, height: 4)
-                    }
-                    
-                    // Download percentage - matching Android downloadPercentageDocReceiver TextView
-                    if showDownloadProgress && isDownloading {
-                        ZStack {
-                            Circle()
-                                .fill(Color("TextColor"))
-                                .frame(width: 60, height: 60)
-                            
-                            Text("\(Int(downloadProgress))%")
-                                .font(.custom("Inter18pt-Regular", size: 15))
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
+                        
+                        // Pause button - matching Android pauseButtonDocReceiver ImageButton
+                        if isDownloading {
+                            Button(action: {
+                                // Pause download logic here
+                            }) {
+                                Image(systemName: "pause.fill")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 18, height: 18)
+                                    .foregroundColor(.white)
+                                    .padding(6)
+                                    .background(
+                                        Circle()
+                                            .fill(Color("TextColor"))
+                                    )
+                            }
+                            .offset(y: 40)
                         }
                     }
-                    
-                    // Pause button - matching Android pauseButtonDocReceiver ImageButton
-                    if isDownloading {
-                        Button(action: {
-                            // Pause download logic here
-                        }) {
-                            Image(systemName: "pause.fill")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 18, height: 18)
-                                .foregroundColor(.white)
-                                .padding(6)
-                                .background(
-                                    Circle()
-                                        .fill(Color("TextColor"))
-                                )
-                        }
-                        .offset(y: 40)
-                    }
+                    .frame(width: 60, height: 60)
                 }
-                .frame(width: 60, height: 60)
                 
-                // Center: doc info - matching Android LinearLayout with weight=1
-                VStack(alignment: .leading, spacing: 0) {
-                    // Document name - matching Android docName TextView
+                // Center: doc info - matching Android LinearLayout with weight=1, layout_width="0dp", layout_weight="1", layout_height="wrap_content", layout_marginHorizontal="3dp", layout_gravity="start|center_vertical", alpha="0.8"
+                VStack(alignment: .leading, spacing: 0) { // spacing: 0 - no spacing between docName and size row (matching Android)
+                    // Document name - matching Android docName TextView: layout_width="match_parent", layout_height="wrap_content", maxWidth="170dp"
                     Text(fileName)
-                        .font(.custom("Inter18pt-Regular", size: 14))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                        .frame(maxWidth: 170, alignment: .leading)
+                        .font(.custom("Inter18pt-Regular", size: 14)) // textSize="14sp", fontFamily="@font/inter"
+                        .foregroundColor(.white) // textColor="@color/white"
+                        .lineLimit(1) // singleLine="true"
+                        .truncationMode(.tail) // Add ellipsis at end when truncated (matching Android)
+                        .frame(maxWidth: 170, alignment: .leading) // maxWidth="170dp" (wrap_content up to 170dp)
+                        .fixedSize(horizontal: false, vertical: true) // layout_height="wrap_content" - minimize vertical space
+                        .padding(.vertical, 0) // Remove any implicit vertical padding
                     
-                    // Size and extension row - matching Android LinearLayout
-                    HStack(spacing: 0) {
-                        // Document size - matching Android docSize TextView
+                    // Size and extension row - matching Android LinearLayout: layout_width="match_parent", layout_height="wrap_content", orientation="horizontal"
+                    // No spacing between docName and this row (spacing: 0 in VStack matches Android - elements are touching)
+                    HStack(spacing: 0) { // spacing: 0 - no spacing between size, bullet, and extension (matching Android)
+                        // Document size - matching Android docSize TextView: layout_width="wrap_content", layout_height="wrap_content"
                         if let size = formattedDocSize {
                             Text(size)
-                                .font(.custom("Inter18pt-Regular", size: 12))
-                                .foregroundColor(Color(hex: "#808080")) // gray
-                                .lineLimit(1)
+                                .font(.custom("Inter18pt-Regular", size: 12)) // textSize="12sp", fontFamily="@font/inter"
+                                .foregroundColor(Color(hex: "#9EA6B9")) // textColor="@color/gray" = #9EA6B9
+                                .lineLimit(1) // singleLine="true"
                         }
                         
                         // Bullet separator - matching Android TextView: layout_width="wrap_content", layout_marginHorizontal="5dp"
                         Text("•")
-                            .font(.custom("Inter18pt-Regular", size: 12))
-                            .foregroundColor(Color(hex: "#808080"))
+                            .font(.custom("Inter18pt-Regular", size: 12)) // fontFamily="@font/inter"
+                            .foregroundColor(Color(hex: "#9EA6B9")) // textColor="@color/gray" = #9EA6B9
                             .lineLimit(1) // singleLine="true"
                             .padding(.horizontal, 5) // layout_marginHorizontal="5dp"
                         
-                        // Extension - matching Android docSizeExtension TextView: layout_width="wrap_content"
+                        // Extension - matching Android docSizeExtension TextView: layout_width="wrap_content", layout_height="wrap_content"
                         Text(extensionText)
-                            .font(.custom("Inter18pt-Regular", size: 12))
-                            .foregroundColor(Color(hex: "#808080"))
+                            .font(.custom("Inter18pt-Regular", size: 12)) // textSize="12sp", fontFamily="@font/inter"
+                            .foregroundColor(Color(hex: "#9EA6B9")) // textColor="@color/gray" = #9EA6B9
                             .textCase(.uppercase) // textAllCaps="true"
                             .lineLimit(1) // singleLine="true"
+                        
+                        Spacer(minLength: 0) // Push content to left, no extra space on right
                     }
                 }
-                .padding(.horizontal, 9)
-                .padding(.vertical, 5)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 9) // paddingStart="9dp", paddingEnd="9dp" (inside background)
+                .padding(.top, 5) // paddingTop="5dp" (inside background)
+                .padding(.bottom, 5) // paddingBottom="5dp" (inside background)
+                .fixedSize(horizontal: false, vertical: true) // layout_height="wrap_content" - minimize vertical space
                 .background(
-                    // Background matching doc__rec_bg drawable
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color("TextColor").opacity(0.8))
+                    // Background matching doc__rec_bg drawable: radius="20dp", solid color="@color/black" = #000000
+                    RoundedRectangle(cornerRadius: 20) // android:radius="20dp" (same as sender side)
+                        .fill(Color.black) // Solid color="@color/black" = #000000
                 )
-                .padding(.horizontal, 3)
+                .opacity(0.8) // alpha="0.8" on entire container (matching Android alpha on LinearLayout)
+                .padding(.horizontal, 3) // layout_marginHorizontal="3dp" (outside background, between controls and info)
+                .frame(maxWidth: .infinity, alignment: .leading) // layout_weight="1" (expands to fill space horizontally)
                 
-                // Right: file icon - matching Android docFileIcon LinearLayout
-                ZStack {
-                    // Background matching pagesvg drawable with backgroundTint="@color/TextColor"
-                    Image("pagesvg")
-                        .resizable()
-                        .renderingMode(.template)
-                        .scaledToFit()
-                        .frame(width: 26, height: 26)
-                        .foregroundColor(Color("TextColor"))
-                        .opacity(0.8)
-                    
-                    // Extension text - matching Android extension TextView
-                    Text(extensionText.prefix(4)) // maxLength="4"
-                        .font(.custom("Inter18pt-Bold", size: 7.5))
-                        .foregroundColor(Color(hex: Constant.themeColor)) // textColor="@color/modetheme2"
-                        .textCase(.uppercase)
-                        .lineLimit(1)
-                        .padding(.bottom, 7) // layout_marginBottom="7dp"
+                // Right: file icon - matching Android docFileIcon LinearLayout: layout_width="26dp", layout_height="26dp", layout_gravity="center_vertical", alpha="0.8", paddingTop="10dp"
+                VStack(spacing: 0) { // Container matching Android LinearLayout with paddingTop="10dp"
+                    ZStack(alignment: .center) {
+                        // Background matching pagesvg drawable with backgroundTint="@color/TextColor"
+                        Image("pagesvg")
+                            .resizable()
+                            .renderingMode(.template)
+                            .scaledToFit()
+                            .frame(width: 26, height: 26)
+                            .foregroundColor(Color("TextColor"))
+                            .opacity(0.8) // alpha="0.8"
+                        
+                        // Extension text - matching Android extension TextView: layout_marginBottom="7dp", layout_gravity="center"
+                        // textColor="@color/modetheme2": light mode = @color/whitenew (#F6F7FF), dark mode = @color/black (#000000)
+                        Text(extensionText.prefix(4)) // maxLength="4"
+                            .font(.custom("Inter18pt-Bold", size: 7.5)) // textSize="7.5sp", fontFamily="@font/inter_bold"
+                            .foregroundColor(colorScheme == .light ? Color(hex: "#F6F7FF") : Color.black) // Light: whitenew, Dark: black
+                            .textCase(.uppercase) // textAllCaps="true"
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: true) // Minimize vertical space
+                            .offset(y: 3.5) // layout_marginBottom="7dp" - offset to position text
+                    }
+                    .frame(width: 26, height: 26) // layout_width="26dp", layout_height="26dp"
                 }
-                .frame(width: 26, height: 26)
-                .padding(.top, 10) // paddingTop="10dp" on LinearLayout
+                .padding(.top, 0) // paddingTop="10dp" on LinearLayout (matching Android)
             }
             .padding(.horizontal, 7)
             .padding(.vertical, 7)
@@ -7626,7 +7654,7 @@ struct MessageBubbleView: View {
                                 }
                             }
                             .background(
-                                RoundedRectangle(cornerRadius: 12)
+                                RoundedRectangle(cornerRadius: 20) // Changed to 20dp to match Android
                                     .fill(Color("message_box_bg"))
                             )
                             Spacer(minLength: 0)
