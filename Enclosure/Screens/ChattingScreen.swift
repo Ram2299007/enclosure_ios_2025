@@ -6065,17 +6065,19 @@ struct SenderDocumentView: View {
     
     var body: some View {
         VStack(alignment: .center, spacing: 0) { // spacing: 0 - no spacing between PDF preview and row (matching Android docLyt orientation="vertical")
-            // PDF preview (shown for PDF only) - matching Android pdfcard CardView
+            // PDF preview (shown for PDF only) - matching Android pdfcard CardView, full width to parent container
             if isPdf && showPdfPreview, let pdfImage = pdfPreviewImage {
                 RoundedRectangle(cornerRadius: 20)
                     .fill(Color(hex: "#e7ebf4"))
-                    .frame(width: 180, height: 100)
+                    .frame(maxWidth: .infinity) // Full width to parent container
+                    .frame(height: 100) // Fixed height
                     .overlay(
                         Image(uiImage: pdfImage)
                             .resizable()
                             .scaledToFill()
-                            .frame(width: 180, height: 100)
-                            .clipped()
+                            .frame(maxWidth: .infinity) // Full width to parent container
+                            .frame(height: 100) // Fixed height
+                            .clipShape(RoundedRectangle(cornerRadius: 20)) // Apply 20dp corner radius to image
                     )
                     .padding(.horizontal, 1) // layout_marginHorizontal="1dp"
                     .padding(.vertical, 1) // layout_marginVertical="1dp"
@@ -6495,17 +6497,19 @@ struct ReceiverDocumentView: View {
     
     var body: some View {
         VStack(alignment: .center, spacing: 0) {
-            // PDF preview (shown for PDF) - matching Android pdfcard CardView
+            // PDF preview (shown for PDF) - matching Android pdfcard CardView, full width to parent container
             if isPdf && showPdfPreview, let pdfImage = pdfPreviewImage {
                 RoundedRectangle(cornerRadius: 20)
                     .fill(Color.white)
-                    .frame(width: 180, height: 100)
+                    .frame(maxWidth: .infinity) // Full width to parent container
+                    .frame(height: 100) // Fixed height
                     .overlay(
                         Image(uiImage: pdfImage)
                             .resizable()
                             .scaledToFill()
-                            .frame(width: 180, height: 100)
-                            .clipped()
+                            .frame(maxWidth: .infinity) // Full width to parent container
+                            .frame(height: 100) // Fixed height
+                            .clipShape(RoundedRectangle(cornerRadius: 20)) // Apply 20dp corner radius to image
                     )
                     .padding(.horizontal, 1)
                     .padding(.vertical, 1)
