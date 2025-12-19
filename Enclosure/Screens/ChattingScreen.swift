@@ -1853,8 +1853,8 @@ struct ChattingScreen: View {
                         // Parse message from Firebase snapshot (matching Android child.getValue(messageModel.class))
                         if let messageDict = child.value as? [String: Any] {
                             if let model = self.parseMessageFromDict(messageDict, messageId: childKey) {
-                                // Add Text, Image, and Video datatype messages
-                                if model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video {
+                                // Add Text, Image, Video, and Document datatype messages
+                                if model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video || model.dataType == Constant.doc {
                                     tempList.append(model)
                                 }
                             }
@@ -1978,8 +1978,8 @@ struct ChattingScreen: View {
             if let messageDict = snapshot.value as? [String: Any],
                let updatedModel = self.parseMessageFromDict(messageDict, messageId: changedKey) {
                 
-                // Handle Text and Image datatype messages
-                if updatedModel.dataType == Constant.Text || updatedModel.dataType == Constant.img {
+                // Handle Text, Image, Video, and Document datatype messages
+                if updatedModel.dataType == Constant.Text || updatedModel.dataType == Constant.img || updatedModel.dataType == Constant.video || updatedModel.dataType == Constant.doc {
                     // Find and update existing message (matching Android)
                     if let index = self.messages.firstIndex(where: { $0.id == changedKey }) {
                         let oldModel = self.messages[index]
@@ -2032,8 +2032,8 @@ struct ChattingScreen: View {
             return
         }
         
-        // Handle Text, Image, and Video datatype messages
-        guard model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video else {
+        // Handle Text, Image, Video, and Document datatype messages
+        guard model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video || model.dataType == Constant.doc else {
             print("📱 [handleChildAdded] Skipping unsupported message type: \(model.dataType)")
             return
         }
@@ -2338,8 +2338,8 @@ struct ChattingScreen: View {
                 if let messageDict = child.value as? [String: Any],
                    let model = self.parseMessageFromDict(messageDict, messageId: childKey) {
                     
-                    // Add Text, Image, and Video datatype messages
-                    if model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video {
+                    // Add Text, Image, Video, and Document datatype messages
+                    if model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video || model.dataType == Constant.doc {
                         // ✅ Filter: only add messages older than lastTimestamp (matching Android endBefore)
                         if model.timestamp < lastTs {
                             // ✅ Avoid duplicate messages (matching Android)
@@ -5886,6 +5886,672 @@ struct ReceiverVideoView: View {
     }
 }
 
+// MARK: - Sender Document View (matching Android docLyt design)
+struct SenderDocumentView: View {
+    let documentUrl: String
+    let fileName: String
+    let docSize: String?
+    let fileExtension: String?
+    let backgroundColor: Color
+    
+    @State private var isDownloading: Bool = false
+    @State private var downloadProgress: Double = 0.0
+    @State private var showDownloadButton: Bool = false
+    @State private var showDownloadProgress: Bool = false
+    @State private var showProgressBar: Bool = false
+    @State private var showPdfPreview: Bool = false
+    @State private var pdfPreviewImage: UIImage? = nil
+    
+    // Get local documents directory path (matching Android Enclosure/Media/Documents)
+    private func getLocalDocumentsDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let docsDir = documentsPath.appendingPathComponent("Enclosure/Media/Documents", isDirectory: true)
+        try? FileManager.default.createDirectory(at: docsDir, withIntermediateDirectories: true, attributes: nil)
+        return docsDir
+    }
+    
+    // Check if local file exists
+    private var hasLocalFile: Bool {
+        guard !fileName.isEmpty else { return false }
+        let localURL = getLocalDocumentsDirectory().appendingPathComponent(fileName)
+        return FileManager.default.fileExists(atPath: localURL.path)
+    }
+    
+    // Get file extension from fileName or fileExtension field
+    private var extensionText: String {
+        if let ext = fileExtension, !ext.isEmpty {
+            return ext.uppercased()
+        }
+        let ext = (fileName as NSString).pathExtension
+        if !ext.isEmpty {
+            return ext.uppercased()
+        }
+        return "DOC"
+    }
+    
+    // Format file size to match Android format (e.g., "12.4 kb")
+    private var formattedDocSize: String? {
+        guard let size = docSize, !size.isEmpty else { return nil }
+        
+        // If already formatted (contains "kb" or "mb"), return as is
+        if size.lowercased().contains("kb") || size.lowercased().contains("mb") {
+            return size
+        }
+        
+        // Parse as bytes and format
+        if let bytes = Int64(size) {
+            if bytes < 1024 {
+                return "\(bytes) b"
+            } else if bytes < 1024 * 1024 {
+                let kb = Double(bytes) / 1024.0
+                return String(format: "%.1f kb", kb)
+            } else {
+                let mb = Double(bytes) / (1024.0 * 1024.0)
+                return String(format: "%.1f mb", mb)
+            }
+        }
+        
+        return size
+    }
+    
+    // Check if file is PDF
+    private var isPdf: Bool {
+        extensionText.uppercased() == "PDF"
+    }
+    
+    // Download document
+    private func downloadDocument() {
+        guard !fileName.isEmpty else {
+            print("❌ [DOWNLOAD] No fileName available")
+            return
+        }
+        
+        guard !documentUrl.isEmpty else {
+            print("❌ [DOWNLOAD] No document URL available")
+            return
+        }
+        
+        let docsDir = getLocalDocumentsDirectory()
+        let destinationFile = docsDir.appendingPathComponent(fileName)
+        
+        // Check if file already exists
+        if FileManager.default.fileExists(atPath: destinationFile.path) {
+            print("📱 [DOWNLOAD] Document already exists locally")
+            return
+        }
+        
+        // Check if already downloading
+        if BackgroundDownloadManager.shared.isDownloading(fileName: fileName) {
+            print("📱 [DOWNLOAD] Already downloading: \(fileName)")
+            return
+        }
+        
+        // Light haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Update UI
+        isDownloading = true
+        showDownloadButton = false
+        showDownloadProgress = true
+        showProgressBar = false
+        downloadProgress = 0.0
+        
+        // Use BackgroundDownloadManager for document downloads
+        BackgroundDownloadManager.shared.downloadImage(
+            imageUrl: documentUrl,
+            fileName: fileName,
+            destinationFile: destinationFile,
+            onProgress: { progress in
+                DispatchQueue.main.async {
+                    self.downloadProgress = progress
+                    if progress > 0 {
+                        self.showDownloadProgress = true
+                        self.showProgressBar = false
+                    }
+                }
+            },
+            onSuccess: {
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showProgressBar = false
+                    self.showDownloadButton = false
+                    self.downloadProgress = 0.0
+                    print("✅ [DOWNLOAD] Document downloaded successfully")
+                }
+            },
+            onFailure: { error in
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showProgressBar = false
+                    self.showDownloadButton = true
+                    self.downloadProgress = 0.0
+                    print("❌ [DOWNLOAD] Download failed: \(error.localizedDescription)")
+                }
+            }
+        )
+    }
+    
+    var body: some View {
+        VStack(alignment: .center, spacing: 0) { // spacing: 0 - no spacing between PDF preview and row (matching Android docLyt orientation="vertical")
+            // PDF preview (shown for PDF only) - matching Android pdfcard CardView
+            if isPdf && showPdfPreview, let pdfImage = pdfPreviewImage {
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color(hex: "#e7ebf4"))
+                    .frame(width: 180, height: 100)
+                    .overlay(
+                        Image(uiImage: pdfImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 180, height: 100)
+                            .clipped()
+                    )
+                    .padding(.horizontal, 1) // layout_marginHorizontal="1dp"
+                    .padding(.vertical, 1) // layout_marginVertical="1dp"
+            }
+            
+            // Row: icon | info (weight) | download/progress controls (right) - matching Android LinearLayout
+            HStack(alignment: .center, spacing: 0) { // spacing: 0 - no spacing between icon, info, and controls
+                // File type icon - matching Android docFileIcon LinearLayout: layout_width="26dp", layout_height="26dp", layout_gravity="center_vertical", alpha="0.8"
+                ZStack(alignment: .center) {
+                    // Background matching pagesvg drawable with backgroundTint="#e7ebf4"
+                    Image("pagesvg")
+                        .resizable()
+                        .renderingMode(.template)
+                        .scaledToFit()
+                        .frame(width: 26, height: 26)
+                        .foregroundColor(Color(hex: "#e7ebf4"))
+                        .opacity(0.8) // alpha="0.8"
+                    
+                    // Extension text - matching Android extension TextView: layout_marginTop="2dp", layout_gravity="center|center_vertical"
+                    Text(extensionText.prefix(4)) // maxLength="4"
+                        .font(.custom("Inter18pt-Bold", size: 7.5)) // textSize="7.5sp", fontFamily="@font/inter_bold"
+                        .foregroundColor(.black) // textColor="@color/black"
+                        .textCase(.uppercase) // textAllCaps="true"
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: true) // Minimize vertical space
+                        .padding(.top, 1) // layout_marginTop="2dp" - reduced to minimize vertical space
+                }
+                .frame(width: 26, height: 26) // layout_width="26dp", layout_height="26dp"
+                // No margin on icon - directly adjacent to document info
+                
+                // Document info - matching Android LinearLayout: layout_width="0dp", layout_weight="1", layout_height="wrap_content", layout_marginHorizontal="3dp", alpha="0.8"
+                VStack(alignment: .leading, spacing: 0) { // spacing: 0 - no spacing between docName and size row (matching Android)
+                    // Document name - matching Android docName TextView: layout_width="match_parent", layout_height="wrap_content", maxWidth="170dp", lineHeight="22dp"
+                    Text(fileName)
+                        .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp", fontFamily="@font/inter"
+                        .foregroundColor(.black) // textColor="@color/black"
+                        .lineLimit(1) // singleLine="true"
+                        .truncationMode(.tail) // Add ellipsis at end when truncated (matching Android)
+                        .frame(maxWidth: 170, alignment: .leading) // maxWidth="170dp" (wrap_content up to 170dp)
+                        .frame(maxWidth: .infinity, alignment: .leading) // layout_width="match_parent" (fills parent container)
+                        .fixedSize(horizontal: false, vertical: true) // layout_height="wrap_content" - minimize vertical space
+                        .padding(.vertical, 0) // Remove any implicit vertical padding
+                    
+                    // Size and extension row - matching Android LinearLayout: layout_width="match_parent", layout_height="wrap_content", orientation="horizontal"
+                    // No spacing between docName and this row (spacing: 0 in VStack matches Android - elements are touching)
+                    HStack(spacing: 0) { // spacing: 0 - no spacing between size, bullet, and extension (matching Android)
+                        // Document size - matching Android docSize TextView: layout_width="wrap_content", layout_height="wrap_content"
+                        if let size = formattedDocSize {
+                            Text(size)
+                                .font(.custom("Inter18pt-Regular", size: 12)) // textSize="12sp", fontFamily="@font/inter"
+                                .foregroundColor(Color(hex: "#212121")) // textColor="@color/grey_900"
+                                .lineLimit(1) // singleLine="true"
+                        }
+                        
+                        // Bullet separator - matching Android TextView: layout_width="wrap_content", layout_marginHorizontal="5dp"
+                        Text("•")
+                            .font(.custom("Inter18pt-Regular", size: 12)) // fontFamily="@font/inter"
+                            .foregroundColor(Color(hex: "#212121")) // textColor="@color/grey_900"
+                            .lineLimit(1) // singleLine="true"
+                            .padding(.horizontal, 5) // layout_marginHorizontal="5dp"
+                        
+                        // Extension - matching Android docSizeExtension TextView: layout_width="wrap_content", layout_height="wrap_content"
+                        Text(extensionText)
+                            .font(.custom("Inter18pt-Regular", size: 12)) // textSize="12sp", fontFamily="@font/inter"
+                            .foregroundColor(Color(hex: "#212121")) // textColor="@color/grey_900"
+                            .textCase(.uppercase) // textAllCaps="true"
+                            .lineLimit(1) // singleLine="true"
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading) // layout_width="match_parent"
+                }
+                .padding(.leading, 7) // paddingStart="7dp" (inside background)
+                .padding(.top, 2) // paddingTop="3dp" - reduced to minimize vertical space
+                .padding(.trailing, 7) // paddingEnd="7dp" (inside background)
+                .padding(.bottom, 2) // paddingBottom="3dp" - reduced to minimize vertical space
+                .fixedSize(horizontal: false, vertical: true) // layout_height="wrap_content" - minimize vertical space
+                .background(
+                    // Background matching doc_sender_bg drawable: radius="20dp"
+                    RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
+                        .fill(Color(hex: "#e7ebf4")) // Solid color (opacity applied to container)
+                )
+                .opacity(0.8) // alpha="0.8" on entire container (matching Android alpha on LinearLayout)
+                .padding(.horizontal, 3) // layout_marginHorizontal="3dp" (outside background, between icon and info)
+                .frame(maxWidth: .infinity, alignment: .leading) // layout_weight="1" (expands to fill space horizontally)
+                
+                // Right-side download/progress controls - matching Android docDownloadControls RelativeLayout
+                ZStack {
+                    // Download button - matching Android downlaodDoc FloatingActionButton
+                    if !hasLocalFile && !isDownloading && showDownloadButton {
+                        Button(action: {
+                            downloadDocument()
+                        }) {
+                            ZStack {
+                                // Background matching modern_play_button_bg_sender
+                                Circle()
+                                    .fill(backgroundColor)
+                                    .frame(width: 35, height: 35)
+                                
+                                Image("downloaddown")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 20, height: 20)
+                                    .foregroundColor(.white)
+                            }
+                        }
+                    }
+                    
+                    // Progress bar - matching Android progressBarDoc ProgressBar
+                    if showProgressBar && isDownloading {
+                        ProgressView()
+                            .progressViewStyle(LinearProgressViewStyle(tint: Color("TextColor")))
+                            .frame(width: 40, height: 4)
+                    }
+                    
+                    // Download percentage - matching Android downloadPercentageDocSender TextView
+                    if showDownloadProgress && isDownloading {
+                        ZStack {
+                            Circle()
+                                .fill(backgroundColor)
+                                .frame(width: 60, height: 60)
+                            
+                            Text("\(Int(downloadProgress))%")
+                                .font(.custom("Inter18pt-Regular", size: 15))
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                        }
+                    }
+                    
+                    // Pause button - matching Android pauseButtonDocSender ImageButton
+                    if isDownloading {
+                        Button(action: {
+                            // Pause download logic here
+                        }) {
+                            Image(systemName: "pause.fill")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 18, height: 18)
+                                .foregroundColor(.white)
+                                .padding(6)
+                                .background(
+                                    Circle()
+                                        .fill(backgroundColor)
+                                )
+                        }
+                        .offset(y: 40)
+                    }
+                }
+                .frame(width: 60, height: 60)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 0)
+            .frame(minWidth: 200)
+        }
+        .frame(minHeight: 40)
+        .onAppear {
+            print("📄 [SenderDocumentView] onAppear - fileName: \(fileName), documentUrl: \(documentUrl.isEmpty ? "empty" : "has URL"), docSize: \(docSize ?? "nil"), fileExtension: \(fileExtension ?? "nil")")
+            
+            // Check if local file exists and we have a URL to download
+            if !hasLocalFile && !documentUrl.isEmpty {
+                showDownloadButton = true
+            }
+            
+            // Load PDF preview if PDF
+            if isPdf {
+                loadPdfPreview()
+            }
+        }
+    }
+    
+    // Load PDF preview thumbnail
+    private func loadPdfPreview() {
+        // For now, we'll show PDF preview if available
+        // In a real implementation, you'd generate a thumbnail from the PDF
+        showPdfPreview = false // Set to true when PDF preview is loaded
+    }
+}
+
+// MARK: - Receiver Document View (matching Android docLyt design)
+struct ReceiverDocumentView: View {
+    let documentUrl: String
+    let fileName: String
+    let docSize: String?
+    let fileExtension: String?
+    
+    @State private var isDownloading: Bool = false
+    @State private var downloadProgress: Double = 0.0
+    @State private var showDownloadButton: Bool = false
+    @State private var showDownloadProgress: Bool = false
+    @State private var showProgressBar: Bool = false
+    @State private var showPdfPreview: Bool = false
+    @State private var pdfPreviewImage: UIImage? = nil
+    
+    // Get local documents directory path
+    private func getLocalDocumentsDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let docsDir = documentsPath.appendingPathComponent("Enclosure/Media/Documents", isDirectory: true)
+        try? FileManager.default.createDirectory(at: docsDir, withIntermediateDirectories: true, attributes: nil)
+        return docsDir
+    }
+    
+    // Check if local file exists
+    private var hasLocalFile: Bool {
+        guard !fileName.isEmpty else { return false }
+        let localURL = getLocalDocumentsDirectory().appendingPathComponent(fileName)
+        return FileManager.default.fileExists(atPath: localURL.path)
+    }
+    
+    // Get file extension
+    private var extensionText: String {
+        if let ext = fileExtension, !ext.isEmpty {
+            return ext.uppercased()
+        }
+        let ext = (fileName as NSString).pathExtension
+        if !ext.isEmpty {
+            return ext.uppercased()
+        }
+        return "DOC"
+    }
+    
+    // Format file size to match Android format (e.g., "12.4 kb")
+    private var formattedDocSize: String? {
+        guard let size = docSize, !size.isEmpty else { return nil }
+        
+        // If already formatted (contains "kb" or "mb"), return as is
+        if size.lowercased().contains("kb") || size.lowercased().contains("mb") {
+            return size
+        }
+        
+        // Parse as bytes and format
+        if let bytes = Int64(size) {
+            if bytes < 1024 {
+                return "\(bytes) b"
+            } else if bytes < 1024 * 1024 {
+                let kb = Double(bytes) / 1024.0
+                return String(format: "%.1f kb", kb)
+            } else {
+                let mb = Double(bytes) / (1024.0 * 1024.0)
+                return String(format: "%.1f mb", mb)
+            }
+        }
+        
+        return size
+    }
+    
+    // Check if file is PDF
+    private var isPdf: Bool {
+        extensionText.uppercased() == "PDF"
+    }
+    
+    // Download document
+    private func downloadDocument() {
+        guard !fileName.isEmpty else {
+            print("❌ [DOWNLOAD] No fileName available")
+            return
+        }
+        
+        guard !documentUrl.isEmpty else {
+            print("❌ [DOWNLOAD] No document URL available")
+            return
+        }
+        
+        let docsDir = getLocalDocumentsDirectory()
+        let destinationFile = docsDir.appendingPathComponent(fileName)
+        
+        // Check if file already exists
+        if FileManager.default.fileExists(atPath: destinationFile.path) {
+            print("📱 [DOWNLOAD] Document already exists locally")
+            return
+        }
+        
+        // Check if already downloading
+        if BackgroundDownloadManager.shared.isDownloading(fileName: fileName) {
+            print("📱 [DOWNLOAD] Already downloading: \(fileName)")
+            return
+        }
+        
+        // Light haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Update UI
+        isDownloading = true
+        showDownloadButton = false
+        showDownloadProgress = true
+        showProgressBar = false
+        downloadProgress = 0.0
+        
+        // Use BackgroundDownloadManager for document downloads
+        BackgroundDownloadManager.shared.downloadImage(
+            imageUrl: documentUrl,
+            fileName: fileName,
+            destinationFile: destinationFile,
+            onProgress: { progress in
+                DispatchQueue.main.async {
+                    self.downloadProgress = progress
+                    if progress > 0 {
+                        self.showDownloadProgress = true
+                        self.showProgressBar = false
+                    }
+                }
+            },
+            onSuccess: {
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showProgressBar = false
+                    self.showDownloadButton = false
+                    self.downloadProgress = 0.0
+                    print("✅ [DOWNLOAD] Document downloaded successfully")
+                }
+            },
+            onFailure: { error in
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showProgressBar = false
+                    self.showDownloadButton = true
+                    self.downloadProgress = 0.0
+                    print("❌ [DOWNLOAD] Download failed: \(error.localizedDescription)")
+                }
+            }
+        )
+    }
+    
+    var body: some View {
+        VStack(alignment: .center, spacing: 0) {
+            // PDF preview (shown for PDF) - matching Android pdfcard CardView
+            if isPdf && showPdfPreview, let pdfImage = pdfPreviewImage {
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color.white)
+                    .frame(width: 180, height: 100)
+                    .overlay(
+                        Image(uiImage: pdfImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 180, height: 100)
+                            .clipped()
+                    )
+                    .padding(.horizontal, 1)
+                    .padding(.vertical, 1)
+            }
+            
+            // Row: download controls (left) | doc info (center, weight) | file icon (right) - matching Android LinearLayout
+            HStack(alignment: .center, spacing: 0) {
+                // Left-side download/progress controls - matching Android docDownloadControlsReceiver RelativeLayout
+                ZStack {
+                    // Download button - matching Android downlaodDocReceiver FloatingActionButton
+                    if !hasLocalFile && !isDownloading && showDownloadButton {
+                        Button(action: {
+                            downloadDocument()
+                        }) {
+                            ZStack {
+                                // Background matching modern_play_button_bg
+                                Circle()
+                                    .fill(Color("TextColor"))
+                                    .frame(width: 35, height: 35)
+                                
+                                Image("downloaddown")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 20, height: 20)
+                                    .foregroundColor(.white)
+                            }
+                        }
+                    }
+                    
+                    // Progress bar - matching Android progressBarDocReceiver ProgressBar
+                    if showProgressBar && isDownloading {
+                        ProgressView()
+                            .progressViewStyle(LinearProgressViewStyle(tint: Color("TextColor")))
+                            .frame(width: 40, height: 4)
+                    }
+                    
+                    // Download percentage - matching Android downloadPercentageDocReceiver TextView
+                    if showDownloadProgress && isDownloading {
+                        ZStack {
+                            Circle()
+                                .fill(Color("TextColor"))
+                                .frame(width: 60, height: 60)
+                            
+                            Text("\(Int(downloadProgress))%")
+                                .font(.custom("Inter18pt-Regular", size: 15))
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                        }
+                    }
+                    
+                    // Pause button - matching Android pauseButtonDocReceiver ImageButton
+                    if isDownloading {
+                        Button(action: {
+                            // Pause download logic here
+                        }) {
+                            Image(systemName: "pause.fill")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 18, height: 18)
+                                .foregroundColor(.white)
+                                .padding(6)
+                                .background(
+                                    Circle()
+                                        .fill(Color("TextColor"))
+                                )
+                        }
+                        .offset(y: 40)
+                    }
+                }
+                .frame(width: 60, height: 60)
+                
+                // Center: doc info - matching Android LinearLayout with weight=1
+                VStack(alignment: .leading, spacing: 0) {
+                    // Document name - matching Android docName TextView
+                    Text(fileName)
+                        .font(.custom("Inter18pt-Regular", size: 14))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .frame(maxWidth: 170, alignment: .leading)
+                    
+                    // Size and extension row - matching Android LinearLayout
+                    HStack(spacing: 0) {
+                        // Document size - matching Android docSize TextView
+                        if let size = formattedDocSize {
+                            Text(size)
+                                .font(.custom("Inter18pt-Regular", size: 12))
+                                .foregroundColor(Color(hex: "#808080")) // gray
+                                .lineLimit(1)
+                        }
+                        
+                        // Bullet separator - matching Android TextView: layout_width="wrap_content", layout_marginHorizontal="5dp"
+                        Text("•")
+                            .font(.custom("Inter18pt-Regular", size: 12))
+                            .foregroundColor(Color(hex: "#808080"))
+                            .lineLimit(1) // singleLine="true"
+                            .padding(.horizontal, 5) // layout_marginHorizontal="5dp"
+                        
+                        // Extension - matching Android docSizeExtension TextView: layout_width="wrap_content"
+                        Text(extensionText)
+                            .font(.custom("Inter18pt-Regular", size: 12))
+                            .foregroundColor(Color(hex: "#808080"))
+                            .textCase(.uppercase) // textAllCaps="true"
+                            .lineLimit(1) // singleLine="true"
+                    }
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    // Background matching doc__rec_bg drawable
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color("TextColor").opacity(0.8))
+                )
+                .padding(.horizontal, 3)
+                
+                // Right: file icon - matching Android docFileIcon LinearLayout
+                ZStack {
+                    // Background matching pagesvg drawable with backgroundTint="@color/TextColor"
+                    Image("pagesvg")
+                        .resizable()
+                        .renderingMode(.template)
+                        .scaledToFit()
+                        .frame(width: 26, height: 26)
+                        .foregroundColor(Color("TextColor"))
+                        .opacity(0.8)
+                    
+                    // Extension text - matching Android extension TextView
+                    Text(extensionText.prefix(4)) // maxLength="4"
+                        .font(.custom("Inter18pt-Bold", size: 7.5))
+                        .foregroundColor(Color(hex: Constant.themeColor)) // textColor="@color/modetheme2"
+                        .textCase(.uppercase)
+                        .lineLimit(1)
+                        .padding(.bottom, 7) // layout_marginBottom="7dp"
+                }
+                .frame(width: 26, height: 26)
+                .padding(.top, 10) // paddingTop="10dp" on LinearLayout
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 7)
+            .frame(minWidth: 200)
+        }
+        .frame(minHeight: 40)
+        .onAppear {
+            print("📄 [ReceiverDocumentView] onAppear - fileName: \(fileName), documentUrl: \(documentUrl.isEmpty ? "empty" : "has URL"), docSize: \(docSize ?? "nil"), fileExtension: \(fileExtension ?? "nil")")
+            
+            // Check if local file exists and we have a URL to download
+            if !hasLocalFile && !documentUrl.isEmpty {
+                showDownloadButton = true
+            }
+            
+            // Load PDF preview if PDF
+            if isPdf {
+                loadPdfPreview()
+            }
+        }
+    }
+    
+    // Load PDF preview thumbnail
+    private func loadPdfPreview() {
+        // For now, we'll show PDF preview if available
+        // In a real implementation, you'd generate a thumbnail from the PDF
+        showPdfPreview = false // Set to true when PDF preview is loaded
+    }
+}
+
 // MARK: - Sender Image Bunch View (matching Android senderImgBunchLyt)
 struct SenderImageBunchView: View {
     let selectionBunch: [SelectionBunchModel]
@@ -6725,6 +7391,48 @@ struct MessageBubbleView: View {
                             )
                         }
                         .frame(maxWidth: 250)
+                    } else if message.dataType == Constant.doc {
+                        // Sender document message (matching Android docLyt design)
+                        let _ = print("📄 [MessageBubbleView] Showing sender document - dataType: \(message.dataType), document: \(message.document.isEmpty ? "empty" : "has URL"), fileName: \(message.fileName ?? "nil"), message: \(message.message)")
+                        HStack {
+                            Spacer(minLength: 0) // Push content to end
+                            
+                            // Container wrapping document and caption with same background as Constant.Text sender messages
+                            VStack(alignment: .trailing, spacing: 0) {
+                                SenderDocumentView(
+                                    documentUrl: message.document.isEmpty ? (message.fileName ?? "") : message.document,
+                                    fileName: message.fileName ?? message.message,
+                                    docSize: message.docSize,
+                                    fileExtension: message.fileExtension,
+                                    backgroundColor: getSenderMessageBackgroundColor()
+                                )
+                                
+                                // Caption text if present (matching Android caption display)
+                                if let caption = message.caption, !caption.isEmpty {
+                                    HStack {
+                                        Text(caption)
+                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .fontWeight(.regular)
+                                            .foregroundColor(Color(hex: "#e7ebf4"))
+                                            .lineSpacing(7)
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.horizontal, 12)
+                                            .padding(.top, 5)
+                                            .padding(.bottom, 6)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.top, 5)
+                                    .padding(.bottom, 5)
+                                }
+                            }
+                            .background(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(getSenderMessageBackgroundColor())
+                            )
+                        }
+                        .frame(maxWidth: 250)
                     } else {
                         // Sender text message (matching Android sendMessage TextView) - wrap content with maxWidth, gravity="end"
                     HStack {
@@ -6877,6 +7585,46 @@ struct MessageBubbleView: View {
                                 }
                             }
                             .frame(width: calculateImageSize(imageWidth: message.imageWidth, imageHeight: message.imageHeight, aspectRatio: message.aspectRatio).width) // Container width matches video width exactly
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color("message_box_bg"))
+                            )
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: 250)
+                    } else if message.dataType == Constant.doc {
+                        // Receiver document message (matching Android docLyt design)
+                        let _ = print("📄 [MessageBubbleView] Showing receiver document - dataType: \(message.dataType), document: \(message.document.isEmpty ? "empty" : "has URL"), fileName: \(message.fileName ?? "nil"), message: \(message.message)")
+                        HStack {
+                            // Container wrapping document and caption with same background as Constant.Text receiver messages
+                            VStack(alignment: .leading, spacing: 0) {
+                                ReceiverDocumentView(
+                                    documentUrl: message.document.isEmpty ? (message.fileName ?? "") : message.document,
+                                    fileName: message.fileName ?? message.message,
+                                    docSize: message.docSize,
+                                    fileExtension: message.fileExtension
+                                )
+                                
+                                // Caption text if present (matching Android caption display)
+                                if let caption = message.caption, !caption.isEmpty {
+                                    HStack {
+                                        Text(caption)
+                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .fontWeight(.regular)
+                                            .foregroundColor(Color("TextColor"))
+                                            .lineSpacing(7)
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.horizontal, 12)
+                                            .padding(.top, 5)
+                                            .padding(.bottom, 6)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.top, 5)
+                                    .padding(.bottom, 5)
+                                }
+                            }
                             .background(
                                 RoundedRectangle(cornerRadius: 12)
                                     .fill(Color("message_box_bg"))
