@@ -286,6 +286,7 @@ struct MultiDocumentPreviewDialog: View {
             let fileName: String
             let fileSize: Int64
             let fileExtension: String
+            let originalURL: URL // Store original document URL for local storage
         }
         
         var uploadResults: [UploadedDocumentResult] = []
@@ -334,7 +335,8 @@ struct MultiDocumentPreviewDialog: View {
                         downloadURL: downloadURL,
                         fileName: fileName,
                         fileSize: fileSize,
-                        fileExtension: fileExtension
+                        fileExtension: fileExtension,
+                        originalURL: documentURL // Store original URL for local storage
                     )
                     lockQueue.sync { uploadResults.append(result) }
                     dispatchGroup.leave()
@@ -414,6 +416,10 @@ struct MultiDocumentPreviewDialog: View {
                 ) { success, errorMessage in
                     if success {
                         print("✅ [MULTI_DOCUMENT] Uploaded document \(index + 1)/\(sortedResults.count) for modelId=\(documentModelId)")
+                        
+                        // Save document to local storage after successful upload
+                        // Use the fileName from the message to ensure it matches what's stored in Firebase
+                        saveDocumentToLocalStorage(documentURL: result.originalURL, fileName: newMessage.fileName ?? result.fileName)
                     } else {
                         print("❌ [MULTI_DOCUMENT] Upload error: \(errorMessage ?? "Unknown error")")
                         Constant.showToast(message: "Failed to send document. Please try again.")
@@ -452,6 +458,34 @@ struct MultiDocumentPreviewDialog: View {
                 
                 completion(.success(url.absoluteString))
             }
+        }
+    }
+    
+    // Save document to local storage (matching Android file saving logic)
+    private func saveDocumentToLocalStorage(documentURL: URL, fileName: String) {
+        // Get local documents directory path (matching Android Enclosure/Media/Documents)
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let docsDir = documentsPath.appendingPathComponent("Enclosure/Media/Documents", isDirectory: true)
+        
+        // Create directory if it doesn't exist
+        try? FileManager.default.createDirectory(at: docsDir, withIntermediateDirectories: true, attributes: nil)
+        
+        let destinationURL = docsDir.appendingPathComponent(fileName)
+        
+        // Check if file already exists
+        guard !FileManager.default.fileExists(atPath: destinationURL.path) else {
+            print("📱 [LOCAL_STORAGE] Document already exists locally: \(fileName)")
+            return
+        }
+        
+        // Copy file to local storage
+        do {
+            try FileManager.default.copyItem(at: documentURL, to: destinationURL)
+            print("📱 [LOCAL_STORAGE] ✅ Saved document to local storage")
+            print("📱 [LOCAL_STORAGE] File: \(fileName)")
+            print("📱 [LOCAL_STORAGE] File Path: \(destinationURL.path)")
+        } catch {
+            print("❌ [LOCAL_STORAGE] Failed to save document: \(error.localizedDescription)")
         }
     }
     

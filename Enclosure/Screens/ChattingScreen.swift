@@ -5901,6 +5901,7 @@ struct SenderDocumentView: View {
     @State private var showProgressBar: Bool = false
     @State private var showPdfPreview: Bool = false
     @State private var pdfPreviewImage: UIImage? = nil
+    @State private var fileCheckTimer: Timer? = nil
     
     // Get local documents directory path (matching Android Enclosure/Media/Documents)
     private func getLocalDocumentsDirectory() -> URL {
@@ -5911,10 +5912,38 @@ struct SenderDocumentView: View {
     }
     
     // Check if local file exists
+    // Check by fileName first, then by file size if fileName doesn't match
     private var hasLocalFile: Bool {
         guard !fileName.isEmpty else { return false }
-        let localURL = getLocalDocumentsDirectory().appendingPathComponent(fileName)
-        return FileManager.default.fileExists(atPath: localURL.path)
+        
+        let docsDir = getLocalDocumentsDirectory()
+        let localURL = docsDir.appendingPathComponent(fileName)
+        
+        // First check if file exists with exact fileName
+        if FileManager.default.fileExists(atPath: localURL.path) {
+            return true
+        }
+        
+        // If not found by fileName, check all files in directory and match by file size
+        // This handles cases where the saved filename might differ from message fileName
+        if let docSize = docSize, let expectedSize = Int64(docSize), expectedSize > 0 {
+            guard let files = try? FileManager.default.contentsOfDirectory(at: docsDir, includingPropertiesForKeys: [.fileSizeKey]) else {
+                return false
+            }
+            
+            // Check if any file matches by size
+            for file in files {
+                if let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
+                   let fileSize = attributes[.size] as? Int64,
+                   fileSize == expectedSize {
+                    // File size matches, likely the same file
+                    print("📱 [LOCAL_STORAGE] Found file by size match: \(file.lastPathComponent) (expected: \(fileName))")
+                    return true
+                }
+            }
+        }
+        
+        return false
     }
     
     // Get file extension from fileName or fileExtension field
@@ -6139,23 +6168,28 @@ struct SenderDocumentView: View {
                    (showDownloadProgress && isDownloading) || 
                    isDownloading {
                     ZStack {
-                        // Download button - matching Android downlaodDoc FloatingActionButton
+                        // Download button - matching SelectionBunchLayout glassmorphism style
                         if !hasLocalFile && !isDownloading && showDownloadButton {
                             Button(action: {
                                 downloadDocument()
                             }) {
                                 ZStack {
-                                    // Background matching modern_play_button_bg_sender
+                                    // iOS glassmorphism background (matching SelectionBunchLayout)
                                     Circle()
-                                        .fill(backgroundColor)
+                                        .fill(.ultraThinMaterial)
                                         .frame(width: 35, height: 35)
+                                        .overlay(
+                                            Circle()
+                                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                        )
+                                        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
                                     
                                     Image("downloaddown")
                                         .renderingMode(.template)
                                         .resizable()
                                         .scaledToFit()
                                         .frame(width: 20, height: 20)
-                                        .foregroundColor(.white)
+                                        .foregroundColor(Color(hex: "#e7ebf4")) // Matching sender SelectionBunchLayout
                                 }
                             }
                         }
@@ -6167,38 +6201,23 @@ struct SenderDocumentView: View {
                                 .frame(width: 40, height: 4)
                         }
                         
-                        // Download percentage - matching Android downloadPercentageDocSender TextView
+                        // Download percentage - matching SelectionBunchLayout glassmorphism style
                         if showDownloadProgress && isDownloading {
                             ZStack {
+                                // iOS glassmorphism background (matching SelectionBunchLayout)
                                 Circle()
-                                    .fill(backgroundColor)
+                                    .fill(.ultraThinMaterial)
                                     .frame(width: 60, height: 60)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                    )
+                                    .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
                                 
                                 Text("\(Int(downloadProgress))%")
-                                    .font(.custom("Inter18pt-Regular", size: 15))
-                                    .fontWeight(.bold)
+                                    .font(.custom("Inter18pt-Bold", size: 15))
                                     .foregroundColor(.white)
                             }
-                        }
-                        
-                        // Pause button - matching Android pauseButtonDocSender ImageButton
-                        if isDownloading {
-                            Button(action: {
-                                // Pause download logic here
-                            }) {
-                                Image(systemName: "pause.fill")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 18, height: 18)
-                                    .foregroundColor(.white)
-                                    .padding(6)
-                                    .background(
-                                        Circle()
-                                            .fill(backgroundColor)
-                                    )
-                            }
-                            .offset(y: 40)
                         }
                     }
                     .frame(width: 60, height: 60)
@@ -6213,22 +6232,116 @@ struct SenderDocumentView: View {
             print("📄 [SenderDocumentView] onAppear - fileName: \(fileName), documentUrl: \(documentUrl.isEmpty ? "empty" : "has URL"), docSize: \(docSize ?? "nil"), fileExtension: \(fileExtension ?? "nil")")
             
             // Check if local file exists and we have a URL to download
-            if !hasLocalFile && !documentUrl.isEmpty {
-                showDownloadButton = true
-            }
+            checkLocalFileAndUpdateUI()
+            
+            // Start periodic check for local file (in case file is being saved asynchronously)
+            startFileCheckTimer()
             
             // Load PDF preview if PDF
             if isPdf {
                 loadPdfPreview()
             }
         }
+        .onDisappear {
+            // Stop timer when view disappears
+            fileCheckTimer?.invalidate()
+            fileCheckTimer = nil
+        }
+    }
+    
+    // Check local file and update UI state
+    private func checkLocalFileAndUpdateUI() {
+        if hasLocalFile {
+            // File exists locally, hide download button
+            showDownloadButton = false
+            showDownloadProgress = false
+            isDownloading = false
+            print("📱 [SenderDocumentView] File exists locally, hiding download button")
+        } else if !documentUrl.isEmpty {
+            // File doesn't exist locally, show download button
+            showDownloadButton = true
+            print("📱 [SenderDocumentView] File not found locally, showing download button")
+        }
+    }
+    
+    // Start timer to periodically check if file exists locally
+    // This handles cases where file is saved asynchronously after upload
+    private func startFileCheckTimer() {
+        fileCheckTimer?.invalidate()
+        
+        // Check immediately
+        checkLocalFileAndUpdateUI()
+        
+        // Then check periodically for up to 5 seconds (10 checks at 0.5s intervals)
+        var checkCount = 0
+        fileCheckTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
+            checkCount += 1
+            
+            // Re-check if file exists
+            if self.hasLocalFile {
+                self.checkLocalFileAndUpdateUI()
+                timer.invalidate()
+                self.fileCheckTimer = nil
+                print("📱 [SenderDocumentView] File found after \(Double(checkCount) * 0.5) seconds")
+            } else if checkCount >= 10 {
+                // Stop checking after 5 seconds
+                timer.invalidate()
+                self.fileCheckTimer = nil
+            }
+        }
     }
     
     // Load PDF preview thumbnail
     private func loadPdfPreview() {
-        // For now, we'll show PDF preview if available
-        // In a real implementation, you'd generate a thumbnail from the PDF
-        showPdfPreview = false // Set to true when PDF preview is loaded
+        // Check if PDF file exists locally
+        guard hasLocalFile else {
+            showPdfPreview = false
+            return
+        }
+        
+        let localURL = getLocalDocumentsDirectory().appendingPathComponent(fileName)
+        
+        // Generate thumbnail from PDF first page
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let pdfDocument = CGPDFDocument(localURL as CFURL),
+                  let firstPage = pdfDocument.page(at: 1) else {
+                DispatchQueue.main.async {
+                    self.showPdfPreview = false
+                }
+                return
+            }
+            
+            // Get page rect
+            let pageRect = firstPage.getBoxRect(.mediaBox)
+            let scale: CGFloat = 180.0 / max(pageRect.width, pageRect.height)
+            let scaledSize = CGSize(width: pageRect.width * scale, height: pageRect.height * scale)
+            
+            // Create thumbnail
+            UIGraphicsBeginImageContextWithOptions(scaledSize, false, 0.0)
+            guard let context = UIGraphicsGetCurrentContext() else {
+                UIGraphicsEndImageContext()
+                DispatchQueue.main.async {
+                    self.showPdfPreview = false
+                }
+                return
+            }
+            
+            context.interpolationQuality = .high
+            context.scaleBy(x: scale, y: scale)
+            context.drawPDFPage(firstPage)
+            
+            let thumbnailImage = UIGraphicsGetImageFromCurrentImageContext()
+            UIGraphicsEndImageContext()
+            
+            DispatchQueue.main.async {
+                if let image = thumbnailImage {
+                    self.pdfPreviewImage = image
+                    self.showPdfPreview = true
+                } else {
+                    self.showPdfPreview = false
+                }
+            }
+        }
     }
 }
 
@@ -6408,23 +6521,28 @@ struct ReceiverDocumentView: View {
                    (showDownloadProgress && isDownloading) || 
                    isDownloading {
                     ZStack {
-                        // Download button - matching Android downlaodDocReceiver FloatingActionButton
+                        // Download button - matching SelectionBunchLayout glassmorphism style
                         if !hasLocalFile && !isDownloading && showDownloadButton {
                             Button(action: {
                                 downloadDocument()
                             }) {
                                 ZStack {
-                                    // Background matching modern_play_button_bg
+                                    // iOS glassmorphism background (matching SelectionBunchLayout)
                                     Circle()
-                                        .fill(Color("TextColor"))
+                                        .fill(.ultraThinMaterial)
                                         .frame(width: 35, height: 35)
+                                        .overlay(
+                                            Circle()
+                                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                        )
+                                        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
                                     
                                     Image("downloaddown")
                                         .renderingMode(.template)
                                         .resizable()
                                         .scaledToFit()
                                         .frame(width: 20, height: 20)
-                                        .foregroundColor(.white)
+                                        .foregroundColor(.white) // Matching receiver SelectionBunchLayout
                                 }
                             }
                         }
@@ -6436,39 +6554,25 @@ struct ReceiverDocumentView: View {
                                 .frame(width: 40, height: 4)
                         }
                         
-                        // Download percentage - matching Android downloadPercentageDocReceiver TextView
+                        // Download percentage - matching SelectionBunchLayout glassmorphism style
                         if showDownloadProgress && isDownloading {
                             ZStack {
+                                // iOS glassmorphism background (matching SelectionBunchLayout)
                                 Circle()
-                                    .fill(Color("TextColor"))
+                                    .fill(.ultraThinMaterial)
                                     .frame(width: 60, height: 60)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                    )
+                                    .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
                                 
                                 Text("\(Int(downloadProgress))%")
-                                    .font(.custom("Inter18pt-Regular", size: 15))
-                                    .fontWeight(.bold)
+                                    .font(.custom("Inter18pt-Bold", size: 15))
                                     .foregroundColor(.white)
                             }
                         }
                         
-                        // Pause button - matching Android pauseButtonDocReceiver ImageButton
-                        if isDownloading {
-                            Button(action: {
-                                // Pause download logic here
-                            }) {
-                                Image(systemName: "pause.fill")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 18, height: 18)
-                                    .foregroundColor(.white)
-                                    .padding(6)
-                                    .background(
-                                        Circle()
-                                            .fill(Color("TextColor"))
-                                    )
-                            }
-                            .offset(y: 40)
-                        }
                     }
                     .frame(width: 60, height: 60)
                 }
@@ -6574,9 +6678,55 @@ struct ReceiverDocumentView: View {
     
     // Load PDF preview thumbnail
     private func loadPdfPreview() {
-        // For now, we'll show PDF preview if available
-        // In a real implementation, you'd generate a thumbnail from the PDF
-        showPdfPreview = false // Set to true when PDF preview is loaded
+        // Check if PDF file exists locally
+        guard hasLocalFile else {
+            showPdfPreview = false
+            return
+        }
+        
+        let localURL = getLocalDocumentsDirectory().appendingPathComponent(fileName)
+        
+        // Generate thumbnail from PDF first page
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let pdfDocument = CGPDFDocument(localURL as CFURL),
+                  let firstPage = pdfDocument.page(at: 1) else {
+                DispatchQueue.main.async {
+                    self.showPdfPreview = false
+                }
+                return
+            }
+            
+            // Get page rect
+            let pageRect = firstPage.getBoxRect(.mediaBox)
+            let scale: CGFloat = 180.0 / max(pageRect.width, pageRect.height)
+            let scaledSize = CGSize(width: pageRect.width * scale, height: pageRect.height * scale)
+            
+            // Create thumbnail
+            UIGraphicsBeginImageContextWithOptions(scaledSize, false, 0.0)
+            guard let context = UIGraphicsGetCurrentContext() else {
+                UIGraphicsEndImageContext()
+                DispatchQueue.main.async {
+                    self.showPdfPreview = false
+                }
+                return
+            }
+            
+            context.interpolationQuality = .high
+            context.scaleBy(x: scale, y: scale)
+            context.drawPDFPage(firstPage)
+            
+            let thumbnailImage = UIGraphicsGetImageFromCurrentImageContext()
+            UIGraphicsEndImageContext()
+            
+            DispatchQueue.main.async {
+                if let image = thumbnailImage {
+                    self.pdfPreviewImage = image
+                    self.showPdfPreview = true
+                } else {
+                    self.showPdfPreview = false
+                }
+            }
+        }
     }
 }
 
