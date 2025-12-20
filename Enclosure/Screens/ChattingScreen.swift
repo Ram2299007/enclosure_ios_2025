@@ -6469,13 +6469,14 @@ struct SenderDocumentView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 3) // layout_marginHorizontal="3dp"
+            .padding(.vertical, 5) // Reduced vertical padding to match Android inner spacing
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color(hex: "#021D3A")) // backgroundTint="#021D3A"
             )
         }
         .padding(.horizontal, 7) // layout_marginHorizontal="7dp"
-        .padding(.vertical, 7) // layout_marginVertical="7dp"
+        .padding(.vertical, 5) // Reduced vertical padding to match Android
         .onAppear {
             if isAudio && hasLocalFile {
                 setupAudioPlayer()
@@ -7236,9 +7237,10 @@ struct ReceiverDocumentView: View {
                 .padding(.horizontal, 5) // layout_marginHorizontal="5dp"
             }
             .frame(maxWidth: .infinity)
+            .padding(.vertical, 5) // Reduced vertical padding to match Android inner spacing
         }
         .padding(.horizontal, 7) // layout_marginHorizontal="7dp"
-        .padding(.vertical, 7) // layout_marginVertical="7dp"
+        .padding(.vertical, 5) // Reduced vertical padding to match Android
         .onAppear {
             if isAudio && hasLocalFile {
                 setupAudioPlayer()
