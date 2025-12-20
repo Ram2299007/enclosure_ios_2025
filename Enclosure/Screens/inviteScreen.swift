@@ -15,6 +15,7 @@ struct InviteScreen: View {
     @FocusState private var isSearchFieldFocused: Bool
     @State private var isBackPressed = false
     @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic background tint color (darker theme color)
+    @State private var isMenuButtonPressed = false // Track menu button press state
     
     // Computed property for background tint: appThemeColor in light mode, darker tint in dark mode
     private var backgroundTintColor: Color {
@@ -212,10 +213,51 @@ struct InviteScreen: View {
                     }
                 }
                 
-                HeaderIconButton {
-                    showMenu = true
-                } label: {
-                    MenuDotsIcon()
+                // Menu button - matching MainActivityOld.swift design
+                ZStack {
+                    // Background circle for visual feedback
+                    if isMenuButtonPressed {
+                        Circle()
+                            .fill(Color("circlebtnhover").opacity(0.3))
+                            .frame(width: 44, height: 44)
+                            .transition(.opacity)
+                    }
+                    
+                    VStack(spacing: 3) {
+                        Circle()
+                            .fill(Color("menuPointColor"))
+                            .frame(width: 4, height: 4)
+                        Circle()
+                            .fill(Color(hex: Constant.themeColor))
+                            .frame(width: 4, height: 4)
+                        Circle()
+                            .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                            .frame(width: 4, height: 4)
+                    }
+                }
+                .frame(width: 44, height: 44) // Standard iOS touch target size
+                .contentShape(Rectangle()) // Ensure entire area is tappable
+                .onTapGesture {
+                    // Add haptic feedback for better UX
+                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                    impactFeedback.impactOccurred()
+                    
+                    // Visual feedback
+                    withAnimation(.easeInOut(duration: 0.1)) {
+                        isMenuButtonPressed = true
+                    }
+                    
+                    // Smooth animation when opening menu
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showMenu = true
+                    }
+                    
+                    // Reset pressed state
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        withAnimation(.easeInOut(duration: 0.1)) {
+                            isMenuButtonPressed = false
+                        }
+                    }
                 }
             }
             .animation(.easeInOut(duration: 0.3), value: isSearchVisible)
