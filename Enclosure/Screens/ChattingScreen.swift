@@ -5905,6 +5905,12 @@ struct SenderDocumentView: View {
     @State private var fileCheckTimer: Timer? = nil
     @State private var showDocumentPreview: Bool = false
     @State private var documentPreviewURL: URL? = nil
+    // Audio player state
+    @State private var audioPlayer: AVPlayer? = nil
+    @State private var isAudioPlaying: Bool = false
+    @State private var audioCurrentTime: TimeInterval = 0.0
+    @State private var audioDuration: TimeInterval = 0.0
+    @State private var audioTimeObserver: Any? = nil
     
     // Get local documents directory path (matching Android Enclosure/Media/Documents)
     private func getLocalDocumentsDirectory() -> URL {
@@ -5914,11 +5920,30 @@ struct SenderDocumentView: View {
         return docsDir
     }
     
+    // Get local audios directory path (matching Android Enclosure/Media/Audios)
+    private func getLocalAudiosDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let audiosDir = documentsPath.appendingPathComponent("Enclosure/Media/Audios", isDirectory: true)
+        try? FileManager.default.createDirectory(at: audiosDir, withIntermediateDirectories: true, attributes: nil)
+        return audiosDir
+    }
+    
     // Check if local file exists
     // Check by fileName first, then by file size if fileName doesn't match
+    // For audio files, also check Audios directory (matching Android behavior)
     private var hasLocalFile: Bool {
         guard !fileName.isEmpty else { return false }
         
+        // For audio files, check Audios directory first (matching Android)
+        if isAudio {
+            let audiosDir = getLocalAudiosDirectory()
+            let audioURL = audiosDir.appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: audioURL.path) {
+                return true
+            }
+        }
+        
+        // Check Documents directory
         let docsDir = getLocalDocumentsDirectory()
         let localURL = docsDir.appendingPathComponent(fileName)
         
@@ -5930,18 +5955,30 @@ struct SenderDocumentView: View {
         // If not found by fileName, check all files in directory and match by file size
         // This handles cases where the saved filename might differ from message fileName
         if let docSize = docSize, let expectedSize = Int64(docSize), expectedSize > 0 {
-            guard let files = try? FileManager.default.contentsOfDirectory(at: docsDir, includingPropertiesForKeys: [.fileSizeKey]) else {
-                return false
+            // Check Documents directory
+            if let files = try? FileManager.default.contentsOfDirectory(at: docsDir, includingPropertiesForKeys: [.fileSizeKey]) {
+                for file in files {
+                    if let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
+                       let fileSize = attributes[.size] as? Int64,
+                       fileSize == expectedSize {
+                        print("📱 [LOCAL_STORAGE] Found file by size match: \(file.lastPathComponent) (expected: \(fileName))")
+                        return true
+                    }
+                }
             }
             
-            // Check if any file matches by size
-            for file in files {
-                if let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
-                   let fileSize = attributes[.size] as? Int64,
-                   fileSize == expectedSize {
-                    // File size matches, likely the same file
-                    print("📱 [LOCAL_STORAGE] Found file by size match: \(file.lastPathComponent) (expected: \(fileName))")
-                    return true
+            // For audio files, also check Audios directory by size
+            if isAudio {
+                let audiosDir = getLocalAudiosDirectory()
+                if let files = try? FileManager.default.contentsOfDirectory(at: audiosDir, includingPropertiesForKeys: [.fileSizeKey]) {
+                    for file in files {
+                        if let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
+                           let fileSize = attributes[.size] as? Int64,
+                           fileSize == expectedSize {
+                            print("📱 [LOCAL_STORAGE] Found audio file by size match: \(file.lastPathComponent) (expected: \(fileName))")
+                            return true
+                        }
+                    }
                 }
             }
         }
@@ -5991,6 +6028,12 @@ struct SenderDocumentView: View {
         extensionText.uppercased() == "PDF"
     }
     
+    // Check if file is audio/music (matching Android musicExtensions list)
+    private var isAudio: Bool {
+        let ext = extensionText.lowercased()
+        return ["mp3", "wav", "flac", "aac", "ogg", "oga", "m4a", "wma", "alac", "aiff"].contains(ext)
+    }
+    
     // Download document
     private func downloadDocument() {
         guard !fileName.isEmpty else {
@@ -6003,8 +6046,9 @@ struct SenderDocumentView: View {
             return
         }
         
-        let docsDir = getLocalDocumentsDirectory()
-        let destinationFile = docsDir.appendingPathComponent(fileName)
+        // For audio files, use Audios directory (matching Android)
+        let destinationDir = isAudio ? getLocalAudiosDirectory() : getLocalDocumentsDirectory()
+        let destinationFile = destinationDir.appendingPathComponent(fileName)
         
         // Check if file already exists
         if FileManager.default.fileExists(atPath: destinationFile.path) {
@@ -6068,6 +6112,11 @@ struct SenderDocumentView: View {
     
     var body: some View {
         VStack(alignment: .center, spacing: 0) { // spacing: 0 - no spacing between PDF preview and row (matching Android docLyt orientation="vertical")
+            // Audio player container (shown for audio files only) - matching Android miceContainer
+            if isAudio {
+                audioPlayerView
+            }
+            
             // PDF preview (shown for PDF only) - matching Android pdfcard CardView, full width to parent container
             if isPdf && showPdfPreview, let pdfImage = pdfPreviewImage {
                 RoundedRectangle(cornerRadius: 20)
@@ -6377,6 +6426,180 @@ struct SenderDocumentView: View {
         }
     }
     
+    // Audio player view (matching Android miceContainer)
+    @ViewBuilder
+    private var audioPlayerView: some View {
+        VStack(alignment: .center, spacing: 0) {
+            // Main container - matching Android LinearLayout with backgroundTint="#021D3A"
+            HStack(alignment: .center, spacing: 0) {
+                // Download controls (only show if file not downloaded) - matching Android audioDownloadControls
+                if !hasLocalFile {
+                    audioDownloadControlsView
+                }
+                
+                // Play button - matching Android micePlay with scaleX/Y="1.4"
+                Button(action: {
+                    toggleAudioPlayback()
+                }) {
+                    Image("play_arrow_sender")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 24, height: 24)
+                        .scaleEffect(1.4) // scaleX/Y="1.4"
+                }
+                .padding(.leading, 5) // layout_marginEnd="5dp"
+                
+                // Progress bar - matching Android miceProgressbar, vertically centered
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        // Track - matching Android trackCornerRadius="20dp", trackThickness="5dp"
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(height: 5)
+                        
+                        // Progress indicator - matching Android indicatorColor="@color/teal_700"
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(Color(hex: "#00897B")) // teal_700
+                            .frame(width: geometry.size.width * CGFloat(audioDuration > 0 ? audioCurrentTime / audioDuration : 0), height: 5)
+                    }
+                }
+                .frame(height: 5)
+                .frame(minWidth: 150) // minWidth="150dp"
+                .padding(.horizontal, 5) // layout_marginHorizontal="5dp"
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 3) // layout_marginHorizontal="3dp"
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(hex: "#021D3A")) // backgroundTint="#021D3A"
+            )
+        }
+        .padding(.horizontal, 7) // layout_marginHorizontal="7dp"
+        .padding(.vertical, 7) // layout_marginVertical="7dp"
+        .onAppear {
+            if isAudio && hasLocalFile {
+                setupAudioPlayer()
+            }
+        }
+        .onDisappear {
+            stopAudioPlayer()
+        }
+    }
+    
+    // Audio download controls view (matching Android audioDownloadControls)
+    @ViewBuilder
+    private var audioDownloadControlsView: some View {
+        ZStack {
+            // Download button - matching SelectionBunchLayout glassmorphism style
+            if !isDownloading && showDownloadButton {
+                Button(action: {
+                    downloadDocument()
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 35, height: 35)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                        
+                        Image("downloaddown")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 20, height: 20)
+                            .foregroundColor(.white)
+                    }
+                }
+            }
+            
+            // Progress bar - matching Android progressBarAudio
+            if showProgressBar && isDownloading {
+                ProgressView()
+                    .progressViewStyle(LinearProgressViewStyle(tint: Color("TextColor")))
+                    .frame(width: 40, height: 4)
+            }
+            
+            // Download percentage - matching Android downloadPercentageAudioSender
+            if showDownloadProgress && isDownloading {
+                ZStack {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 60, height: 60)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
+                        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                    
+                    Text("\(Int(downloadProgress))%")
+                        .font(.custom("Inter18pt-Bold", size: 15))
+                        .foregroundColor(.white)
+                }
+            }
+        }
+        .frame(width: 60, height: 60)
+    }
+    
+    // Format time for audio player
+    private func formatTime(_ time: TimeInterval) -> String {
+        let minutes = Int(time) / 60
+        let seconds = Int(time) % 60
+        return String(format: "%.2d:%.2d", minutes, seconds)
+    }
+    
+    // Setup audio player
+    private func setupAudioPlayer() {
+        guard let localURL = findLocalFileURL() else { return }
+        
+        audioPlayer = AVPlayer(url: localURL)
+        
+        // Get duration
+        if let duration = audioPlayer?.currentItem?.asset.duration {
+            audioDuration = CMTimeGetSeconds(duration)
+        }
+        
+        // Observe time updates
+        audioTimeObserver = audioPlayer?.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.1, preferredTimescale: 600), queue: .main) { time in
+            self.audioCurrentTime = CMTimeGetSeconds(time)
+        }
+    }
+    
+    // Toggle audio playback
+    private func toggleAudioPlayback() {
+        guard let player = audioPlayer else {
+            if hasLocalFile {
+                setupAudioPlayer()
+                audioPlayer?.play()
+                isAudioPlaying = true
+            }
+            return
+        }
+        
+        if isAudioPlaying {
+            player.pause()
+            isAudioPlaying = false
+        } else {
+            player.play()
+            isAudioPlaying = true
+        }
+    }
+    
+    // Stop audio player
+    private func stopAudioPlayer() {
+        audioPlayer?.pause()
+        audioPlayer = nil
+        isAudioPlaying = false
+        audioCurrentTime = 0.0
+        audioDuration = 0.0
+        if let observer = audioTimeObserver {
+            audioPlayer?.removeTimeObserver(observer)
+            audioTimeObserver = nil
+        }
+    }
+    
     // Open document in preview
     private func openDocument() {
         print("📄 [SenderDocumentView] Opening document - fileName: \(fileName)")
@@ -6449,6 +6672,53 @@ struct SenderDocumentView: View {
         return videosDir
     }
     
+    // Find local file URL by checking multiple directories
+    private func findLocalFileURL() -> URL? {
+        // For audio files, check Audios directory first (matching Android behavior)
+        if isAudio {
+            let audiosURL = getLocalAudiosDirectory().appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: audiosURL.path) {
+                return audiosURL
+            }
+        }
+        
+        // Check Documents directory (for documents sent as documents)
+        let docsURL = getLocalDocumentsDirectory().appendingPathComponent(fileName)
+        if FileManager.default.fileExists(atPath: docsURL.path) {
+            return docsURL
+        }
+        
+        // Check Images directory (for images sent as documents)
+        if isImage {
+            let imagesURL = getLocalImagesDirectory().appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: imagesURL.path) {
+                return imagesURL
+            }
+        }
+        
+        // Check Videos directory (for videos sent as documents)
+        if isVideo {
+            let videosURL = getLocalVideosDirectory().appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: videosURL.path) {
+                return videosURL
+            }
+        }
+        
+        return nil
+    }
+    
+    // Check if file is image
+    private var isImage: Bool {
+        let ext = (fileName as NSString).pathExtension.lowercased()
+        return ["jpg", "jpeg", "png", "webp", "gif", "tiff", "psd", "heif", "svg"].contains(ext)
+    }
+    
+    // Check if file is video
+    private var isVideo: Bool {
+        let ext = (fileName as NSString).pathExtension.lowercased()
+        return ["mp4", "mov", "wmv", "flv", "mkv", "avi", "avchd", "webm", "hevc"].contains(ext)
+    }
+    
     // Download document and open when complete
     private func downloadDocumentAndOpen() {
         guard !fileName.isEmpty else {
@@ -6456,8 +6726,9 @@ struct SenderDocumentView: View {
             return
         }
         
-        let docsDir = getLocalDocumentsDirectory()
-        let destinationFile = docsDir.appendingPathComponent(fileName)
+        // For audio files, use Audios directory (matching Android)
+        let destinationDir = isAudio ? getLocalAudiosDirectory() : getLocalDocumentsDirectory()
+        let destinationFile = destinationDir.appendingPathComponent(fileName)
         
         // Check if file already exists
         if FileManager.default.fileExists(atPath: destinationFile.path) {
@@ -6536,6 +6807,12 @@ struct ReceiverDocumentView: View {
     @State private var pdfPreviewImage: UIImage? = nil
     @State private var showDocumentPreview: Bool = false
     @State private var documentPreviewURL: URL? = nil
+    // Audio player state
+    @State private var audioPlayer: AVPlayer? = nil
+    @State private var isAudioPlaying: Bool = false
+    @State private var audioCurrentTime: TimeInterval = 0.0
+    @State private var audioDuration: TimeInterval = 0.0
+    @State private var audioTimeObserver: Any? = nil
     
     // Get local documents directory path
     private func getLocalDocumentsDirectory() -> URL {
@@ -6545,9 +6822,29 @@ struct ReceiverDocumentView: View {
         return docsDir
     }
     
+    // Get local audios directory path (matching Android Enclosure/Media/Audios)
+    private func getLocalAudiosDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let audiosDir = documentsPath.appendingPathComponent("Enclosure/Media/Audios", isDirectory: true)
+        try? FileManager.default.createDirectory(at: audiosDir, withIntermediateDirectories: true, attributes: nil)
+        return audiosDir
+    }
+    
     // Check if local file exists
+    // For audio files, also check Audios directory (matching Android behavior)
     private var hasLocalFile: Bool {
         guard !fileName.isEmpty else { return false }
+        
+        // For audio files, check Audios directory first (matching Android)
+        if isAudio {
+            let audiosDir = getLocalAudiosDirectory()
+            let audioURL = audiosDir.appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: audioURL.path) {
+                return true
+            }
+        }
+        
+        // Check Documents directory
         let localURL = getLocalDocumentsDirectory().appendingPathComponent(fileName)
         return FileManager.default.fileExists(atPath: localURL.path)
     }
@@ -6594,6 +6891,12 @@ struct ReceiverDocumentView: View {
         extensionText.uppercased() == "PDF"
     }
     
+    // Check if file is audio/music (matching Android musicExtensions list)
+    private var isAudio: Bool {
+        let ext = extensionText.lowercased()
+        return ["mp3", "wav", "flac", "aac", "ogg", "oga", "m4a", "wma", "alac", "aiff"].contains(ext)
+    }
+    
     // Download document
     private func downloadDocument() {
         guard !fileName.isEmpty else {
@@ -6606,8 +6909,9 @@ struct ReceiverDocumentView: View {
             return
         }
         
-        let docsDir = getLocalDocumentsDirectory()
-        let destinationFile = docsDir.appendingPathComponent(fileName)
+        // For audio files, use Audios directory (matching Android)
+        let destinationDir = isAudio ? getLocalAudiosDirectory() : getLocalDocumentsDirectory()
+        let destinationFile = destinationDir.appendingPathComponent(fileName)
         
         // Check if file already exists
         if FileManager.default.fileExists(atPath: destinationFile.path) {
@@ -6671,6 +6975,11 @@ struct ReceiverDocumentView: View {
     
     var body: some View {
         VStack(alignment: .center, spacing: 0) {
+            // Audio player container (shown for audio files only) - matching Android miceContainer
+            if isAudio {
+                audioPlayerView
+            }
+            
             // PDF preview (shown for PDF) - matching Android pdfcard CardView, full width to parent container
             if isPdf && showPdfPreview, let pdfImage = pdfPreviewImage {
                 RoundedRectangle(cornerRadius: 20)
@@ -6690,7 +6999,9 @@ struct ReceiverDocumentView: View {
             }
             
             // Row: download controls (left) | doc info (center, weight) | file icon (right) - matching Android LinearLayout
-            HStack(alignment: .center, spacing: 0) {
+            // Only show document info section if NOT audio (audio files show only audio player)
+            if !isAudio {
+                HStack(alignment: .center, spacing: 0) {
                 // Left-side download/progress controls - matching Android docDownloadControlsReceiver RelativeLayout
                 // Only show container when there's content to display (matching Android visibility="gone" when empty)
                 // Show if: download button visible OR progress bar visible OR download percentage visible OR pause button visible
@@ -6837,6 +7148,7 @@ struct ReceiverDocumentView: View {
             .padding(.horizontal, 7)
             .padding(.vertical, 7)
             .frame(minWidth: 200)
+            }
         }
         .frame(minHeight: 40)
         .onTapGesture {
@@ -6882,6 +7194,239 @@ struct ReceiverDocumentView: View {
         }
     }
     
+    // Audio player view (matching Android miceContainer)
+    @ViewBuilder
+    private var audioPlayerView: some View {
+        VStack(alignment: .center, spacing: 0) {
+            // Main container - matching Android LinearLayout
+            HStack(alignment: .center, spacing: 0) {
+                // Download controls (only show if file not downloaded) - matching Android audioDownloadControlsReceiver
+                if !hasLocalFile {
+                    audioDownloadControlsView
+                }
+                
+                // Play button - matching Android micePlay with scaleX/Y="1.4"
+                Button(action: {
+                    toggleAudioPlayback()
+                }) {
+                    Image("play_arrow_receiver")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 24, height: 24)
+                        .scaleEffect(1.4) // scaleX/Y="1.4"
+                        .foregroundColor(Color("TextColor"))
+                }
+                
+                // Progress bar - matching Android miceProgressbar, vertically centered
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        // Track - matching Android trackCornerRadius="20dp", trackThickness="5dp"
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(height: 5)
+                        
+                        // Progress indicator - matching Android indicatorColor="@color/teal_700"
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(Color(hex: "#00897B")) // teal_700
+                            .frame(width: geometry.size.width * CGFloat(audioDuration > 0 ? audioCurrentTime / audioDuration : 0), height: 5)
+                    }
+                }
+                .frame(height: 5)
+                .frame(minWidth: 150) // minWidth="150dp"
+                .padding(.horizontal, 5) // layout_marginHorizontal="5dp"
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(.horizontal, 7) // layout_marginHorizontal="7dp"
+        .padding(.vertical, 7) // layout_marginVertical="7dp"
+        .onAppear {
+            if isAudio && hasLocalFile {
+                setupAudioPlayer()
+            }
+        }
+        .onDisappear {
+            stopAudioPlayer()
+        }
+    }
+    
+    // Audio download controls view (matching Android audioDownloadControlsReceiver)
+    @ViewBuilder
+    private var audioDownloadControlsView: some View {
+        ZStack {
+            // Download button - matching SelectionBunchLayout glassmorphism style
+            if !isDownloading && showDownloadButton {
+                Button(action: {
+                    downloadDocument()
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 35, height: 35)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                        
+                        Image("downloaddown")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 20, height: 20)
+                            .foregroundColor(.white)
+                    }
+                }
+            }
+            
+            // Progress bar - matching Android progressBarAudioReceiver
+            if showProgressBar && isDownloading {
+                ProgressView()
+                    .progressViewStyle(LinearProgressViewStyle(tint: Color("TextColor")))
+                    .frame(width: 40, height: 4)
+            }
+            
+            // Download percentage - matching Android downloadPercentageAudioReceiver
+            if showDownloadProgress && isDownloading {
+                ZStack {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 60, height: 60)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
+                        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                    
+                    Text("\(Int(downloadProgress))%")
+                        .font(.custom("Inter18pt-Bold", size: 15))
+                        .foregroundColor(.white)
+                }
+            }
+        }
+        .frame(width: 60, height: 60)
+        .padding(.trailing, 7) // layout_marginEnd="7dp"
+    }
+    
+    // Get local images directory
+    private func getLocalImagesDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let imagesDir = documentsPath.appendingPathComponent("Enclosure/Media/Images", isDirectory: true)
+        try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true, attributes: nil)
+        return imagesDir
+    }
+    
+    // Get local videos directory
+    private func getLocalVideosDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let videosDir = documentsPath.appendingPathComponent("Enclosure/Media/Videos", isDirectory: true)
+        try? FileManager.default.createDirectory(at: videosDir, withIntermediateDirectories: true, attributes: nil)
+        return videosDir
+    }
+    
+    // Find local file URL by checking multiple directories
+    private func findLocalFileURL() -> URL? {
+        // For audio files, check Audios directory first (matching Android behavior)
+        if isAudio {
+            let audiosURL = getLocalAudiosDirectory().appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: audiosURL.path) {
+                return audiosURL
+            }
+        }
+        
+        // Check Documents directory (for documents sent as documents)
+        let docsURL = getLocalDocumentsDirectory().appendingPathComponent(fileName)
+        if FileManager.default.fileExists(atPath: docsURL.path) {
+            return docsURL
+        }
+        
+        // Check Images directory (for images sent as documents)
+        if isImage {
+            let imagesURL = getLocalImagesDirectory().appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: imagesURL.path) {
+                return imagesURL
+            }
+        }
+        
+        // Check Videos directory (for videos sent as documents)
+        if isVideo {
+            let videosURL = getLocalVideosDirectory().appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: videosURL.path) {
+                return videosURL
+            }
+        }
+        
+        return nil
+    }
+    
+    // Check if file is image
+    private var isImage: Bool {
+        let ext = (fileName as NSString).pathExtension.lowercased()
+        return ["jpg", "jpeg", "png", "webp", "gif", "tiff", "psd", "heif", "svg"].contains(ext)
+    }
+    
+    // Check if file is video
+    private var isVideo: Bool {
+        let ext = (fileName as NSString).pathExtension.lowercased()
+        return ["mp4", "mov", "wmv", "flv", "mkv", "avi", "avchd", "webm", "hevc"].contains(ext)
+    }
+    
+    // Format time for audio player
+    private func formatTime(_ time: TimeInterval) -> String {
+        let minutes = Int(time) / 60
+        let seconds = Int(time) % 60
+        return String(format: "%.2d:%.2d", minutes, seconds)
+    }
+    
+    // Setup audio player
+    private func setupAudioPlayer() {
+        guard let localURL = findLocalFileURL() else { return }
+        
+        audioPlayer = AVPlayer(url: localURL)
+        
+        // Get duration
+        if let duration = audioPlayer?.currentItem?.asset.duration {
+            audioDuration = CMTimeGetSeconds(duration)
+        }
+        
+        // Observe time updates
+        audioTimeObserver = audioPlayer?.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.1, preferredTimescale: 600), queue: .main) { time in
+            self.audioCurrentTime = CMTimeGetSeconds(time)
+        }
+    }
+    
+    // Toggle audio playback
+    private func toggleAudioPlayback() {
+        guard let player = audioPlayer else {
+            if hasLocalFile {
+                setupAudioPlayer()
+                audioPlayer?.play()
+                isAudioPlaying = true
+            }
+            return
+        }
+        
+        if isAudioPlaying {
+            player.pause()
+            isAudioPlaying = false
+        } else {
+            player.play()
+            isAudioPlaying = true
+        }
+    }
+    
+    // Stop audio player
+    private func stopAudioPlayer() {
+        audioPlayer?.pause()
+        audioPlayer = nil
+        isAudioPlaying = false
+        audioCurrentTime = 0.0
+        audioDuration = 0.0
+        if let observer = audioTimeObserver {
+            audioPlayer?.removeTimeObserver(observer)
+            audioTimeObserver = nil
+        }
+    }
+    
     // Open document in preview
     private func openDocument() {
         print("📄 [ReceiverDocumentView] Opening document - fileName: \(fileName)")
@@ -6889,15 +7434,26 @@ struct ReceiverDocumentView: View {
         // Check if file exists locally first - check multiple directories
         var localURL: URL? = nil
         
+        // For audio files, check Audios directory first (matching Android behavior)
+        if isAudio {
+            let audiosURL = getLocalAudiosDirectory().appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: audiosURL.path) {
+                localURL = audiosURL
+                print("📄 [ReceiverDocumentView] Found file in Audios: \(audiosURL.path)")
+            }
+        }
+        
         // Check Documents directory
-        let docsURL = getLocalDocumentsDirectory().appendingPathComponent(fileName)
-        if FileManager.default.fileExists(atPath: docsURL.path) {
-            localURL = docsURL
-            print("📄 [ReceiverDocumentView] Found file in Documents: \(docsURL.path)")
+        if localURL == nil {
+            let docsURL = getLocalDocumentsDirectory().appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: docsURL.path) {
+                localURL = docsURL
+                print("📄 [ReceiverDocumentView] Found file in Documents: \(docsURL.path)")
+            }
         }
         
         // Check Images directory if it's an image
-        if localURL == nil {
+        if localURL == nil && isImage {
             let imagesURL = getLocalImagesDirectory().appendingPathComponent(fileName)
             if FileManager.default.fileExists(atPath: imagesURL.path) {
                 localURL = imagesURL
@@ -6906,7 +7462,7 @@ struct ReceiverDocumentView: View {
         }
         
         // Check Videos directory if it's a video
-        if localURL == nil {
+        if localURL == nil && isVideo {
             let videosURL = getLocalVideosDirectory().appendingPathComponent(fileName)
             if FileManager.default.fileExists(atPath: videosURL.path) {
                 localURL = videosURL
@@ -6936,22 +7492,6 @@ struct ReceiverDocumentView: View {
         } else {
             print("❌ [ReceiverDocumentView] No document URL available")
         }
-    }
-    
-    // Get local images directory
-    private func getLocalImagesDirectory() -> URL {
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let imagesDir = documentsPath.appendingPathComponent("Enclosure/Media/Images", isDirectory: true)
-        try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true, attributes: nil)
-        return imagesDir
-    }
-    
-    // Get local videos directory
-    private func getLocalVideosDirectory() -> URL {
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let videosDir = documentsPath.appendingPathComponent("Enclosure/Media/Videos", isDirectory: true)
-        try? FileManager.default.createDirectory(at: videosDir, withIntermediateDirectories: true, attributes: nil)
-        return videosDir
     }
     
     // Download document and open when complete
@@ -7121,6 +7661,20 @@ struct DocumentPreviewView: View {
         return videosDir
     }
     
+    // Get local audios directory path (matching Android Enclosure/Media/Audios)
+    private func getLocalAudiosDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let audiosDir = documentsPath.appendingPathComponent("Enclosure/Media/Audios", isDirectory: true)
+        try? FileManager.default.createDirectory(at: audiosDir, withIntermediateDirectories: true, attributes: nil)
+        return audiosDir
+    }
+    
+    // Check if file is audio
+    private var isAudio: Bool {
+        let ext = (fileName as NSString).pathExtension.lowercased()
+        return ["mp3", "wav", "m4a", "aac", "flac", "ogg", "wma", "opus", "amr", "3gp"].contains(ext)
+    }
+    
     // Check if file exists locally
     private var hasLocalFile: Bool {
         // First check if documentURL is a local file
@@ -7152,7 +7706,15 @@ struct DocumentPreviewView: View {
     
     // Find local file URL by checking multiple directories
     private func findLocalFileURL() -> URL? {
-        // Check Documents directory first (for documents sent as documents)
+        // For audio files, check Audios directory first (matching Android behavior)
+        if isAudio {
+            let audiosURL = getLocalAudiosDirectory().appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: audiosURL.path) {
+                return audiosURL
+            }
+        }
+        
+        // Check Documents directory (for documents sent as documents)
         let docsURL = getLocalDocumentsDirectory().appendingPathComponent(fileName)
         if FileManager.default.fileExists(atPath: docsURL.path) {
             return docsURL
@@ -8940,7 +9502,7 @@ struct MultiImagePreviewDialog: View {
     }
     
     private var selectedAssets: [PHAsset] {
-        photoAssets.filter { selectedAssetIds.contains($0.localIdentifier) }
+        photoAssets.filter { selectedAssetIds.contains($0.localIdentifier)         }
     }
     
     var body: some View {
