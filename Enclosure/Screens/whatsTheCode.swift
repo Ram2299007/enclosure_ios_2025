@@ -311,10 +311,10 @@ struct whatsTheCode: View {
 
     /// Request Contacts Permission
     private func requestContactsPermission() {
-        let store = CNContactStore()
-        store.requestAccess(for: .contacts) { granted, error in
-            if granted {
-                print("Contacts permission granted")
+            let store = CNContactStore()
+            store.requestAccess(for: .contacts) { granted, error in
+                if granted {
+                    print("Contacts permission granted")
 
                 // Delay contact fetching to avoid blocking UI - do it in background after a delay
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -345,16 +345,16 @@ struct whatsTheCode: View {
 
     /// Request Photo Library Permission
     private func requestPhotoLibraryPermission() {
-        PHPhotoLibrary.requestAuthorization { status in
-            switch status {
-            case .authorized, .limited:
-                print("Photo Library permission granted")
-            case .denied, .restricted:
-                print("Photo Library permission denied")
-            case .notDetermined:
-                print("Photo Library permission not determined yet")
-            @unknown default:
-                break
+            PHPhotoLibrary.requestAuthorization { status in
+                switch status {
+                case .authorized, .limited:
+                    print("Photo Library permission granted")
+                case .denied, .restricted:
+                    print("Photo Library permission denied")
+                case .notDetermined:
+                    print("Photo Library permission not determined yet")
+                @unknown default:
+                    break
             }
         }
     }
@@ -381,7 +381,7 @@ struct whatsTheCode: View {
         // Request notification permission asynchronously without blocking
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             DispatchQueue.main.async {
-                print(granted ? "Notification permission granted" : "Notification permission denied: \(error?.localizedDescription ?? "Unknown error")")
+            print(granted ? "Notification permission granted" : "Notification permission denied: \(error?.localizedDescription ?? "Unknown error")")
             }
         }
     }
@@ -583,7 +583,7 @@ struct whatsTheCode: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 self.focusedField = min(current, self.otp.count - 1)
                 if current >= self.otp.count {
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                 }
             }
             return
@@ -613,9 +613,9 @@ struct whatsTheCode: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             if index < self.otp.count - 1 {
                 self.focusedField = index + 1
-            } else {
+        } else {
                 self.focusedField = nil
-                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
             }
         }
     }

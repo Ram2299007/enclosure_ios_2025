@@ -14,6 +14,7 @@ import QuartzCore
 import UIKit
 import AVFoundation
 import AVKit
+import QuickLook
 
 struct ChattingScreen: View {
     @Environment(\.dismiss) private var dismiss
@@ -5902,6 +5903,8 @@ struct SenderDocumentView: View {
     @State private var showPdfPreview: Bool = false
     @State private var pdfPreviewImage: UIImage? = nil
     @State private var fileCheckTimer: Timer? = nil
+    @State private var showDocumentPreview: Bool = false
+    @State private var documentPreviewURL: URL? = nil
     
     // Get local documents directory path (matching Android Enclosure/Media/Documents)
     private func getLocalDocumentsDirectory() -> URL {
@@ -6230,6 +6233,34 @@ struct SenderDocumentView: View {
           
         }
         .frame(minHeight: 40)
+        .onTapGesture {
+            openDocument()
+        }
+        .fullScreenCover(isPresented: $showDocumentPreview) {
+            Group {
+                if let url = documentPreviewURL {
+                    ShowDocumentScreen(
+                        documentURL: url,
+                        fileName: fileName,
+                        docSize: docSize,
+                        fileExtension: fileExtension,
+                        viewHolderType: "sender",
+                        downloadUrl: documentUrl.isEmpty ? nil : documentUrl
+                    )
+                    .onAppear {
+                        print("📄 [SenderDocumentView] ShowDocumentScreen appeared - url: \(url.path)")
+                    }
+                } else {
+                    Color.black.ignoresSafeArea()
+                        .onAppear {
+                            print("❌ [SenderDocumentView] fullScreenCover triggered but documentPreviewURL is nil!")
+                        }
+                }
+            }
+        }
+        .onChange(of: showDocumentPreview) { newValue in
+            print("📄 [SenderDocumentView] showDocumentPreview changed to: \(newValue), documentPreviewURL: \(documentPreviewURL?.path ?? "nil")")
+        }
         .onAppear {
             print("📄 [SenderDocumentView] onAppear - fileName: \(fileName), documentUrl: \(documentUrl.isEmpty ? "empty" : "has URL"), docSize: \(docSize ?? "nil"), fileExtension: \(fileExtension ?? "nil")")
             
@@ -6345,6 +6376,147 @@ struct SenderDocumentView: View {
             }
         }
     }
+    
+    // Open document in preview
+    private func openDocument() {
+        print("📄 [SenderDocumentView] Opening document - fileName: \(fileName)")
+        
+        // Check if file exists locally first - check multiple directories
+        var localURL: URL? = nil
+        
+        // Check Documents directory
+        let docsURL = getLocalDocumentsDirectory().appendingPathComponent(fileName)
+        if FileManager.default.fileExists(atPath: docsURL.path) {
+            localURL = docsURL
+            print("📄 [SenderDocumentView] Found file in Documents: \(docsURL.path)")
+        }
+        
+        // Check Images directory if it's an image
+        if localURL == nil && isPdf == false {
+            let imagesURL = getLocalImagesDirectory().appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: imagesURL.path) {
+                localURL = imagesURL
+                print("📄 [SenderDocumentView] Found file in Images: \(imagesURL.path)")
+            }
+        }
+        
+        // Check Videos directory if it's a video
+        if localURL == nil {
+            let videosURL = getLocalVideosDirectory().appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: videosURL.path) {
+                localURL = videosURL
+                print("📄 [SenderDocumentView] Found file in Videos: \(videosURL.path)")
+            }
+        }
+        
+        if let localFileURL = localURL {
+            print("📄 [SenderDocumentView] Setting documentPreviewURL: \(localFileURL.path)")
+            documentPreviewURL = localFileURL
+            print("📄 [SenderDocumentView] documentPreviewURL set, now setting showDocumentPreview = true")
+            showDocumentPreview = true
+            print("📄 [SenderDocumentView] showDocumentPreview is now: \(showDocumentPreview)")
+            return
+        }
+        
+        // If not local and we have a download URL, download first then open
+        if !documentUrl.isEmpty, let url = URL(string: documentUrl) {
+            // Check if already downloading
+            if isDownloading {
+                print("📄 [SenderDocumentView] Already downloading, please wait")
+                return
+            }
+            
+            // Start download and open when complete
+            downloadDocumentAndOpen()
+        } else {
+            print("❌ [SenderDocumentView] No document URL available")
+        }
+    }
+    
+    // Get local images directory
+    private func getLocalImagesDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let imagesDir = documentsPath.appendingPathComponent("Enclosure/Media/Images", isDirectory: true)
+        try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true, attributes: nil)
+        return imagesDir
+    }
+    
+    // Get local videos directory
+    private func getLocalVideosDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let videosDir = documentsPath.appendingPathComponent("Enclosure/Media/Videos", isDirectory: true)
+        try? FileManager.default.createDirectory(at: videosDir, withIntermediateDirectories: true, attributes: nil)
+        return videosDir
+    }
+    
+    // Download document and open when complete
+    private func downloadDocumentAndOpen() {
+        guard !fileName.isEmpty else {
+            print("❌ [DOWNLOAD] No fileName available")
+            return
+        }
+        
+        let docsDir = getLocalDocumentsDirectory()
+        let destinationFile = docsDir.appendingPathComponent(fileName)
+        
+        // Check if file already exists
+        if FileManager.default.fileExists(atPath: destinationFile.path) {
+            documentPreviewURL = destinationFile
+            showDocumentPreview = true
+            return
+        }
+        
+        // Check if already downloading
+        if BackgroundDownloadManager.shared.isDownloading(fileName: fileName) {
+            print("📱 [DOWNLOAD] Already downloading: \(fileName)")
+            return
+        }
+        
+        // Light haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Update UI: hide download button, show progress
+        isDownloading = true
+        showDownloadButton = false
+        showDownloadProgress = true
+        downloadProgress = 0.0
+        
+        // Use BackgroundDownloadManager for background downloads
+        BackgroundDownloadManager.shared.downloadImage(
+            imageUrl: documentUrl,
+            fileName: fileName,
+            destinationFile: destinationFile,
+            onProgress: { progress in
+                DispatchQueue.main.async {
+                    self.downloadProgress = progress
+                }
+            },
+            onSuccess: {
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showDownloadButton = false
+                    self.downloadProgress = 0.0
+                    
+                    // Open document after download
+                    if FileManager.default.fileExists(atPath: destinationFile.path) {
+                        self.documentPreviewURL = destinationFile
+                        self.showDocumentPreview = true
+                    }
+                }
+            },
+            onFailure: { error in
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showDownloadButton = true
+                    self.downloadProgress = 0.0
+                    print("❌ [DOWNLOAD] Download failed: \(error.localizedDescription)")
+                }
+            }
+        )
+    }
 }
 
 // MARK: - Receiver Document View (matching Android docLyt design)
@@ -6362,6 +6534,8 @@ struct ReceiverDocumentView: View {
     @State private var showProgressBar: Bool = false
     @State private var showPdfPreview: Bool = false
     @State private var pdfPreviewImage: UIImage? = nil
+    @State private var showDocumentPreview: Bool = false
+    @State private var documentPreviewURL: URL? = nil
     
     // Get local documents directory path
     private func getLocalDocumentsDirectory() -> URL {
@@ -6665,6 +6839,34 @@ struct ReceiverDocumentView: View {
             .frame(minWidth: 200)
         }
         .frame(minHeight: 40)
+        .onTapGesture {
+            openDocument()
+        }
+        .fullScreenCover(isPresented: $showDocumentPreview) {
+            Group {
+                if let url = documentPreviewURL {
+                    ShowDocumentScreen(
+                        documentURL: url,
+                        fileName: fileName,
+                        docSize: docSize,
+                        fileExtension: fileExtension,
+                        viewHolderType: "receiver",
+                        downloadUrl: documentUrl.isEmpty ? nil : documentUrl
+                    )
+                    .onAppear {
+                        print("📄 [ReceiverDocumentView] ShowDocumentScreen appeared - url: \(url.path)")
+                    }
+                } else {
+                    Color.black.ignoresSafeArea()
+                        .onAppear {
+                            print("❌ [ReceiverDocumentView] fullScreenCover triggered but documentPreviewURL is nil!")
+                        }
+                }
+            }
+        }
+        .onChange(of: showDocumentPreview) { newValue in
+            print("📄 [ReceiverDocumentView] showDocumentPreview changed to: \(newValue), documentPreviewURL: \(documentPreviewURL?.path ?? "nil")")
+        }
         .onAppear {
             print("📄 [ReceiverDocumentView] onAppear - fileName: \(fileName), documentUrl: \(documentUrl.isEmpty ? "empty" : "has URL"), docSize: \(docSize ?? "nil"), fileExtension: \(fileExtension ?? "nil")")
             
@@ -6678,6 +6880,147 @@ struct ReceiverDocumentView: View {
                 loadPdfPreview()
             }
         }
+    }
+    
+    // Open document in preview
+    private func openDocument() {
+        print("📄 [ReceiverDocumentView] Opening document - fileName: \(fileName)")
+        
+        // Check if file exists locally first - check multiple directories
+        var localURL: URL? = nil
+        
+        // Check Documents directory
+        let docsURL = getLocalDocumentsDirectory().appendingPathComponent(fileName)
+        if FileManager.default.fileExists(atPath: docsURL.path) {
+            localURL = docsURL
+            print("📄 [ReceiverDocumentView] Found file in Documents: \(docsURL.path)")
+        }
+        
+        // Check Images directory if it's an image
+        if localURL == nil {
+            let imagesURL = getLocalImagesDirectory().appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: imagesURL.path) {
+                localURL = imagesURL
+                print("📄 [ReceiverDocumentView] Found file in Images: \(imagesURL.path)")
+            }
+        }
+        
+        // Check Videos directory if it's a video
+        if localURL == nil {
+            let videosURL = getLocalVideosDirectory().appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: videosURL.path) {
+                localURL = videosURL
+                print("📄 [ReceiverDocumentView] Found file in Videos: \(videosURL.path)")
+            }
+        }
+        
+        if let localFileURL = localURL {
+            print("📄 [ReceiverDocumentView] Setting documentPreviewURL: \(localFileURL.path)")
+            documentPreviewURL = localFileURL
+            print("📄 [ReceiverDocumentView] documentPreviewURL set, now setting showDocumentPreview = true")
+            showDocumentPreview = true
+            print("📄 [ReceiverDocumentView] showDocumentPreview is now: \(showDocumentPreview)")
+            return
+        }
+        
+        // If not local and we have a download URL, download first then open
+        if !documentUrl.isEmpty, let url = URL(string: documentUrl) {
+            // Check if already downloading
+            if isDownloading {
+                print("📄 [ReceiverDocumentView] Already downloading, please wait")
+                return
+            }
+            
+            // Start download and open when complete
+            downloadDocumentAndOpen()
+        } else {
+            print("❌ [ReceiverDocumentView] No document URL available")
+        }
+    }
+    
+    // Get local images directory
+    private func getLocalImagesDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let imagesDir = documentsPath.appendingPathComponent("Enclosure/Media/Images", isDirectory: true)
+        try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true, attributes: nil)
+        return imagesDir
+    }
+    
+    // Get local videos directory
+    private func getLocalVideosDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let videosDir = documentsPath.appendingPathComponent("Enclosure/Media/Videos", isDirectory: true)
+        try? FileManager.default.createDirectory(at: videosDir, withIntermediateDirectories: true, attributes: nil)
+        return videosDir
+    }
+    
+    // Download document and open when complete
+    private func downloadDocumentAndOpen() {
+        guard !fileName.isEmpty else {
+            print("❌ [DOWNLOAD] No fileName available")
+            return
+        }
+        
+        let docsDir = getLocalDocumentsDirectory()
+        let destinationFile = docsDir.appendingPathComponent(fileName)
+        
+        // Check if file already exists
+        if FileManager.default.fileExists(atPath: destinationFile.path) {
+            documentPreviewURL = destinationFile
+            showDocumentPreview = true
+            return
+        }
+        
+        // Check if already downloading
+        if BackgroundDownloadManager.shared.isDownloading(fileName: fileName) {
+            print("📱 [DOWNLOAD] Already downloading: \(fileName)")
+            return
+        }
+        
+        // Light haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Update UI: hide download button, show progress
+        isDownloading = true
+        showDownloadButton = false
+        showDownloadProgress = true
+        downloadProgress = 0.0
+        
+        // Use BackgroundDownloadManager for background downloads
+        BackgroundDownloadManager.shared.downloadImage(
+            imageUrl: documentUrl,
+            fileName: fileName,
+            destinationFile: destinationFile,
+            onProgress: { progress in
+                DispatchQueue.main.async {
+                    self.downloadProgress = progress
+                }
+            },
+            onSuccess: {
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showDownloadButton = false
+                    self.downloadProgress = 0.0
+                    
+                    // Open document after download
+                    if FileManager.default.fileExists(atPath: destinationFile.path) {
+                        self.documentPreviewURL = destinationFile
+                        self.showDocumentPreview = true
+                    }
+                }
+            },
+            onFailure: { error in
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showDownloadButton = true
+                    self.downloadProgress = 0.0
+                    print("❌ [DOWNLOAD] Download failed: \(error.localizedDescription)")
+                }
+            }
+        )
     }
     
     // Load PDF preview thumbnail
@@ -6729,6 +7072,483 @@ struct ReceiverDocumentView: View {
                 } else {
                     self.showPdfPreview = false
                 }
+            }
+        }
+    }
+}
+
+// MARK: - Document Preview View (matching Android show_document_screen)
+struct DocumentPreviewView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+    
+    let documentURL: URL
+    let fileName: String
+    let docSize: String?
+    let fileExtension: String?
+    let viewHolderType: String? // "sender" or "receiver" or nil
+    let downloadUrl: String? // URL to download from if file doesn't exist locally
+    
+    @State private var isDownloaded: Bool = false
+    @State private var isDownloading: Bool = false
+    @State private var showImagePreview: Bool = false
+    @State private var showVideoPlayer: Bool = false
+    @State private var imageToDisplay: UIImage? = nil
+    @State private var videoPlayer: AVPlayer? = nil
+    @State private var showSaveMenu: Bool = false
+    
+    // Get local documents directory path
+    private func getLocalDocumentsDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let docsDir = documentsPath.appendingPathComponent("Enclosure/Media/Documents", isDirectory: true)
+        try? FileManager.default.createDirectory(at: docsDir, withIntermediateDirectories: true, attributes: nil)
+        return docsDir
+    }
+    
+    // Get local images directory path
+    private func getLocalImagesDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let imagesDir = documentsPath.appendingPathComponent("Enclosure/Media/Images", isDirectory: true)
+        try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true, attributes: nil)
+        return imagesDir
+    }
+    
+    // Get local videos directory path
+    private func getLocalVideosDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let videosDir = documentsPath.appendingPathComponent("Enclosure/Media/Videos", isDirectory: true)
+        try? FileManager.default.createDirectory(at: videosDir, withIntermediateDirectories: true, attributes: nil)
+        return videosDir
+    }
+    
+    // Check if file exists locally
+    private var hasLocalFile: Bool {
+        // First check if documentURL is a local file
+        if documentURL.isFileURL && FileManager.default.fileExists(atPath: documentURL.path) {
+            return true
+        }
+        // Check in appropriate directory based on file type
+        if let localURL = findLocalFileURL() {
+            return FileManager.default.fileExists(atPath: localURL.path)
+        }
+        return false
+    }
+    
+    // Get the actual local file URL - check multiple directories based on file type
+    private var localFileURL: URL? {
+        // First check if documentURL is a local file
+        if documentURL.isFileURL && FileManager.default.fileExists(atPath: documentURL.path) {
+            print("📄 [DocumentPreviewView] Found file at documentURL: \(documentURL.path)")
+            return documentURL
+        }
+        // Check in appropriate directory based on file type
+        if let localURL = findLocalFileURL(), FileManager.default.fileExists(atPath: localURL.path) {
+            print("📄 [DocumentPreviewView] Found file at: \(localURL.path)")
+            return localURL
+        }
+        print("❌ [DocumentPreviewView] File not found locally: \(fileName)")
+        return nil
+    }
+    
+    // Find local file URL by checking multiple directories
+    private func findLocalFileURL() -> URL? {
+        // Check Documents directory first (for documents sent as documents)
+        let docsURL = getLocalDocumentsDirectory().appendingPathComponent(fileName)
+        if FileManager.default.fileExists(atPath: docsURL.path) {
+            return docsURL
+        }
+        
+        // Check Images directory (for images sent as documents)
+        if isImage {
+            let imagesURL = getLocalImagesDirectory().appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: imagesURL.path) {
+                return imagesURL
+            }
+        }
+        
+        // Check Videos directory (for videos sent as documents)
+        if isVideo {
+            let videosURL = getLocalVideosDirectory().appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: videosURL.path) {
+                return videosURL
+            }
+        }
+        
+        return nil
+    }
+    
+    // Check if file is image
+    private var isImage: Bool {
+        let ext = (fileName as NSString).pathExtension.lowercased()
+        return ["jpg", "jpeg", "png", "webp", "gif", "tiff", "psd", "heif", "svg"].contains(ext)
+    }
+    
+    // Check if file is video
+    private var isVideo: Bool {
+        let ext = (fileName as NSString).pathExtension.lowercased()
+        return ["mp4", "mov", "wmv", "flv", "mkv", "avi", "avchd", "webm", "hevc"].contains(ext)
+    }
+    
+    var body: some View {
+        ZStack {
+            // Full-screen black background (matching Android @color/black)
+            Color.black
+                .ignoresSafeArea()
+            
+            // Preview controls (shown when file is downloaded)
+            if isDownloaded {
+                if showImagePreview, let image = imageToDisplay {
+                    // Image preview (matching Android PhotoView)
+                    GeometryReader { geometry in
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .clipped()
+                    }
+                } else if showVideoPlayer, let player = videoPlayer {
+                    // Video player (matching Android ExoPlayer)
+                    VideoPlayer(player: player)
+                        .onAppear {
+                            player.play()
+                        }
+                } else {
+                    // Document - show download button with done icon
+                    downloadControlsView(isDownloaded: true)
+                }
+            } else {
+                // Download controls (shown when file is not downloaded)
+                downloadControlsView(isDownloaded: false)
+            }
+            
+            // Top bar with back button and menu
+            VStack {
+                HStack {
+                    // Back arrow button (matching Android backarrow34)
+                    Button(action: {
+                        // Light haptic feedback
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+                        dismiss()
+                    }) {
+                        ZStack {
+                            // Background matching Android black_background_hover
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color.black.opacity(0.6))
+                                .frame(width: 35, height: 36)
+                            
+                            Image("leftvector")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 25, height: 18)
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .padding(.leading, 20)
+                    .padding(.top, 50)
+                    
+                    Spacer()
+                    
+                    // Menu button (3 dots) - only show for sender/receiver view holders
+                    if viewHolderType == "sender" || viewHolderType == "receiver" {
+                        Button(action: {
+                            // Light haptic feedback
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.impactOccurred()
+                            showSaveMenu = true
+                        }) {
+                            ZStack {
+                                // Background matching Android custome_ripple_circle
+                                Circle()
+                                    .fill(Color.black.opacity(0.6))
+                                    .frame(width: 40, height: 40)
+                                
+                                // Three dots (matching Android menuPoint design)
+                                VStack(spacing: 3) {
+                                    Circle()
+                                        .fill(Color(hex: "#9EA6B9"))
+                                        .frame(width: 4, height: 4)
+                                    
+                                    Circle()
+                                        .fill(Color(hex: "#00A3E9")) // Theme color
+                                        .frame(width: 4, height: 4)
+                                    
+                                    Circle()
+                                        .fill(Color(hex: "#9EA6B9"))
+                                        .frame(width: 4, height: 4)
+                                }
+                            }
+                        }
+                        .padding(.trailing, 20)
+                        .padding(.top, 50)
+                        .confirmationDialog("Save", isPresented: $showSaveMenu) {
+                            Button("Save") {
+                                saveFileToGallery()
+                            }
+                        }
+                    }
+                }
+                
+                Spacer()
+            }
+        }
+        .onAppear {
+            checkFileAndDisplay()
+        }
+        .onDisappear {
+            videoPlayer?.pause()
+            videoPlayer = nil
+        }
+    }
+    
+    // Download controls view (matching Android downloadCtrl LinearLayout)
+    @ViewBuilder
+    private func downloadControlsView(isDownloaded: Bool) -> some View {
+        VStack(spacing: 0) {
+            Spacer()
+            
+            // Document name (matching Android docName TextView)
+            Text(fileName)
+                .font(.custom("Inter18pt-Medium", size: 18))
+                .foregroundColor(Color("gray3"))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 30)
+                .lineLimit(3)
+            
+            // "size" label (matching Android TextView)
+            Text("size")
+                .font(.custom("Inter18pt-Medium", size: 15))
+                .foregroundColor(Color("gray3"))
+                .padding(.horizontal, 30)
+                .padding(.top, 10)
+            
+            // File size value (matching Android size TextView)
+            if let size = docSize {
+                Text(size)
+                    .font(.custom("Inter18pt-Medium", size: 15))
+                    .foregroundColor(Color("gray3"))
+                    .padding(.horizontal, 30)
+            }
+            
+            // Download button or done icon (matching Android FloatingActionButton)
+            if isDownloaded {
+                // Done icon (matching Android done drawable)
+                Button(action: {
+                    openDownloadedFile()
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: "#00A3E9")) // Theme color
+                            .frame(width: 40, height: 40)
+                        
+                        Image(systemName: "checkmark")
+                            .foregroundColor(.white)
+                            .font(.system(size: 20, weight: .bold))
+                    }
+                }
+                .padding(.top, 10)
+            } else {
+                // Download button
+                Button(action: {
+                    downloadFile()
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: "#00A3E9")) // Theme color
+                            .frame(width: 40, height: 40)
+                        
+                        Image("downloaddown")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 20, height: 20)
+                            .foregroundColor(.white)
+                    }
+                }
+                .padding(.top, 10)
+                
+                // Progress bar (matching Android ProgressBar)
+                if isDownloading {
+                    ProgressView()
+                        .progressViewStyle(LinearProgressViewStyle(tint: Color("TextColor")))
+                        .frame(height: 4)
+                        .padding(.top, 10)
+                }
+            }
+            
+            Spacer()
+        }
+    }
+    
+    // Check file and display accordingly
+    private func checkFileAndDisplay() {
+        print("📄 [DocumentPreviewView] checkFileAndDisplay - fileName: \(fileName), isImage: \(isImage), isVideo: \(isVideo)")
+        
+        if let localURL = localFileURL {
+            print("📄 [DocumentPreviewView] File found at: \(localURL.path)")
+            isDownloaded = true
+            
+            if isImage {
+                // Load and display image
+                print("📄 [DocumentPreviewView] Loading image from: \(localURL.path)")
+                if let image = UIImage(contentsOfFile: localURL.path) {
+                    print("✅ [DocumentPreviewView] Image loaded successfully, size: \(image.size)")
+                    imageToDisplay = image
+                    showImagePreview = true
+                } else {
+                    print("❌ [DocumentPreviewView] Failed to load image from: \(localURL.path)")
+                }
+            } else if isVideo {
+                // Setup video player
+                print("📄 [DocumentPreviewView] Setting up video player from: \(localURL.path)")
+                videoPlayer = AVPlayer(url: localURL)
+                showVideoPlayer = true
+            } else {
+                // Document - will show done button
+                print("📄 [DocumentPreviewView] Document type, showing done button")
+                showImagePreview = false
+                showVideoPlayer = false
+            }
+        } else {
+            print("❌ [DocumentPreviewView] File not found locally, showing download controls")
+            isDownloaded = false
+        }
+    }
+    
+    // Download file
+    private func downloadFile() {
+        guard let downloadUrl = downloadUrl, !downloadUrl.isEmpty else {
+            print("❌ [DocumentPreviewView] No download URL available")
+            return
+        }
+        
+        guard !fileName.isEmpty else {
+            print("❌ [DOWNLOAD] No fileName available")
+            return
+        }
+        
+        let docsDir = getLocalDocumentsDirectory()
+        let destinationFile = docsDir.appendingPathComponent(fileName)
+        
+        // Check if file already exists
+        if FileManager.default.fileExists(atPath: destinationFile.path) {
+            // File already exists, mark as downloaded
+            isDownloaded = true
+            checkFileAndDisplay()
+            return
+        }
+        
+        // Check if already downloading
+        if BackgroundDownloadManager.shared.isDownloading(fileName: fileName) {
+            print("📱 [DOWNLOAD] Already downloading: \(fileName)")
+            return
+        }
+        
+        // Light haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Update UI: show progress
+        isDownloading = true
+        
+        // Use BackgroundDownloadManager for background downloads
+        BackgroundDownloadManager.shared.downloadImage(
+            imageUrl: downloadUrl,
+            fileName: fileName,
+            destinationFile: destinationFile,
+            onProgress: { progress in
+                DispatchQueue.main.async {
+                    // Progress is handled by BackgroundDownloadManager
+                }
+            },
+            onSuccess: {
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.isDownloaded = true
+                    // Refresh display
+                    self.checkFileAndDisplay()
+                }
+            },
+            onFailure: { error in
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    print("❌ [DOWNLOAD] Download failed: \(error.localizedDescription)")
+                }
+            }
+        )
+    }
+    
+    // Open downloaded file with external app
+    private func openDownloadedFile() {
+        guard let localURL = localFileURL else {
+            print("❌ [DocumentPreviewView] File not found locally")
+            return
+        }
+        
+        // Use QLPreviewController for document preview
+        let previewController = QLPreviewController()
+        previewController.dataSource = PreviewDataSource(fileURL: localURL)
+        
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootViewController = windowScene.windows.first?.rootViewController {
+            rootViewController.present(previewController, animated: true)
+        }
+    }
+    
+    // Preview data source for QLPreviewController
+    class PreviewDataSource: NSObject, QLPreviewControllerDataSource {
+        let fileURL: URL
+        
+        init(fileURL: URL) {
+            self.fileURL = fileURL
+        }
+        
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
+            return 1
+        }
+        
+        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
+            return fileURL as QLPreviewItem
+        }
+    }
+    
+    // Save file to gallery
+    private func saveFileToGallery() {
+        guard let localURL = localFileURL else {
+            print("❌ [DocumentPreviewView] File not found locally")
+            return
+        }
+        
+        if isImage {
+            if let image = UIImage(contentsOfFile: localURL.path) {
+                UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+                print("✅ Image saved to gallery")
+            }
+        } else if isVideo {
+            // Save video to Photos library
+            PHPhotoLibrary.requestAuthorization { status in
+                if status == .authorized {
+                    PHPhotoLibrary.shared().performChanges({
+                        PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: localURL)
+                    }, completionHandler: { success, error in
+                        DispatchQueue.main.async {
+                            if success {
+                                print("✅ Video saved successfully")
+                            } else {
+                                print("❌ Error saving video: \(error?.localizedDescription ?? "Unknown error")")
+                            }
+                        }
+                    })
+                }
+            }
+        } else {
+            // Save document using UIActivityViewController
+            let activityVC = UIActivityViewController(activityItems: [localURL], applicationActivities: nil)
+            
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let rootViewController = windowScene.windows.first?.rootViewController {
+                rootViewController.present(activityVC, animated: true)
             }
         }
     }
