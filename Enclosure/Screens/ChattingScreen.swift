@@ -10079,32 +10079,45 @@ struct MusicPlayerBottomSheet: View {
             // Audio Wave Container (matching Android audio_wave_progress)
             VStack(spacing: 12) {
                 // Wave visualization - centered horizontally with 10px spacing
-                HStack(spacing: 0) {
-                    Spacer()
-                        .frame(width: 10)
-                    AudioWaveView(
-                        waveData: waveData,
-                        progress: progress,
-                        waveColor: Color("TextColor"),
-                        progressColor: themeColor,
-                        isPlaying: isPlaying,
-                        currentTime: currentTime
+                GeometryReader { geometry in
+                    HStack(spacing: 0) {
+                        Spacer()
+                            .frame(width: 10)
+                        AudioWaveView(
+                            waveData: waveData,
+                            progress: progress,
+                            waveColor: Color("TextColor"),
+                            progressColor: themeColor,
+                            isPlaying: isPlaying,
+                            currentTime: currentTime
+                        )
+                        .frame(height: 56)
+                        .frame(maxWidth: .infinity)
+                        Spacer()
+                            .frame(width: 10)
+                    }
+                    .frame(width: geometry.size.width)
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                // Account for 10px padding on left side
+                                let adjustedX = value.location.x - 10
+                                let waveWidth = geometry.size.width - 20 // Total width minus both 10px paddings
+                                seekToPosition(adjustedX, waveWidth: waveWidth)
+                            }
+                            .onEnded { value in
+                                // Also seek on drag end for better UX
+                                let adjustedX = value.location.x - 10
+                                let waveWidth = geometry.size.width - 20
+                                seekToPosition(adjustedX, waveWidth: waveWidth)
+                            }
                     )
-                    .frame(height: 56)
-                    Spacer()
-                        .frame(width: 10)
                 }
-                .frame(maxWidth: .infinity)
+                .frame(height: 56)
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color("chattingMessageBox").opacity(0.5))
-                )
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { value in
-                            seekToPosition(value.location.x)
-                        }
                 )
                 
                 // Time Display (matching Android tv_current_time and tv_total_time)
@@ -10200,15 +10213,40 @@ struct MusicPlayerBottomSheet: View {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let audiosDir = documentsPath.appendingPathComponent("Enclosure/Media/Audios", isDirectory: true)
         
-        // Extract fileName from URL or use audioUrl as fileName
+        // Extract fileName from URL - get only the filename, not the path
+        // Handle cases like "chats/11_kgf_rocky_climax.mp3" or full URLs
         let fileName: String
         if let url = URL(string: audioUrl) {
-            fileName = url.lastPathComponent.isEmpty ? audioUrl : url.lastPathComponent
+            // Get the last path component (filename only)
+            var pathComponent = url.lastPathComponent
+            
+            // If lastPathComponent is empty or still contains path separators, extract manually
+            if pathComponent.isEmpty || pathComponent.contains("/") {
+                // Split by "/" and take the last non-empty part
+                let parts = audioUrl.components(separatedBy: "/").filter { !$0.isEmpty }
+                pathComponent = parts.last ?? audioUrl
+            }
+            
+            // Remove any query parameters if present
+            if let queryIndex = pathComponent.firstIndex(of: "?") {
+                pathComponent = String(pathComponent[..<queryIndex])
+            }
+            
+            fileName = pathComponent
         } else {
-            fileName = audioUrl
+            // If not a valid URL, try to extract filename from string
+            let parts = audioUrl.components(separatedBy: "/").filter { !$0.isEmpty }
+            var extractedName = parts.last ?? audioUrl
+            
+            // Remove any query parameters if present
+            if let queryIndex = extractedName.firstIndex(of: "?") {
+                extractedName = String(extractedName[..<queryIndex])
+            }
+            
+            fileName = extractedName
         }
         
-        print("🎵 [MusicPlayer] Checking for local file: \(fileName)")
+        print("🎵 [MusicPlayer] Extracted fileName: \(fileName) from audioUrl: \(audioUrl)")
         
         if FileManager.default.fileExists(atPath: audiosDir.path) {
             let localFile = audiosDir.appendingPathComponent(fileName)
@@ -10294,17 +10332,20 @@ struct MusicPlayerBottomSheet: View {
     }
     
     // Seek to position
-    private func seekToPosition(_ x: CGFloat) {
-        guard let player = audioPlayer, duration > 0 else { return }
+    private func seekToPosition(_ x: CGFloat, waveWidth: CGFloat) {
+        guard let player = audioPlayer, duration > 0, waveWidth > 0 else { return }
         
-        // Calculate progress from touch position (assuming wave view width)
-        let waveWidth: CGFloat = UIScreen.main.bounds.width - 60 // Approximate width
+        // Calculate progress from touch position
         let touchProgress = max(0, min(1, x / waveWidth))
         let seekTime = TimeInterval(touchProgress) * duration
         
+        // Update UI immediately for responsive feedback (synchronously on main thread)
+        // Since gestures are already on main thread, we can update directly
+        self.currentTime = seekTime
+        self.progress = CGFloat(touchProgress)
+        
+        // Seek the player to the new position
         player.seek(to: CMTime(seconds: seekTime, preferredTimescale: 600))
-        currentTime = seekTime
-        progress = CGFloat(touchProgress)
     }
     
     // Generate wave data (matching Android generateWaveDataForDuration)
