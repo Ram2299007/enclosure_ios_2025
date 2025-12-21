@@ -5894,8 +5894,10 @@ struct SenderDocumentView: View {
     let docSize: String?
     let fileExtension: String?
     let backgroundColor: Color
+    let micPhoto: String?
     
     @State private var isDownloading: Bool = false
+    @State private var showMusicPlayerBottomSheet: Bool = false
     @State private var downloadProgress: Double = 0.0
     @State private var showDownloadButton: Bool = false
     @State private var showDownloadProgress: Bool = false
@@ -6310,6 +6312,15 @@ struct SenderDocumentView: View {
         .onChange(of: showDocumentPreview) { newValue in
             print("📄 [SenderDocumentView] showDocumentPreview changed to: \(newValue), documentPreviewURL: \(documentPreviewURL?.path ?? "nil")")
         }
+        .sheet(isPresented: $showMusicPlayerBottomSheet) {
+            MusicPlayerBottomSheet(
+                audioUrl: documentUrl.isEmpty ? fileName : documentUrl,
+                profileImageUrl: micPhoto ?? "",
+                songTitle: fileName.isEmpty ? "Audio Message" : fileName
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
         .onAppear {
             print("📄 [SenderDocumentView] onAppear - fileName: \(fileName), documentUrl: \(documentUrl.isEmpty ? "empty" : "has URL"), docSize: \(docSize ?? "nil"), fileExtension: \(fileExtension ?? "nil")")
             
@@ -6439,7 +6450,7 @@ struct SenderDocumentView: View {
                 
                 // Play button - matching Android micePlay with scaleX/Y="1.4"
                 Button(action: {
-                    toggleAudioPlayback()
+                    openMusicPlayer()
                 }) {
                     Image("play_arrow_sender")
                         .resizable()
@@ -6599,6 +6610,51 @@ struct SenderDocumentView: View {
             audioPlayer?.removeTimeObserver(observer)
             audioTimeObserver = nil
         }
+    }
+    
+    // Open music player bottom sheet (matching Android micePlay click handler)
+    private func openMusicPlayer() {
+        print("🎵 [SenderDocumentView] Opening music player - fileName: \(fileName)")
+        
+        // Get audio details
+        var audioUrl = documentUrl.isEmpty ? fileName : documentUrl
+        let profileImageUrl = micPhoto ?? ""
+        let songTitle = fileName.isEmpty ? "Audio Message" : fileName
+        var localFilePath: String? = nil
+        
+        // Check for local file first (matching Android logic)
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let audiosDir = documentsPath.appendingPathComponent("Enclosure/Media/Audios", isDirectory: true)
+        
+        print("🎵 [SenderDocumentView] Checking audios directory: \(audiosDir.path)")
+        
+        if FileManager.default.fileExists(atPath: audiosDir.path) {
+            let localFile = audiosDir.appendingPathComponent(fileName)
+            print("🎵 [SenderDocumentView] Looking for file: \(fileName)")
+            print("🎵 [SenderDocumentView] Full path: \(localFile.path)")
+            
+            if FileManager.default.fileExists(atPath: localFile.path) {
+                let fileSize = (try? FileManager.default.attributesOfItem(atPath: localFile.path)[.size] as? Int64) ?? 0
+                if fileSize > 0 {
+                    localFilePath = localFile.path
+                    audioUrl = "file://" + localFilePath!
+                    print("✅ [SenderDocumentView] Local file found and valid: \(localFilePath!)")
+                    print("🎵 [SenderDocumentView] Audio URL with file://: \(audioUrl)")
+                } else {
+                    print("❌ [SenderDocumentView] Local file exists but is empty")
+                }
+            } else {
+                print("❌ [SenderDocumentView] Local file not found: \(localFile.path)")
+            }
+        } else {
+            print("❌ [SenderDocumentView] Audios directory not found: \(audiosDir.path)")
+        }
+        
+        print("🎵 [SenderDocumentView] Final audioUrl: \(audioUrl)")
+        print("🎵 [SenderDocumentView] Final localFilePath: \(localFilePath ?? "nil")")
+        
+        // Show the bottom sheet
+        showMusicPlayerBottomSheet = true
     }
     
     // Open document in preview
@@ -6798,8 +6854,10 @@ struct ReceiverDocumentView: View {
     let fileName: String
     let docSize: String?
     let fileExtension: String?
+    let micPhoto: String?
     
     @State private var isDownloading: Bool = false
+    @State private var showMusicPlayerBottomSheet: Bool = false
     @State private var downloadProgress: Double = 0.0
     @State private var showDownloadButton: Bool = false
     @State private var showDownloadProgress: Bool = false
@@ -7180,6 +7238,15 @@ struct ReceiverDocumentView: View {
         .onChange(of: showDocumentPreview) { newValue in
             print("📄 [ReceiverDocumentView] showDocumentPreview changed to: \(newValue), documentPreviewURL: \(documentPreviewURL?.path ?? "nil")")
         }
+        .sheet(isPresented: $showMusicPlayerBottomSheet) {
+            MusicPlayerBottomSheet(
+                audioUrl: documentUrl.isEmpty ? fileName : documentUrl,
+                profileImageUrl: micPhoto ?? "",
+                songTitle: fileName.isEmpty ? "Audio Message" : fileName
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
         .onAppear {
             print("📄 [ReceiverDocumentView] onAppear - fileName: \(fileName), documentUrl: \(documentUrl.isEmpty ? "empty" : "has URL"), docSize: \(docSize ?? "nil"), fileExtension: \(fileExtension ?? "nil")")
             
@@ -7208,7 +7275,7 @@ struct ReceiverDocumentView: View {
                 
                 // Play button - matching Android micePlay with scaleX/Y="1.4"
                 Button(action: {
-                    toggleAudioPlayback()
+                    openMusicPlayer()
                 }) {
                     Image("play_arrow_receiver")
                         .resizable()
@@ -7427,6 +7494,51 @@ struct ReceiverDocumentView: View {
             audioPlayer?.removeTimeObserver(observer)
             audioTimeObserver = nil
         }
+    }
+    
+    // Open music player bottom sheet (matching Android micePlay click handler)
+    private func openMusicPlayer() {
+        print("🎵 [ReceiverDocumentView] Opening music player - fileName: \(fileName)")
+        
+        // Get audio details
+        var audioUrl = documentUrl.isEmpty ? fileName : documentUrl
+        let profileImageUrl = micPhoto ?? ""
+        let songTitle = fileName.isEmpty ? "Audio Message" : fileName
+        var localFilePath: String? = nil
+        
+        // Check for local file first (matching Android logic)
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let audiosDir = documentsPath.appendingPathComponent("Enclosure/Media/Audios", isDirectory: true)
+        
+        print("🎵 [ReceiverDocumentView] Checking audios directory: \(audiosDir.path)")
+        
+        if FileManager.default.fileExists(atPath: audiosDir.path) {
+            let localFile = audiosDir.appendingPathComponent(fileName)
+            print("🎵 [ReceiverDocumentView] Looking for file: \(fileName)")
+            print("🎵 [ReceiverDocumentView] Full path: \(localFile.path)")
+            
+            if FileManager.default.fileExists(atPath: localFile.path) {
+                let fileSize = (try? FileManager.default.attributesOfItem(atPath: localFile.path)[.size] as? Int64) ?? 0
+                if fileSize > 0 {
+                    localFilePath = localFile.path
+                    audioUrl = "file://" + localFilePath!
+                    print("✅ [ReceiverDocumentView] Local file found and valid: \(localFilePath!)")
+                    print("🎵 [ReceiverDocumentView] Audio URL with file://: \(audioUrl)")
+                } else {
+                    print("❌ [ReceiverDocumentView] Local file exists but is empty")
+                }
+            } else {
+                print("❌ [ReceiverDocumentView] Local file not found: \(localFile.path)")
+            }
+        } else {
+            print("❌ [ReceiverDocumentView] Audios directory not found: \(audiosDir.path)")
+        }
+        
+        print("🎵 [ReceiverDocumentView] Final audioUrl: \(audioUrl)")
+        print("🎵 [ReceiverDocumentView] Final localFilePath: \(localFilePath ?? "nil")")
+        
+        // Show the bottom sheet
+        showMusicPlayerBottomSheet = true
     }
     
     // Open document in preview
@@ -8970,7 +9082,8 @@ struct MessageBubbleView: View {
                                     fileName: message.fileName ?? message.message,
                                     docSize: message.docSize,
                                     fileExtension: message.fileExtension,
-                                    backgroundColor: getSenderMessageBackgroundColor()
+                                    backgroundColor: getSenderMessageBackgroundColor(),
+                                    micPhoto: message.micPhoto
                                 )
                                 
                                 // Caption text if present (matching Android caption display)
@@ -9168,7 +9281,8 @@ struct MessageBubbleView: View {
                                     documentUrl: message.document.isEmpty ? (message.fileName ?? "") : message.document,
                                     fileName: message.fileName ?? message.message,
                                     docSize: message.docSize,
-                                    fileExtension: message.fileExtension
+                                    fileExtension: message.fileExtension,
+                                    micPhoto: message.micPhoto
                                 )
                                 
                                 // Caption text if present (matching Android caption display)
@@ -9887,6 +10001,372 @@ struct VoiceRecordingBottomSheet: View {
         .background(Color("bottom_sheet_background")) // Matching Android bottom_sheet_background drawable
         .presentationDetents([.height(110)]) // Approximate height: progress bar (3dp + 10dp top + 20dp bottom) + controls (56dp button + 15dp padding * 2) ≈ 110dp
         .presentationDragIndicator(.hidden)
+    }
+}
+
+// MARK: - Music Player Bottom Sheet (matching Android MusicPlayerBottomSheet)
+struct MusicPlayerBottomSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+    
+    let audioUrl: String
+    let profileImageUrl: String
+    let songTitle: String
+    
+    @State private var audioPlayer: AVPlayer? = nil
+    @State private var isPlaying: Bool = false
+    @State private var currentTime: TimeInterval = 0.0
+    @State private var duration: TimeInterval = 0.0
+    @State private var audioTimeObserver: Any? = nil
+    @State private var isRotating: Bool = false
+    @State private var waveData: [CGFloat] = []
+    @State private var progress: CGFloat = 0.0
+    
+    // Get theme color
+    private var themeColor: Color {
+        Color(hex: Constant.themeColor)
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Profile Image with Modern Design (matching Android iv_profile_image)
+            ZStack {
+                // Outer Glow Ring
+                Circle()
+                    .fill(themeColor.opacity(0.3))
+                    .frame(width: 140, height: 140)
+                
+                // Main Profile Image
+                AsyncImage(url: URL(string: profileImageUrl)) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure(_), .empty:
+                        Image("inviteimg")
+                            .resizable()
+                            .scaledToFill()
+                    @unknown default:
+                        Image("inviteimg")
+                            .resizable()
+                            .scaledToFill()
+                    }
+                }
+                .frame(width: 120, height: 120)
+                .clipShape(Circle())
+                .overlay(
+                    Circle()
+                        .stroke(Color("TextColor"), lineWidth: 1)
+                )
+                .rotationEffect(.degrees(isRotating ? 360 : 0))
+                .animation(isRotating ? Animation.linear(duration: 10).repeatForever(autoreverses: false) : .default, value: isRotating)
+            }
+            .frame(width: 140, height: 140)
+            .padding(.top, 14)
+            
+            // Song Info (matching Android tv_song_title)
+            VStack(spacing: 4) {
+                Text(songTitle.isEmpty ? "Audio Message" : songTitle)
+                    .font(.custom("Inter18pt-Medium", size: 20))
+                    .foregroundColor(Color("TextColor"))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 20)
+            }
+            .padding(.top, 10)
+            
+            // Audio Wave Container (matching Android audio_wave_progress)
+            VStack(spacing: 12) {
+                // Wave visualization - centered horizontally with 10px spacing
+                HStack(spacing: 0) {
+                    Spacer()
+                        .frame(width: 10)
+                    AudioWaveView(
+                        waveData: waveData,
+                        progress: progress,
+                        waveColor: Color("TextColor"),
+                        progressColor: themeColor,
+                        isPlaying: isPlaying,
+                        currentTime: currentTime
+                    )
+                    .frame(height: 56)
+                    Spacer()
+                        .frame(width: 10)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color("chattingMessageBox").opacity(0.5))
+                )
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            seekToPosition(value.location.x)
+                        }
+                )
+                
+                // Time Display (matching Android tv_current_time and tv_total_time)
+                HStack {
+                    Text(formatTime(currentTime))
+                        .font(.custom("Inter18pt-Medium", size: 13))
+                        .foregroundColor(Color("TextColor").opacity(0.9))
+                    
+                    Spacer()
+                    
+                    Text(formatTime(duration))
+                        .font(.custom("Inter18pt-Medium", size: 13))
+                        .foregroundColor(Color("TextColor").opacity(0.9))
+                }
+                .padding(.horizontal, 0)
+            }
+            .padding(.top, 14)
+            .padding(.horizontal, 20)
+            
+            // Play Controls (matching Android btn_play_pause)
+            HStack(spacing: 28) {
+                // Previous Button (invisible, matching Android)
+                Button(action: {}) {
+                    Image("pressbg")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 24, height: 24)
+                        .foregroundColor(Color("TextColor"))
+                }
+                .frame(width: 48, height: 48)
+                .opacity(0)
+                
+                // Main Play/Pause Button
+                Button(action: {
+                    togglePlayback()
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(themeColor)
+                            .frame(width: 70, height: 70)
+                            .shadow(color: Color.black.opacity(0.3), radius: 8, x: 0, y: 4)
+                        
+                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 32, weight: .medium))
+                            .foregroundColor(Color("TextColor"))
+                    }
+                }
+                .frame(width: 70, height: 70)
+                
+                // Next Button (invisible, matching Android)
+                Button(action: {}) {
+                    Image("next")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 24, height: 24)
+                        .foregroundColor(Color("TextColor"))
+                }
+                .frame(width: 48, height: 48)
+                .opacity(0)
+            }
+            .padding(.top, 18)
+            .padding(.bottom, 32)
+        }
+        .padding(.horizontal, 20)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color("chattingMessageBox"))
+        )
+        .onAppear {
+            setupAudioPlayer()
+        }
+        .onDisappear {
+            stopAudioPlayer()
+        }
+    }
+    
+    // Format time (matching Android formatTime)
+    private func formatTime(_ time: TimeInterval) -> String {
+        let minutes = Int(time) / 60
+        let seconds = Int(time) % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+    
+    // Setup audio player
+    private func setupAudioPlayer() {
+        // Check for local file first (matching Android logic)
+        var finalAudioUrl = audioUrl
+        var localFilePath: String? = nil
+        
+        // Check local Audios directory
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let audiosDir = documentsPath.appendingPathComponent("Enclosure/Media/Audios", isDirectory: true)
+        
+        // Extract fileName from URL or use audioUrl as fileName
+        let fileName: String
+        if let url = URL(string: audioUrl) {
+            fileName = url.lastPathComponent.isEmpty ? audioUrl : url.lastPathComponent
+        } else {
+            fileName = audioUrl
+        }
+        
+        print("🎵 [MusicPlayer] Checking for local file: \(fileName)")
+        
+        if FileManager.default.fileExists(atPath: audiosDir.path) {
+            let localFile = audiosDir.appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: localFile.path) {
+                let fileSize = (try? FileManager.default.attributesOfItem(atPath: localFile.path)[.size] as? Int64) ?? 0
+                if fileSize > 0 {
+                    localFilePath = localFile.path
+                    finalAudioUrl = "file://" + localFilePath!
+                    print("✅ [MusicPlayer] Using local file: \(localFilePath!)")
+                } else {
+                    print("❌ [MusicPlayer] Local file exists but is empty")
+                }
+            } else {
+                print("❌ [MusicPlayer] Local file not found: \(localFile.path)")
+            }
+        } else {
+            print("❌ [MusicPlayer] Audios directory not found: \(audiosDir.path)")
+        }
+        
+        // Create player
+        let url: URL
+        if finalAudioUrl.hasPrefix("file://") {
+            url = URL(fileURLWithPath: String(finalAudioUrl.dropFirst(7)))
+        } else if finalAudioUrl.hasPrefix("/") {
+            url = URL(fileURLWithPath: finalAudioUrl)
+        } else if let httpUrl = URL(string: finalAudioUrl) {
+            url = httpUrl
+        } else {
+            print("❌ [MusicPlayer] Invalid audio URL: \(finalAudioUrl)")
+            return
+        }
+        
+        audioPlayer = AVPlayer(url: url)
+        
+        // Get duration
+        if let duration = audioPlayer?.currentItem?.asset.duration {
+            self.duration = CMTimeGetSeconds(duration)
+            // Generate wave data based on duration
+            generateWaveData(for: self.duration)
+        }
+        
+        // Observe time updates
+        audioTimeObserver = audioPlayer?.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.1, preferredTimescale: 600), queue: .main) { time in
+            self.currentTime = CMTimeGetSeconds(time)
+            if self.duration > 0 {
+                self.progress = CGFloat(self.currentTime / self.duration)
+            }
+        }
+        
+        // Start playing
+        audioPlayer?.play()
+        isPlaying = true
+        isRotating = true
+        
+        // Observe playback end
+        NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: audioPlayer?.currentItem,
+            queue: .main
+        ) { _ in
+            self.isPlaying = false
+            self.isRotating = false
+            self.currentTime = 0.0
+            self.progress = 0.0
+            self.audioPlayer?.seek(to: .zero)
+            self.dismiss()
+        }
+    }
+    
+    // Toggle playback
+    private func togglePlayback() {
+        guard let player = audioPlayer else { return }
+        
+        if isPlaying {
+            player.pause()
+            isPlaying = false
+            isRotating = false
+        } else {
+            player.play()
+            isPlaying = true
+            isRotating = true
+        }
+    }
+    
+    // Seek to position
+    private func seekToPosition(_ x: CGFloat) {
+        guard let player = audioPlayer, duration > 0 else { return }
+        
+        // Calculate progress from touch position (assuming wave view width)
+        let waveWidth: CGFloat = UIScreen.main.bounds.width - 60 // Approximate width
+        let touchProgress = max(0, min(1, x / waveWidth))
+        let seekTime = TimeInterval(touchProgress) * duration
+        
+        player.seek(to: CMTime(seconds: seekTime, preferredTimescale: 600))
+        currentTime = seekTime
+        progress = CGFloat(touchProgress)
+    }
+    
+    // Generate wave data (matching Android generateWaveDataForDuration)
+    private func generateWaveData(for duration: TimeInterval) {
+        let durationMs = Int(duration * 1000)
+        let dataLength = max(100, durationMs / 10) // 1 data point per 10ms
+        var data: [CGFloat] = []
+        
+        for i in 0..<dataLength {
+            let frequency = 0.02 + Double(i % 100) * 0.001
+            let amplitude = 30 + sin(Double(i) * 0.01) * 20
+            let value = sin(Double(i) * frequency) * amplitude + Double.random(in: 0...10)
+            data.append(CGFloat(value))
+        }
+        
+        waveData = data
+    }
+    
+    // Stop audio player
+    private func stopAudioPlayer() {
+        audioPlayer?.pause()
+        audioPlayer = nil
+        isPlaying = false
+        isRotating = false
+        currentTime = 0.0
+        duration = 0.0
+        progress = 0.0
+        if let observer = audioTimeObserver {
+            audioPlayer?.removeTimeObserver(observer)
+            audioTimeObserver = nil
+        }
+        NotificationCenter.default.removeObserver(self)
+    }
+}
+
+// MARK: - Audio Wave View (matching Android AudioWaveView)
+struct AudioWaveView: View {
+    let waveData: [CGFloat]
+    let progress: CGFloat
+    let waveColor: Color
+    let progressColor: Color
+    let isPlaying: Bool
+    let currentTime: TimeInterval
+    
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<min(waveData.count, 200), id: \.self) { index in
+                let baseHeight = waveData[index]
+                let isActive = CGFloat(index) / CGFloat(waveData.count) < progress
+                
+                // Animate bars based on playback position and music timing
+                // Use currentTime to create a wave effect that syncs with music
+                let timeOffset = currentTime * 3 // Speed of animation (higher = faster)
+                let indexOffset = Double(index) * 0.2 // Phase offset per bar (creates wave effect)
+                let animationOffset = isPlaying ? sin(timeOffset + indexOffset) * 5 : 0
+                let animatedHeight = max(3, baseHeight + CGFloat(animationOffset))
+                
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(isActive ? progressColor : waveColor.opacity(0.5))
+                    .frame(width: 4, height: max(3, min(animatedHeight, 28)))
+            }
+        }
     }
 }
 

@@ -249,7 +249,7 @@ struct InviteScreen: View {
                     
                     // Smooth animation when opening menu
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        showMenu = true
+                    showMenu = true
                     }
                     
                     // Reset pressed state
