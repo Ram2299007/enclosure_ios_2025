@@ -15,6 +15,8 @@ import UIKit
 import AVFoundation
 import AVKit
 import QuickLook
+import Contacts
+import ContactsUI
 
 struct ChattingScreen: View {
     @Environment(\.dismiss) private var dismiss
@@ -1854,8 +1856,8 @@ struct ChattingScreen: View {
                         // Parse message from Firebase snapshot (matching Android child.getValue(messageModel.class))
                         if let messageDict = child.value as? [String: Any] {
                             if let model = self.parseMessageFromDict(messageDict, messageId: childKey) {
-                                // Add Text, Image, Video, and Document datatype messages
-                                if model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video || model.dataType == Constant.doc {
+                                // Add Text, Image, Video, Document, and Contact datatype messages
+                                if model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video || model.dataType == Constant.doc || model.dataType == Constant.contact {
                                     tempList.append(model)
                                 }
                             }
@@ -1979,8 +1981,8 @@ struct ChattingScreen: View {
             if let messageDict = snapshot.value as? [String: Any],
                let updatedModel = self.parseMessageFromDict(messageDict, messageId: changedKey) {
                 
-                // Handle Text, Image, Video, and Document datatype messages
-                if updatedModel.dataType == Constant.Text || updatedModel.dataType == Constant.img || updatedModel.dataType == Constant.video || updatedModel.dataType == Constant.doc {
+                // Handle Text, Image, Video, Document, and Contact datatype messages
+                if updatedModel.dataType == Constant.Text || updatedModel.dataType == Constant.img || updatedModel.dataType == Constant.video || updatedModel.dataType == Constant.doc || updatedModel.dataType == Constant.contact {
                     // Find and update existing message (matching Android)
                     if let index = self.messages.firstIndex(where: { $0.id == changedKey }) {
                         let oldModel = self.messages[index]
@@ -2034,7 +2036,7 @@ struct ChattingScreen: View {
         }
         
         // Handle Text, Image, Video, and Document datatype messages
-        guard model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video || model.dataType == Constant.doc else {
+        guard model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video || model.dataType == Constant.doc || model.dataType == Constant.contact else {
             print("📱 [handleChildAdded] Skipping unsupported message type: \(model.dataType)")
             return
         }
@@ -2339,8 +2341,8 @@ struct ChattingScreen: View {
                 if let messageDict = child.value as? [String: Any],
                    let model = self.parseMessageFromDict(messageDict, messageId: childKey) {
                     
-                    // Add Text, Image, Video, and Document datatype messages
-                    if model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video || model.dataType == Constant.doc {
+                    // Add Text, Image, Video, Document, and Contact datatype messages
+                    if model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video || model.dataType == Constant.doc || model.dataType == Constant.contact {
                         // ✅ Filter: only add messages older than lastTimestamp (matching Android endBefore)
                         if model.timestamp < lastTs {
                             // ✅ Avoid duplicate messages (matching Android)
@@ -6872,6 +6874,8 @@ struct ReceiverDocumentView: View {
     @State private var audioCurrentTime: TimeInterval = 0.0
     @State private var audioDuration: TimeInterval = 0.0
     @State private var audioTimeObserver: Any? = nil
+    @State private var showShareSheet: Bool = false
+    @State private var downloadedFileURL: URL? = nil
     
     // Get local documents directory path
     private func getLocalDocumentsDirectory() -> URL {
@@ -7246,6 +7250,11 @@ struct ReceiverDocumentView: View {
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let fileURL = downloadedFileURL {
+                ShareSheet(activityItems: [fileURL])
+            }
         }
         .onAppear {
             print("📄 [ReceiverDocumentView] onAppear - fileName: \(fileName), documentUrl: \(documentUrl.isEmpty ? "empty" : "has URL"), docSize: \(docSize ?? "nil"), fileExtension: \(fileExtension ?? "nil")")
@@ -9069,6 +9078,47 @@ struct MessageBubbleView: View {
                             )
                         }
                         .frame(maxWidth: 250)
+                    } else if message.dataType == Constant.contact {
+                        // Sender contact message (matching Android contactContainer design)
+                        let _ = print("📇 [MessageBubbleView] Showing sender contact - dataType: \(message.dataType), name: \(message.name ?? "nil"), phone: \(message.phone ?? "nil")")
+                        HStack {
+                            Spacer(minLength: 0) // Push content to end
+                            
+                            // Container wrapping contact and caption with same background as Constant.Text sender messages
+                            VStack(alignment: .trailing, spacing: 0) {
+                                SenderContactView(
+                                    contactName: message.name ?? "",
+                                    contactPhone: message.phone ?? "",
+                                    backgroundColor: getSenderMessageBackgroundColor(),
+                                    contactDocumentUrl: message.document.isEmpty ? nil : message.document
+                                )
+                                
+                                // Caption text if present (matching Android caption display)
+                                if let caption = message.caption, !caption.isEmpty {
+                                    HStack {
+                                        Text(caption)
+                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .fontWeight(.regular)
+                                            .foregroundColor(Color(hex: "#e7ebf4"))
+                                            .lineSpacing(7)
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.horizontal, 12)
+                                            .padding(.top, 5)
+                                            .padding(.bottom, 6)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.top, 5)
+                                    .padding(.bottom, 5)
+                                }
+                            }
+                            .background(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(getSenderMessageBackgroundColor())
+                            )
+                        }
+                        .frame(maxWidth: 250)
                     } else if message.dataType == Constant.doc {
                         // Sender document message (matching Android docLyt design)
                         let _ = print("📄 [MessageBubbleView] Showing sender document - dataType: \(message.dataType), document: \(message.document.isEmpty ? "empty" : "has URL"), fileName: \(message.fileName ?? "nil"), message: \(message.message)")
@@ -9266,6 +9316,45 @@ struct MessageBubbleView: View {
                             .frame(width: calculateImageSize(imageWidth: message.imageWidth, imageHeight: message.imageHeight, aspectRatio: message.aspectRatio).width) // Container width matches video width exactly
                             .background(
                                 RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color("message_box_bg"))
+                            )
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: 250)
+                    } else if message.dataType == Constant.contact {
+                        // Receiver contact message (matching Android contactContainer design)
+                        let _ = print("📇 [MessageBubbleView] Showing receiver contact - dataType: \(message.dataType), name: \(message.name ?? "nil"), phone: \(message.phone ?? "nil")")
+                        HStack {
+                            // Container wrapping contact and caption with same background as Constant.Text receiver messages
+                            VStack(alignment: .leading, spacing: 0) {
+                                ReceiverContactView(
+                                    contactName: message.name ?? "",
+                                    contactPhone: message.phone ?? "",
+                                    contactDocumentUrl: message.document.isEmpty ? nil : message.document
+                                )
+                                
+                                // Caption text if present (matching Android caption display)
+                                if let caption = message.caption, !caption.isEmpty {
+                                    HStack {
+                                        Text(caption)
+                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .fontWeight(.regular)
+                                            .foregroundColor(Color("TextColor"))
+                                            .lineSpacing(7)
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.horizontal, 12)
+                                            .padding(.top, 5)
+                                            .padding(.bottom, 6)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.top, 5)
+                                    .padding(.bottom, 5)
+                                }
+                            }
+                            .background(
+                                RoundedRectangle(cornerRadius: 20) // Android: contactContainer should match message container corner radius
                                     .fill(Color("message_box_bg"))
                             )
                             Spacer(minLength: 0)
@@ -10409,6 +10498,972 @@ struct AudioWaveView: View {
             }
         }
     }
+}
+
+// MARK: - Sender Contact View (matching Android sender contactContainer)
+struct SenderContactView: View {
+    let contactName: String
+    let contactPhone: String
+    let backgroundColor: Color
+    let contactDocumentUrl: String?
+    
+    @State private var isContactSaved: Bool = false
+    @State private var showDownloadButton: Bool = false
+    @State private var isDownloading: Bool = false
+    @State private var downloadProgress: Double = 0.0
+    @State private var showDownloadProgress: Bool = false
+    @State private var showContactActionBottomSheet: Bool = false
+    @State private var showCreateContactBottomSheet: Bool = false
+    @State private var showContactPicker: Bool = false
+    
+    // Get first letter of name for circular icon
+    private var firstLetter: String {
+        guard let firstChar = contactName.first else { return "" }
+        return String(firstChar).uppercased()
+    }
+    
+    // Get local contacts directory
+    private func getLocalContactsDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let contactsDir = documentsPath.appendingPathComponent("Enclosure/Media/Contacts", isDirectory: true)
+        try? FileManager.default.createDirectory(at: contactsDir, withIntermediateDirectories: true, attributes: nil)
+        return contactsDir
+    }
+    
+    // Check if contact is saved locally
+    private var hasLocalContact: Bool {
+        let contactsDir = getLocalContactsDirectory()
+        let contactFile = contactsDir.appendingPathComponent("\(contactName)_\(contactPhone).vcf")
+        return FileManager.default.fileExists(atPath: contactFile.path)
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Main container - matching Android contactContainer LinearLayout
+            VStack(spacing: 0) {
+                // Debug: Ensure contact data is available
+                let _ = print("📇 [SenderContactView] Rendering - name: '\(contactName)', phone: '\(contactPhone)', isEmpty: \(contactName.isEmpty && contactPhone.isEmpty)")
+                
+                // Horizontal layout with icon and name/phone - matching Android
+                HStack(spacing: 0) {
+                    // Download button (if contact document URL exists) - matching SelectionBunchLayout download design
+                    if let documentUrl = contactDocumentUrl, !documentUrl.isEmpty, !hasLocalContact, !isDownloading {
+                        Button(action: {
+                            downloadContact()
+                        }) {
+                            ZStack {
+                                // iOS glassmorphism background (matching SelectionBunchLayout)
+                                Circle()
+                                    .fill(.ultraThinMaterial)
+                                    .frame(width: 35, height: 35)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                    )
+                                    .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                                
+                                Image("downloaddown")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 20, height: 20)
+                                    .foregroundColor(Color(hex: "#e7ebf4")) // Matching sender SelectionBunchLayout
+                            }
+                        }
+                        .padding(.trailing, 5)
+                    }
+                    
+                    // Circular gradient icon - matching Android contact_gradient_cirlce
+                    ZStack {
+                        // Gradient circle background
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [
+                                        Color(hex: "#E8E8E8"),
+                                        Color(hex: "#D0D0D0")
+                                    ]),
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 45, height: 45)
+                        
+                        // First letter text - matching Android firstText
+                        Text(firstLetter.isEmpty ? "?" : firstLetter)
+                            .font(.custom("Inter18pt-Regular", size: 15))
+                            .foregroundColor(.black)
+                    }
+                    .frame(width: 45, height: 45)
+                    
+                    // Name and phone layout - matching Android cnamenamelyt
+                    VStack(alignment: .leading, spacing: 1) {
+                        // Name - matching Android cName
+                        Text(contactName.isEmpty ? "Unknown" : contactName)
+                            .font(.custom("Inter18pt-Regular", size: 15))
+                            .foregroundColor(Color(hex: "#e7ebf4"))
+                            .lineLimit(2)
+                            .frame(minWidth: 100, maxWidth: 170, alignment: .leading)
+                        
+                        // Phone - matching Android cPhone
+                        Text(contactPhone.isEmpty ? "No phone" : contactPhone)
+                            .font(.custom("Inter18pt-Regular", size: 13))
+                            .foregroundColor(Color("gray"))
+                            .lineLimit(1)
+                            .frame(maxWidth: 210, alignment: .leading)
+                    }
+                    .padding(.leading, 7)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 2)
+                .padding(.vertical, 2)
+                
+                // Add button - matching Android viewContact
+                Button(action: {
+                    showContactActionBottomSheet = true
+                }) {
+                    HStack {
+                        Spacer()
+                        Text("Add")
+                            .font(.custom("Inter18pt-Regular", size: 12))
+                            .fontWeight(.bold)
+                            .foregroundColor(.black)
+                            .textCase(.none)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20) // Android save_bg_for_all uses 20dp radius
+                            .fill(Color(hex: "#E8E8E8"))
+                    )
+                }
+                .padding(.top, 10)
+                .padding(.horizontal, 2)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 7)
+        }
+        .onAppear {
+            checkLocalContact()
+            if let documentUrl = contactDocumentUrl, !documentUrl.isEmpty, !hasLocalContact {
+                showDownloadButton = true
+            }
+        }
+        .sheet(isPresented: $showContactActionBottomSheet) {
+            ContactActionBottomSheet(
+                contactName: contactName,
+                contactPhone: contactPhone,
+                onCreateContact: {
+                    showContactActionBottomSheet = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        showCreateContactBottomSheet = true
+                    }
+                },
+                onDismiss: {
+                    showContactActionBottomSheet = false
+                }
+            )
+            .presentationDetents([.height(120)]) // Wrap content height - approximately 20dp top + 20dp bottom + 15dp padding * 2 + text height
+            .presentationDragIndicator(.hidden)
+        }
+        .sheet(isPresented: $showCreateContactBottomSheet) {
+            CreateContactBottomSheet(
+                contactName: contactName,
+                contactPhone: contactPhone,
+                onSave: { firstName, lastName, phone in
+                    saveContactToPhone(firstName: firstName, lastName: lastName, phone: phone)
+                    showCreateContactBottomSheet = false
+                },
+                onDismiss: {
+                    showCreateContactBottomSheet = false
+                }
+            )
+            .presentationDetents([.height(200)]) // Same height as ContactActionBottomSheet
+            .presentationDragIndicator(.hidden)
+        }
+    }
+    
+    // Check if contact exists locally
+    private func checkLocalContact() {
+        isContactSaved = hasLocalContact
+    }
+    
+    // Save contact to phone (matching Android save onClick)
+    private func saveContactToPhone(firstName: String, lastName: String, phone: String) {
+        let store = CNContactStore()
+        
+        // Request authorization
+        store.requestAccess(for: .contacts) { granted, error in
+            if granted {
+                DispatchQueue.main.async {
+                    let contact = CNMutableContact()
+                    
+                    // Set name
+                    contact.givenName = firstName
+                    contact.familyName = lastName
+                    
+                    // Set phone
+                    let phoneNumber = CNPhoneNumber(stringValue: phone)
+                    let phoneValue = CNLabeledValue(label: CNLabelPhoneNumberMobile, value: phoneNumber)
+                    contact.phoneNumbers = [phoneValue]
+                    
+                    // Save contact
+                    let saveRequest = CNSaveRequest()
+                    saveRequest.add(contact, toContainerWithIdentifier: nil)
+                    
+                    do {
+                        try store.execute(saveRequest)
+                        print("✅ [Contact] Contact saved successfully")
+                        
+                        // Save to local storage
+                        saveContactToLocalStorage(firstName: firstName, lastName: lastName, phone: phone)
+                        
+                        // Update UI
+                        isContactSaved = true
+                        
+                        // Show success message (matching Android Toast)
+                        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                           let window = windowScene.windows.first {
+                            let toast = UILabel()
+                            toast.text = "Contact saved successfully"
+                            toast.textColor = .white
+                            toast.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+                            toast.textAlignment = .center
+                            toast.layer.cornerRadius = 8
+                            toast.clipsToBounds = true
+                            toast.font = UIFont.systemFont(ofSize: 14)
+                            toast.frame = CGRect(x: window.bounds.width / 2 - 100, y: window.bounds.height - 150, width: 200, height: 40)
+                            window.addSubview(toast)
+                            
+                            UIView.animate(withDuration: 0.3, delay: 1.5, options: .curveEaseOut, animations: {
+                                toast.alpha = 0
+                            }) { _ in
+                                toast.removeFromSuperview()
+                            }
+                        }
+                    } catch {
+                        print("❌ [Contact] Failed to save contact: \(error.localizedDescription)")
+                    }
+                }
+            } else {
+                print("❌ [Contact] Contact access denied")
+            }
+        }
+    }
+    
+    // Save contact to local storage (matching Android local storage)
+    private func saveContactToLocalStorage(firstName: String, lastName: String, phone: String) {
+        let contactsDir = getLocalContactsDirectory()
+        let fullName = "\(firstName) \(lastName)".trimmingCharacters(in: .whitespaces)
+        let contactFile = contactsDir.appendingPathComponent("\(fullName.replacingOccurrences(of: " ", with: "_"))_\(phone).vcf")
+        
+        // Create VCF content
+        let vcfContent = """
+        BEGIN:VCARD
+        VERSION:3.0
+        FN:\(fullName)
+        TEL;TYPE=CELL:\(phone)
+        END:VCARD
+        """
+        
+        do {
+            try vcfContent.write(to: contactFile, atomically: true, encoding: .utf8)
+            print("✅ [Contact] Contact saved to local storage: \(contactFile.path)")
+        } catch {
+            print("❌ [Contact] Failed to save contact to local storage: \(error.localizedDescription)")
+        }
+    }
+    
+    // Download contact VCF file (matching Android download logic)
+    private func downloadContact() {
+        guard let documentUrl = contactDocumentUrl, !documentUrl.isEmpty else { return }
+        guard let url = URL(string: documentUrl) else { return }
+        
+        let contactsDir = getLocalContactsDirectory()
+        let contactFile = contactsDir.appendingPathComponent("\(contactName)_\(contactPhone).vcf")
+        
+        // Check if already downloading
+        if BackgroundDownloadManager.shared.isDownloading(fileName: contactFile.lastPathComponent) {
+            print("📱 [Contact] Already downloading")
+            return
+        }
+        
+        // Light haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Update UI
+        isDownloading = true
+        showDownloadButton = false
+        showDownloadProgress = true
+        downloadProgress = 0.0
+        
+        // Use BackgroundDownloadManager for download
+        BackgroundDownloadManager.shared.downloadImage(
+            imageUrl: documentUrl,
+            fileName: contactFile.lastPathComponent,
+            destinationFile: contactFile,
+            onProgress: { progress in
+                DispatchQueue.main.async {
+                    self.downloadProgress = progress
+                    if progress > 0 {
+                        self.showDownloadProgress = true
+                    }
+                }
+            },
+            onSuccess: {
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showDownloadButton = false
+                    self.downloadProgress = 0.0
+                    print("✅ [Contact] Contact VCF downloaded successfully")
+                }
+            },
+            onFailure: { error in
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showDownloadButton = true
+                    self.downloadProgress = 0.0
+                    print("❌ [Contact] Download failed: \(error.localizedDescription)")
+                }
+            }
+        )
+    }
+    
+}
+
+// MARK: - Receiver Contact View (matching Android receiver contactContainer)
+struct ReceiverContactView: View {
+    @Environment(\.colorScheme) var colorScheme
+    let contactName: String
+    let contactPhone: String
+    let contactDocumentUrl: String?
+    
+    @State private var isContactSaved: Bool = false
+    @State private var showDownloadButton: Bool = false
+    @State private var isDownloading: Bool = false
+    @State private var downloadProgress: Double = 0.0
+    @State private var showDownloadProgress: Bool = false
+    @State private var showContactActionBottomSheet: Bool = false
+    @State private var showCreateContactBottomSheet: Bool = false
+    @State private var showContactPicker: Bool = false
+    
+    // Get first letter of name for circular icon
+    private var firstLetter: String {
+        guard let firstChar = contactName.first else { return "" }
+        return String(firstChar).uppercased()
+    }
+    
+    // Get local contacts directory
+    private func getLocalContactsDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let contactsDir = documentsPath.appendingPathComponent("Enclosure/Media/Contacts", isDirectory: true)
+        try? FileManager.default.createDirectory(at: contactsDir, withIntermediateDirectories: true, attributes: nil)
+        return contactsDir
+    }
+    
+    // Check if contact is saved locally
+    private var hasLocalContact: Bool {
+        let contactsDir = getLocalContactsDirectory()
+        let contactFile = contactsDir.appendingPathComponent("\(contactName)_\(contactPhone).vcf")
+        return FileManager.default.fileExists(atPath: contactFile.path)
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Main container - matching Android contactContainer LinearLayout
+            VStack(spacing: 0) {
+                // Debug: Ensure contact data is available
+                let _ = print("📇 [ReceiverContactView] Rendering - name: '\(contactName)', phone: '\(contactPhone)', isEmpty: \(contactName.isEmpty && contactPhone.isEmpty)")
+                
+                // Horizontal layout with name/phone and icon - matching Android (reversed order)
+                // Android: inner LinearLayout has wrap_content width and layout_gravity="center"
+                HStack(spacing: 0) {
+                    Spacer() // Center the content horizontally
+                    
+                    // Download button (if contact document URL exists) - matching SelectionBunchLayout download design
+                    if let documentUrl = contactDocumentUrl, !documentUrl.isEmpty, !hasLocalContact, !isDownloading {
+                        Button(action: {
+                            downloadContact()
+                        }) {
+                            ZStack {
+                                // iOS glassmorphism background (matching SelectionBunchLayout)
+                                Circle()
+                                    .fill(.ultraThinMaterial)
+                                    .frame(width: 35, height: 35)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                    )
+                                    .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                                
+                                Image("downloaddown")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 20, height: 20)
+                                    .foregroundColor(.white) // Matching receiver SelectionBunchLayout
+                            }
+                        }
+                        .padding(.leading, 5)
+                    }
+                    
+                    // Name and phone layout - matching Android cnamenamelyt (on left for receiver)
+                    VStack(alignment: .leading, spacing: 1) {
+                        // Name - matching Android cName
+                        Text(contactName.isEmpty ? "Unknown" : contactName)
+                            .font(.custom("Inter18pt-Regular", size: 15))
+                            .foregroundColor(Color("TextColor"))
+                            .lineLimit(2)
+                            .frame(minWidth: 100, maxWidth: 210, alignment: .leading)
+                        
+                        // Phone - matching Android cPhone
+                        Text(contactPhone.isEmpty ? "No phone" : contactPhone)
+                            .font(.custom("Inter18pt-Regular", size: 15))
+                            .foregroundColor(Color("edittextremoveline"))
+                            .lineLimit(1)
+                            .frame(maxWidth: 210, alignment: .leading)
+                    }
+                    .padding(.trailing, 7) // Android: layout_marginEnd="7dp"
+                    
+                    // Circular gradient icon - matching Android contact_gradient_cirlce_receiver
+                    ZStack {
+                        // Gradient circle background (receiver style) - Android uses black radial gradient
+                        Circle()
+                            .fill(
+                                RadialGradient(
+                                    gradient: Gradient(colors: [
+                                        Color.black,
+                                        Color.black
+                                    ]),
+                                    center: .center,
+                                    startRadius: 0,
+                                    endRadius: 18
+                                )
+                            )
+                            .frame(width: 45, height: 45)
+                        
+                        // First letter text - matching Android firstText (white color)
+                        Text(firstLetter.isEmpty ? "?" : firstLetter)
+                            .font(.custom("Inter18pt-Regular", size: 15))
+                            .foregroundColor(.white)
+                    }
+                    .frame(width: 45, height: 45)
+                    
+                    Spacer() // Center the content horizontally
+                }
+                .padding(.horizontal, 2)
+                .padding(.vertical, 2)
+                
+                // Add button - matching Android viewContact (receiver style)
+                // Android: LinearLayout with layout_width="match_parent", layout_marginTop="10dp", padding="2dp"
+                // Android: TextView has layout_height="wrap_content", layout_marginTop="1dp", layout_gravity="center_vertical"
+                // Android: background="@drawable/save_bg_for_all_receiver" -> save_scale_b_receiver.xml
+                // Android: save_scale_b_receiver has corners radius="20dp", stroke width="0.8dp" color="black", solid color="black"
+                Button(action: {
+                    showContactActionBottomSheet = true
+                }) {
+                    Text("Add")
+                        .font(.custom("Inter18pt-Regular", size: 12))
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                        .textCase(.none)
+                        .frame(maxWidth: .infinity) // Android: TextView layout_width="match_parent"
+                        .frame(height: nil) // Android: layout_height="wrap_content"
+                        .padding(.top, 1) // Android: layout_marginTop="1dp" on TextView
+                }
+                .frame(maxWidth: .infinity) // Android: LinearLayout layout_width="match_parent"
+                .padding(.top, 2) // Android: padding="2dp" on LinearLayout (top)
+                .padding(.bottom, 2) // Android: padding="2dp" on LinearLayout (bottom)
+                .padding(.horizontal, 2) // Android: padding="2dp" on LinearLayout (horizontal)
+                .background(
+                    RoundedRectangle(cornerRadius: 20) // Android: corners radius="20dp"
+                        .fill(Color.black) // Android: solid color="black"
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20)
+                                .stroke(Color.black, lineWidth: 0.8) // Android: stroke width="0.8dp" color="black"
+                        )
+                )
+                .padding(.top, 10) // Android: layout_marginTop="10dp"
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 7)
+        }
+        .onAppear {
+            checkLocalContact()
+            if let documentUrl = contactDocumentUrl, !documentUrl.isEmpty, !hasLocalContact {
+                showDownloadButton = true
+            }
+        }
+        .sheet(isPresented: $showContactActionBottomSheet) {
+            ContactActionBottomSheet(
+                contactName: contactName,
+                contactPhone: contactPhone,
+                onCreateContact: {
+                    showContactActionBottomSheet = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        showCreateContactBottomSheet = true
+                    }
+                },
+                onDismiss: {
+                    showContactActionBottomSheet = false
+                }
+            )
+            .presentationDetents([.height(120)]) // Wrap content height - approximately 20dp top + 20dp bottom + 15dp padding * 2 + text height
+            .presentationDragIndicator(.hidden)
+        }
+        .sheet(isPresented: $showCreateContactBottomSheet) {
+            CreateContactBottomSheet(
+                contactName: contactName,
+                contactPhone: contactPhone,
+                onSave: { firstName, lastName, phone in
+                    saveContactToPhone(firstName: firstName, lastName: lastName, phone: phone)
+                    showCreateContactBottomSheet = false
+                },
+                onDismiss: {
+                    showCreateContactBottomSheet = false
+                }
+            )
+            .presentationDetents([.height(200)]) // Same height as ContactActionBottomSheet
+            .presentationDragIndicator(.hidden)
+        }
+        .sheet(isPresented: $showContactPicker) {
+            ContactPickerViewControllerWrapper(
+                phoneNumber: contactPhone,
+                onDismiss: {
+                    showContactPicker = false
+                }
+            )
+        }
+    }
+    
+    // Check if contact exists locally
+    private func checkLocalContact() {
+        isContactSaved = hasLocalContact
+    }
+    
+    // Download contact VCF file (matching Android download logic)
+    private func downloadContact() {
+        guard let documentUrl = contactDocumentUrl, !documentUrl.isEmpty else { return }
+        guard let url = URL(string: documentUrl) else { return }
+        
+        let contactsDir = getLocalContactsDirectory()
+        let contactFile = contactsDir.appendingPathComponent("\(contactName)_\(contactPhone).vcf")
+        
+        // Check if already downloading
+        if BackgroundDownloadManager.shared.isDownloading(fileName: contactFile.lastPathComponent) {
+            print("📱 [Contact] Already downloading")
+            return
+        }
+        
+        // Light haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Update UI
+        isDownloading = true
+        showDownloadButton = false
+        showDownloadProgress = true
+        downloadProgress = 0.0
+        
+        // Use BackgroundDownloadManager for download
+        BackgroundDownloadManager.shared.downloadImage(
+            imageUrl: documentUrl,
+            fileName: contactFile.lastPathComponent,
+            destinationFile: contactFile,
+            onProgress: { progress in
+                DispatchQueue.main.async {
+                    self.downloadProgress = progress
+                    if progress > 0 {
+                        self.showDownloadProgress = true
+                    }
+                }
+            },
+            onSuccess: {
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showDownloadButton = false
+                    self.downloadProgress = 0.0
+                    print("✅ [Contact] Contact VCF downloaded successfully")
+                }
+            },
+            onFailure: { error in
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showDownloadButton = true
+                    self.downloadProgress = 0.0
+                    print("❌ [Contact] Download failed: \(error.localizedDescription)")
+                }
+            }
+        )
+    }
+    
+    // Save contact to phone (matching Android save onClick)
+    private func saveContactToPhone(firstName: String, lastName: String, phone: String) {
+        let store = CNContactStore()
+        
+        // Request authorization
+        store.requestAccess(for: .contacts) { granted, error in
+            if granted {
+                DispatchQueue.main.async {
+                    let contact = CNMutableContact()
+                    
+                    // Set name
+                    contact.givenName = firstName
+                    contact.familyName = lastName
+                    
+                    // Set phone
+                    let phoneNumber = CNPhoneNumber(stringValue: phone)
+                    let phoneValue = CNLabeledValue(label: CNLabelPhoneNumberMobile, value: phoneNumber)
+                    contact.phoneNumbers = [phoneValue]
+                    
+                    // Save contact
+                    let saveRequest = CNSaveRequest()
+                    saveRequest.add(contact, toContainerWithIdentifier: nil)
+                    
+                    do {
+                        try store.execute(saveRequest)
+                        print("✅ [Contact] Contact saved successfully")
+                        
+                        // Save to local storage
+                        saveContactToLocalStorage(firstName: firstName, lastName: lastName, phone: phone)
+                        
+                        // Update UI
+                        isContactSaved = true
+                        
+                        // Show success message (matching Android Toast)
+                        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                           let window = windowScene.windows.first {
+                            let toast = UILabel()
+                            toast.text = "Contact saved successfully"
+                            toast.textColor = .white
+                            toast.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+                            toast.textAlignment = .center
+                            toast.layer.cornerRadius = 8
+                            toast.clipsToBounds = true
+                            toast.font = UIFont.systemFont(ofSize: 14)
+                            toast.frame = CGRect(x: window.bounds.width / 2 - 100, y: window.bounds.height - 150, width: 200, height: 40)
+                            window.addSubview(toast)
+                            
+                            UIView.animate(withDuration: 0.3, delay: 1.5, options: .curveEaseOut, animations: {
+                                toast.alpha = 0
+                            }) { _ in
+                                toast.removeFromSuperview()
+                            }
+                        }
+                    } catch {
+                        print("❌ [Contact] Failed to save contact: \(error.localizedDescription)")
+                    }
+                }
+            } else {
+                print("❌ [Contact] Contact access denied")
+            }
+        }
+    }
+    
+    // Save contact to local storage (matching Android local storage)
+    private func saveContactToLocalStorage(firstName: String, lastName: String, phone: String) {
+        let contactsDir = getLocalContactsDirectory()
+        let fullName = "\(firstName) \(lastName)".trimmingCharacters(in: .whitespaces)
+        let contactFile = contactsDir.appendingPathComponent("\(fullName.replacingOccurrences(of: " ", with: "_"))_\(phone).vcf")
+        
+        // Create VCF content
+        let vcfContent = """
+        BEGIN:VCARD
+        VERSION:3.0
+        FN:\(fullName)
+        TEL;TYPE=CELL:\(phone)
+        END:VCARD
+        """
+        
+        do {
+            try vcfContent.write(to: contactFile, atomically: true, encoding: .utf8)
+            print("✅ [Contact] Contact saved to local storage: \(contactFile.path)")
+        } catch {
+            print("❌ [Contact] Failed to save contact to local storage: \(error.localizedDescription)")
+        }
+    }
+}
+
+// MARK: - Contact Action Bottom Sheet (matching Android view_contact_btmsheet_lyt.xml)
+struct ContactActionBottomSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+    
+    let contactName: String
+    let contactPhone: String
+    let onCreateContact: () -> Void
+    let onDismiss: () -> Void
+    
+    private var themeColor: Color {
+        Color(hex: Constant.themeColor)
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Main container - matching Android outer LinearLayout (vertical)
+            VStack(spacing: 0) {
+                // CardView container - matching Android CardView
+                // Android: style="@style/cardBackgroundColor" (which is cardBackgroundColornew)
+                // Android: app:cardCornerRadius="20dp"
+                // Android: layout_marginHorizontal="16dp", layout_marginTop="20dp", layout_marginBottom="20dp"
+                VStack(spacing: 0) {
+                    // Create New Contact button - matching Android createContact TextView
+                    // Android: android:background="@drawable/background_effect_for_chattting_hover_all" (which uses cardBackgroundColornew)
+                    // Android: android:padding="15dp", android:textSize="14sp", style="@style/TextColor", android:textStyle="bold"
+                    Button(action: {
+                        onCreateContact()
+                        dismiss()
+                    }) {
+                        Text("Create New Contact")
+                            .font(.custom("Inter18pt-Bold", size: 14)) // Android: android:fontFamily="@font/inter_bold", android:textSize="14sp", android:textStyle="bold"
+                            .foregroundColor(Color("TextColor")) // Android: style="@style/TextColor"
+                            .frame(maxWidth: .infinity) // Android: android:layout_width="match_parent"
+                            .padding(15) // Android: android:padding="15dp" (all sides)
+                            .background(
+                                RoundedRectangle(cornerRadius: 20) // 20dp corner radius for the button
+                                    .fill(Color("cardBackgroundColornew")) // Android: android:background="@drawable/background_effect_for_chattting_hover_all"
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 20) // Android: app:cardCornerRadius="20dp"
+                        .fill(Color("cardBackgroundColornew")) // Android: style="@style/cardBackgroundColor"
+                )
+                .padding(.horizontal, 16) // Android: layout_marginHorizontal="16dp"
+                .padding(.top, 20) // Android: layout_marginTop="20dp"
+                .padding(.bottom, 20) // Android: layout_marginBottom="20dp"
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .background(Color("chattingMessageBox")) // Bottom sheet background
+    }
+}
+
+// MARK: - Create Contact Bottom Sheet (matching Android create_contact_layout_bottom.xml)
+struct CreateContactBottomSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+    
+    let contactName: String
+    let contactPhone: String
+    let onSave: (String, String, String) -> Void
+    let onDismiss: () -> Void
+    
+    @State private var firstName: String = ""
+    @State private var lastName: String = ""
+    @State private var phone: String = ""
+    @FocusState private var isFirstNameFocused: Bool
+    @FocusState private var isLastNameFocused: Bool
+    @FocusState private var isPhoneFocused: Bool
+    
+    private var themeColor: Color {
+        Color(hex: Constant.themeColor)
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header - matching Android header LinearLayout
+            // Android: layout_marginTop="20dp", orientation="horizontal"
+            HStack {
+                // Cancel button - matching Android cancel TextView
+                // Android: layout_marginStart="20dp", layout_weight="1"
+                Button(action: {
+                    onDismiss()
+                    dismiss()
+                }) {
+                    Text("cancel")
+                        .font(.custom("Inter18pt-Medium", size: 15)) // Android: android:fontFamily="@font/inter_medium", android:textSize="15sp"
+                        .foregroundColor(themeColor) // Android: android:textColor="@color/bluetohovertext"
+                }
+                .frame(maxWidth: .infinity, alignment: .leading) // Android: layout_weight="1"
+                .padding(.leading, 20) // Android: layout_marginStart="20dp"
+                
+                // Title - matching Android "New Contact" TextView
+                // Android: layout_weight="1", layout_gravity="center", gravity="center"
+                Text("New Contact")
+                    .font(.custom("Inter18pt-Bold", size: 16)) // Android: android:fontFamily="@font/inter_bold", android:textSize="16dp"
+                    .foregroundColor(Color("TextColor")) // Android: style="@style/TextColor"
+                    .frame(maxWidth: .infinity) // Android: layout_weight="1"
+                
+                // Save button - matching Android save TextView
+                // Android: layout_marginEnd="20dp", layout_weight="1", gravity="end"
+                Button(action: {
+                    saveContact()
+                }) {
+                    Text("Save")
+                        .font(.custom("Inter18pt-Medium", size: 15)) // Android: android:fontFamily="@font/inter_medium", android:textSize="15sp"
+                        .foregroundColor(themeColor) // Android: android:textColor="@color/bluetohovertext"
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing) // Android: layout_weight="1", gravity="end"
+                .padding(.trailing, 20) // Android: layout_marginEnd="20dp"
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 20) // Android: layout_marginTop="20dp" on header LinearLayout
+            
+            // First Name CardView - matching Android CardView with cardCornerRadius="8dp"
+            VStack(spacing: 0) {
+                TextField("First Name", text: $firstName)
+                    .font(.custom("Inter18pt-Bold", size: 14))
+                    .foregroundColor(Color("TextColor"))
+                    .focused($isFirstNameFocused)
+                    .padding(.vertical, 15)
+                    .padding(.horizontal, 15)
+                    .background(Color("background_effect_for_chattting_hover_all"))
+                
+                // Divider - matching Android View with height="0.5dp"
+                Rectangle()
+                    .fill(Color("gray3"))
+                    .frame(height: 0.5)
+                
+                TextField("Last Name", text: $lastName)
+                    .font(.custom("Inter18pt-Bold", size: 14))
+                    .foregroundColor(Color("TextColor"))
+                    .focused($isLastNameFocused)
+                    .padding(.vertical, 15)
+                    .padding(.horizontal, 15)
+                    .background(Color("background_effect_for_chattting_hover_all"))
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(hex: "#E2E4EA"))
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 20)
+            
+            // Phone CardView - matching Android CardView with cardCornerRadius="8dp"
+            HStack(spacing: 0) {
+                // Mobile label - matching Android mobile TextView
+                Text("Mobile")
+                    .font(.custom("Inter18pt-Medium", size: 14))
+                    .foregroundColor(themeColor)
+                    .padding(.leading, 15)
+                    .padding(.vertical, 15)
+                    .background(Color("background_effect_for_chattting_hover_all"))
+                
+                // Chevron icon - matching Android ImageView
+                Image("baseline_chevron_right_24")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 24, height: 24)
+                    .foregroundColor(Color("icon_tints"))
+                    .padding(.horizontal, 8)
+                    .background(Color("background_effect_for_chattting_hover_all"))
+                
+                // Phone TextField - matching Android phoneNumber EditText
+                TextField("Phone", text: $phone)
+                    .font(.custom("Inter18pt-Bold", size: 14))
+                    .foregroundColor(Color("TextColor"))
+                    .focused($isPhoneFocused)
+                    .keyboardType(.phonePad)
+                    .padding(.leading, 7)
+                    .padding(.vertical, 15)
+                    .background(Color("background_effect_for_chattting_hover_all"))
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(hex: "#E2E4EA"))
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 20)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color("chattingMessageBox"))
+        )
+        .onAppear {
+            // Pre-fill fields from contact data (matching Android logic)
+            let nameParts = contactName.components(separatedBy: " ")
+            firstName = nameParts.first ?? ""
+            if nameParts.count > 1 {
+                lastName = nameParts.dropFirst().joined(separator: " ")
+            }
+            phone = contactPhone
+        }
+    }
+    
+    private func saveContact() {
+        guard !firstName.isEmpty || !lastName.isEmpty, !phone.isEmpty else { return }
+        onSave(firstName, lastName, phone)
+        dismiss()
+    }
+}
+
+// MARK: - Contact Picker View Controller Wrapper (for adding to existing contact)
+struct ContactPickerViewControllerWrapper: UIViewControllerRepresentable {
+    let phoneNumber: String
+    let onDismiss: () -> Void
+    
+    func makeUIViewController(context: Context) -> CNContactPickerViewController {
+        let picker = CNContactPickerViewController()
+        picker.delegate = context.coordinator
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: CNContactPickerViewController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(phoneNumber: phoneNumber, onDismiss: onDismiss)
+    }
+    
+    class Coordinator: NSObject, CNContactPickerDelegate {
+        let phoneNumber: String
+        let onDismiss: () -> Void
+        
+        init(phoneNumber: String, onDismiss: @escaping () -> Void) {
+            self.phoneNumber = phoneNumber
+            self.onDismiss = onDismiss
+        }
+        
+        func contactPicker(_ picker: CNContactPickerViewController, didSelect contact: CNContact) {
+            // Add phone number to selected contact
+            let store = CNContactStore()
+            let mutableContact = contact.mutableCopy() as! CNMutableContact
+            
+            let phoneNumberValue = CNPhoneNumber(stringValue: phoneNumber)
+            let phoneValue = CNLabeledValue(label: CNLabelPhoneNumberMobile, value: phoneNumberValue)
+            mutableContact.phoneNumbers.append(phoneValue)
+            
+            let saveRequest = CNSaveRequest()
+            saveRequest.update(mutableContact)
+            
+            do {
+                try store.execute(saveRequest)
+                print("✅ [Contact] Phone number added to existing contact")
+            } catch {
+                print("❌ [Contact] Failed to add phone number: \(error.localizedDescription)")
+            }
+            
+            picker.dismiss(animated: true) {
+                self.onDismiss()
+            }
+        }
+        
+        func contactPickerDidCancel(_ picker: CNContactPickerViewController) {
+            picker.dismiss(animated: true) {
+                self.onDismiss()
+            }
+        }
+    }
+}
+
+// MARK: - Share Sheet for saving files publicly
+private struct ShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 #Preview {
