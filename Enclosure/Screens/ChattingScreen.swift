@@ -12193,7 +12193,8 @@ struct LinkPreviewImageView: View {
                 case .success(let image):
                     image
                         .resizable()
-                        .scaledToFill()
+                        .scaledToFit()
+                        .frame(maxWidth: width)
                 case .failure(let error):
                     let _ = print("❌ [LinkPreview] Failed to load image from \(imageUrlString): \(error.localizedDescription)")
                     DefaultLinkIconView(width: width, height: height)
