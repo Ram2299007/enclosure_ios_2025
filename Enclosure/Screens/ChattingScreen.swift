@@ -12332,7 +12332,6 @@ struct SenderRichLinkView: View {
                         VStack(spacing: 0) {
                             // Inner container - matching Android inner LinearLayout
                             // Android: background="@drawable/custome_ripple_chatting", padding="10dp", orientation="vertical"
-                            // Matching document container background: Color(hex: "#e7ebf4") with opacity 0.8
                             VStack(alignment: .leading, spacing: 0) {
                                 // Link title - matching Android linkTitle TextView
                                 // Android: textColor="#e7ebf4", textSize="15sp", fontFamily="@font/inter", maxWidth="210dp", singleLine="true"
@@ -12410,11 +12409,7 @@ struct SenderRichLinkView: View {
                                 .padding(.bottom, 1)
                             }
                             .padding(10)
-                            .background(
-                                RoundedRectangle(cornerRadius: 0)
-                                    .fill(Color(hex: "#e7ebf4"))
-                            )
-                            .opacity(0.8) // Matching document container opacity
+                            .background(Color("background_effect_for_chattting_hover_all"))
                         }
                         .background(themeColor) // Android: background="@color/appThemeColor"
                     }
