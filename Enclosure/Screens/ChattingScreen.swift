@@ -12296,6 +12296,7 @@ struct SenderRichLinkView: View {
                         // Link image - matching Android linkImg ImageView
                         // Android: layout_width="180dp", layout_height="100dp", background="#000000", scaleType="centerCrop"
                         linkImageView
+                            .frame(maxWidth: .infinity)
                         
                         // Rich box - matching Android richBox LinearLayout
                         // Android: background="@color/appThemeColor", orientation="vertical"
@@ -12749,6 +12750,7 @@ struct ReceiverRichLinkView: View {
                         // Link image - matching Android linkImg ImageView
                         // Android: layout_width="210dp", layout_height="130dp", background="#000000", scaleType="centerCrop"
                         linkImageView
+                            .frame(maxWidth: .infinity)
                         
                         // Rich box - matching Android LinearLayout
                         // Android: background="@color/receiverChatBox", orientation="vertical"
