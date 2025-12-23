@@ -12431,11 +12431,13 @@ struct SenderRichLinkView: View {
         isFetching = true
         
         print("🔍 [LinkPreview] Fetching preview for: \(url)")
+        print("🔍 [LinkPreview] URL host: \(urlToFetch.host ?? "nil"), path: \(urlToFetch.path)")
         
         // Create a URL request
         var request = URLRequest(url: urlToFetch)
-        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
-        request.timeoutInterval = 10
+        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
+        request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 15
         
         URLSession.shared.dataTask(with: request) { data, response, error in
             guard let data = data,
@@ -12882,11 +12884,13 @@ struct ReceiverRichLinkView: View {
         isFetching = true
         
         print("🔍 [LinkPreview] Fetching preview for: \(url)")
+        print("🔍 [LinkPreview] URL host: \(urlToFetch.host ?? "nil"), path: \(urlToFetch.path)")
         
         // Create a URL request
         var request = URLRequest(url: urlToFetch)
-        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
-        request.timeoutInterval = 10
+        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
+        request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 15
         
         URLSession.shared.dataTask(with: request) { data, response, error in
             guard let data = data,
