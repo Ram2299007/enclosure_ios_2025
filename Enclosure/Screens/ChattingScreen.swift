@@ -9764,17 +9764,23 @@ struct MessageBubbleView: View {
                     return eased
                 }() : 0.0
                 
-                // Icon and progress circle dimensions (matching Android)
-                let iconSize: CGFloat = 60
-                let progressCircleDiameter: CGFloat = 90
-                let iconMoveDistance = horizontal / 2 // Icon moves half the swipe distance
+                // Icon and progress circle dimensions (matching Android - smaller sizes)
+                // Reduced further to match Android appearance
+                let iconSize: CGFloat = 16  // Smaller icon size matching Android
+                let progressCircleDiameter: CGFloat = 28  // Smaller circle matching Android
                 
-                // Start from left edge (matching Android leftMargin = 0)
-                let leftMargin: CGFloat = 0
+                // Center vertically in the message bubble content area (excluding time row and progress bar)
+                // Time row has: padding top 5 + text height ~12 + padding bottom 7 = ~24 points
+                let timeRowHeight: CGFloat = 24  // Approximate height of time row with padding
+                let contentAreaHeight = geometry.size.height - timeRowHeight
+                let centerY = contentAreaHeight / 2  // Center in content area, excluding time row
+                
+                // Same left margin for both sender and receiver bubbles
+                let leftMargin: CGFloat = 13  // 13pt margin from left for both sender and receiver (8 + 5)
+                // Icon appears at the same left position for both sender and receiver (doesn't move with swipe)
+                let iconMoveDistance: CGFloat = 0  // Keep icon at fixed left position for both
+                
                 let progressLeft = leftMargin + iconMoveDistance
-                
-                // Center vertically in the message bubble
-                let centerY = geometry.size.height / 2
                 
                 // Progress circle center (matching Android)
                 let progressCenterX = progressLeft + progressCircleDiameter / 2
@@ -9787,7 +9793,7 @@ struct MessageBubbleView: View {
                             .trim(from: 0, to: progress)
                             .stroke(
                                 getReplyIconColor(),
-                                style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                                style: StrokeStyle(lineWidth: 2, lineCap: .round)
                             )
                             .frame(width: progressCircleDiameter, height: progressCircleDiameter)
                             .rotationEffect(.degrees(-90)) // Start from top (matching Android -90 degrees)
