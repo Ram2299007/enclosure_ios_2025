@@ -12163,6 +12163,74 @@ extension String {
     }
 }
 
+// MARK: - Link Preview Image View Helper
+struct LinkPreviewImageView: View {
+    let imageUrlString: String
+    let width: CGFloat
+    let height: CGFloat
+    
+    private var imageURL: URL? {
+        if let url = URL(string: imageUrlString) {
+            return url
+        } else if let encoded = imageUrlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                  let url = URL(string: encoded) {
+            return url
+        }
+        return nil
+    }
+    
+    @ViewBuilder
+    var body: some View {
+        if let imageURL = imageURL {
+            AsyncImage(url: imageURL) { phase in
+                switch phase {
+                case .empty:
+                    ZStack {
+                        Color.black
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    }
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                case .failure(let error):
+                    let _ = print("❌ [LinkPreview] Failed to load image from \(imageUrlString): \(error.localizedDescription)")
+                    DefaultLinkIconView(width: width, height: height)
+                @unknown default:
+                    DefaultLinkIconView(width: width, height: height)
+                }
+            }
+            .frame(width: width, height: height)
+            .clipped()
+            .onAppear {
+                print("🖼️ [LinkPreview] Loading image from: \(imageUrlString)")
+            }
+        } else {
+            let _ = print("⚠️ [LinkPreview] Invalid image URL string: \(imageUrlString)")
+            DefaultLinkIconView(width: width, height: height)
+        }
+    }
+}
+
+// MARK: - Default Link Icon View Helper
+struct DefaultLinkIconView: View {
+    let width: CGFloat
+    let height: CGFloat
+    
+    var body: some View {
+        ZStack {
+            Color.black
+            Image(systemName: "link")
+                .resizable()
+                .scaledToFit()
+                .foregroundColor(.white)
+                .padding(20)
+        }
+        .frame(width: width, height: height)
+    }
+}
+
 // MARK: - Sender Rich Link View (matching Android sender richLinkViewLyt)
 struct SenderRichLinkView: View {
     let url: String
@@ -12181,6 +12249,17 @@ struct SenderRichLinkView: View {
     
     private var themeColor: Color {
         Color(hex: Constant.themeColor)
+    }
+    
+    @ViewBuilder
+    private var linkImageView: some View {
+        let imageUrlString = linkImageUrl ?? fetchedImageUrl
+        if let imageUrlString = imageUrlString, !imageUrlString.isEmpty {
+            LinkPreviewImageView(imageUrlString: imageUrlString, width: 180, height: 100)
+        } else {
+            let _ = print("⚠️ [LinkPreview] No image URL available - linkImageUrl: \(linkImageUrl ?? "nil"), fetchedImageUrl: \(fetchedImageUrl ?? "nil")")
+            DefaultLinkIconView(width: 180, height: 100)
+        }
     }
     
     @ViewBuilder
@@ -12212,81 +12291,7 @@ struct SenderRichLinkView: View {
                     VStack(spacing: 0) {
                         // Link image - matching Android linkImg ImageView
                         // Android: layout_width="180dp", layout_height="100dp", background="#000000", scaleType="centerCrop"
-                        if let imageUrlString = (linkImageUrl ?? fetchedImageUrl), !imageUrlString.isEmpty {
-                            // Try to create URL, handling encoding if needed
-                            var imageURL: URL? = URL(string: imageUrlString)
-                            if imageURL == nil {
-                                // Try URL encoding if direct creation fails
-                                if let encoded = imageUrlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-                                    imageURL = URL(string: encoded)
-                                }
-                            }
-                            
-                            if let imageURL = imageURL {
-                                AsyncImage(url: imageURL) { phase in
-                                    switch phase {
-                                    case .empty:
-                                        ZStack {
-                                            Color.black
-                                            ProgressView()
-                                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                        }
-                                    case .success(let image):
-                                        image
-                                            .resizable()
-                                            .scaledToFill()
-                                    case .failure(let error):
-                                        let _ = print("❌ [LinkPreview] Failed to load image from \(imageUrlString): \(error.localizedDescription)")
-                                        ZStack {
-                                            Color.black
-                                            Image(systemName: "link")
-                                                .resizable()
-                                                .scaledToFit()
-                                                .foregroundColor(.white)
-                                                .padding(20)
-                                        }
-                                    @unknown default:
-                                        ZStack {
-                                            Color.black
-                                            Image(systemName: "link")
-                                                .resizable()
-                                                .scaledToFit()
-                                                .foregroundColor(.white)
-                                                .padding(20)
-                                        }
-                                    }
-                                }
-                                .frame(width: 180, height: 100)
-                                .clipped()
-                                .onAppear {
-                                    print("🖼️ [LinkPreview] Loading image from: \(imageUrlString)")
-                                }
-                            } else {
-                                let _ = print("⚠️ [LinkPreview] Invalid image URL string: \(imageUrlString)")
-                                // Default link icon when URL is invalid
-                                ZStack {
-                                    Color.black
-                                    Image(systemName: "link")
-                                        .resizable()
-                                        .scaledToFit()
-                                        .foregroundColor(.white)
-                                        .padding(20)
-                                }
-                                .frame(width: 180, height: 100)
-                            }
-                        } else {
-                            let _ = print("⚠️ [LinkPreview] No image URL available - linkImageUrl: \(linkImageUrl ?? "nil"), fetchedImageUrl: \(fetchedImageUrl ?? "nil")")
-                            // Default link icon when no image
-                            ZStack {
-                                Color.black
-                                Image(systemName: "link")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .foregroundColor(.white)
-                                    .padding(20)
-                            }
-                            .frame(width: 180, height: 100)
-                        }
+                        linkImageView
                         
                         // Rich box - matching Android richBox LinearLayout
                         // Android: background="@color/appThemeColor", orientation="vertical"
@@ -12626,6 +12631,17 @@ struct ReceiverRichLinkView: View {
     }
     
     @ViewBuilder
+    private var linkImageView: some View {
+        let imageUrlString = linkImageUrl ?? fetchedImageUrl
+        if let imageUrlString = imageUrlString, !imageUrlString.isEmpty {
+            LinkPreviewImageView(imageUrlString: imageUrlString, width: 210, height: 130)
+        } else {
+            let _ = print("⚠️ [LinkPreview] No image URL available - linkImageUrl: \(linkImageUrl ?? "nil"), fetchedImageUrl: \(fetchedImageUrl ?? "nil")")
+            DefaultLinkIconView(width: 210, height: 130)
+        }
+    }
+    
+    @ViewBuilder
     var body: some View {
         Group {
             // If no preview data, show just the URL as underlined text (matching Android linkActualUrl)
@@ -12654,81 +12670,7 @@ struct ReceiverRichLinkView: View {
                     VStack(spacing: 0) {
                         // Link image - matching Android linkImg ImageView
                         // Android: layout_width="210dp", layout_height="130dp", background="#000000", scaleType="centerCrop"
-                        if let imageUrlString = (linkImageUrl ?? fetchedImageUrl), !imageUrlString.isEmpty {
-                            // Try to create URL, handling encoding if needed
-                            var imageURL: URL? = URL(string: imageUrlString)
-                            if imageURL == nil {
-                                // Try URL encoding if direct creation fails
-                                if let encoded = imageUrlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-                                    imageURL = URL(string: encoded)
-                                }
-                            }
-                            
-                            if let imageURL = imageURL {
-                                AsyncImage(url: imageURL) { phase in
-                                    switch phase {
-                                    case .empty:
-                                        ZStack {
-                                            Color.black
-                                            ProgressView()
-                                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                        }
-                                    case .success(let image):
-                                        image
-                                            .resizable()
-                                            .scaledToFill()
-                                    case .failure(let error):
-                                        let _ = print("❌ [LinkPreview] Failed to load image from \(imageUrlString): \(error.localizedDescription)")
-                                        ZStack {
-                                            Color.black
-                                            Image(systemName: "link")
-                                                .resizable()
-                                                .scaledToFit()
-                                                .foregroundColor(.white)
-                                                .padding(20)
-                                        }
-                                    @unknown default:
-                                        ZStack {
-                                            Color.black
-                                            Image(systemName: "link")
-                                                .resizable()
-                                                .scaledToFit()
-                                                .foregroundColor(.white)
-                                                .padding(20)
-                                        }
-                                    }
-                                }
-                                .frame(width: 210, height: 130)
-                                .clipped()
-                                .onAppear {
-                                    print("🖼️ [LinkPreview] Loading image from: \(imageUrlString)")
-                                }
-                            } else {
-                                let _ = print("⚠️ [LinkPreview] Invalid image URL string: \(imageUrlString)")
-                                // Default link icon when URL is invalid
-                                ZStack {
-                                    Color.black
-                                    Image(systemName: "link")
-                                        .resizable()
-                                        .scaledToFit()
-                                        .foregroundColor(.white)
-                                        .padding(20)
-                                }
-                                .frame(width: 210, height: 130)
-                            }
-                        } else {
-                            let _ = print("⚠️ [LinkPreview] No image URL available - linkImageUrl: \(linkImageUrl ?? "nil"), fetchedImageUrl: \(fetchedImageUrl ?? "nil")")
-                            // Default link icon when no image
-                            ZStack {
-                                Color.black
-                                Image(systemName: "link")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .foregroundColor(.white)
-                                    .padding(20)
-                            }
-                            .frame(width: 210, height: 130)
-                        }
+                        linkImageView
                         
                         // Rich box - matching Android LinearLayout
                         // Android: background="@color/receiverChatBox", orientation="vertical"
