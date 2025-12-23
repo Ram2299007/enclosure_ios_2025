@@ -6521,7 +6521,7 @@ struct SenderDocumentView: View {
                     .frame(maxHeight: .infinity, alignment: .center) // Vertically center with play button
                 }
                 .padding(.horizontal, 3) // Android: layout_marginHorizontal="3dp"
-                .background(Color(hex: "#021D3A")) // Android: backgroundTint="#021D3A"
+                .background(backgroundColor) // Match sender theme / appThemeColor
             }
             .padding(.horizontal, 7) // Android: layout_marginHorizontal="7dp"
             .padding(.vertical, 7) // Android: layout_marginVertical="7dp"
