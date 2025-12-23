@@ -12383,7 +12383,7 @@ struct SenderRichLinkView: View {
                             .padding(10)
                             .background(Color("background_effect_for_chattting_hover_all"))
                         }
-                        .background(backgroundColor) // Android: background="@color/appThemeColor"
+                        .background(themeColor) // Android: background="@color/appThemeColor"
                     }
                     .background(Color(hex: "#e7ebf4")) // Android: cardBackgroundColor="#e7ebf4"
                     .clipShape(RoundedRectangle(cornerRadius: 20)) // Android: cardCornerRadius="20dp"
