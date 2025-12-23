@@ -12194,7 +12194,8 @@ struct LinkPreviewImageView: View {
                     image
                         .resizable()
                         .scaledToFill()
-                        .frame(width: width, height: height)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: height)
                 case .failure(let error):
                     let _ = print("❌ [LinkPreview] Failed to load image from \(imageUrlString): \(error.localizedDescription)")
                     DefaultLinkIconView(width: width, height: height)
@@ -12202,7 +12203,8 @@ struct LinkPreviewImageView: View {
                     DefaultLinkIconView(width: width, height: height)
                 }
             }
-            .frame(width: width, height: height)
+            .frame(maxWidth: .infinity)
+            .frame(height: height)
             .clipped()
             .onAppear {
                 print("🖼️ [LinkPreview] Loading image from: \(imageUrlString)")
@@ -12294,6 +12296,8 @@ struct SenderRichLinkView: View {
                         // Link image - matching Android linkImg ImageView
                         // Android: layout_width="180dp", layout_height="100dp", background="#000000", scaleType="centerCrop"
                         linkImageView
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 100)
                         
                         // Rich box - matching Android richBox LinearLayout
                         // Android: background="@color/appThemeColor", orientation="vertical"
