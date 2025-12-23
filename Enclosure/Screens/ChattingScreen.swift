@@ -12230,7 +12230,8 @@ struct DefaultLinkIconView: View {
                 .foregroundColor(.white)
                 .padding(20)
         }
-        .frame(width: width, height: height)
+        .frame(maxWidth: .infinity)
+        .frame(height: height)
     }
 }
 
