@@ -12509,15 +12509,62 @@ struct SenderRichLinkView: View {
             description = extractMetaContent(html: html, property: "og:description")
             imageUrl = extractMetaContent(html: html, property: "og:image")
             
+            // Try og:image:secure_url as fallback
+            if imageUrl == nil {
+                imageUrl = extractMetaContent(html: html, property: "og:image:secure_url")
+            }
+            
             // Try Twitter Card tags as fallback
             if imageUrl == nil {
                 imageUrl = extractMetaContent(html: html, property: "twitter:image")
+            }
+            if imageUrl == nil {
+                imageUrl = extractMetaContent(html: html, property: "twitter:image:src")
             }
             if title == nil {
                 title = extractMetaContent(html: html, property: "twitter:title")
             }
             if description == nil {
                 description = extractMetaContent(html: html, property: "twitter:description")
+            }
+            
+            // Try link rel="image_src" (used by some sites)
+            if imageUrl == nil {
+                if let regex = try? NSRegularExpression(pattern: #"<link\s+rel=["']image_src["']\s+href=["']([^"']+)["']"#, options: .caseInsensitive),
+                   let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+                   match.numberOfRanges > 1 {
+                    let imgRange = Range(match.range(at: 1), in: html)!
+                    imageUrl = String(html[imgRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+            
+            // Try link rel="preload" as="image" (used by some sites)
+            if imageUrl == nil {
+                if let regex = try? NSRegularExpression(pattern: #"<link\s+rel=["']preload["']\s+as=["']image["']\s+href=["']([^"']+)["']"#, options: .caseInsensitive),
+                   let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+                   match.numberOfRanges > 1 {
+                    let imgRange = Range(match.range(at: 1), in: html)!
+                    imageUrl = String(html[imgRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+            
+            // For YouTube short URLs, try to extract video ID and construct thumbnail URL
+            if imageUrl == nil {
+                if urlToFetch.host?.contains("youtu.be") == true || urlToFetch.host?.contains("youtube.com") == true {
+                    // Extract video ID from URL
+                    var videoId: String? = nil
+                    if urlToFetch.host?.contains("youtu.be") == true {
+                        videoId = urlToFetch.pathComponents.last?.components(separatedBy: "?").first
+                    } else if let queryItems = URLComponents(url: urlToFetch, resolvingAgainstBaseURL: false)?.queryItems,
+                              let vParam = queryItems.first(where: { $0.name == "v" })?.value {
+                        videoId = vParam
+                    }
+                    
+                    if let videoId = videoId, !videoId.isEmpty {
+                        imageUrl = "https://img.youtube.com/vi/\(videoId)/maxresdefault.jpg"
+                        print("🎬 [LinkPreview] Constructed YouTube thumbnail URL: \(imageUrl ?? "nil")")
+                    }
+                }
             }
             
             // Fallback to regular meta tags if OG tags not found
@@ -12913,15 +12960,62 @@ struct ReceiverRichLinkView: View {
             description = extractMetaContent(html: html, property: "og:description")
             imageUrl = extractMetaContent(html: html, property: "og:image")
             
+            // Try og:image:secure_url as fallback
+            if imageUrl == nil {
+                imageUrl = extractMetaContent(html: html, property: "og:image:secure_url")
+            }
+            
             // Try Twitter Card tags as fallback
             if imageUrl == nil {
                 imageUrl = extractMetaContent(html: html, property: "twitter:image")
+            }
+            if imageUrl == nil {
+                imageUrl = extractMetaContent(html: html, property: "twitter:image:src")
             }
             if title == nil {
                 title = extractMetaContent(html: html, property: "twitter:title")
             }
             if description == nil {
                 description = extractMetaContent(html: html, property: "twitter:description")
+            }
+            
+            // Try link rel="image_src" (used by some sites)
+            if imageUrl == nil {
+                if let regex = try? NSRegularExpression(pattern: #"<link\s+rel=["']image_src["']\s+href=["']([^"']+)["']"#, options: .caseInsensitive),
+                   let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+                   match.numberOfRanges > 1 {
+                    let imgRange = Range(match.range(at: 1), in: html)!
+                    imageUrl = String(html[imgRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+            
+            // Try link rel="preload" as="image" (used by some sites)
+            if imageUrl == nil {
+                if let regex = try? NSRegularExpression(pattern: #"<link\s+rel=["']preload["']\s+as=["']image["']\s+href=["']([^"']+)["']"#, options: .caseInsensitive),
+                   let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+                   match.numberOfRanges > 1 {
+                    let imgRange = Range(match.range(at: 1), in: html)!
+                    imageUrl = String(html[imgRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+            
+            // For YouTube short URLs, try to extract video ID and construct thumbnail URL
+            if imageUrl == nil {
+                if urlToFetch.host?.contains("youtu.be") == true || urlToFetch.host?.contains("youtube.com") == true {
+                    // Extract video ID from URL
+                    var videoId: String? = nil
+                    if urlToFetch.host?.contains("youtu.be") == true {
+                        videoId = urlToFetch.pathComponents.last?.components(separatedBy: "?").first
+                    } else if let queryItems = URLComponents(url: urlToFetch, resolvingAgainstBaseURL: false)?.queryItems,
+                              let vParam = queryItems.first(where: { $0.name == "v" })?.value {
+                        videoId = vParam
+                    }
+                    
+                    if let videoId = videoId, !videoId.isEmpty {
+                        imageUrl = "https://img.youtube.com/vi/\(videoId)/maxresdefault.jpg"
+                        print("🎬 [LinkPreview] Constructed YouTube thumbnail URL: \(imageUrl ?? "nil")")
+                    }
+                }
             }
             
             // Fallback to regular meta tags if OG tags not found
