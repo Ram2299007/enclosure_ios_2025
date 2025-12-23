@@ -12863,7 +12863,7 @@ struct ReceiverRichLinkView: View {
                                 .padding(.bottom, 1)
                             }
                             .padding(10)
-                            .background(Color("background_effect_for_chattting_hover_all"))
+                            .background(Color("message_box_bg")) // Matching Constant.voiceAudio receiver container color
                         }
                         .background(Color("receiverChatBox")) // Android: background="@color/receiverChatBox"
                     }
