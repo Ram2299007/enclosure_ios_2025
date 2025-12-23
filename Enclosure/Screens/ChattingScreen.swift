@@ -9788,11 +9788,12 @@ struct MessageBubbleView: View {
                 
                 ZStack {
                     // Circular progress ring (matching Android Paint.Style.STROKE)
+                    // Always uses halfReplyColor (gray) regardless of sender/receiver
                     if scale > 0 {
                         Circle()
                             .trim(from: 0, to: progress)
                             .stroke(
-                                getReplyIconColor(),
+                                getHalfReplyColor(), // Always use halfReplyColor for progress ring
                                 style: StrokeStyle(lineWidth: 2, lineCap: .round)
                             )
                             .frame(width: progressCircleDiameter, height: progressCircleDiameter)
@@ -9802,23 +9803,15 @@ struct MessageBubbleView: View {
                             .opacity(scale)
                         
                         // Reply icon (matching Android reply_svg_black)
+                        // Gray color when unfilled (progress < 1.0), theme color when 100% filled (progress >= 1.0)
                         Image(systemName: "arrowshape.turn.up.left.fill")
                             .resizable()
                             .scaledToFit()
                             .frame(width: iconSize, height: iconSize)
-                            .foregroundColor(progress >= 1.0 ? .red : getReplyIconColor())
+                            .foregroundColor(progress >= 1.0 ? Color(hex: Constant.themeColor) : getHalfReplyColor()) // Theme color when 100% filled, gray otherwise
                             .position(x: progressCenterX, y: progressCenterY)
                             .scaleEffect(scale)
                             .opacity(scale)
-                        
-                        // Fill effect when threshold reached (matching Android destruction effect)
-                        if progress >= 1.0 {
-                            Circle()
-                                .fill(getReplyIconColor())
-                                .frame(width: progressCircleDiameter, height: progressCircleDiameter)
-                                .position(x: progressCenterX, y: progressCenterY)
-                                .blendMode(.sourceAtop)
-                        }
                     }
                 }
                 .allowsHitTesting(false) // Don't interfere with gestures
@@ -9826,15 +9819,22 @@ struct MessageBubbleView: View {
         }
     }
     
-    // Get reply icon color based on sender (matching Android logic)
-    private func getReplyIconColor() -> Color {
+    // Get halfReplyColor (matching Android R.color.halfReplyColor)
+    // Always used for progress ring and icon (until threshold)
+    private func getHalfReplyColor() -> Color {
+        // Gray color matching Android halfReplyColor
+        return Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0) // #78787A gray
+    }
+    
+    // Get destruction effect color (matching Android logic)
+    // Theme color for sender, halfReplyColor for receiver
+    private func getDestructionEffectColor() -> Color {
         if isSentByMe {
-            // Sender: use theme color
+            // Sender: use theme color (matching Android ThemeColorKey)
             return Color(hex: Constant.themeColor)
         } else {
-            // Receiver: use gray color (matching Android R.color.halfReplyColor)
-            // Fallback to gray if color asset doesn't exist
-            return Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0) // #78787A gray
+            // Receiver: use halfReplyColor (matching Android R.color.halfReplyColor)
+            return getHalfReplyColor()
         }
     }
     
