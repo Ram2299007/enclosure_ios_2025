@@ -12237,6 +12237,7 @@ struct DefaultLinkIconView: View {
 
 // MARK: - Sender Rich Link View (matching Android sender richLinkViewLyt)
 struct SenderRichLinkView: View {
+    @Environment(\.colorScheme) var colorScheme
     let url: String
     let backgroundColor: Color
     let linkTitle: String?
@@ -12253,6 +12254,33 @@ struct SenderRichLinkView: View {
     
     private var themeColor: Color {
         Color(hex: Constant.themeColor)
+    }
+    
+    // Get sender message background color (matching Constant.Text messages)
+    private var senderMessageBackgroundColor: Color {
+        // Light mode: always use legacy bubble color (#011224) to match Android light theme
+        guard colorScheme == .dark else {
+            return Color(hex: "#011224")
+        }
+        
+        // Dark mode: use theme-based tinted backgrounds (matching Android)
+        let themeColor = Constant.themeColor
+        let colorKey = themeColor.lowercased()
+        
+        switch colorKey {
+        case "#ff0080": return Color(hex: "#4D0026")
+        case "#00a3e9": return Color(hex: "#01253B")
+        case "#7adf2a": return Color(hex: "#25430D")
+        case "#ec0001": return Color(hex: "#470000")
+        case "#16f3ff": return Color(hex: "#05495D")
+        case "#ff8a00": return Color(hex: "#663700")
+        case "#7f7f7f": return Color(hex: "#2B3137")
+        case "#d9b845": return Color(hex: "#413815")
+        case "#346667": return Color(hex: "#1F3D3E")
+        case "#9846d9": return Color(hex: "#2d1541")
+        case "#a81010": return Color(hex: "#430706")
+        default: return Color(hex: "#01253B")
+        }
     }
     
     @ViewBuilder
@@ -12385,7 +12413,7 @@ struct SenderRichLinkView: View {
                         }
                         .background(themeColor) // Android: background="@color/appThemeColor"
                     }
-                    .background(Color(hex: "#e7ebf4")) // Android: cardBackgroundColor="#e7ebf4"
+                    .background(senderMessageBackgroundColor) // Android: cardBackgroundColor matching Constant.Text messages
                     .clipShape(RoundedRectangle(cornerRadius: 20)) // Android: cardCornerRadius="20dp"
                 }
             }
@@ -12839,7 +12867,7 @@ struct ReceiverRichLinkView: View {
                         }
                         .background(Color("receiverChatBox")) // Android: background="@color/receiverChatBox"
                     }
-                    .background(Color.white) // Android: cardBackgroundColor="@color/white"
+                    .background(Color("message_box_bg")) // Android: cardBackgroundColor matching Constant.Text receiver messages
                     .clipShape(RoundedRectangle(cornerRadius: 20)) // Android: cardCornerRadius="20dp"
                 }
             }
