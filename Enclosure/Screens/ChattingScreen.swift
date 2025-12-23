@@ -12409,7 +12409,7 @@ struct SenderRichLinkView: View {
                                 .padding(.bottom, 1)
                             }
                             .padding(10)
-                            .background(Color("background_effect_for_chattting_hover_all"))
+                            .background(senderMessageBackgroundColor) // Matching Constant.Text/Constant.doc sender message background
                         }
                         .background(themeColor) // Android: background="@color/appThemeColor"
                     }
