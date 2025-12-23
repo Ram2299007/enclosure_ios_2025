@@ -661,7 +661,12 @@ struct ChattingScreen: View {
                             .frame(width: geometry.size.width, height: geometry.size.height)
                         } else {
                             ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
-                                MessageBubbleView(message: message)
+                                MessageBubbleView(
+                                    message: message,
+                                    onHalfSwipe: { swipedMessage in
+                                        handleHalfSwipeReply(swipedMessage)
+                                    }
+                                )
                                     .id(message.id)
                                     .background(
                                         // Detect when first message (index 0) becomes visible (matching Android findFirstVisibleItemPosition == 0)
@@ -2475,6 +2480,41 @@ struct ChattingScreen: View {
         // TODO: Update typing status in Firebase
     }
     
+    /// Trigger reply UI (Android half-swipe) for a given message
+    private func handleHalfSwipeReply(_ message: ChatMessage) {
+        let senderName = message.uid == Constant.SenderIdMy ? "You" : (message.userName?.isEmpty == false ? message.userName! : contact.fullName)
+        let previewText = replyPreviewText(for: message)
+        
+        withAnimation {
+            replySenderName = senderName
+            replyMessage = previewText
+            replyDataType = message.dataType
+            showReplyLayout = true
+            isMessageFieldFocused = true
+        }
+    }
+    
+    /// Build the reply preview label based on message type (mirrors Android reply cards)
+    private func replyPreviewText(for message: ChatMessage) -> String {
+        switch message.dataType {
+        case Constant.img:
+            return "Photo"
+        case Constant.video:
+            return "Video"
+        case Constant.voiceAudio:
+            return "Audio"
+        case Constant.contact:
+            if let name = message.name, !name.isEmpty { return name }
+            return "Contact"
+        case Constant.doc:
+            if let fileName = message.fileName, !fileName.isEmpty { return fileName }
+            if let ext = message.fileExtension, !ext.isEmpty { return ext }
+            return "Document"
+        default:
+            return message.message.isEmpty ? "Message" : message.message
+        }
+    }
+    
     // MARK: - Send Button Handler (matching Android sendGrp.setOnClickListener)
     private func handleSendButtonClick() {
         print("DIALOGUE_DEBUG: === SEND BUTTON CLICKED ===")
@@ -3961,6 +4001,42 @@ struct ChattingScreen: View {
     private func resetSendButtonScale() {
         withAnimation(.easeInOut(duration: 0.2)) {
             sendButtonScale = 1.0
+        }
+    }
+}
+
+// MARK: - UIKit swipe recognizer wrapper (left-to-right)
+struct SwipeGestureView: UIViewRepresentable {
+    var onSwipeRight: () -> Void
+    
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.backgroundColor = .clear
+        
+        let recognizer = UISwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleSwipe(_:)))
+        recognizer.direction = .right
+        recognizer.cancelsTouchesInView = false // do not block scrolling
+        view.addGestureRecognizer(recognizer)
+        
+        return view
+    }
+    
+    func updateUIView(_ uiView: UIView, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onSwipeRight: onSwipeRight)
+    }
+    
+    class Coordinator: NSObject {
+        let onSwipeRight: () -> Void
+        
+        init(onSwipeRight: @escaping () -> Void) {
+            self.onSwipeRight = onSwipeRight
+        }
+        
+        @objc func handleSwipe(_ recognizer: UISwipeGestureRecognizer) {
+            guard recognizer.direction == .right else { return }
+            onSwipeRight()
         }
     }
 }
@@ -8977,11 +9053,16 @@ struct BunchImageView: View {
 struct MessageBubbleView: View {
     let message: ChatMessage
     let isSentByMe: Bool
+    let onHalfSwipe: (ChatMessage) -> Void
+    @GestureState private var dragTranslation: CGSize = .zero
+    @State private var isDragging: Bool = false
+    private let halfSwipeThreshold: CGFloat = 60
     @Environment(\.colorScheme) private var colorScheme
     
-    init(message: ChatMessage) {
+    init(message: ChatMessage, onHalfSwipe: @escaping (ChatMessage) -> Void = { _ in }) {
         self.message = message
         self.isSentByMe = message.uid == Constant.SenderIdMy
+        self.onHalfSwipe = onHalfSwipe
     }
     
     var body: some View {
@@ -9618,7 +9699,137 @@ struct MessageBubbleView: View {
             }
         }
         .padding(.horizontal, 10) // side margin like Android screen margins
-       
+        .contentShape(Rectangle())
+        .offset(x: isDragging && dragTranslation.width > 0 ? min(dragTranslation.width, halfSwipeThreshold) : 0)
+        .overlay(
+            // Real-time swipe feedback overlay (matching Android HalfSwipeCallback drawReplyIconWithoutBackground)
+            swipeFeedbackOverlay
+        )
+        .simultaneousGesture(
+            // Use simultaneousGesture so it doesn't block vertical scrolling
+            DragGesture(minimumDistance: 15)
+                .updating($dragTranslation) { value, state, _ in
+                    let horizontal = value.translation.width
+                    let vertical = abs(value.translation.height)
+                    
+                    // Only activate if horizontal movement is clearly dominant (2x vertical) and swiping right
+                    // This ensures vertical scrolling works smoothly
+                    if horizontal > 15 && abs(horizontal) > vertical * 2.0 {
+                        // Cap the translation at threshold (matching Android behavior)
+                        let cappedHorizontal = min(horizontal, halfSwipeThreshold)
+                        state = CGSize(width: cappedHorizontal, height: 0)
+                        isDragging = true
+                    } else {
+                        // Reset immediately if vertical movement dominates - let scroll view handle it
+                        state = .zero
+                        isDragging = false
+                    }
+                }
+                .onEnded { value in
+                    let horizontal = value.translation.width
+                    let vertical = abs(value.translation.height)
+                    
+                    // Trigger reply only for deliberate right swipes with clear horizontal dominance
+                    if horizontal > halfSwipeThreshold && abs(horizontal) > vertical * 2.0 {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        onHalfSwipe(message)
+                    }
+                    
+                    // Reset drag state with animation
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        isDragging = false
+                    }
+                }
+        )
+        
+    }
+    
+    // Real-time swipe feedback overlay (matching Android HalfSwipeCallback)
+    @ViewBuilder
+    private var swipeFeedbackOverlay: some View {
+        GeometryReader { geometry in
+            let horizontal = isDragging ? dragTranslation.width : 0
+            let isSwipingRight = horizontal > 0
+            
+            if isSwipingRight {
+                let swipeDistancePx = halfSwipeThreshold
+                let progress = min(abs(horizontal) / swipeDistancePx, 1.0)
+                
+                // Zoom delay - icon appears after 20% of swipe (matching Android zoomDelay = 0.20f)
+                let zoomDelay: CGFloat = 0.20
+                let scale: CGFloat = progress > zoomDelay ? {
+                    let zoomProgress = (progress - zoomDelay) / (1.0 - zoomDelay)
+                    // Ease-out cubic easing (matching Android)
+                    let eased = 1.0 - pow(1.0 - zoomProgress, 3)
+                    return eased
+                }() : 0.0
+                
+                // Icon and progress circle dimensions (matching Android)
+                let iconSize: CGFloat = 60
+                let progressCircleDiameter: CGFloat = 90
+                let iconMoveDistance = horizontal / 2 // Icon moves half the swipe distance
+                
+                // Start from left edge (matching Android leftMargin = 0)
+                let leftMargin: CGFloat = 0
+                let progressLeft = leftMargin + iconMoveDistance
+                
+                // Center vertically in the message bubble
+                let centerY = geometry.size.height / 2
+                
+                // Progress circle center (matching Android)
+                let progressCenterX = progressLeft + progressCircleDiameter / 2
+                let progressCenterY = centerY
+                
+                ZStack {
+                    // Circular progress ring (matching Android Paint.Style.STROKE)
+                    if scale > 0 {
+                        Circle()
+                            .trim(from: 0, to: progress)
+                            .stroke(
+                                getReplyIconColor(),
+                                style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                            )
+                            .frame(width: progressCircleDiameter, height: progressCircleDiameter)
+                            .rotationEffect(.degrees(-90)) // Start from top (matching Android -90 degrees)
+                            .position(x: progressCenterX, y: progressCenterY)
+                            .scaleEffect(scale)
+                            .opacity(scale)
+                        
+                        // Reply icon (matching Android reply_svg_black)
+                        Image(systemName: "arrowshape.turn.up.left.fill")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: iconSize, height: iconSize)
+                            .foregroundColor(progress >= 1.0 ? .red : getReplyIconColor())
+                            .position(x: progressCenterX, y: progressCenterY)
+                            .scaleEffect(scale)
+                            .opacity(scale)
+                        
+                        // Fill effect when threshold reached (matching Android destruction effect)
+                        if progress >= 1.0 {
+                            Circle()
+                                .fill(getReplyIconColor())
+                                .frame(width: progressCircleDiameter, height: progressCircleDiameter)
+                                .position(x: progressCenterX, y: progressCenterY)
+                                .blendMode(.sourceAtop)
+                        }
+                    }
+                }
+                .allowsHitTesting(false) // Don't interfere with gestures
+            }
+        }
+    }
+    
+    // Get reply icon color based on sender (matching Android logic)
+    private func getReplyIconColor() -> Color {
+        if isSentByMe {
+            // Sender: use theme color
+            return Color(hex: Constant.themeColor)
+        } else {
+            // Receiver: use gray color (matching Android R.color.halfReplyColor)
+            // Fallback to gray if color asset doesn't exist
+            return Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0) // #78787A gray
+        }
     }
     
     // Calculate image size (matching DynamicImageView logic)
@@ -11452,12 +11663,12 @@ struct SenderVoiceAudioView: View {
                             .frame(maxWidth: .infinity, alignment: .leading) // Android: layout_gravity="start"
                             .padding(.top, 5) // Android: layout_marginTop="5dp"
                     }
-                    .frame(minWidth: 150) // Android: minWidth="150dp"
+                    .frame (minWidth: 150) // Android: minWidth="150dp"
                     .padding(.horizontal, 5) // Android: layout_marginHorizontal="5dp"
                     .frame(maxHeight: .infinity, alignment: .center) // Vertically center with play button
                 }
                 .padding(.horizontal, 3) // Android: layout_marginHorizontal="3dp"
-                .background(Color(hex: "#021D3A")) // Android: backgroundTint="#021D3A"
+               
             }
             .padding(.horizontal, 7) // Android: layout_marginHorizontal="7dp"
             .padding(.vertical, 7) // Android: layout_marginVertical="7dp"
