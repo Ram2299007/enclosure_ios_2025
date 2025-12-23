@@ -12415,6 +12415,11 @@ struct SenderRichLinkView: View {
                     }
                     .background(senderMessageBackgroundColor) // Android: cardBackgroundColor matching Constant.Text messages
                     .clipShape(RoundedRectangle(cornerRadius: 20)) // Android: cardCornerRadius="20dp"
+                    .onTapGesture {
+                        if let url = URL(string: self.url) {
+                            UIApplication.shared.open(url)
+                        }
+                    }
                 }
             }
         }
@@ -12869,6 +12874,11 @@ struct ReceiverRichLinkView: View {
                     }
                     .background(Color("message_box_bg")) // Android: cardBackgroundColor matching Constant.Text receiver messages
                     .clipShape(RoundedRectangle(cornerRadius: 20)) // Android: cardCornerRadius="20dp"
+                    .onTapGesture {
+                        if let url = URL(string: self.url) {
+                            UIApplication.shared.open(url)
+                        }
+                    }
                 }
             }
         }
