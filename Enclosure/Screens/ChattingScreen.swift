@@ -3976,6 +3976,7 @@ struct ChatMessage: Identifiable, Codable {
         case forwaredKey, groupName, docSize, fileName, thumbnail, fileNameThumbnail, caption
         case notification, currentDate, emojiModel, emojiCount, timestamp
         case imageWidth, imageHeight, aspectRatio, selectionCount, selectionBunch, receiverLoader
+        case linkTitle, linkDescription, linkImageUrl, favIconUrl // Rich link preview fields
     }
     
     // Core message fields
@@ -4034,6 +4035,12 @@ struct ChatMessage: Identifiable, Codable {
     // Receiver loader (for loading state)
     var receiverLoader: Int
     
+    // Rich link preview fields
+    var linkTitle: String?
+    var linkDescription: String?
+    var linkImageUrl: String?
+    var favIconUrl: String?
+    
     // Initializer with all parameters (matching Android constructor)
     init(
         id: String,
@@ -4071,7 +4078,11 @@ struct ChatMessage: Identifiable, Codable {
         aspectRatio: String? = nil,
         selectionCount: String? = nil,
         selectionBunch: [SelectionBunchModel]? = nil,
-        receiverLoader: Int = 0
+        receiverLoader: Int = 0,
+        linkTitle: String? = nil,
+        linkDescription: String? = nil,
+        linkImageUrl: String? = nil,
+        favIconUrl: String? = nil
     ) {
         self.id = id
         self.uid = uid
@@ -4109,6 +4120,10 @@ struct ChatMessage: Identifiable, Codable {
         self.selectionCount = selectionCount
         self.selectionBunch = selectionBunch
         self.receiverLoader = receiverLoader
+        self.linkTitle = linkTitle
+        self.linkDescription = linkDescription
+        self.linkImageUrl = linkImageUrl
+        self.favIconUrl = favIconUrl
     }
     
     // Convenience initializer for simple text messages
@@ -9245,25 +9260,43 @@ struct MessageBubbleView: View {
                         .frame(maxWidth: 250)
                     } else {
                         // Sender text message (matching Android sendMessage TextView) - wrap content with maxWidth, gravity="end"
-                    HStack {
-                        Spacer(minLength: 0) // Push content to end
-                        Text(message.message)
-                            .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp", textFontWeight="200" (light)
-                            .fontWeight(.light) // textFontWeight="200" = Light weight
-                            .foregroundColor(Color(hex: "#e7ebf4")) // textColor="#e7ebf4"
-                            .lineSpacing(7) // lineHeight="22dp" (22 - 15 = 7dp spacing)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true) // allow wrapping
-                            .padding(.horizontal, 12) // layout_marginHorizontal="12dp"
-                            .padding(.top, 5) // paddingTop="5dp"
-                            .padding(.bottom, 6) // paddingBottom="6dp"
-                            .background(
-                                // Background matching message_bg_blue.xml with theme color support
-                                RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
-                                    .fill(getSenderMessageBackgroundColor()) // Theme-based background color
-                            )
-                    }
-                    .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
+                        // Check if message contains a URL (matching Android URLUtil.isValidUrl)
+                        if let url = message.message.extractURL(), url.isValidURL() {
+                            // Show rich link preview (matching Android richLinkViewLyt)
+                            HStack {
+                                Spacer(minLength: 0) // Push content to end
+                                SenderRichLinkView(
+                                    url: url,
+                                    backgroundColor: getSenderMessageBackgroundColor(),
+                                    linkTitle: message.linkTitle,
+                                    linkDescription: message.linkDescription,
+                                    linkImageUrl: message.linkImageUrl,
+                                    favIconUrl: message.favIconUrl
+                                )
+                            }
+                            .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
+                        } else {
+                            // Regular text message
+                            HStack {
+                                Spacer(minLength: 0) // Push content to end
+                                Text(message.message)
+                                    .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp", textFontWeight="200" (light)
+                                    .fontWeight(.light) // textFontWeight="200" = Light weight
+                                    .foregroundColor(Color(hex: "#e7ebf4")) // textColor="#e7ebf4"
+                                    .lineSpacing(7) // lineHeight="22dp" (22 - 15 = 7dp spacing)
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true) // allow wrapping
+                                    .padding(.horizontal, 12) // layout_marginHorizontal="12dp"
+                                    .padding(.top, 5) // paddingTop="5dp"
+                                    .padding(.bottom, 6) // paddingBottom="6dp"
+                                    .background(
+                                        // Background matching message_bg_blue.xml with theme color support
+                                        RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
+                                            .fill(getSenderMessageBackgroundColor()) // Theme-based background color
+                                    )
+                            }
+                            .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
+                        }
                     }
                     
                 } else {
@@ -9523,24 +9556,41 @@ struct MessageBubbleView: View {
                         .frame(maxWidth: 250)
                     } else {
                         // Receiver text message (matching Android recMessage TextView) - wrap content with maxWidth
-                    HStack {
-                        Text(message.message)
-                            .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp" (matching Android)
-                            .fontWeight(.light) // textFontWeight="200" (matching Android)
-                            .foregroundColor(Color("TextColor"))
-                            .lineSpacing(7) // lineHeight="22dp" (22 - 15 = 7dp spacing)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true) // allow wrapping
-                            .padding(.horizontal, 12) // layout_marginHorizontal="12dp"
-                            .padding(.top, 5) // paddingTop="5dp"
-                            .padding(.bottom, 6) // paddingBottom="6dp"
-                            .background(
-                                RoundedRectangle(cornerRadius: 12) // matching Android corner radius
-                                    .fill(Color("message_box_bg"))
-                            )
-                        Spacer(minLength: 0) // Don't expand beyond content
-                    }
-                    .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
+                        // Check if message contains a URL (matching Android URLUtil.isValidUrl)
+                        if let url = message.message.extractURL(), url.isValidURL() {
+                            // Show rich link preview (matching Android richLinkViewLyt)
+                            HStack {
+                                ReceiverRichLinkView(
+                                    url: url,
+                                    linkTitle: message.linkTitle,
+                                    linkDescription: message.linkDescription,
+                                    linkImageUrl: message.linkImageUrl,
+                                    favIconUrl: message.favIconUrl
+                                )
+                                Spacer(minLength: 0) // Don't expand beyond content
+                            }
+                            .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
+                        } else {
+                            // Regular text message
+                            HStack {
+                                Text(message.message)
+                                    .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp" (matching Android)
+                                    .fontWeight(.light) // textFontWeight="200" (matching Android)
+                                    .foregroundColor(Color("TextColor"))
+                                    .lineSpacing(7) // lineHeight="22dp" (22 - 15 = 7dp spacing)
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true) // allow wrapping
+                                    .padding(.horizontal, 12) // layout_marginHorizontal="12dp"
+                                    .padding(.top, 5) // paddingTop="5dp"
+                                    .padding(.bottom, 6) // paddingBottom="6dp"
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12) // matching Android corner radius
+                                            .fill(Color("message_box_bg"))
+                                    )
+                                Spacer(minLength: 0) // Don't expand beyond content
+                            }
+                            .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
+                        }
                     }
                 }
                 
@@ -12091,8 +12141,839 @@ struct ContactPickerViewControllerWrapper: UIViewControllerRepresentable {
     }
 }
 
+// MARK: - URL Detection Helper
+extension String {
+    /// Check if string is a valid URL (matching Android URLUtil.isValidUrl)
+    func isValidURL() -> Bool {
+        guard !self.isEmpty else { return false }
+        guard let url = URL(string: self.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
+        return url.scheme != nil && url.host != nil
+    }
+    
+    /// Extract URL from text if present
+    func extractURL() -> String? {
+        let trimmed = self.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isValidURL() {
+            return trimmed
+        }
+        // Try to find URL in text using regex
+        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        let matches = detector?.matches(in: trimmed, options: [], range: NSRange(location: 0, length: trimmed.utf16.count))
+        return matches?.first?.url?.absoluteString
+    }
+}
+
+// MARK: - Sender Rich Link View (matching Android sender richLinkViewLyt)
+struct SenderRichLinkView: View {
+    let url: String
+    let backgroundColor: Color
+    let linkTitle: String?
+    let linkDescription: String?
+    let linkImageUrl: String?
+    let favIconUrl: String?
+    
+    @State private var showFullPreview: Bool = false
+    @State private var fetchedTitle: String? = nil
+    @State private var fetchedDescription: String? = nil
+    @State private var fetchedImageUrl: String? = nil
+    @State private var fetchedFavIconUrl: String? = nil
+    @State private var isFetching: Bool = false
+    
+    private var themeColor: Color {
+        Color(hex: Constant.themeColor)
+    }
+    
+    @ViewBuilder
+    var body: some View {
+        Group {
+            // If no preview data, show just the URL as underlined text (matching Android linkActualUrl)
+            // Android: when linkPreviewModel.getUrl().equals(""), show linkActualUrl only
+            if !showFullPreview {
+                // Link actual URL - matching Android linkActualUrl TextView (when no preview data)
+                // Android: textColor="@color/blue", textSize="15sp", fontFamily="@font/inter", maxWidth="210dp", textFontWeight="400"
+                // Android: layout_marginHorizontal="2dp"
+                Text(url)
+                    .font(.custom("Inter18pt-Regular", size: 15))
+                    .fontWeight(.regular)
+                    .foregroundColor(themeColor)
+                    .frame(maxWidth: 210, alignment: .leading)
+                    .underline()
+                    .padding(.horizontal, 2)
+                    .onTapGesture {
+                        if let url = URL(string: self.url) {
+                            UIApplication.shared.open(url)
+                        }
+                    }
+            } else {
+                // Full rich link preview (matching Android when linkPreviewModel has data)
+                VStack(spacing: 0) {
+                    // Main container - matching Android CardView
+                    // Android: cardBackgroundColor="#e7ebf4", cardCornerRadius="20dp", cardElevation="0dp"
+                    VStack(spacing: 0) {
+                        // Link image - matching Android linkImg ImageView
+                        // Android: layout_width="180dp", layout_height="100dp", background="#000000", scaleType="centerCrop"
+                        if let imageUrl = (linkImageUrl ?? fetchedImageUrl), !imageUrl.isEmpty, let imageURL = URL(string: imageUrl) {
+                            AsyncImage(url: imageURL) { phase in
+                                switch phase {
+                                case .empty:
+                                    ZStack {
+                                        Color.black
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    }
+                                case .success(let image):
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                case .failure(let error):
+                                    let _ = print("❌ [LinkPreview] Failed to load image from \(imageUrl): \(error.localizedDescription)")
+                                    ZStack {
+                                        Color.black
+                                        Image(systemName: "link")
+                                            .resizable()
+                                            .scaledToFit()
+                                            .foregroundColor(.white)
+                                            .padding(20)
+                                    }
+                                @unknown default:
+                                    ZStack {
+                                        Color.black
+                                        Image(systemName: "link")
+                                            .resizable()
+                                            .scaledToFit()
+                                            .foregroundColor(.white)
+                                            .padding(20)
+                                    }
+                                }
+                            }
+                            .frame(width: 180, height: 100)
+                            .clipped()
+                            .onAppear {
+                                print("🖼️ [LinkPreview] Loading image from: \(imageUrl)")
+                            }
+                        } else {
+                            // Default link icon when no image
+                            ZStack {
+                                Color.black
+                                Image(systemName: "link")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .foregroundColor(.white)
+                                    .padding(20)
+                            }
+                            .frame(width: 180, height: 100)
+                        }
+                        
+                        // Rich box - matching Android richBox LinearLayout
+                        // Android: background="@color/appThemeColor", orientation="vertical"
+                        VStack(spacing: 0) {
+                            // Inner container - matching Android inner LinearLayout
+                            // Android: background="@drawable/custome_ripple_chatting", padding="10dp", orientation="vertical"
+                            VStack(alignment: .leading, spacing: 0) {
+                                // Link title - matching Android linkTitle TextView
+                                // Android: textColor="#e7ebf4", textSize="15sp", fontFamily="@font/inter", maxWidth="210dp", singleLine="true"
+                                if let title = (linkTitle ?? fetchedTitle), !title.isEmpty {
+                                    Text(title)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .foregroundColor(Color(hex: "#e7ebf4"))
+                                        .lineLimit(1)
+                                        .frame(maxWidth: 210, alignment: .leading)
+                                        .padding(.bottom, 2)
+                                }
+                                
+                                // Link description - matching Android linkDesc TextView
+                                // Android: textColor="@color/gray", textSize="13sp", fontFamily="@font/inter", maxWidth="210dp", maxLines="2"
+                                if let desc = (linkDescription ?? fetchedDescription), !desc.isEmpty {
+                                    Text(desc)
+                                        .font(.custom("Inter18pt-Regular", size: 13))
+                                        .foregroundColor(Color("gray"))
+                                        .lineLimit(2)
+                                        .frame(maxWidth: 210, alignment: .leading)
+                                        .padding(.bottom, 2)
+                                }
+                                
+                                // Link URL with favicon - matching Android HStack with linkImg2 and link
+                                // Android: orientation="horizontal", gravity="center_vertical"
+                                HStack(alignment: .center, spacing: 5) {
+                                    // Favicon - matching Android linkImg2 ImageView
+                                    // Android: layout_width="15dp", layout_height="15dp", layout_marginEnd="5dp"
+                                    if let favIcon = (favIconUrl ?? fetchedFavIconUrl), !favIcon.isEmpty {
+                                        AsyncImage(url: URL(string: favIcon)) { phase in
+                                            switch phase {
+                                            case .empty:
+                                                ProgressView()
+                                                    .progressViewStyle(CircularProgressViewStyle(tint: themeColor))
+                                                    .frame(width: 15, height: 15)
+                                            case .success(let image):
+                                                image
+                                                    .resizable()
+                                                    .scaledToFit()
+                                            case .failure:
+                                                Image(systemName: "link.circle.fill")
+                                                    .resizable()
+                                                    .scaledToFit()
+                                                    .foregroundColor(themeColor)
+                                            @unknown default:
+                                                Image(systemName: "link.circle.fill")
+                                                    .resizable()
+                                                    .scaledToFit()
+                                                    .foregroundColor(themeColor)
+                                            }
+                                        }
+                                        .frame(width: 15, height: 15)
+                                    } else {
+                                        Image(systemName: "link.circle.fill")
+                                            .resizable()
+                                            .scaledToFit()
+                                            .foregroundColor(themeColor)
+                                            .frame(width: 15, height: 15)
+                                    }
+                                    
+                                    // Link URL - matching Android link TextView
+                                    // Android: textColor="@color/blue", textSize="13sp", fontFamily="@font/inter", maxWidth="210dp", singleLine="true", linksClickable="true"
+                                    Text(url)
+                                        .font(.custom("Inter18pt-Regular", size: 13))
+                                        .foregroundColor(themeColor)
+                                        .lineLimit(1)
+                                        .frame(maxWidth: 210, alignment: .leading)
+                                        .underline()
+                                        .onTapGesture {
+                                            if let url = URL(string: self.url) {
+                                                UIApplication.shared.open(url)
+                                            }
+                                        }
+                                }
+                                .padding(.bottom, 1)
+                            }
+                            .padding(10)
+                            .background(Color("background_effect_for_chattting_hover_all"))
+                        }
+                        .background(backgroundColor) // Android: background="@color/appThemeColor"
+                    }
+                    .background(Color(hex: "#e7ebf4")) // Android: cardBackgroundColor="#e7ebf4"
+                    .clipShape(RoundedRectangle(cornerRadius: 20)) // Android: cardCornerRadius="20dp"
+                }
+            }
+        }
+        .onAppear {
+            // Check if we have link preview data (from message)
+            let hasTitle = linkTitle != nil && !linkTitle!.isEmpty
+            let hasDesc = linkDescription != nil && !linkDescription!.isEmpty
+            let hasImage = linkImageUrl != nil && !linkImageUrl!.isEmpty
+            let hasFavIcon = favIconUrl != nil && !favIconUrl!.isEmpty
+            
+            if hasTitle || hasDesc || hasImage || hasFavIcon {
+                // We have preview data from message, show it
+                showFullPreview = true
+                print("✅ [LinkPreview] Using message data - Title: \(linkTitle ?? "nil"), Image: \(linkImageUrl ?? "nil")")
+            } else {
+                // No preview data, try to fetch it
+                print("🔍 [LinkPreview] No message data, fetching preview for: \(url)")
+                fetchLinkPreview()
+            }
+        }
+        .onChange(of: fetchedTitle) { _ in
+            // Update preview when fetched data changes
+            if fetchedTitle != nil || fetchedDescription != nil || fetchedImageUrl != nil || fetchedFavIconUrl != nil {
+                showFullPreview = true
+                print("✅ [LinkPreview] onChange - Setting showFullPreview to true")
+            }
+        }
+        .onChange(of: fetchedDescription) { _ in
+            if fetchedTitle != nil || fetchedDescription != nil || fetchedImageUrl != nil || fetchedFavIconUrl != nil {
+                showFullPreview = true
+            }
+        }
+        .onChange(of: fetchedImageUrl) { _ in
+            if fetchedTitle != nil || fetchedDescription != nil || fetchedImageUrl != nil || fetchedFavIconUrl != nil {
+                showFullPreview = true
+            }
+        }
+        .onChange(of: fetchedFavIconUrl) { _ in
+            if fetchedTitle != nil || fetchedDescription != nil || fetchedImageUrl != nil || fetchedFavIconUrl != nil {
+                showFullPreview = true
+            }
+        }
+    }
+    
+    private func fetchLinkPreview() {
+        guard !isFetching, let urlToFetch = URL(string: url) else { return }
+        isFetching = true
+        
+        print("🔍 [LinkPreview] Fetching preview for: \(url)")
+        
+        // Create a URL request
+        var request = URLRequest(url: urlToFetch)
+        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 10
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            guard let data = data,
+                  let html = String(data: data, encoding: .utf8),
+                  error == nil else {
+                print("❌ [LinkPreview] Failed to fetch HTML: \(error?.localizedDescription ?? "unknown error")")
+                DispatchQueue.main.async {
+                    self.isFetching = false
+                }
+                return
+            }
+            
+            // Parse Open Graph and meta tags
+            var title: String? = nil
+            var description: String? = nil
+            var imageUrl: String? = nil
+            var favIconUrl: String? = nil
+            
+            // Helper function to extract content from meta tags
+            func extractMetaContent(html: String, property: String) -> String? {
+                // Try property="og:title" content="value" format (double quotes)
+                let pattern1 = #"<meta\s+property=["']\#(property)["']\s+content=["']([^"']+)["']"#
+                if let regex = try? NSRegularExpression(pattern: pattern1, options: .caseInsensitive) {
+                    let matches = regex.matches(in: html, range: NSRange(html.startIndex..., in: html))
+                    for match in matches {
+                        if match.numberOfRanges > 2 {
+                            let contentRange = Range(match.range(at: 2), in: html)!
+                            let content = String(html[contentRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !content.isEmpty {
+                                return content
+                            }
+                        }
+                    }
+                }
+                
+                // Try property='og:title' content='value' format (single quotes)
+                let pattern2 = #"<meta\s+property=[']\#(property)[']\s+content=[']([^']+)[']"#
+                if let regex = try? NSRegularExpression(pattern: pattern2, options: .caseInsensitive) {
+                    let matches = regex.matches(in: html, range: NSRange(html.startIndex..., in: html))
+                    for match in matches {
+                        if match.numberOfRanges > 2 {
+                            let contentRange = Range(match.range(at: 2), in: html)!
+                            let content = String(html[contentRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !content.isEmpty {
+                                return content
+                            }
+                        }
+                    }
+                }
+                
+                // Try content="value" property="og:title" format (reversed order)
+                let pattern3 = #"<meta\s+content=["']([^"']+)["']\s+property=["']\#(property)["']"#
+                if let regex = try? NSRegularExpression(pattern: pattern3, options: .caseInsensitive) {
+                    let matches = regex.matches(in: html, range: NSRange(html.startIndex..., in: html))
+                    for match in matches {
+                        if match.numberOfRanges > 2 {
+                            let contentRange = Range(match.range(at: 1), in: html)!
+                            let content = String(html[contentRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !content.isEmpty {
+                                return content
+                            }
+                        }
+                    }
+                }
+                
+                return nil
+            }
+            
+            // Extract Open Graph tags
+            title = extractMetaContent(html: html, property: "og:title")
+            description = extractMetaContent(html: html, property: "og:description")
+            imageUrl = extractMetaContent(html: html, property: "og:image")
+            
+            // Fallback to regular meta tags if OG tags not found
+            if title == nil {
+                if let regex = try? NSRegularExpression(pattern: #"<title>([^<]+)</title>"#, options: .caseInsensitive),
+                   let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+                   match.numberOfRanges > 1 {
+                    let titleRange = Range(match.range(at: 1), in: html)!
+                    title = String(html[titleRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+            
+            if description == nil {
+                if let regex = try? NSRegularExpression(pattern: #"<meta\s+name=["']description["']\s+content=["']([^"']+)["']"#, options: .caseInsensitive),
+                   let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+                   match.numberOfRanges > 1 {
+                    let descRange = Range(match.range(at: 1), in: html)!
+                    description = String(html[descRange])
+                }
+            }
+            
+            // Extract favicon
+            if let regex = try? NSRegularExpression(pattern: #"<link\s+rel=["'](?:shortcut\s+)?icon["']\s+href=["']([^"']+)["']"#, options: .caseInsensitive),
+               let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+               match.numberOfRanges > 1 {
+                let faviconRange = Range(match.range(at: 1), in: html)!
+                var faviconPath = String(html[faviconRange])
+                // Make favicon URL absolute if relative
+                if faviconPath.hasPrefix("//") {
+                    faviconPath = "https:" + faviconPath
+                } else if faviconPath.hasPrefix("/") {
+                    faviconPath = "\(urlToFetch.scheme ?? "https")://\(urlToFetch.host ?? "")\(faviconPath)"
+                } else if !faviconPath.hasPrefix("http") {
+                    faviconPath = "\(urlToFetch.scheme ?? "https")://\(urlToFetch.host ?? "")/\(faviconPath)"
+                }
+                favIconUrl = faviconPath
+            }
+            
+            // Make image URL absolute if relative and decode HTML entities
+            if var imgUrl = imageUrl {
+                // Decode HTML entities
+                imgUrl = imgUrl
+                    .replacingOccurrences(of: "&amp;", with: "&")
+                    .replacingOccurrences(of: "&lt;", with: "<")
+                    .replacingOccurrences(of: "&gt;", with: ">")
+                    .replacingOccurrences(of: "&quot;", with: "\"")
+                    .replacingOccurrences(of: "&#39;", with: "'")
+                    .replacingOccurrences(of: "&nbsp;", with: " ")
+                
+                // Make URL absolute if relative
+                if !imgUrl.hasPrefix("http") {
+                    if imgUrl.hasPrefix("//") {
+                        imgUrl = "https:" + imgUrl
+                    } else if imgUrl.hasPrefix("/") {
+                        imgUrl = "\(urlToFetch.scheme ?? "https")://\(urlToFetch.host ?? "")\(imgUrl)"
+                    } else {
+                        imgUrl = "\(urlToFetch.scheme ?? "https")://\(urlToFetch.host ?? "")/\(imgUrl)"
+                    }
+                }
+                
+                // Validate URL
+                if URL(string: imgUrl) != nil {
+                    imageUrl = imgUrl
+                } else {
+                    print("⚠️ [LinkPreview] Invalid image URL: \(imgUrl)")
+                    imageUrl = nil
+                }
+            }
+            
+            print("🔍 [LinkPreview] Extracted - Title: \(title ?? "nil"), Desc: \(description ?? "nil"), Image: \(imageUrl ?? "nil"), Favicon: \(favIconUrl ?? "nil")")
+            
+            DispatchQueue.main.async {
+                self.fetchedTitle = title
+                self.fetchedDescription = description
+                self.fetchedImageUrl = imageUrl
+                self.fetchedFavIconUrl = favIconUrl
+                
+                // Show preview if we got any data
+                if title != nil || description != nil || imageUrl != nil || favIconUrl != nil {
+                    self.showFullPreview = true
+                    print("✅ [LinkPreview] Showing full preview - Image URL: \(imageUrl ?? "none")")
+                } else {
+                    print("⚠️ [LinkPreview] No preview data found")
+                }
+                self.isFetching = false
+            }
+        }.resume()
+    }
+}
+
+// MARK: - Receiver Rich Link View (matching Android receiver richLinkViewLyt)
+struct ReceiverRichLinkView: View {
+    @Environment(\.colorScheme) var colorScheme
+    let url: String
+    let linkTitle: String?
+    let linkDescription: String?
+    let linkImageUrl: String?
+    let favIconUrl: String?
+    
+    @State private var showFullPreview: Bool = false
+    @State private var fetchedTitle: String? = nil
+    @State private var fetchedDescription: String? = nil
+    @State private var fetchedImageUrl: String? = nil
+    @State private var fetchedFavIconUrl: String? = nil
+    @State private var isFetching: Bool = false
+    
+    private var themeColor: Color {
+        Color(hex: Constant.themeColor)
+    }
+    
+    @ViewBuilder
+    var body: some View {
+        Group {
+            // If no preview data, show just the URL as underlined text (matching Android linkActualUrl)
+            // Android: when linkPreviewModel.getUrl().equals(""), show linkActualUrl only
+            if !showFullPreview {
+                // Link actual URL - matching Android linkActualUrl TextView (when no preview data)
+                // Android: textColor="@color/blue", textSize="15sp", fontFamily="@font/inter", maxWidth="210dp", textFontWeight="400"
+                // Android: layout_marginHorizontal="2dp"
+                Text(url)
+                    .font(.custom("Inter18pt-Regular", size: 15))
+                    .fontWeight(.regular)
+                    .foregroundColor(themeColor)
+                    .frame(maxWidth: 210, alignment: .leading)
+                    .underline()
+                    .padding(.horizontal, 2)
+                    .onTapGesture {
+                        if let url = URL(string: self.url) {
+                            UIApplication.shared.open(url)
+                        }
+                    }
+            } else {
+                // Full rich link preview (matching Android when linkPreviewModel has data)
+                VStack(spacing: 0) {
+                    // Main container - matching Android CardView
+                    // Android: cardBackgroundColor="@color/white", cardCornerRadius="20dp", cardElevation="0dp"
+                    VStack(spacing: 0) {
+                        // Link image - matching Android linkImg ImageView
+                        // Android: layout_width="210dp", layout_height="130dp", background="#000000", scaleType="centerCrop"
+                        if let imageUrl = (linkImageUrl ?? fetchedImageUrl), !imageUrl.isEmpty, let imageURL = URL(string: imageUrl) {
+                            AsyncImage(url: imageURL) { phase in
+                                switch phase {
+                                case .empty:
+                                    ZStack {
+                                        Color.black
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    }
+                                case .success(let image):
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                case .failure(let error):
+                                    let _ = print("❌ [LinkPreview] Failed to load image from \(imageUrl): \(error.localizedDescription)")
+                                    ZStack {
+                                        Color.black
+                                        Image(systemName: "link")
+                                            .resizable()
+                                            .scaledToFit()
+                                            .foregroundColor(.white)
+                                            .padding(20)
+                                    }
+                                @unknown default:
+                                    ZStack {
+                                        Color.black
+                                        Image(systemName: "link")
+                                            .resizable()
+                                            .scaledToFit()
+                                            .foregroundColor(.white)
+                                            .padding(20)
+                                    }
+                                }
+                            }
+                            .frame(width: 210, height: 130)
+                            .clipped()
+                            .onAppear {
+                                print("🖼️ [LinkPreview] Loading image from: \(imageUrl)")
+                            }
+                        } else {
+                            // Default link icon when no image
+                            ZStack {
+                                Color.black
+                                Image(systemName: "link")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .foregroundColor(.white)
+                                    .padding(20)
+                            }
+                            .frame(width: 210, height: 130)
+                        }
+                        
+                        // Rich box - matching Android LinearLayout
+                        // Android: background="@color/receiverChatBox", orientation="vertical"
+                        VStack(spacing: 0) {
+                            // Inner container - matching Android inner LinearLayout
+                            // Android: background="@drawable/custome_ripple_chatting", padding="10dp", orientation="vertical"
+                            VStack(alignment: .leading, spacing: 0) {
+                                // Link title - matching Android linkTitle TextView
+                                // Android: style="@style/TextColor", textSize="15sp", fontFamily="@font/inter", maxWidth="210dp", singleLine="true"
+                                if let title = (linkTitle ?? fetchedTitle), !title.isEmpty {
+                                    Text(title)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .foregroundColor(Color("TextColor"))
+                                        .lineLimit(1)
+                                        .frame(maxWidth: 210, alignment: .leading)
+                                        .padding(.bottom, 2)
+                                }
+                                
+                                // Link description - matching Android linkDesc TextView
+                                // Android: textColor="@color/gray", textSize="15sp", fontFamily="@font/inter", maxWidth="210dp", maxLines="2"
+                                if let desc = (linkDescription ?? fetchedDescription), !desc.isEmpty {
+                                    Text(desc)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .foregroundColor(Color("gray"))
+                                        .lineLimit(2)
+                                        .frame(maxWidth: 210, alignment: .leading)
+                                        .padding(.bottom, 2)
+                                }
+                                
+                                // Link URL with favicon - matching Android HStack with linkImg2 and link
+                                // Android: orientation="horizontal", gravity="center_vertical"
+                                HStack(alignment: .center, spacing: 5) {
+                                    // Favicon - matching Android linkImg2 ImageView
+                                    // Android: layout_width="15dp", layout_height="15dp", layout_marginEnd="5dp"
+                                    if let favIcon = (favIconUrl ?? fetchedFavIconUrl), !favIcon.isEmpty {
+                                        AsyncImage(url: URL(string: favIcon)) { phase in
+                                            switch phase {
+                                            case .empty:
+                                                ProgressView()
+                                                    .progressViewStyle(CircularProgressViewStyle(tint: themeColor))
+                                                    .frame(width: 15, height: 15)
+                                            case .success(let image):
+                                                image
+                                                    .resizable()
+                                                    .scaledToFit()
+                                            case .failure:
+                                                Image(systemName: "link.circle.fill")
+                                                    .resizable()
+                                                    .scaledToFit()
+                                                    .foregroundColor(themeColor)
+                                            @unknown default:
+                                                Image(systemName: "link.circle.fill")
+                                                    .resizable()
+                                                    .scaledToFit()
+                                                    .foregroundColor(themeColor)
+                                            }
+                                        }
+                                        .frame(width: 15, height: 15)
+                                    } else {
+                                        Image(systemName: "link.circle.fill")
+                                            .resizable()
+                                            .scaledToFit()
+                                            .foregroundColor(themeColor)
+                                            .frame(width: 15, height: 15)
+                                    }
+                                    
+                                    // Link URL - matching Android link TextView
+                                    // Android: textColor="@color/blue", textSize="15sp", fontFamily="@font/inter", maxWidth="210dp", singleLine="true", linksClickable="true"
+                                    Text(url)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .foregroundColor(themeColor)
+                                        .lineLimit(1)
+                                        .frame(maxWidth: 210, alignment: .leading)
+                                        .underline()
+                                        .onTapGesture {
+                                            if let url = URL(string: self.url) {
+                                                UIApplication.shared.open(url)
+                                            }
+                                        }
+                                }
+                                .padding(.bottom, 1)
+                            }
+                            .padding(10)
+                            .background(Color("background_effect_for_chattting_hover_all"))
+                        }
+                        .background(Color("receiverChatBox")) // Android: background="@color/receiverChatBox"
+                    }
+                    .background(Color.white) // Android: cardBackgroundColor="@color/white"
+                    .clipShape(RoundedRectangle(cornerRadius: 20)) // Android: cardCornerRadius="20dp"
+                }
+            }
+        }
+        .onAppear {
+            // Check if we have link preview data (from message)
+            let hasTitle = linkTitle != nil && !linkTitle!.isEmpty
+            let hasDesc = linkDescription != nil && !linkDescription!.isEmpty
+            let hasImage = linkImageUrl != nil && !linkImageUrl!.isEmpty
+            let hasFavIcon = favIconUrl != nil && !favIconUrl!.isEmpty
+            
+            if hasTitle || hasDesc || hasImage || hasFavIcon {
+                // We have preview data from message, show it
+                showFullPreview = true
+                print("✅ [LinkPreview] Using message data - Title: \(linkTitle ?? "nil"), Image: \(linkImageUrl ?? "nil")")
+            } else {
+                // No preview data, try to fetch it
+                print("🔍 [LinkPreview] No message data, fetching preview for: \(url)")
+                fetchLinkPreview()
+            }
+        }
+        .onChange(of: fetchedTitle) { _ in
+            // Update preview when fetched data changes
+            if fetchedTitle != nil || fetchedDescription != nil || fetchedImageUrl != nil || fetchedFavIconUrl != nil {
+                showFullPreview = true
+                print("✅ [LinkPreview] onChange - Setting showFullPreview to true")
+            }
+        }
+        .onChange(of: fetchedDescription) { _ in
+            if fetchedTitle != nil || fetchedDescription != nil || fetchedImageUrl != nil || fetchedFavIconUrl != nil {
+                showFullPreview = true
+            }
+        }
+        .onChange(of: fetchedImageUrl) { _ in
+            if fetchedTitle != nil || fetchedDescription != nil || fetchedImageUrl != nil || fetchedFavIconUrl != nil {
+                showFullPreview = true
+            }
+        }
+        .onChange(of: fetchedFavIconUrl) { _ in
+            if fetchedTitle != nil || fetchedDescription != nil || fetchedImageUrl != nil || fetchedFavIconUrl != nil {
+                showFullPreview = true
+            }
+        }
+    }
+    
+    private func fetchLinkPreview() {
+        guard !isFetching, let urlToFetch = URL(string: url) else { return }
+        isFetching = true
+        
+        print("🔍 [LinkPreview] Fetching preview for: \(url)")
+        
+        // Create a URL request
+        var request = URLRequest(url: urlToFetch)
+        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 10
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            guard let data = data,
+                  let html = String(data: data, encoding: .utf8),
+                  error == nil else {
+                print("❌ [LinkPreview] Failed to fetch HTML: \(error?.localizedDescription ?? "unknown error")")
+                DispatchQueue.main.async {
+                    self.isFetching = false
+                }
+                return
+            }
+            
+            // Parse Open Graph and meta tags
+            var title: String? = nil
+            var description: String? = nil
+            var imageUrl: String? = nil
+            var favIconUrl: String? = nil
+            
+            // Helper function to extract content from meta tags
+            func extractMetaContent(html: String, property: String) -> String? {
+                // Try property="og:title" content="value" format (double quotes)
+                let pattern1 = #"<meta\s+property=["']\#(property)["']\s+content=["']([^"']+)["']"#
+                if let regex = try? NSRegularExpression(pattern: pattern1, options: .caseInsensitive) {
+                    let matches = regex.matches(in: html, range: NSRange(html.startIndex..., in: html))
+                    for match in matches {
+                        if match.numberOfRanges > 2 {
+                            let contentRange = Range(match.range(at: 2), in: html)!
+                            let content = String(html[contentRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !content.isEmpty {
+                                return content
+                            }
+                        }
+                    }
+                }
+                
+                // Try property='og:title' content='value' format (single quotes)
+                let pattern2 = #"<meta\s+property=[']\#(property)[']\s+content=[']([^']+)[']"#
+                if let regex = try? NSRegularExpression(pattern: pattern2, options: .caseInsensitive) {
+                    let matches = regex.matches(in: html, range: NSRange(html.startIndex..., in: html))
+                    for match in matches {
+                        if match.numberOfRanges > 2 {
+                            let contentRange = Range(match.range(at: 2), in: html)!
+                            let content = String(html[contentRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !content.isEmpty {
+                                return content
+                            }
+                        }
+                    }
+                }
+                
+                // Try content="value" property="og:title" format (reversed order)
+                let pattern3 = #"<meta\s+content=["']([^"']+)["']\s+property=["']\#(property)["']"#
+                if let regex = try? NSRegularExpression(pattern: pattern3, options: .caseInsensitive) {
+                    let matches = regex.matches(in: html, range: NSRange(html.startIndex..., in: html))
+                    for match in matches {
+                        if match.numberOfRanges > 2 {
+                            let contentRange = Range(match.range(at: 1), in: html)!
+                            let content = String(html[contentRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !content.isEmpty {
+                                return content
+                            }
+                        }
+                    }
+                }
+                
+                return nil
+            }
+            
+            // Extract Open Graph tags
+            title = extractMetaContent(html: html, property: "og:title")
+            description = extractMetaContent(html: html, property: "og:description")
+            imageUrl = extractMetaContent(html: html, property: "og:image")
+            
+            // Fallback to regular meta tags if OG tags not found
+            if title == nil {
+                if let regex = try? NSRegularExpression(pattern: #"<title>([^<]+)</title>"#, options: .caseInsensitive),
+                   let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+                   match.numberOfRanges > 1 {
+                    let titleRange = Range(match.range(at: 1), in: html)!
+                    title = String(html[titleRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+            
+            if description == nil {
+                if let regex = try? NSRegularExpression(pattern: #"<meta\s+name=["']description["']\s+content=["']([^"']+)["']"#, options: .caseInsensitive),
+                   let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+                   match.numberOfRanges > 1 {
+                    let descRange = Range(match.range(at: 1), in: html)!
+                    description = String(html[descRange])
+                }
+            }
+            
+            // Extract favicon
+            if let regex = try? NSRegularExpression(pattern: #"<link\s+rel=["'](?:shortcut\s+)?icon["']\s+href=["']([^"']+)["']"#, options: .caseInsensitive),
+               let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+               match.numberOfRanges > 1 {
+                let faviconRange = Range(match.range(at: 1), in: html)!
+                var faviconPath = String(html[faviconRange])
+                // Make favicon URL absolute if relative
+                if faviconPath.hasPrefix("//") {
+                    faviconPath = "https:" + faviconPath
+                } else if faviconPath.hasPrefix("/") {
+                    faviconPath = "\(urlToFetch.scheme ?? "https")://\(urlToFetch.host ?? "")\(faviconPath)"
+                } else if !faviconPath.hasPrefix("http") {
+                    faviconPath = "\(urlToFetch.scheme ?? "https")://\(urlToFetch.host ?? "")/\(faviconPath)"
+                }
+                favIconUrl = faviconPath
+            }
+            
+            // Make image URL absolute if relative
+            // Make image URL absolute if relative and decode HTML entities
+            if var imgUrl = imageUrl {
+                // Decode HTML entities
+                imgUrl = imgUrl
+                    .replacingOccurrences(of: "&amp;", with: "&")
+                    .replacingOccurrences(of: "&lt;", with: "<")
+                    .replacingOccurrences(of: "&gt;", with: ">")
+                    .replacingOccurrences(of: "&quot;", with: "\"")
+                    .replacingOccurrences(of: "&#39;", with: "'")
+                    .replacingOccurrences(of: "&nbsp;", with: " ")
+                
+                // Make URL absolute if relative
+                if !imgUrl.hasPrefix("http") {
+                    if imgUrl.hasPrefix("//") {
+                        imgUrl = "https:" + imgUrl
+                    } else if imgUrl.hasPrefix("/") {
+                        imgUrl = "\(urlToFetch.scheme ?? "https")://\(urlToFetch.host ?? "")\(imgUrl)"
+                    } else {
+                        imgUrl = "\(urlToFetch.scheme ?? "https")://\(urlToFetch.host ?? "")/\(imgUrl)"
+                    }
+                }
+                
+                // Validate URL
+                if URL(string: imgUrl) != nil {
+                    imageUrl = imgUrl
+                } else {
+                    print("⚠️ [LinkPreview] Invalid image URL: \(imgUrl)")
+                    imageUrl = nil
+                }
+            }
+            
+            print("🔍 [LinkPreview] Extracted - Title: \(title ?? "nil"), Desc: \(description ?? "nil"), Image: \(imageUrl ?? "nil"), Favicon: \(favIconUrl ?? "nil")")
+            
+            DispatchQueue.main.async {
+                self.fetchedTitle = title
+                self.fetchedDescription = description
+                self.fetchedImageUrl = imageUrl
+                self.fetchedFavIconUrl = favIconUrl
+                
+                // Show preview if we got any data
+                if title != nil || description != nil || imageUrl != nil || favIconUrl != nil {
+                    self.showFullPreview = true
+                    print("✅ [LinkPreview] Showing full preview - Image URL: \(imageUrl ?? "none")")
+                } else {
+                    print("⚠️ [LinkPreview] No preview data found")
+                }
+                self.isFetching = false
+            }
+        }.resume()
+    }
+}
+
 // MARK: - Share Sheet for saving files publicly
-private struct ShareSheet: UIViewControllerRepresentable {
+struct ShareSheet: UIViewControllerRepresentable {
     let activityItems: [Any]
     
     func makeUIViewController(context: Context) -> UIActivityViewController {

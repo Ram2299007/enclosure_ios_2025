@@ -70,7 +70,7 @@ struct InviteScreen: View {
         }
         .navigationBarHidden(true)
         .sheet(isPresented: $isSharePresented) {
-            ShareSheet(items: shareItems)
+            InviteShareSheet(activityItems: shareItems)
         }
         .overlay(alignment: .topTrailing) {
             if showMenu {
@@ -590,11 +590,11 @@ private struct SyncOverlay: View {
     }
 }
 
-private struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
+private struct InviteShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
     
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
     }
     
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
