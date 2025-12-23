@@ -6521,7 +6521,7 @@ struct SenderDocumentView: View {
                     .frame(maxHeight: .infinity, alignment: .center) // Vertically center with play button
                 }
                 .padding(.horizontal, 3) // Android: layout_marginHorizontal="3dp"
-                .background(backgroundColor) // Match outer bubble color in both light/dark
+                .background(Color.clear) // Remove inner fill to avoid darker rectangle
             }
             .padding(.horizontal, 7) // Android: layout_marginHorizontal="7dp"
             .padding(.vertical, 7) // Android: layout_marginVertical="7dp"
