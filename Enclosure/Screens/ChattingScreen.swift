@@ -12170,6 +12170,13 @@ struct LinkPreviewImageView: View {
     let height: CGFloat
     
     private var imageURL: URL? {
+        // Support local file paths as well as remote URLs
+        if imageUrlString.hasPrefix("file://"), let url = URL(string: imageUrlString) {
+            return url
+        }
+        if FileManager.default.fileExists(atPath: imageUrlString) {
+            return URL(fileURLWithPath: imageUrlString)
+        }
         if let url = URL(string: imageUrlString) {
             return url
         } else if let encoded = imageUrlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
@@ -12233,6 +12240,82 @@ struct DefaultLinkIconView: View {
         .frame(maxWidth: .infinity)
         .frame(height: height)
     }
+}
+
+// MARK: - Link Preview Caching Helpers
+private struct LinkPreviewCacheEntry: Codable {
+    let title: String?
+    let description: String?
+    let imagePath: String?
+    let favIconPath: String?
+}
+
+private func linkPreviewCacheDirectory() -> URL {
+    let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+    let dir = base.appendingPathComponent("LinkPreviewCache", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir
+}
+
+private func safeFileName(for url: String) -> String {
+    let allowed = CharacterSet.alphanumerics
+    let replaced = url.unicodeScalars.map { allowed.contains($0) ? String($0) : "_" }.joined()
+    return replaced.isEmpty ? "link_preview" : replaced
+}
+
+private func cacheFilePath(for url: String) -> URL {
+    linkPreviewCacheDirectory().appendingPathComponent("\(safeFileName(for: url)).json")
+}
+
+private func loadCachedLinkPreview(for url: String) -> LinkPreviewCacheEntry? {
+    let path = cacheFilePath(for: url)
+    guard FileManager.default.fileExists(atPath: path.path),
+          let data = try? Data(contentsOf: path) else { return nil }
+    return try? JSONDecoder().decode(LinkPreviewCacheEntry.self, from: data)
+}
+
+private func saveCachedLinkPreview(for url: String, title: String?, description: String?, imagePath: String?, favIconPath: String?) {
+    let entry = LinkPreviewCacheEntry(title: title, description: description, imagePath: imagePath, favIconPath: favIconPath)
+    let path = cacheFilePath(for: url)
+    if let data = try? JSONEncoder().encode(entry) {
+        try? data.write(to: path)
+    }
+}
+
+private func cacheImageIfNeeded(from urlString: String) -> String? {
+    guard !urlString.isEmpty else { return nil }
+    
+    // If already a local file path, just return it
+    if urlString.hasPrefix("file://") {
+        return urlString
+    }
+    if FileManager.default.fileExists(atPath: urlString) {
+        return urlString
+    }
+    
+    guard let url = URL(string: urlString) else { return nil }
+    let ext = url.pathExtension.isEmpty ? "img" : url.pathExtension
+    let localPath = linkPreviewCacheDirectory().appendingPathComponent("\(safeFileName(for: urlString)).\(ext)")
+    
+    if FileManager.default.fileExists(atPath: localPath.path) {
+        return localPath.path
+    }
+    
+    if let data = try? Data(contentsOf: url) {
+        try? data.write(to: localPath)
+        return localPath.path
+    }
+    return nil
+}
+
+private func urlFromStringAllowFile(_ value: String) -> URL? {
+    if value.hasPrefix("file://") {
+        return URL(string: value)
+    }
+    if FileManager.default.fileExists(atPath: value) {
+        return URL(fileURLWithPath: value)
+    }
+    return URL(string: value)
 }
 
 // MARK: - Sender Rich Link View (matching Android sender richLinkViewLyt)
@@ -12361,7 +12444,7 @@ struct SenderRichLinkView: View {
                                     // Favicon - matching Android linkImg2 ImageView
                                     // Android: layout_width="15dp", layout_height="15dp", layout_marginEnd="5dp"
                                     if let favIcon = (favIconUrl ?? fetchedFavIconUrl), !favIcon.isEmpty {
-                                        AsyncImage(url: URL(string: favIcon)) { phase in
+                                        AsyncImage(url: urlFromStringAllowFile(favIcon)) { phase in
                                             switch phase {
                                             case .empty:
                                                 ProgressView()
@@ -12424,6 +12507,8 @@ struct SenderRichLinkView: View {
             }
         }
         .onAppear {
+            // Load cached preview immediately (offline / instant show)
+            applyCachedPreviewIfAvailable()
             // Check if we have link preview data (from message)
             let hasTitle = linkTitle != nil && !linkTitle!.isEmpty
             let hasDesc = linkDescription != nil && !linkDescription!.isEmpty
@@ -12461,6 +12546,18 @@ struct SenderRichLinkView: View {
             if fetchedTitle != nil || fetchedDescription != nil || fetchedImageUrl != nil || fetchedFavIconUrl != nil {
                 showFullPreview = true
             }
+        }
+    }
+    
+    // Load cached preview data (including locally stored images) for instant display
+    private func applyCachedPreviewIfAvailable() {
+        guard let cache = loadCachedLinkPreview(for: url) else { return }
+        fetchedTitle = cache.title
+        fetchedDescription = cache.description
+        fetchedImageUrl = cache.imagePath
+        fetchedFavIconUrl = cache.favIconPath
+        if cache.title != nil || cache.description != nil || cache.imagePath != nil || cache.favIconPath != nil {
+            showFullPreview = true
         }
     }
     
@@ -12700,13 +12797,26 @@ struct SenderRichLinkView: View {
             
             print("🔍 [LinkPreview] Extracted - Title: \(title ?? "nil"), Desc: \(description ?? "nil"), Image: \(imageUrl ?? "nil"), Favicon: \(favIconUrl ?? "nil")")
             
+            // Cache images locally (if available) for offline reuse
+            let imageLocalPath = imageUrl.flatMap { cacheImageIfNeeded(from: $0) }
+            let favIconLocalPath = favIconUrl.flatMap { cacheImageIfNeeded(from: $0) }
+            
             DispatchQueue.main.async {
                 print("📦 [LinkPreview] Setting fetched data - Title: \(title != nil ? "✓" : "✗"), Desc: \(description != nil ? "✓" : "✗"), Image: \(imageUrl != nil ? "✓" : "✗"), Favicon: \(favIconUrl != nil ? "✓" : "✗")")
                 
                 self.fetchedTitle = title
                 self.fetchedDescription = description
-                self.fetchedImageUrl = imageUrl
-                self.fetchedFavIconUrl = favIconUrl
+                self.fetchedImageUrl = imageLocalPath ?? imageUrl
+                self.fetchedFavIconUrl = favIconLocalPath ?? favIconUrl
+                
+                // Persist cache for fast re-open without network
+                saveCachedLinkPreview(
+                    for: self.url,
+                    title: title,
+                    description: description,
+                    imagePath: self.fetchedImageUrl,
+                    favIconPath: self.fetchedFavIconUrl
+                )
                 
                 // Show preview if we got any data
                 if title != nil || description != nil || imageUrl != nil || favIconUrl != nil {
@@ -12820,7 +12930,7 @@ struct ReceiverRichLinkView: View {
                                     // Favicon - matching Android linkImg2 ImageView
                                     // Android: layout_width="15dp", layout_height="15dp", layout_marginEnd="5dp"
                                     if let favIcon = (favIconUrl ?? fetchedFavIconUrl), !favIcon.isEmpty {
-                                        AsyncImage(url: URL(string: favIcon)) { phase in
+                                        AsyncImage(url: urlFromStringAllowFile(favIcon)) { phase in
                                             switch phase {
                                             case .empty:
                                                 ProgressView()
@@ -12883,6 +12993,8 @@ struct ReceiverRichLinkView: View {
             }
         }
         .onAppear {
+            // Load cached preview immediately (offline / instant show)
+            applyCachedPreviewIfAvailable()
             // Check if we have link preview data (from message)
             let hasTitle = linkTitle != nil && !linkTitle!.isEmpty
             let hasDesc = linkDescription != nil && !linkDescription!.isEmpty
@@ -12920,6 +13032,18 @@ struct ReceiverRichLinkView: View {
             if fetchedTitle != nil || fetchedDescription != nil || fetchedImageUrl != nil || fetchedFavIconUrl != nil {
                 showFullPreview = true
             }
+        }
+    }
+    
+    // Load cached preview data (including locally stored images) for instant display
+    private func applyCachedPreviewIfAvailable() {
+        guard let cache = loadCachedLinkPreview(for: url) else { return }
+        fetchedTitle = cache.title
+        fetchedDescription = cache.description
+        fetchedImageUrl = cache.imagePath
+        fetchedFavIconUrl = cache.favIconPath
+        if cache.title != nil || cache.description != nil || cache.imagePath != nil || cache.favIconPath != nil {
+            showFullPreview = true
         }
     }
     
@@ -13160,13 +13284,26 @@ struct ReceiverRichLinkView: View {
             
             print("🔍 [LinkPreview] Extracted - Title: \(title ?? "nil"), Desc: \(description ?? "nil"), Image: \(imageUrl ?? "nil"), Favicon: \(favIconUrl ?? "nil")")
             
+            // Cache images locally (if available) for offline reuse
+            let imageLocalPath = imageUrl.flatMap { cacheImageIfNeeded(from: $0) }
+            let favIconLocalPath = favIconUrl.flatMap { cacheImageIfNeeded(from: $0) }
+            
             DispatchQueue.main.async {
                 print("📦 [LinkPreview] Setting fetched data - Title: \(title != nil ? "✓" : "✗"), Desc: \(description != nil ? "✓" : "✗"), Image: \(imageUrl != nil ? "✓ (\(imageUrl ?? ""))" : "✗"), Favicon: \(favIconUrl != nil ? "✓" : "✗")")
                 
                 self.fetchedTitle = title
                 self.fetchedDescription = description
-                self.fetchedImageUrl = imageUrl
-                self.fetchedFavIconUrl = favIconUrl
+                self.fetchedImageUrl = imageLocalPath ?? imageUrl
+                self.fetchedFavIconUrl = favIconLocalPath ?? favIconUrl
+                
+                // Persist cache for fast re-open without network
+                saveCachedLinkPreview(
+                    for: self.url,
+                    title: title,
+                    description: description,
+                    imagePath: self.fetchedImageUrl,
+                    favIconPath: self.fetchedFavIconUrl
+                )
                 
                 // Show preview if we got any data
                 if title != nil || description != nil || imageUrl != nil || favIconUrl != nil {
