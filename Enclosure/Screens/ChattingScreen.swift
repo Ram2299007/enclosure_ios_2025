@@ -12212,46 +12212,70 @@ struct SenderRichLinkView: View {
                     VStack(spacing: 0) {
                         // Link image - matching Android linkImg ImageView
                         // Android: layout_width="180dp", layout_height="100dp", background="#000000", scaleType="centerCrop"
-                        if let imageUrl = (linkImageUrl ?? fetchedImageUrl), !imageUrl.isEmpty, let imageURL = URL(string: imageUrl) {
-                            AsyncImage(url: imageURL) { phase in
-                                switch phase {
-                                case .empty:
-                                    ZStack {
-                                        Color.black
-                                        ProgressView()
-                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                    }
-                                case .success(let image):
-                                    image
-                                        .resizable()
-                                        .scaledToFill()
-                                case .failure(let error):
-                                    let _ = print("❌ [LinkPreview] Failed to load image from \(imageUrl): \(error.localizedDescription)")
-                                    ZStack {
-                                        Color.black
-                                        Image(systemName: "link")
-                                            .resizable()
-                                            .scaledToFit()
-                                            .foregroundColor(.white)
-                                            .padding(20)
-                                    }
-                                @unknown default:
-                                    ZStack {
-                                        Color.black
-                                        Image(systemName: "link")
-                                            .resizable()
-                                            .scaledToFit()
-                                            .foregroundColor(.white)
-                                            .padding(20)
-                                    }
+                        if let imageUrlString = (linkImageUrl ?? fetchedImageUrl), !imageUrlString.isEmpty {
+                            // Try to create URL, handling encoding if needed
+                            var imageURL: URL? = URL(string: imageUrlString)
+                            if imageURL == nil {
+                                // Try URL encoding if direct creation fails
+                                if let encoded = imageUrlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+                                    imageURL = URL(string: encoded)
                                 }
                             }
-                            .frame(width: 180, height: 100)
-                            .clipped()
-                            .onAppear {
-                                print("🖼️ [LinkPreview] Loading image from: \(imageUrl)")
+                            
+                            if let imageURL = imageURL {
+                                AsyncImage(url: imageURL) { phase in
+                                    switch phase {
+                                    case .empty:
+                                        ZStack {
+                                            Color.black
+                                            ProgressView()
+                                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        }
+                                    case .success(let image):
+                                        image
+                                            .resizable()
+                                            .scaledToFill()
+                                    case .failure(let error):
+                                        let _ = print("❌ [LinkPreview] Failed to load image from \(imageUrlString): \(error.localizedDescription)")
+                                        ZStack {
+                                            Color.black
+                                            Image(systemName: "link")
+                                                .resizable()
+                                                .scaledToFit()
+                                                .foregroundColor(.white)
+                                                .padding(20)
+                                        }
+                                    @unknown default:
+                                        ZStack {
+                                            Color.black
+                                            Image(systemName: "link")
+                                                .resizable()
+                                                .scaledToFit()
+                                                .foregroundColor(.white)
+                                                .padding(20)
+                                        }
+                                    }
+                                }
+                                .frame(width: 180, height: 100)
+                                .clipped()
+                                .onAppear {
+                                    print("🖼️ [LinkPreview] Loading image from: \(imageUrlString)")
+                                }
+                            } else {
+                                let _ = print("⚠️ [LinkPreview] Invalid image URL string: \(imageUrlString)")
+                                // Default link icon when URL is invalid
+                                ZStack {
+                                    Color.black
+                                    Image(systemName: "link")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .foregroundColor(.white)
+                                        .padding(20)
+                                }
+                                .frame(width: 180, height: 100)
                             }
                         } else {
+                            let _ = print("⚠️ [LinkPreview] No image URL available - linkImageUrl: \(linkImageUrl ?? "nil"), fetchedImageUrl: \(fetchedImageUrl ?? "nil")")
                             // Default link icon when no image
                             ZStack {
                                 Color.black
@@ -12517,6 +12541,9 @@ struct SenderRichLinkView: View {
             
             // Make image URL absolute if relative and decode HTML entities
             if var imgUrl = imageUrl {
+                // Trim whitespace
+                imgUrl = imgUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+                
                 // Decode HTML entities
                 imgUrl = imgUrl
                     .replacingOccurrences(of: "&amp;", with: "&")
@@ -12526,23 +12553,34 @@ struct SenderRichLinkView: View {
                     .replacingOccurrences(of: "&#39;", with: "'")
                     .replacingOccurrences(of: "&nbsp;", with: " ")
                 
+                // Remove any leading/trailing quotes
+                imgUrl = imgUrl.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+                
                 // Make URL absolute if relative
-                if !imgUrl.hasPrefix("http") {
-                    if imgUrl.hasPrefix("//") {
-                        imgUrl = "https:" + imgUrl
-                    } else if imgUrl.hasPrefix("/") {
+                if !imgUrl.hasPrefix("http") && !imgUrl.hasPrefix("//") {
+                    if imgUrl.hasPrefix("/") {
                         imgUrl = "\(urlToFetch.scheme ?? "https")://\(urlToFetch.host ?? "")\(imgUrl)"
                     } else {
                         imgUrl = "\(urlToFetch.scheme ?? "https")://\(urlToFetch.host ?? "")/\(imgUrl)"
                     }
+                } else if imgUrl.hasPrefix("//") {
+                    imgUrl = "https:" + imgUrl
                 }
                 
-                // Validate URL
-                if URL(string: imgUrl) != nil {
+                // Validate and clean URL
+                if let url = URL(string: imgUrl) {
                     imageUrl = imgUrl
+                    print("✅ [LinkPreview] Valid image URL: \(imgUrl)")
                 } else {
-                    print("⚠️ [LinkPreview] Invalid image URL: \(imgUrl)")
-                    imageUrl = nil
+                    // Try URL encoding spaces and special characters
+                    if let encoded = imgUrl.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                       URL(string: encoded) != nil {
+                        imageUrl = encoded
+                        print("✅ [LinkPreview] Encoded image URL: \(encoded)")
+                    } else {
+                        print("⚠️ [LinkPreview] Invalid image URL after processing: \(imgUrl)")
+                        imageUrl = nil
+                    }
                 }
             }
             
@@ -12616,46 +12654,70 @@ struct ReceiverRichLinkView: View {
                     VStack(spacing: 0) {
                         // Link image - matching Android linkImg ImageView
                         // Android: layout_width="210dp", layout_height="130dp", background="#000000", scaleType="centerCrop"
-                        if let imageUrl = (linkImageUrl ?? fetchedImageUrl), !imageUrl.isEmpty, let imageURL = URL(string: imageUrl) {
-                            AsyncImage(url: imageURL) { phase in
-                                switch phase {
-                                case .empty:
-                                    ZStack {
-                                        Color.black
-                                        ProgressView()
-                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                    }
-                                case .success(let image):
-                                    image
-                                        .resizable()
-                                        .scaledToFill()
-                                case .failure(let error):
-                                    let _ = print("❌ [LinkPreview] Failed to load image from \(imageUrl): \(error.localizedDescription)")
-                                    ZStack {
-                                        Color.black
-                                        Image(systemName: "link")
-                                            .resizable()
-                                            .scaledToFit()
-                                            .foregroundColor(.white)
-                                            .padding(20)
-                                    }
-                                @unknown default:
-                                    ZStack {
-                                        Color.black
-                                        Image(systemName: "link")
-                                            .resizable()
-                                            .scaledToFit()
-                                            .foregroundColor(.white)
-                                            .padding(20)
-                                    }
+                        if let imageUrlString = (linkImageUrl ?? fetchedImageUrl), !imageUrlString.isEmpty {
+                            // Try to create URL, handling encoding if needed
+                            var imageURL: URL? = URL(string: imageUrlString)
+                            if imageURL == nil {
+                                // Try URL encoding if direct creation fails
+                                if let encoded = imageUrlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+                                    imageURL = URL(string: encoded)
                                 }
                             }
-                            .frame(width: 210, height: 130)
-                            .clipped()
-                            .onAppear {
-                                print("🖼️ [LinkPreview] Loading image from: \(imageUrl)")
+                            
+                            if let imageURL = imageURL {
+                                AsyncImage(url: imageURL) { phase in
+                                    switch phase {
+                                    case .empty:
+                                        ZStack {
+                                            Color.black
+                                            ProgressView()
+                                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        }
+                                    case .success(let image):
+                                        image
+                                            .resizable()
+                                            .scaledToFill()
+                                    case .failure(let error):
+                                        let _ = print("❌ [LinkPreview] Failed to load image from \(imageUrlString): \(error.localizedDescription)")
+                                        ZStack {
+                                            Color.black
+                                            Image(systemName: "link")
+                                                .resizable()
+                                                .scaledToFit()
+                                                .foregroundColor(.white)
+                                                .padding(20)
+                                        }
+                                    @unknown default:
+                                        ZStack {
+                                            Color.black
+                                            Image(systemName: "link")
+                                                .resizable()
+                                                .scaledToFit()
+                                                .foregroundColor(.white)
+                                                .padding(20)
+                                        }
+                                    }
+                                }
+                                .frame(width: 210, height: 130)
+                                .clipped()
+                                .onAppear {
+                                    print("🖼️ [LinkPreview] Loading image from: \(imageUrlString)")
+                                }
+                            } else {
+                                let _ = print("⚠️ [LinkPreview] Invalid image URL string: \(imageUrlString)")
+                                // Default link icon when URL is invalid
+                                ZStack {
+                                    Color.black
+                                    Image(systemName: "link")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .foregroundColor(.white)
+                                        .padding(20)
+                                }
+                                .frame(width: 210, height: 130)
                             }
                         } else {
+                            let _ = print("⚠️ [LinkPreview] No image URL available - linkImageUrl: \(linkImageUrl ?? "nil"), fetchedImageUrl: \(fetchedImageUrl ?? "nil")")
                             // Default link icon when no image
                             ZStack {
                                 Color.black
@@ -12922,6 +12984,9 @@ struct ReceiverRichLinkView: View {
             // Make image URL absolute if relative
             // Make image URL absolute if relative and decode HTML entities
             if var imgUrl = imageUrl {
+                // Trim whitespace
+                imgUrl = imgUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+                
                 // Decode HTML entities
                 imgUrl = imgUrl
                     .replacingOccurrences(of: "&amp;", with: "&")
@@ -12931,23 +12996,34 @@ struct ReceiverRichLinkView: View {
                     .replacingOccurrences(of: "&#39;", with: "'")
                     .replacingOccurrences(of: "&nbsp;", with: " ")
                 
+                // Remove any leading/trailing quotes
+                imgUrl = imgUrl.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+                
                 // Make URL absolute if relative
-                if !imgUrl.hasPrefix("http") {
-                    if imgUrl.hasPrefix("//") {
-                        imgUrl = "https:" + imgUrl
-                    } else if imgUrl.hasPrefix("/") {
+                if !imgUrl.hasPrefix("http") && !imgUrl.hasPrefix("//") {
+                    if imgUrl.hasPrefix("/") {
                         imgUrl = "\(urlToFetch.scheme ?? "https")://\(urlToFetch.host ?? "")\(imgUrl)"
                     } else {
                         imgUrl = "\(urlToFetch.scheme ?? "https")://\(urlToFetch.host ?? "")/\(imgUrl)"
                     }
+                } else if imgUrl.hasPrefix("//") {
+                    imgUrl = "https:" + imgUrl
                 }
                 
-                // Validate URL
-                if URL(string: imgUrl) != nil {
+                // Validate and clean URL
+                if let url = URL(string: imgUrl) {
                     imageUrl = imgUrl
+                    print("✅ [LinkPreview] Valid image URL: \(imgUrl)")
                 } else {
-                    print("⚠️ [LinkPreview] Invalid image URL: \(imgUrl)")
-                    imageUrl = nil
+                    // Try URL encoding spaces and special characters
+                    if let encoded = imgUrl.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                       URL(string: encoded) != nil {
+                        imageUrl = encoded
+                        print("✅ [LinkPreview] Encoded image URL: \(encoded)")
+                    } else {
+                        print("⚠️ [LinkPreview] Invalid image URL after processing: \(imgUrl)")
+                        imageUrl = nil
+                    }
                 }
             }
             
