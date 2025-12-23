@@ -12202,7 +12202,8 @@ struct LinkPreviewImageView: View {
                     DefaultLinkIconView(width: width, height: height)
                 }
             }
-            .frame(width: width, height: height)
+            .frame(maxWidth: width)
+            .frame(height: height)
             .clipped()
             .onAppear {
                 print("🖼️ [LinkPreview] Loading image from: \(imageUrlString)")
