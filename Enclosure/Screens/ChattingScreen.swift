@@ -12254,6 +12254,7 @@ struct SenderRichLinkView: View {
     @ViewBuilder
     private var linkImageView: some View {
         let imageUrlString = linkImageUrl ?? fetchedImageUrl
+        let _ = print("🖼️ [LinkPreview] linkImageView - linkImageUrl: \(linkImageUrl ?? "nil"), fetchedImageUrl: \(fetchedImageUrl ?? "nil")")
         if let imageUrlString = imageUrlString, !imageUrlString.isEmpty {
             LinkPreviewImageView(imageUrlString: imageUrlString, width: 180, height: 100)
         } else {
@@ -12508,6 +12509,17 @@ struct SenderRichLinkView: View {
             description = extractMetaContent(html: html, property: "og:description")
             imageUrl = extractMetaContent(html: html, property: "og:image")
             
+            // Try Twitter Card tags as fallback
+            if imageUrl == nil {
+                imageUrl = extractMetaContent(html: html, property: "twitter:image")
+            }
+            if title == nil {
+                title = extractMetaContent(html: html, property: "twitter:title")
+            }
+            if description == nil {
+                description = extractMetaContent(html: html, property: "twitter:description")
+            }
+            
             // Fallback to regular meta tags if OG tags not found
             if title == nil {
                 if let regex = try? NSRegularExpression(pattern: #"<title>([^<]+)</title>"#, options: .caseInsensitive),
@@ -12524,6 +12536,16 @@ struct SenderRichLinkView: View {
                    match.numberOfRanges > 1 {
                     let descRange = Range(match.range(at: 1), in: html)!
                     description = String(html[descRange])
+                }
+            }
+            
+            // Try to find any image in meta tags as last resort
+            if imageUrl == nil {
+                if let regex = try? NSRegularExpression(pattern: #"<meta\s+name=["']image["']\s+content=["']([^"']+)["']"#, options: .caseInsensitive),
+                   let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+                   match.numberOfRanges > 1 {
+                    let imgRange = Range(match.range(at: 1), in: html)!
+                    imageUrl = String(html[imgRange]).trimmingCharacters(in: .whitespacesAndNewlines)
                 }
             }
             
@@ -12592,6 +12614,8 @@ struct SenderRichLinkView: View {
             print("🔍 [LinkPreview] Extracted - Title: \(title ?? "nil"), Desc: \(description ?? "nil"), Image: \(imageUrl ?? "nil"), Favicon: \(favIconUrl ?? "nil")")
             
             DispatchQueue.main.async {
+                print("📦 [LinkPreview] Setting fetched data - Title: \(title != nil ? "✓" : "✗"), Desc: \(description != nil ? "✓" : "✗"), Image: \(imageUrl != nil ? "✓" : "✗"), Favicon: \(favIconUrl != nil ? "✓" : "✗")")
+                
                 self.fetchedTitle = title
                 self.fetchedDescription = description
                 self.fetchedImageUrl = imageUrl
@@ -12601,6 +12625,7 @@ struct SenderRichLinkView: View {
                 if title != nil || description != nil || imageUrl != nil || favIconUrl != nil {
                     self.showFullPreview = true
                     print("✅ [LinkPreview] Showing full preview - Image URL: \(imageUrl ?? "none")")
+                    print("✅ [LinkPreview] showFullPreview set to: \(self.showFullPreview)")
                 } else {
                     print("⚠️ [LinkPreview] No preview data found")
                 }
@@ -12633,6 +12658,7 @@ struct ReceiverRichLinkView: View {
     @ViewBuilder
     private var linkImageView: some View {
         let imageUrlString = linkImageUrl ?? fetchedImageUrl
+        let _ = print("🖼️ [LinkPreview] Receiver linkImageView - linkImageUrl: \(linkImageUrl ?? "nil"), fetchedImageUrl: \(fetchedImageUrl ?? "nil")")
         if let imageUrlString = imageUrlString, !imageUrlString.isEmpty {
             LinkPreviewImageView(imageUrlString: imageUrlString, width: 210, height: 130)
         } else {
@@ -12887,6 +12913,17 @@ struct ReceiverRichLinkView: View {
             description = extractMetaContent(html: html, property: "og:description")
             imageUrl = extractMetaContent(html: html, property: "og:image")
             
+            // Try Twitter Card tags as fallback
+            if imageUrl == nil {
+                imageUrl = extractMetaContent(html: html, property: "twitter:image")
+            }
+            if title == nil {
+                title = extractMetaContent(html: html, property: "twitter:title")
+            }
+            if description == nil {
+                description = extractMetaContent(html: html, property: "twitter:description")
+            }
+            
             // Fallback to regular meta tags if OG tags not found
             if title == nil {
                 if let regex = try? NSRegularExpression(pattern: #"<title>([^<]+)</title>"#, options: .caseInsensitive),
@@ -12903,6 +12940,16 @@ struct ReceiverRichLinkView: View {
                    match.numberOfRanges > 1 {
                     let descRange = Range(match.range(at: 1), in: html)!
                     description = String(html[descRange])
+                }
+            }
+            
+            // Try to find any image in meta tags as last resort
+            if imageUrl == nil {
+                if let regex = try? NSRegularExpression(pattern: #"<meta\s+name=["']image["']\s+content=["']([^"']+)["']"#, options: .caseInsensitive),
+                   let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+                   match.numberOfRanges > 1 {
+                    let imgRange = Range(match.range(at: 1), in: html)!
+                    imageUrl = String(html[imgRange]).trimmingCharacters(in: .whitespacesAndNewlines)
                 }
             }
             
@@ -12972,6 +13019,8 @@ struct ReceiverRichLinkView: View {
             print("🔍 [LinkPreview] Extracted - Title: \(title ?? "nil"), Desc: \(description ?? "nil"), Image: \(imageUrl ?? "nil"), Favicon: \(favIconUrl ?? "nil")")
             
             DispatchQueue.main.async {
+                print("📦 [LinkPreview] Setting fetched data - Title: \(title != nil ? "✓" : "✗"), Desc: \(description != nil ? "✓" : "✗"), Image: \(imageUrl != nil ? "✓ (\(imageUrl ?? ""))" : "✗"), Favicon: \(favIconUrl != nil ? "✓" : "✗")")
+                
                 self.fetchedTitle = title
                 self.fetchedDescription = description
                 self.fetchedImageUrl = imageUrl
@@ -12981,6 +13030,7 @@ struct ReceiverRichLinkView: View {
                 if title != nil || description != nil || imageUrl != nil || favIconUrl != nil {
                     self.showFullPreview = true
                     print("✅ [LinkPreview] Showing full preview - Image URL: \(imageUrl ?? "none")")
+                    print("✅ [LinkPreview] showFullPreview set to: \(self.showFullPreview)")
                 } else {
                     print("⚠️ [LinkPreview] No preview data found")
                 }
