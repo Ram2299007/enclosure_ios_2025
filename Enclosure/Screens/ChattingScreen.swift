@@ -12193,8 +12193,8 @@ struct LinkPreviewImageView: View {
                 case .success(let image):
                     image
                         .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: width)
+                        .scaledToFill()
+                        .frame(width: width, height: height)
                 case .failure(let error):
                     let _ = print("❌ [LinkPreview] Failed to load image from \(imageUrlString): \(error.localizedDescription)")
                     DefaultLinkIconView(width: width, height: height)
@@ -12202,8 +12202,7 @@ struct LinkPreviewImageView: View {
                     DefaultLinkIconView(width: width, height: height)
                 }
             }
-            .frame(maxWidth: width)
-            .frame(height: height)
+            .frame(width: width, height: height)
             .clipped()
             .onAppear {
                 print("🖼️ [LinkPreview] Loading image from: \(imageUrlString)")
