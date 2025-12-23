@@ -1857,7 +1857,7 @@ struct ChattingScreen: View {
                         if let messageDict = child.value as? [String: Any] {
                             if let model = self.parseMessageFromDict(messageDict, messageId: childKey) {
                                 // Add Text, Image, Video, Document, and Contact datatype messages
-                                if model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video || model.dataType == Constant.doc || model.dataType == Constant.contact {
+                                if model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video || model.dataType == Constant.doc || model.dataType == Constant.contact || model.dataType == Constant.voiceAudio {
                                     tempList.append(model)
                                 }
                             }
@@ -1982,7 +1982,7 @@ struct ChattingScreen: View {
                let updatedModel = self.parseMessageFromDict(messageDict, messageId: changedKey) {
                 
                 // Handle Text, Image, Video, Document, and Contact datatype messages
-                if updatedModel.dataType == Constant.Text || updatedModel.dataType == Constant.img || updatedModel.dataType == Constant.video || updatedModel.dataType == Constant.doc || updatedModel.dataType == Constant.contact {
+                if updatedModel.dataType == Constant.Text || updatedModel.dataType == Constant.img || updatedModel.dataType == Constant.video || updatedModel.dataType == Constant.doc || updatedModel.dataType == Constant.contact || updatedModel.dataType == Constant.voiceAudio {
                     // Find and update existing message (matching Android)
                     if let index = self.messages.firstIndex(where: { $0.id == changedKey }) {
                         let oldModel = self.messages[index]
@@ -2035,8 +2035,8 @@ struct ChattingScreen: View {
             return
         }
         
-        // Handle Text, Image, Video, and Document datatype messages
-        guard model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video || model.dataType == Constant.doc || model.dataType == Constant.contact else {
+        // Handle Text, Image, Video, Document, Contact, and VoiceAudio datatype messages
+        guard model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video || model.dataType == Constant.doc || model.dataType == Constant.contact || model.dataType == Constant.voiceAudio else {
             print("📱 [handleChildAdded] Skipping unsupported message type: \(model.dataType)")
             return
         }
@@ -6439,57 +6439,78 @@ struct SenderDocumentView: View {
         }
     }
     
-    // Audio player view (matching Android miceContainer)
+    // Audio player view (matching Android miceContainer) - for music files in doc dataType
+    // Matching Android sample_sender.xml miceContainer exactly
     @ViewBuilder
     private var audioPlayerView: some View {
-        VStack(alignment: .center, spacing: 0) {
-            // Main container - matching Android LinearLayout with backgroundTint="#021D3A"
-            HStack(alignment: .center, spacing: 0) {
-                // Download controls (only show if file not downloaded) - matching Android audioDownloadControls
-                if !hasLocalFile {
-                    audioDownloadControlsView
-                }
-                
-                // Play button - matching Android micePlay with scaleX/Y="1.4"
-                Button(action: {
-                    openMusicPlayer()
-                }) {
-                    Image("play_arrow_sender")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 24, height: 24)
-                        .scaleEffect(1.4) // scaleX/Y="1.4"
-                }
-                .padding(.leading, 5) // layout_marginEnd="5dp"
-                
-                // Progress bar - matching Android miceProgressbar, vertically centered
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        // Track - matching Android trackCornerRadius="20dp", trackThickness="5dp"
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(height: 5)
-                        
-                        // Progress indicator - matching Android indicatorColor="@color/teal_700"
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(Color(hex: "#00897B")) // teal_700
-                            .frame(width: geometry.size.width * CGFloat(audioDuration > 0 ? audioCurrentTime / audioDuration : 0), height: 5)
+        VStack(spacing: 0) {
+            // Main container - matching Android miceContainer LinearLayout
+            // Android: layout_width="match_parent", layout_height="wrap_content", layout_gravity="center"
+            // Android: layout_marginHorizontal="7dp", layout_marginVertical="7dp", gravity="center", orientation="vertical"
+            VStack(spacing: 0) {
+                // Inner container - matching Android inner LinearLayout
+                // Android: layout_width="wrap_content", layout_height="wrap_content", layout_gravity="center"
+                // Android: layout_marginHorizontal="3dp", backgroundTint="#021D3A", gravity="center", orientation="horizontal"
+                HStack(alignment: .center, spacing: 0) {
+                    // Download controls - matching Android audioDownloadControls RelativeLayout
+                    // Android: layout_width="wrap_content", layout_height="wrap_content", layout_gravity="center_vertical", gravity="center"
+                    if !hasLocalFile {
+                        audioDownloadControlsView
                     }
+                    
+                    // Play button - matching Android micePlay AppCompatImageButton
+                    // Android: layout_width="wrap_content", layout_height="wrap_content", layout_marginEnd="5dp"
+                    // Android: scaleX="1.4", scaleY="1.4", src="@drawable/play_arrow_sender"
+                    Button(action: {
+                        openMusicPlayer()
+                    }) {
+                        Image("play_arrow_sender")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 24, height: 24)
+                            .scaleEffect(1.4) // Android: scaleX="1.4", scaleY="1.4"
+                    }
+                    .padding(.trailing, 5) // Android: layout_marginEnd="5dp"
+                    
+                    // Progress layout - matching Android progresslyt LinearLayout
+                    // Android: layout_width="match_parent", layout_height="wrap_content", layout_marginHorizontal="5dp"
+                    // Android: minWidth="150dp", orientation="vertical"
+                    VStack(spacing: 0) {
+                        // Progress bar - matching Android miceProgressbar LinearProgressIndicator
+                        // Android: layout_width="match_parent", layout_height="wrap_content", layout_marginTop="19dp"
+                        // Android: indicatorColor="@color/teal_700", trackCornerRadius="20dp", trackThickness="5dp"
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 20) // Android: trackCornerRadius="20dp"
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(height: 5) // Android: trackThickness="5dp"
+                                
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(Color(hex: "#018786")) // Android: indicatorColor="@color/teal_700"
+                                    .frame(width: geometry.size.width * CGFloat(audioDuration > 0 ? audioCurrentTime / audioDuration : 0), height: 5)
+                            }
+                        }
+                        .frame(height: 5)
+                        .padding(.top, 19) // Android: layout_marginTop="19dp"
+                        
+                        // Timing text - matching Android miceTiming TextView
+                        // Android: layout_width="wrap_content", layout_height="wrap_content", layout_marginTop="5dp"
+                        // Android: textColor="#e7ebf4", textSize="10sp", fontFamily="@font/inter", lineHeight="22dp"
+                        Text(formatTime(audioDuration > 0 ? audioDuration : 0))
+                            .font(.custom("Inter18pt-Regular", size: 10)) // Android: fontFamily="@font/inter", textSize="10sp"
+                            .foregroundColor(Color(hex: "#e7ebf4")) // Android: textColor="#e7ebf4"
+                            .padding(.top, 5) // Android: layout_marginTop="5dp"
+                    }
+                    .frame(minWidth: 150) // Android: minWidth="150dp"
+                    .padding(.horizontal, 5) // Android: layout_marginHorizontal="5dp"
+                    .frame(maxHeight: .infinity, alignment: .center) // Vertically center with play button
                 }
-                .frame(height: 5)
-                .frame(minWidth: 150) // minWidth="150dp"
-                .padding(.horizontal, 5) // layout_marginHorizontal="5dp"
+                .padding(.horizontal, 3) // Android: layout_marginHorizontal="3dp"
+                .background(Color(hex: "#021D3A")) // Android: backgroundTint="#021D3A"
             }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 3) // layout_marginHorizontal="3dp"
-            .padding(.vertical, 5) // Reduced vertical padding to match Android inner spacing
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(hex: "#021D3A")) // backgroundTint="#021D3A"
-            )
+            .padding(.horizontal, 7) // Android: layout_marginHorizontal="7dp"
+            .padding(.vertical, 7) // Android: layout_marginVertical="7dp"
         }
-        .padding(.horizontal, 7) // layout_marginHorizontal="7dp"
-        .padding(.vertical, 5) // Reduced vertical padding to match Android
         .onAppear {
             if isAudio && hasLocalFile {
                 setupAudioPlayer()
@@ -7273,50 +7294,69 @@ struct ReceiverDocumentView: View {
     
     // Audio player view (matching Android miceContainer)
     @ViewBuilder
+    // Audio player view (matching Android miceContainer) - for music files in doc dataType
+    // Using same design as ReceiverVoiceAudioView but keeping timing text and receiver theme
     private var audioPlayerView: some View {
-        VStack(alignment: .center, spacing: 0) {
-            // Main container - matching Android LinearLayout
-            HStack(alignment: .center, spacing: 0) {
-                // Download controls (only show if file not downloaded) - matching Android audioDownloadControlsReceiver
-                if !hasLocalFile {
-                    audioDownloadControlsView
-                }
-                
-                // Play button - matching Android micePlay with scaleX/Y="1.4"
-                Button(action: {
-                    openMusicPlayer()
-                }) {
-                    Image("play_arrow_receiver")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 24, height: 24)
-                        .scaleEffect(1.4) // scaleX/Y="1.4"
-                        .foregroundColor(Color("TextColor"))
-                }
-                
-                // Progress bar - matching Android miceProgressbar, vertically centered
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        // Track - matching Android trackCornerRadius="20dp", trackThickness="5dp"
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(height: 5)
-                        
-                        // Progress indicator - matching Android indicatorColor="@color/teal_700"
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(Color(hex: "#00897B")) // teal_700
-                            .frame(width: geometry.size.width * CGFloat(audioDuration > 0 ? audioCurrentTime / audioDuration : 0), height: 5)
+        VStack(spacing: 0) {
+            // Main container - matching Android miceContainer LinearLayout
+            // Android: layout_width="wrap_content", layout_marginHorizontal="7dp", layout_marginVertical="7dp", orientation="vertical", gravity="center"
+            VStack(spacing: 0) {
+                // Inner container - matching Android inner LinearLayout
+                // Android: layout_width="wrap_content", orientation="horizontal", layout_gravity="center", gravity="center"
+                HStack(alignment: .center, spacing: 0) {
+                    // Download controls (only show if file not downloaded) - matching Android audioDownloadControlsReceiver
+                    // Android: layout_marginEnd="7dp"
+                    if !hasLocalFile {
+                        audioDownloadControlsView
+                            .padding(.trailing, 7) // Android: layout_marginEnd="7dp"
                     }
+                    
+                    // Play button - matching Android micePlay AppCompatImageButton
+                    // Android: scaleX="1.4", scaleY="1.4", src="@drawable/play_arrow_receiver", tint="@color/TextColor"
+                    Button(action: {
+                        openMusicPlayer()
+                    }) {
+                        Image("play_arrow_receiver")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(Color("TextColor")) // Android: tint="@color/TextColor"
+                            .scaleEffect(1.4) // Android: scaleX="1.4", scaleY="1.4"
+                    }
+                    
+                    // Horizontal container for progress bar and timing - vertically centered
+                    HStack(alignment: .center, spacing: 5) {
+                        // Progress bar - matching Android miceProgressbar LinearProgressIndicator
+                        // Android: indicatorColor="@color/teal_700", trackCornerRadius="20dp", trackThickness="5dp"
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 20) // Android: trackCornerRadius="20dp"
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(height: 5) // Android: trackThickness="5dp"
+                                
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(Color(hex: "#018786")) // Android: indicatorColor="@color/teal_700"
+                                    .frame(width: geometry.size.width * CGFloat(audioDuration > 0 ? audioCurrentTime / audioDuration : 0), height: 5)
+                            }
+                        }
+                        .frame(height: 5)
+                        .frame(minWidth: 150) // Android: minWidth="150dp"
+                        
+                        // Timing text - matching Android miceTiming TextView
+                        // Android: style="@style/TextColor", textSize="10sp", fontFamily="@font/inter", layout_gravity="start"
+                        // Keep timing text showing duration, left aligned
+                        Text(formatTime(audioDuration > 0 ? audioDuration : 0))
+                            .font(.custom("Inter18pt-Regular", size: 10)) // Android: fontFamily="@font/inter", textSize="10sp"
+                            .foregroundColor(Color("TextColor")) // Android: style="@style/TextColor"
+                            .frame(alignment: .leading) // Android: layout_gravity="start"
+                    }
+                    .padding(.horizontal, 5) // Android: layout_marginHorizontal="5dp"
                 }
-                .frame(height: 5)
-                .frame(minWidth: 150) // minWidth="150dp"
-                .padding(.horizontal, 5) // layout_marginHorizontal="5dp"
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 5) // Reduced vertical padding to match Android inner spacing
+            .padding(.horizontal, 7) // Android: layout_marginHorizontal="7dp"
+            .padding(.vertical, 7) // Android: layout_marginVertical="7dp"
         }
-        .padding(.horizontal, 7) // layout_marginHorizontal="7dp"
-        .padding(.vertical, 5) // Reduced vertical padding to match Android
         .onAppear {
             if isAudio && hasLocalFile {
                 setupAudioPlayer()
@@ -9119,6 +9159,47 @@ struct MessageBubbleView: View {
                             )
                         }
                         .frame(maxWidth: 250)
+                    } else if message.dataType == Constant.voiceAudio {
+                        // Sender voice audio message (matching Android miceContainer design)
+                        let _ = print("🎤 [MessageBubbleView] Showing sender voice audio - dataType: \(message.dataType), document: \(message.document.isEmpty ? "empty" : "has URL"), miceTiming: \(message.miceTiming ?? "nil")")
+                        HStack {
+                            Spacer(minLength: 0) // Push content to end
+                            
+                            // Container wrapping voice audio and caption with same background as Constant.Text sender messages
+                            VStack(alignment: .trailing, spacing: 0) {
+                                SenderVoiceAudioView(
+                                    audioUrl: message.document,
+                                    audioTiming: message.miceTiming ?? "00:00",
+                                    micPhoto: message.micPhoto,
+                                    backgroundColor: getSenderMessageBackgroundColor()
+                                )
+                                
+                                // Caption text if present (matching Android caption display)
+                                if let caption = message.caption, !caption.isEmpty {
+                                    HStack {
+                                        Text(caption)
+                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .fontWeight(.regular)
+                                            .foregroundColor(Color(hex: "#e7ebf4"))
+                                            .lineSpacing(7)
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.horizontal, 12)
+                                            .padding(.top, 5)
+                                            .padding(.bottom, 6)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.top, 5)
+                                    .padding(.bottom, 5)
+                                }
+                            }
+                            .background(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(getSenderMessageBackgroundColor())
+                            )
+                        }
+                        .frame(maxWidth: 250)
                     } else if message.dataType == Constant.doc {
                         // Sender document message (matching Android docLyt design)
                         let _ = print("📄 [MessageBubbleView] Showing sender document - dataType: \(message.dataType), document: \(message.document.isEmpty ? "empty" : "has URL"), fileName: \(message.fileName ?? "nil"), message: \(message.message)")
@@ -9355,6 +9436,45 @@ struct MessageBubbleView: View {
                             }
                             .background(
                                 RoundedRectangle(cornerRadius: 20) // Android: contactContainer should match message container corner radius
+                                    .fill(Color("message_box_bg"))
+                            )
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: 250)
+                    } else if message.dataType == Constant.voiceAudio {
+                        // Receiver voice audio message (matching Android miceContainer design)
+                        let _ = print("🎤 [MessageBubbleView] Showing receiver voice audio - dataType: \(message.dataType), document: \(message.document.isEmpty ? "empty" : "has URL"), miceTiming: \(message.miceTiming ?? "nil")")
+                        HStack {
+                            // Container wrapping voice audio and caption with same background as Constant.Text receiver messages
+                            VStack(alignment: .leading, spacing: 0) {
+                                ReceiverVoiceAudioView(
+                                    audioUrl: message.document,
+                                    audioTiming: message.miceTiming ?? "00:00",
+                                    micPhoto: message.micPhoto
+                                )
+                                
+                                // Caption text if present (matching Android caption display)
+                                if let caption = message.caption, !caption.isEmpty {
+                                    HStack {
+                                        Text(caption)
+                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .fontWeight(.regular)
+                                            .foregroundColor(Color("TextColor"))
+                                            .lineSpacing(7)
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.horizontal, 12)
+                                            .padding(.top, 5)
+                                            .padding(.bottom, 6)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.top, 5)
+                                    .padding(.bottom, 5)
+                                }
+                            }
+                            .background(
+                                RoundedRectangle(cornerRadius: 20)
                                     .fill(Color("message_box_bg"))
                             )
                             Spacer(minLength: 0)
@@ -11187,6 +11307,522 @@ struct ReceiverContactView: View {
         } catch {
             print("❌ [Contact] Failed to save contact to local storage: \(error.localizedDescription)")
         }
+    }
+}
+
+// MARK: - Sender Voice Audio View (matching Android sender miceContainer)
+struct SenderVoiceAudioView: View {
+    let audioUrl: String
+    let audioTiming: String
+    let micPhoto: String?
+    let backgroundColor: Color
+    
+    @State private var audioPlayer: AVPlayer? = nil
+    @State private var isPlaying: Bool = false
+    @State private var currentTime: TimeInterval = 0.0
+    @State private var duration: TimeInterval = 0.0
+    @State private var audioTimeObserver: Any? = nil
+    @State private var hasLocalFile: Bool = false
+    @State private var showMusicPlayerBottomSheet: Bool = false
+    
+    // Get local audios directory
+    private func getLocalAudiosDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let audiosDir = documentsPath.appendingPathComponent("Enclosure/Media/Audios", isDirectory: true)
+        try? FileManager.default.createDirectory(at: audiosDir, withIntermediateDirectories: true, attributes: nil)
+        return audiosDir
+    }
+    
+    // Check if audio file exists locally
+    private func checkLocalFile() {
+        guard !audioUrl.isEmpty else { return }
+        let fileName = extractFileName(from: audioUrl)
+        let localFile = getLocalAudiosDirectory().appendingPathComponent(fileName)
+        hasLocalFile = FileManager.default.fileExists(atPath: localFile.path)
+    }
+    
+    // Extract filename from URL
+    private func extractFileName(from urlString: String) -> String {
+        guard let url = URL(string: urlString) else { return (urlString as NSString).lastPathComponent }
+        let lastPathComponent = url.lastPathComponent.removingPercentEncoding ?? url.lastPathComponent
+        if let queryIndex = lastPathComponent.firstIndex(of: "?") {
+            return String(lastPathComponent[..<queryIndex])
+        }
+        return lastPathComponent
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Main container - matching Android miceContainer LinearLayout
+            // Android: layout_marginHorizontal="7dp", layout_marginVertical="7dp", orientation="vertical", gravity="center"
+            VStack(spacing: 0) {
+                // Inner container - matching Android inner LinearLayout
+                // Android: layout_width="wrap_content", backgroundTint="#021D3A", orientation="horizontal", layout_marginHorizontal="3dp"
+                HStack(alignment: .center, spacing: 0) {
+                    // Download controls (optional) - matching Android audioDownloadControls RelativeLayout
+                    // Note: Download controls are typically hidden for sender (already sent)
+                    
+                    // Play button - matching Android micePlay AppCompatImageButton
+                    // Android: layout_marginEnd="5dp", scaleX="1.4", scaleY="1.4", src="@drawable/play_arrow_sender"
+                    Button(action: {
+                        openMusicPlayer()
+                    }) {
+                        Image("play_arrow_sender")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 24, height: 24)
+                            .scaleEffect(1.4) // Android: scaleX="1.4", scaleY="1.4"
+                    }
+                    .padding(.trailing, 5) // Android: layout_marginEnd="5dp"
+                    
+                    // Vertical container for progress bar and timing - vertically centered
+                    VStack(spacing: 0) {
+                        // Progress bar - matching Android miceProgressbar LinearProgressIndicator
+                        // Android: layout_marginTop="19dp", indicatorColor="@color/teal_700", trackCornerRadius="20dp", trackThickness="5dp"
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 20) // Android: trackCornerRadius="20dp"
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(height: 5) // Android: trackThickness="5dp"
+                                
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(Color(hex: "#018786")) // Android: indicatorColor="@color/teal_700"
+                                    .frame(width: geometry.size.width * CGFloat(duration > 0 ? currentTime / duration : 0), height: 5)
+                            }
+                        }
+                        .frame(height: 5)
+                        .padding(.top, 19) // Android: layout_marginTop="19dp"
+                        
+                        // Timing text - matching Android miceTiming TextView
+                        // Android: layout_marginTop="5dp", textColor="#e7ebf4", textSize="10sp", fontFamily="@font/inter", layout_gravity="start"
+                        // Display miceTiming (duration) from message, not current playback time
+                        Text(audioTiming)
+                            .font(.custom("Inter18pt-Regular", size: 10)) // Android: fontFamily="@font/inter", textSize="10sp"
+                            .foregroundColor(Color(hex: "#e7ebf4")) // Android: textColor="#e7ebf4"
+                            .frame(maxWidth: .infinity, alignment: .leading) // Android: layout_gravity="start"
+                            .padding(.top, 5) // Android: layout_marginTop="5dp"
+                    }
+                    .frame(minWidth: 150) // Android: minWidth="150dp"
+                    .padding(.horizontal, 5) // Android: layout_marginHorizontal="5dp"
+                    .frame(maxHeight: .infinity, alignment: .center) // Vertically center with play button
+                }
+                .padding(.horizontal, 3) // Android: layout_marginHorizontal="3dp"
+                .background(Color(hex: "#021D3A")) // Android: backgroundTint="#021D3A"
+            }
+            .padding(.horizontal, 7) // Android: layout_marginHorizontal="7dp"
+            .padding(.vertical, 7) // Android: layout_marginVertical="7dp"
+        }
+        .sheet(isPresented: $showMusicPlayerBottomSheet) {
+            MusicPlayerBottomSheet(
+                audioUrl: audioUrl,
+                profileImageUrl: micPhoto ?? "",
+                songTitle: extractFileName(from: audioUrl)
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+        .onAppear {
+            checkLocalFile()
+            if hasLocalFile {
+                setupAudioPlayer()
+            }
+        }
+        .onDisappear {
+            stopAudioPlayer()
+        }
+    }
+    
+    // Open music player bottom sheet
+    private func openMusicPlayer() {
+        print("🎵 [SenderVoiceAudioView] Opening music player - audioUrl: \(audioUrl)")
+        showMusicPlayerBottomSheet = true
+    }
+    
+    // Format time
+    private func formatTime(_ time: TimeInterval) -> String {
+        let minutes = Int(time) / 60
+        let seconds = Int(time) % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+    
+    // Setup audio player
+    private func setupAudioPlayer() {
+        guard !audioUrl.isEmpty else { return }
+        
+        let fileName = extractFileName(from: audioUrl)
+        let localFile = getLocalAudiosDirectory().appendingPathComponent(fileName)
+        
+        let playerURL: URL
+        if hasLocalFile && FileManager.default.fileExists(atPath: localFile.path) {
+            playerURL = localFile
+        } else if let url = URL(string: audioUrl) {
+            playerURL = url
+        } else {
+            return
+        }
+        
+        audioPlayer = AVPlayer(url: playerURL)
+        
+        // Get duration
+        if let durationValue = audioPlayer?.currentItem?.asset.duration {
+            let durationSeconds = CMTimeGetSeconds(durationValue)
+            if !durationSeconds.isNaN && durationSeconds.isFinite {
+                duration = durationSeconds
+            }
+        }
+        
+        // Add time observer
+        let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
+        audioTimeObserver = audioPlayer?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [self] time in
+            let timeSeconds = CMTimeGetSeconds(time)
+            if !timeSeconds.isNaN && timeSeconds.isFinite {
+                currentTime = timeSeconds
+            }
+        }
+        
+        // Listen for playback end
+        NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: audioPlayer?.currentItem,
+            queue: .main
+        ) { [self] _ in
+            isPlaying = false
+            currentTime = 0.0
+            audioPlayer?.seek(to: .zero)
+        }
+    }
+    
+    // Toggle playback
+    private func togglePlayback() {
+        guard let player = audioPlayer else {
+            setupAudioPlayer()
+            return
+        }
+        
+        if isPlaying {
+            player.pause()
+            isPlaying = false
+        } else {
+            player.play()
+            isPlaying = true
+        }
+    }
+    
+    // Stop audio player
+    private func stopAudioPlayer() {
+        audioPlayer?.pause()
+        audioPlayer = nil
+        isPlaying = false
+        currentTime = 0.0
+        duration = 0.0
+        if let observer = audioTimeObserver {
+            audioPlayer?.removeTimeObserver(observer)
+            audioTimeObserver = nil
+        }
+        NotificationCenter.default.removeObserver(self)
+    }
+}
+
+// MARK: - Receiver Voice Audio View (matching Android receiver miceContainer)
+struct ReceiverVoiceAudioView: View {
+    @Environment(\.colorScheme) var colorScheme
+    let audioUrl: String
+    let audioTiming: String
+    let micPhoto: String?
+    
+    @State private var audioPlayer: AVPlayer? = nil
+    @State private var isPlaying: Bool = false
+    @State private var currentTime: TimeInterval = 0.0
+    @State private var duration: TimeInterval = 0.0
+    @State private var audioTimeObserver: Any? = nil
+    @State private var hasLocalFile: Bool = false
+    @State private var showDownloadButton: Bool = false
+    @State private var isDownloading: Bool = false
+    @State private var downloadProgress: Double = 0.0
+    @State private var showDownloadProgress: Bool = false
+    @State private var showMusicPlayerBottomSheet: Bool = false
+    
+    // Get local audios directory
+    private func getLocalAudiosDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let audiosDir = documentsPath.appendingPathComponent("Enclosure/Media/Audios", isDirectory: true)
+        try? FileManager.default.createDirectory(at: audiosDir, withIntermediateDirectories: true, attributes: nil)
+        return audiosDir
+    }
+    
+    // Check if audio file exists locally
+    private func checkLocalFile() {
+        guard !audioUrl.isEmpty else { return }
+        let fileName = extractFileName(from: audioUrl)
+        let localFile = getLocalAudiosDirectory().appendingPathComponent(fileName)
+        hasLocalFile = FileManager.default.fileExists(atPath: localFile.path)
+    }
+    
+    // Extract filename from URL
+    private func extractFileName(from urlString: String) -> String {
+        guard let url = URL(string: urlString) else { return (urlString as NSString).lastPathComponent }
+        let lastPathComponent = url.lastPathComponent.removingPercentEncoding ?? url.lastPathComponent
+        if let queryIndex = lastPathComponent.firstIndex(of: "?") {
+            return String(lastPathComponent[..<queryIndex])
+        }
+        return lastPathComponent
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Main container - matching Android miceContainer LinearLayout
+            // Android: layout_width="wrap_content", layout_marginHorizontal="7dp", layout_marginVertical="7dp", orientation="vertical", gravity="center"
+            VStack(spacing: 0) {
+                // Inner container - matching Android inner LinearLayout
+                // Android: layout_width="wrap_content", orientation="horizontal", layout_gravity="center", gravity="center"
+                HStack(alignment: .center, spacing: 0) {
+                    // Download controls - matching Android audioDownloadControlsReceiver RelativeLayout
+                    // Android: layout_marginEnd="7dp"
+                    if !hasLocalFile && !isDownloading {
+                        Button(action: {
+                            downloadAudio()
+                        }) {
+                            ZStack {
+                                Circle()
+                                    .fill(.ultraThinMaterial)
+                                    .frame(width: 35, height: 35)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                    )
+                                    .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                                
+                                Image("downloaddown")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 20, height: 20)
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        .padding(.trailing, 7) // Android: layout_marginEnd="7dp"
+                    }
+                    
+                    // Play button - matching Android micePlay AppCompatImageButton
+                    // Android: scaleX="1.4", scaleY="1.4", src="@drawable/play_arrow_receiver", tint="@color/TextColor"
+                    Button(action: {
+                        openMusicPlayer()
+                    }) {
+                        Image("play_arrow_receiver")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(Color("TextColor")) // Android: tint="@color/TextColor"
+                            .scaleEffect(1.4) // Android: scaleX="1.4", scaleY="1.4"
+                    }
+                    
+                    // Vertical container for progress bar and timing - vertically centered
+                    VStack(spacing: 0) {
+                        // Progress bar - matching Android miceProgressbar LinearProgressIndicator
+                        // Android: layout_marginTop="19dp", indicatorColor="@color/teal_700", trackCornerRadius="20dp", trackThickness="5dp"
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 20) // Android: trackCornerRadius="20dp"
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(height: 5) // Android: trackThickness="5dp"
+                                
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(Color(hex: "#018786")) // Android: indicatorColor="@color/teal_700"
+                                    .frame(width: geometry.size.width * CGFloat(duration > 0 ? currentTime / duration : 0), height: 5)
+                            }
+                        }
+                        .frame(height: 5)
+                        .padding(.top, 19) // Android: layout_marginTop="19dp"
+                        
+                        // Timing text - matching Android miceTiming TextView
+                        // Android: layout_marginTop="5dp", style="@style/TextColor", textSize="10sp", fontFamily="@font/inter", layout_gravity="start"
+                        // Display miceTiming (duration) from message, not current playback time
+                        Text(audioTiming)
+                            .font(.custom("Inter18pt-Regular", size: 10)) // Android: fontFamily="@font/inter", textSize="10sp"
+                            .foregroundColor(Color("TextColor")) // Android: style="@style/TextColor"
+                            .frame(maxWidth: .infinity, alignment: .leading) // Android: layout_gravity="start"
+                            .padding(.top, 5) // Android: layout_marginTop="5dp"
+                    }
+                    .frame(minWidth: 150) // Android: minWidth="150dp"
+                    .padding(.horizontal, 5) // Android: layout_marginHorizontal="5dp"
+                    .frame(maxHeight: .infinity, alignment: .center) // Vertically center with play button
+                }
+            }
+            .padding(.horizontal, 7) // Android: layout_marginHorizontal="7dp"
+            .padding(.vertical, 7) // Android: layout_marginVertical="7dp"
+        }
+        .sheet(isPresented: $showMusicPlayerBottomSheet) {
+            MusicPlayerBottomSheet(
+                audioUrl: audioUrl,
+                profileImageUrl: micPhoto ?? "",
+                songTitle: extractFileName(from: audioUrl)
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+        .onAppear {
+            checkLocalFile()
+            if hasLocalFile {
+                setupAudioPlayer()
+            } else if !audioUrl.isEmpty {
+                showDownloadButton = true
+            }
+        }
+        .onDisappear {
+            stopAudioPlayer()
+        }
+    }
+    
+    // Open music player bottom sheet
+    private func openMusicPlayer() {
+        print("🎵 [ReceiverVoiceAudioView] Opening music player - audioUrl: \(audioUrl)")
+        showMusicPlayerBottomSheet = true
+    }
+    
+    // Format time
+    private func formatTime(_ time: TimeInterval) -> String {
+        let minutes = Int(time) / 60
+        let seconds = Int(time) % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+    
+    // Setup audio player
+    private func setupAudioPlayer() {
+        guard !audioUrl.isEmpty else { return }
+        
+        let fileName = extractFileName(from: audioUrl)
+        let localFile = getLocalAudiosDirectory().appendingPathComponent(fileName)
+        
+        let playerURL: URL
+        if hasLocalFile && FileManager.default.fileExists(atPath: localFile.path) {
+            playerURL = localFile
+        } else if let url = URL(string: audioUrl) {
+            playerURL = url
+        } else {
+            return
+        }
+        
+        audioPlayer = AVPlayer(url: playerURL)
+        
+        // Get duration
+        if let durationValue = audioPlayer?.currentItem?.asset.duration {
+            let durationSeconds = CMTimeGetSeconds(durationValue)
+            if !durationSeconds.isNaN && durationSeconds.isFinite {
+                duration = durationSeconds
+            }
+        }
+        
+        // Add time observer
+        let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
+        audioTimeObserver = audioPlayer?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [self] time in
+            let timeSeconds = CMTimeGetSeconds(time)
+            if !timeSeconds.isNaN && timeSeconds.isFinite {
+                currentTime = timeSeconds
+            }
+        }
+        
+        // Listen for playback end
+        NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: audioPlayer?.currentItem,
+            queue: .main
+        ) { [self] _ in
+            isPlaying = false
+            currentTime = 0.0
+            audioPlayer?.seek(to: .zero)
+        }
+    }
+    
+    // Toggle playback
+    private func togglePlayback() {
+        guard let player = audioPlayer else {
+            setupAudioPlayer()
+            return
+        }
+        
+        if isPlaying {
+            player.pause()
+            isPlaying = false
+        } else {
+            player.play()
+            isPlaying = true
+        }
+    }
+    
+    // Download audio
+    private func downloadAudio() {
+        guard !audioUrl.isEmpty else { return }
+        guard let url = URL(string: audioUrl) else { return }
+        
+        let fileName = extractFileName(from: audioUrl)
+        let audiosDir = getLocalAudiosDirectory()
+        let audioFile = audiosDir.appendingPathComponent(fileName)
+        
+        // Check if already downloading
+        if BackgroundDownloadManager.shared.isDownloading(fileName: fileName) {
+            print("🎤 [VoiceAudio] Already downloading")
+            return
+        }
+        
+        // Light haptic feedback
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Update UI
+        isDownloading = true
+        showDownloadButton = false
+        showDownloadProgress = true
+        downloadProgress = 0.0
+        
+        // Use BackgroundDownloadManager for download
+        BackgroundDownloadManager.shared.downloadImage(
+            imageUrl: audioUrl,
+            fileName: fileName,
+            destinationFile: audioFile,
+            onProgress: { progress in
+                DispatchQueue.main.async {
+                    self.downloadProgress = progress
+                    if progress > 0 {
+                        self.showDownloadProgress = true
+                    }
+                }
+            },
+            onSuccess: {
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showDownloadButton = false
+                    self.downloadProgress = 0.0
+                    self.hasLocalFile = true
+                    self.setupAudioPlayer()
+                    print("✅ [VoiceAudio] Audio downloaded successfully")
+                }
+            },
+            onFailure: { error in
+                DispatchQueue.main.async {
+                    self.isDownloading = false
+                    self.showDownloadProgress = false
+                    self.showDownloadButton = true
+                    self.downloadProgress = 0.0
+                    print("❌ [VoiceAudio] Download failed: \(error.localizedDescription)")
+                }
+            }
+        )
+    }
+    
+    // Stop audio player
+    private func stopAudioPlayer() {
+        audioPlayer?.pause()
+        audioPlayer = nil
+        isPlaying = false
+        currentTime = 0.0
+        duration = 0.0
+        if let observer = audioTimeObserver {
+            audioPlayer?.removeTimeObserver(observer)
+            audioTimeObserver = nil
+        }
+        NotificationCenter.default.removeObserver(self)
     }
 }
 
