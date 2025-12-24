@@ -50,6 +50,9 @@ struct ChattingScreen: View {
     @State private var replySenderName: String = ""
     @State private var replyDataType: String = ""
     @State private var isReplyFromSender: Bool = false // Track if reply is from sender (for theme color)
+    @State private var replyImageUrl: String? = nil // Image/thumbnail URL for reply preview
+    @State private var replyContactName: String? = nil // Contact name for contact type
+    @State private var replyFileExtension: String? = nil // File extension for documents/music
     @State private var showBlockContainer: Bool = false
     @State private var characterCount: Int = 0
     @State private var showCharacterCount: Bool = false
@@ -968,77 +971,77 @@ struct ChattingScreen: View {
                     // Main input layout (editLyt) - marginStart="2dp" marginEnd="2dp"
                     // Structure matches reply layout: outer margin, then background, then inner padding
                     VStack(spacing: 0) {
-                        HStack(alignment: .center, spacing: 0) {
-                            // Attach button (gallary) - marginStart="5dp"
-                            Button(action: {
-                                handleGalleryButtonClick()
-                            }) {
-                                ZStack {
-                                    Circle()
-                                        .fill(Color("chattingMessageBox"))
-                                        .frame(width: 40, height: 40)
-                                    
-                                    Image("attachsvg")
-                                        .renderingMode(.template)
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(width: 20, height: 20)
-                                        .foregroundColor(Color("chtbtncolor"))
-                                }
+                    HStack(alignment: .center, spacing: 0) {
+                        // Attach button (gallary) - marginStart="5dp"
+                        Button(action: {
+                            handleGalleryButtonClick()
+                        }) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color("chattingMessageBox"))
+                                    .frame(width: 40, height: 40)
+                                
+                                Image("attachsvg")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 20, height: 20)
+                                    .foregroundColor(Color("chtbtncolor"))
                             }
-                            .padding(.leading, 5)
-                            
-                            // Message input field container - layout_weight="1"
-                            VStack(alignment: .leading, spacing: 0) {
-                                TextField("Message on Ec", text: $messageText, axis: .vertical)
-                                    .font(messageInputFont)
-                                    .foregroundColor(Color("black_white_cross"))
-                                    .lineLimit(4)
-                                    .frame(maxWidth: 180, alignment: .leading)
-                                    .padding(.leading, 0)
-                                    .padding(.trailing, 20)
-                                    .padding(.top, 5)
-                                    .padding(.bottom, 5)
-                                    .background(Color.clear)
-                                    .focused($isMessageFieldFocused)
-                                    .onChange(of: messageText) { newValue in
-                                        updateMessageText(newValue)
-                                    }
-                                    .onTapGesture {
-                                        print("🔵 [MESSAGE_BOX_TAP] TextField tapped")
-                                        handleMessageBoxTap()
-                                    }
-                                    .simultaneousGesture(
-                                        TapGesture()
-                                            .onEnded {
-                                                print("🔵 [MESSAGE_BOX_TAP] Simultaneous tap gesture detected")
-                                                handleMessageBoxTap()
-                                            }
-                                    )
-                            }
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                print("🔵 [MESSAGE_BOX_TAP] VStack container tapped")
-                                handleMessageBoxTap()
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            
-                            // Emoji button (emoji) - marginEnd="5dp"
-                            Button(action: {
-                                handleEmojiButtonClick()
-                            }) {
-                                ZStack {
-                                    Circle()
-                                        .fill(Color("chattingMessageBox"))
-                                        .frame(width: 40, height: 40)
-                                    
-                                    EmojiIconView()
-                                        .frame(width: 20, height: 20)
-                                }
-                            }
-                            .padding(.trailing, 5)
                         }
-                        .frame(height: 50) // Match send button height (50dp)
+                        .padding(.leading, 5)
+                        
+                        // Message input field container - layout_weight="1"
+                        VStack(alignment: .leading, spacing: 0) {
+                            TextField("Message on Ec", text: $messageText, axis: .vertical)
+                                .font(messageInputFont)
+                                .foregroundColor(Color("black_white_cross"))
+                                .lineLimit(4)
+                                .frame(maxWidth: 180, alignment: .leading)
+                                .padding(.leading, 0)
+                                .padding(.trailing, 20)
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                                .background(Color.clear)
+                                .focused($isMessageFieldFocused)
+                                .onChange(of: messageText) { newValue in
+                                    updateMessageText(newValue)
+                                }
+                                .onTapGesture {
+                                    print("🔵 [MESSAGE_BOX_TAP] TextField tapped")
+                                    handleMessageBoxTap()
+                                }
+                                .simultaneousGesture(
+                                    TapGesture()
+                                        .onEnded {
+                                            print("🔵 [MESSAGE_BOX_TAP] Simultaneous tap gesture detected")
+                                            handleMessageBoxTap()
+                                        }
+                                )
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            print("🔵 [MESSAGE_BOX_TAP] VStack container tapped")
+                            handleMessageBoxTap()
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        
+                        // Emoji button (emoji) - marginEnd="5dp"
+                        Button(action: {
+                            handleEmojiButtonClick()
+                        }) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color("chattingMessageBox"))
+                                    .frame(width: 40, height: 40)
+                                
+                                EmojiIconView()
+                                    .frame(width: 20, height: 20)
+                            }
+                        }
+                        .padding(.trailing, 5)
+                    }
+                    .frame(height: 50) // Match send button height (50dp)
                         .padding(.horizontal, 7) // Inner padding matching reply layout inner margin="7dp"
                     }
                     .padding(.horizontal, 2) // Outer margin matching reply layout marginStart/End="2dp" for width alignment
@@ -1053,8 +1056,8 @@ struct ChattingScreen: View {
                                     .fill(Color("message_box_bg"))
                             } else {
                                 // All corners rounded (matching message_box_bg.xml with 20dp radius)
-                                RoundedRectangle(cornerRadius: 20)
-                                    .fill(Color("message_box_bg"))
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(Color("message_box_bg"))
                             }
                         }
                     )
@@ -1166,39 +1169,145 @@ struct ChattingScreen: View {
                     // Left side content - layout_weight="1"
                     HStack(spacing: 0) {
                         // Text content - marginStart="10dp" (vertical bar is hidden in Android with visibility="gone")
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(replySenderName)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(replySenderName)
                                 .font(.custom("Inter18pt-Bold", size: 14)) // textFontWeight="1000" textSize="14sp"
                                 .foregroundColor(replyColor) // Theme color for sender, black_white_cross for receiver
                             
-                            Text(replyMessage)
-                                .font(.custom("Inter18pt-Regular", size: 14)) // textSize="14sp"
-                                .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0)) // textColor="#78787A"
-                                .lineLimit(1) // maxLines="1" singleLine="true"
+                            // Reply message with icon for certain data types (matching Android compoundDrawables)
+                            HStack(spacing: 5) {
+                                // Icon for specific data types (matching Android drawable icons)
+                                if replyDataType == Constant.img {
+                                    Image(systemName: "photo")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 16, height: 16)
+                    .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0))
+                                } else if replyDataType == Constant.video {
+                                    Image(systemName: "video.fill")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 16, height: 16)
+                                        .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0))
+                                } else if replyDataType == Constant.voiceAudio {
+                                    Image(systemName: "mic.fill")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 16, height: 16)
+                                        .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0))
+                                } else if replyDataType == Constant.contact {
+                                    Image(systemName: "person.fill")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 16, height: 16)
+                                        .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0))
+                                } else if let ext = replyFileExtension, ["mp3", "wav", "flac", "aac", "ogg", "oga", "m4a", "wma", "alac", "aiff"].contains(ext.lowercased()) {
+                                    Image(systemName: "music.note")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 16, height: 16)
+                                        .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0))
+                                }
+                                
+                                Text(replyMessage)
+                                    .font(.custom("Inter18pt-Regular", size: 14)) // textSize="14sp"
+                                    .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0)) // textColor="#78787A"
+                                    .lineLimit(1) // maxLines="1" singleLine="true"
+                            }
                         }
                         .padding(.leading, 10) // marginStart="10dp"
                     }
                     .frame(maxWidth: .infinity, alignment: .leading) // layout_weight="1"
                     
-                    // Right side - cancel button matching Android ImageView cancel
-                    // Uses theme color for sender, black_white_cross for receiver
-                    Button(action: {
-                        withAnimation {
-                            showReplyLayout = false
-                            replyMessage = ""
-                            replySenderName = ""
-                            isReplyFromSender = false
+                    // Right side - thumbnails/icons and cancel button (matching Android layout)
+                    HStack(spacing: 12) {
+                        // Image thumbnail for img/video (matching Android imgcardview - 35dp)
+                        if (replyDataType == Constant.img || replyDataType == Constant.video), let imageUrl = replyImageUrl, !imageUrl.isEmpty {
+                            AsyncImage(url: URL(string: imageUrl)) { phase in
+                                switch phase {
+                                case .success(let image):
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                case .failure(_), .empty:
+                                    Color.gray.opacity(0.3)
+                                @unknown default:
+                                    Color.gray.opacity(0.3)
+                                }
+                            }
+                            .frame(width: 35, height: 35) // 35dp x 35dp
+                            .clipShape(RoundedRectangle(cornerRadius: 20)) // cardCornerRadius="20dp"
                         }
-                    }) {
-                        Image("crosssvg")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 22, height: 22) // width="22dp" height="22dp"
-                            .foregroundColor(replyColor) // Theme color for sender, black_white_cross for receiver
+                        
+                        // Audio icon (matching Android imgcardviewVoiceAudio - 22dp)
+                        if replyDataType == Constant.voiceAudio {
+                            Image(systemName: "mic.fill")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 22, height: 22) // 22dp x 22dp
+                                .foregroundColor(Color("TextColor"))
+                        }
+                        
+                        // Music icon (matching Android imgcardviewVoiceMusic - 20dp)
+                        if let ext = replyFileExtension, ["mp3", "wav", "flac", "aac", "ogg", "oga", "m4a", "wma", "alac", "aiff"].contains(ext.lowercased()) {
+                            Image(systemName: "music.note")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20) // 20dp x 20dp
+                                .foregroundColor(Color("TextColor"))
+                        }
+                        
+                        // Contact circle (matching Android contactContainer - 35dp)
+                        if replyDataType == Constant.contact, let contactName = replyContactName, !contactName.isEmpty {
+                            let firstLetter = String(contactName.prefix(1)).uppercased()
+                            ZStack {
+                                Circle()
+                                    .fill(Color("contact_gradient_circle"))
+                                    .frame(width: 35, height: 35) // 35dp x 35dp
+                                
+                                Text(firstLetter)
+                                    .font(.custom("Inter18pt-Regular", size: 11))
+                                    .foregroundColor(isReplyFromSender ? Color.black : Color.white)
+                            }
+                        }
+                        
+                        // PDF icon (matching Android pageLyt - 26dp)
+                        if replyDataType == Constant.doc, let ext = replyFileExtension, ext.lowercased() == "pdf" {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Color("pagesvg"))
+                                    .frame(width: 26, height: 26) // 26dp x 26dp
+                                
+                                Text("PDF")
+                                    .font(.custom("Inter18pt-Bold", size: 7.5))
+                                    .foregroundColor(Color("modetheme2"))
+                                    .textCase(.uppercase)
+                            }
+                        }
+                        
+                        // Cancel button matching Android ImageView cancel
+                        // Uses theme color for sender, black_white_cross for receiver
+                        Button(action: {
+                            withAnimation {
+                                showReplyLayout = false
+                                replyMessage = ""
+                                replySenderName = ""
+                                isReplyFromSender = false
+                                replyImageUrl = nil
+                                replyContactName = nil
+                                replyFileExtension = nil
+                            }
+                        }) {
+                            Image("crosssvg")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 22, height: 22) // width="22dp" height="22dp"
+                                .foregroundColor(replyColor) // Theme color for sender, black_white_cross for receiver
+                        }
+                        .padding(.trailing, 12) // marginEnd="12dp" (approximate from layout)
+                        .padding(.vertical, 5) // margin="5dp" for button
                     }
-                    .padding(.trailing, 12) // marginEnd="12dp" (approximate from layout)
-                    .padding(.vertical, 5) // margin="5dp" for button
                 }
                 .padding(7) // layout_margin="7dp"
                 .frame(height: 55) // height="55dp"
@@ -2534,11 +2643,31 @@ struct ChattingScreen: View {
         let senderName = isSentByMe ? "You" : (message.userName?.isEmpty == false ? message.userName! : contact.fullName)
         let previewText = replyPreviewText(for: message)
         
+        // Capture image/thumbnail URL and other data for reply preview
+        var imageUrl: String? = nil
+        var contactName: String? = nil
+        var fileExtension: String? = nil
+        
+        switch message.dataType {
+        case Constant.img, Constant.video:
+            // Use thumbnail if available, otherwise use document URL
+            imageUrl = message.thumbnail?.isEmpty == false ? message.thumbnail : (message.document.isEmpty ? nil : message.document)
+        case Constant.contact:
+            contactName = message.name
+        case Constant.doc, Constant.voiceAudio:
+            fileExtension = message.fileExtension
+        default:
+            break
+        }
+        
         withAnimation {
             replySenderName = senderName
             replyMessage = previewText
             replyDataType = message.dataType
             isReplyFromSender = isSentByMe // Track if reply is from sender for theme color
+            replyImageUrl = imageUrl
+            replyContactName = contactName
+            replyFileExtension = fileExtension
             showReplyLayout = true
             isMessageFieldFocused = true
         }
@@ -2711,6 +2840,9 @@ struct ChattingScreen: View {
                     self.replySenderName = ""
                     self.replyDataType = ""
                     self.isReplyFromSender = false
+                    self.replyImageUrl = nil
+                    self.replyContactName = nil
+                    self.replyFileExtension = nil
                     self.hideEmojiAndGalleryPickers()
                     
                     // Hide down arrow cardview when new message is added (user is at bottom)
@@ -9854,12 +9986,17 @@ struct MessageBubbleView: View {
                             .opacity(scale)
                         
                         // Reply icon (matching Android reply_svg_black)
-                        // Gray color when unfilled (progress < 1.0), theme color when 100% filled (progress >= 1.0)
+                        // Gray color when unfilled (progress < 1.0)
+                        // Theme color when 100% filled for sender, black color for receiver
                         Image(systemName: "arrowshape.turn.up.left.fill")
                             .resizable()
                             .scaledToFit()
                             .frame(width: iconSize, height: iconSize)
-                            .foregroundColor(progress >= 1.0 ? Color(hex: Constant.themeColor) : getHalfReplyColor()) // Theme color when 100% filled, gray otherwise
+                            .foregroundColor(
+                                progress >= 1.0 
+                                    ? (isSentByMe ? Color(hex: Constant.themeColor) : Color.black) // Theme color for sender, black for receiver when complete
+                                    : getHalfReplyColor() // Gray when unfilled
+                            )
                             .position(x: progressCenterX, y: progressCenterY)
                             .scaleEffect(scale)
                             .opacity(scale)
