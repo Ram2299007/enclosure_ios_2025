@@ -49,6 +49,7 @@ struct ChattingScreen: View {
     @State private var replyMessage: String = ""
     @State private var replySenderName: String = ""
     @State private var replyDataType: String = ""
+    @State private var isReplyFromSender: Bool = false // Track if reply is from sender (for theme color)
     @State private var showBlockContainer: Bool = false
     @State private var characterCount: Int = 0
     @State private var showCharacterCount: Bool = false
@@ -1144,58 +1145,76 @@ struct ChattingScreen: View {
     }
     
     private var replyLayoutView: some View {
-        // Outer container matching Android replylyout - marginStart="2dp" marginTop="2dp" marginEnd="2dp"
-        VStack(spacing: 0) {
-            // Inner container matching Android LinearLayout with margin="7dp" and backgroundTint
-            HStack(spacing: 0) {
-                // Left side content - layout_weight="1"
+        // Get color based on sender/receiver (matching Android HalfSwipeCallback logic)
+        let replyColor: Color = isReplyFromSender ? Color(hex: Constant.themeColor) : Color("black_white_cross")
+        
+        return ZStack(alignment: .topLeading) {
+            // Layer 1: Blue background layer (matching Android LinearLayout id="view")
+            // marginHorizontal="6dp" marginVertical="7dp" backgroundTint="@color/blue"
+            // This layer is larger (6dp margins) and creates the blue border effect
+            RoundedCorner(radius: 20, corners: [.topLeft, .topRight])
+                .fill(replyColor.opacity(0.2)) // Blue tint for sender, black_white_cross tint for receiver
+                .frame(height: 55) // height="55dp"
+                .padding(.horizontal, 6) // marginHorizontal="6dp" - creates larger blue layer
+                .padding(.vertical, 7) // marginVertical="7dp"
+            
+            // Layer 2: White foreground layer (matching Android second LinearLayout)
+            // margin="7dp" backgroundTint="@color/circlebtnhover"
+            // This layer is smaller (7dp margins) and sits on top of the blue layer
+            VStack(spacing: 0) {
                 HStack(spacing: 0) {
-                    // Reply indicator bar - width="3dp" height="50dp" (matching Android View)
-                    Rectangle()
-                        .fill(Color("blue"))
-                        .frame(width: 3, height: 50)
+                    // Left side content - layout_weight="1"
+                    HStack(spacing: 0) {
+                        // Text content - marginStart="10dp" (vertical bar is hidden in Android with visibility="gone")
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(replySenderName)
+                                .font(.custom("Inter18pt-Bold", size: 14)) // textFontWeight="1000" textSize="14sp"
+                                .foregroundColor(replyColor) // Theme color for sender, black_white_cross for receiver
+                            
+                            Text(replyMessage)
+                                .font(.custom("Inter18pt-Regular", size: 14)) // textSize="14sp"
+                                .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0)) // textColor="#78787A"
+                                .lineLimit(1) // maxLines="1" singleLine="true"
+                        }
+                        .padding(.leading, 10) // marginStart="10dp"
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading) // layout_weight="1"
                     
-                    // Text content - marginStart="10dp"
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(replySenderName)
-                            .font(.custom("Inter18pt-Bold", size: 14)) // textFontWeight="1000" textSize="14sp"
-                            .foregroundColor(Color("blue")) // textColor="@color/blue"
-                        
-                        Text(replyMessage)
-                            .font(.custom("Inter18pt-Regular", size: 14)) // textSize="14sp"
-                            .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0)) // textColor="#78787A"
-                            .lineLimit(1) // maxLines="1" singleLine="true"
+                    // Right side - cancel button matching Android ImageView cancel
+                    // Uses theme color for sender, black_white_cross for receiver
+                    Button(action: {
+                        withAnimation {
+                            showReplyLayout = false
+                            replyMessage = ""
+                            replySenderName = ""
+                            isReplyFromSender = false
+                        }
+                    }) {
+                        Image("crosssvg")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 22, height: 22) // width="22dp" height="22dp"
+                            .foregroundColor(replyColor) // Theme color for sender, black_white_cross for receiver
                     }
-                    .padding(.leading, 10) // marginStart="10dp"
+                    .padding(.trailing, 12) // marginEnd="12dp" (approximate from layout)
+                    .padding(.vertical, 5) // margin="5dp" for button
                 }
-                .frame(maxWidth: .infinity, alignment: .leading) // layout_weight="1"
-                
-                // Right side - cancel button matching Android ImageView cancel
-                Button(action: {
-                    withAnimation {
-                        showReplyLayout = false
-                        replyMessage = ""
-                        replySenderName = ""
-                    }
-                }) {
-                    Image("crosssvg")
-                        .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 22, height: 22) // width="22dp" height="22dp"
-                        .foregroundColor(Color("blue")) // tint="@color/blue"
-                }
-                .padding(.trailing, 12) // marginEnd="12dp" (approximate from layout)
-                .padding(.vertical, 5) // margin="5dp" for button
+                .padding(7) // layout_margin="7dp"
+                .frame(height: 55) // height="55dp"
             }
-            .padding(7) // layout_margin="7dp"
-            .frame(height: 55) // height="55dp"
+            .background(
+                // White layer background (matching backgroundTint="@color/circlebtnhover")
+                RoundedCorner(radius: 20, corners: [.topLeft, .topRight])
+                    .fill(Color("message_box_bg_3"))
+            )
+            .padding(.horizontal, 7) // margin="7dp" - creates smaller white layer on top
+            .padding(.vertical, 7) // margin="7dp"
         }
         .padding(.horizontal, 2) // marginStart="2dp" marginEnd="2dp"
         .padding(.top, 2) // marginTop="2dp"
         .background(
-            // Use RoundedCorner for top corners only (matching message_box_bg_3.xml)
-            // topLeftRadius="20dp" topRightRadius="20dp" bottomLeftRadius="0dp" bottomRightRadius="0dp"
+            // Outer background (matching Android replylyout background)
             RoundedCorner(radius: 20, corners: [.topLeft, .topRight])
                 .fill(Color("message_box_bg_3"))
         )
@@ -2511,13 +2530,15 @@ struct ChattingScreen: View {
     
     /// Trigger reply UI (Android half-swipe) for a given message
     private func handleHalfSwipeReply(_ message: ChatMessage) {
-        let senderName = message.uid == Constant.SenderIdMy ? "You" : (message.userName?.isEmpty == false ? message.userName! : contact.fullName)
+        let isSentByMe = message.uid == Constant.SenderIdMy
+        let senderName = isSentByMe ? "You" : (message.userName?.isEmpty == false ? message.userName! : contact.fullName)
         let previewText = replyPreviewText(for: message)
         
         withAnimation {
             replySenderName = senderName
             replyMessage = previewText
             replyDataType = message.dataType
+            isReplyFromSender = isSentByMe // Track if reply is from sender for theme color
             showReplyLayout = true
             isMessageFieldFocused = true
         }
@@ -2689,6 +2710,7 @@ struct ChattingScreen: View {
                     self.replyMessage = ""
                     self.replySenderName = ""
                     self.replyDataType = ""
+                    self.isReplyFromSender = false
                     self.hideEmojiAndGalleryPickers()
                     
                     // Hide down arrow cardview when new message is added (user is at bottom)
