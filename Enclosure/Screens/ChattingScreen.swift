@@ -958,89 +958,105 @@ struct ChattingScreen: View {
                 // Vertical container with layout_weight="1" containing reply and edit layouts
                 VStack(spacing: 0) {
                     // Reply layout (replylyout) - marginStart="2dp" marginTop="2dp" marginEnd="2dp"
+                    // Note: replyLayoutView already has .padding(.horizontal, 2) inside, so no need to add it here
                     if showReplyLayout {
                         replyLayoutView
-                            .padding(.horizontal, 2)
-                            .padding(.top, 2)
+                            .padding(.top, 2) // Only add top margin, horizontal is already in replyLayoutView
                     }
                     
                     // Main input layout (editLyt) - marginStart="2dp" marginEnd="2dp"
-                    HStack(alignment: .center, spacing: 0) {
-                        // Attach button (gallary) - marginStart="5dp"
-                        Button(action: {
-                            handleGalleryButtonClick()
-                        }) {
-                            ZStack {
-                                Circle()
-                                    .fill(Color("chattingMessageBox"))
-                                    .frame(width: 40, height: 40)
-                                
-                                Image("attachsvg")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 20, height: 20)
-                                    .foregroundColor(Color("chtbtncolor"))
-                            }
-                        }
-                        .padding(.leading, 5)
-                        
-                        // Message input field container - layout_weight="1"
-                        VStack(alignment: .leading, spacing: 0) {
-                            TextField("Message on Ec", text: $messageText, axis: .vertical)
-                                .font(messageInputFont)
-                                .foregroundColor(Color("black_white_cross"))
-                                .lineLimit(4)
-                                .frame(maxWidth: 180, alignment: .leading)
-                                .padding(.leading, 0)
-                                .padding(.trailing, 20)
-                                .padding(.top, 5)
-                                .padding(.bottom, 5)
-                                .background(Color.clear)
-                                .focused($isMessageFieldFocused)
-                                .onChange(of: messageText) { newValue in
-                                    updateMessageText(newValue)
+                    // Structure matches reply layout: outer margin, then background, then inner padding
+                    VStack(spacing: 0) {
+                        HStack(alignment: .center, spacing: 0) {
+                            // Attach button (gallary) - marginStart="5dp"
+                            Button(action: {
+                                handleGalleryButtonClick()
+                            }) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color("chattingMessageBox"))
+                                        .frame(width: 40, height: 40)
+                                    
+                                    Image("attachsvg")
+                                        .renderingMode(.template)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 20, height: 20)
+                                        .foregroundColor(Color("chtbtncolor"))
                                 }
-                                .onTapGesture {
-                                    print("🔵 [MESSAGE_BOX_TAP] TextField tapped")
-                                    handleMessageBoxTap()
-                                }
-                                .simultaneousGesture(
-                                    TapGesture()
-                                        .onEnded {
-                                            print("🔵 [MESSAGE_BOX_TAP] Simultaneous tap gesture detected")
-                                            handleMessageBoxTap()
-                                        }
-                                )
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            print("🔵 [MESSAGE_BOX_TAP] VStack container tapped")
-                            handleMessageBoxTap()
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        
-                        // Emoji button (emoji) - marginEnd="5dp"
-                        Button(action: {
-                            handleEmojiButtonClick()
-                        }) {
-                            ZStack {
-                                Circle()
-                                    .fill(Color("chattingMessageBox"))
-                                    .frame(width: 40, height: 40)
-                                
-                                EmojiIconView()
-                                    .frame(width: 20, height: 20)
                             }
+                            .padding(.leading, 5)
+                            
+                            // Message input field container - layout_weight="1"
+                            VStack(alignment: .leading, spacing: 0) {
+                                TextField("Message on Ec", text: $messageText, axis: .vertical)
+                                    .font(messageInputFont)
+                                    .foregroundColor(Color("black_white_cross"))
+                                    .lineLimit(4)
+                                    .frame(maxWidth: 180, alignment: .leading)
+                                    .padding(.leading, 0)
+                                    .padding(.trailing, 20)
+                                    .padding(.top, 5)
+                                    .padding(.bottom, 5)
+                                    .background(Color.clear)
+                                    .focused($isMessageFieldFocused)
+                                    .onChange(of: messageText) { newValue in
+                                        updateMessageText(newValue)
+                                    }
+                                    .onTapGesture {
+                                        print("🔵 [MESSAGE_BOX_TAP] TextField tapped")
+                                        handleMessageBoxTap()
+                                    }
+                                    .simultaneousGesture(
+                                        TapGesture()
+                                            .onEnded {
+                                                print("🔵 [MESSAGE_BOX_TAP] Simultaneous tap gesture detected")
+                                                handleMessageBoxTap()
+                                            }
+                                    )
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                print("🔵 [MESSAGE_BOX_TAP] VStack container tapped")
+                                handleMessageBoxTap()
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            // Emoji button (emoji) - marginEnd="5dp"
+                            Button(action: {
+                                handleEmojiButtonClick()
+                            }) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color("chattingMessageBox"))
+                                        .frame(width: 40, height: 40)
+                                    
+                                    EmojiIconView()
+                                        .frame(width: 20, height: 20)
+                                }
+                            }
+                            .padding(.trailing, 5)
                         }
-                        .padding(.trailing, 5)
+                        .frame(height: 50) // Match send button height (50dp)
+                        .padding(.horizontal, 7) // Inner padding matching reply layout inner margin="7dp"
                     }
-                    .frame(height: 50) // Match send button height (50dp)
+                    .padding(.horizontal, 2) // Outer margin matching reply layout marginStart/End="2dp" for width alignment
                     .background(
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(Color("message_box_bg"))
+                        // When reply layout is visible: bottom corners only (to connect with reply layout)
+                        // When reply layout is hidden: all corners rounded (matching message_box_bg.xml)
+                        // Background applied after padding to match reply layout structure
+                        Group {
+                            if showReplyLayout {
+                                // Bottom corners only (matching Android when replylyout is visible)
+                                RoundedCorner(radius: 20, corners: [.bottomLeft, .bottomRight])
+                                    .fill(Color("message_box_bg"))
+                            } else {
+                                // All corners rounded (matching message_box_bg.xml with 20dp radius)
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(Color("message_box_bg"))
+                            }
+                        }
                     )
-                    .padding(.horizontal, 5)
                     .zIndex(1) // Ensure TextField area has higher z-index than gallery picker
                 }
                 .frame(maxWidth: .infinity) // layout_weight="1"
@@ -1128,46 +1144,59 @@ struct ChattingScreen: View {
     }
     
     private var replyLayoutView: some View {
-        HStack(spacing: 0) {
-            // Reply indicator bar - width="3dp" height="50dp"
-            Rectangle()
-                .fill(Color("blue"))
-                .frame(width: 3, height: 50)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(replySenderName)
-                    .font(.custom("Inter18pt-Bold", size: 14))
-                    .foregroundColor(Color("blue"))
-                
-                Text(replyMessage)
-                    .font(.custom("Inter18pt-Regular", size: 14))
-                    .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0))
-                    .lineLimit(1)
-            }
-            .padding(.leading, 10)
-            
-            Spacer()
-            
-            // Cancel reply button
-            Button(action: {
-                withAnimation {
-                    showReplyLayout = false
-                    replyMessage = ""
-                    replySenderName = ""
+        // Outer container matching Android replylyout - marginStart="2dp" marginTop="2dp" marginEnd="2dp"
+        VStack(spacing: 0) {
+            // Inner container matching Android LinearLayout with margin="7dp" and backgroundTint
+            HStack(spacing: 0) {
+                // Left side content - layout_weight="1"
+                HStack(spacing: 0) {
+                    // Reply indicator bar - width="3dp" height="50dp" (matching Android View)
+                    Rectangle()
+                        .fill(Color("blue"))
+                        .frame(width: 3, height: 50)
+                    
+                    // Text content - marginStart="10dp"
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(replySenderName)
+                            .font(.custom("Inter18pt-Bold", size: 14)) // textFontWeight="1000" textSize="14sp"
+                            .foregroundColor(Color("blue")) // textColor="@color/blue"
+                        
+                        Text(replyMessage)
+                            .font(.custom("Inter18pt-Regular", size: 14)) // textSize="14sp"
+                            .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0)) // textColor="#78787A"
+                            .lineLimit(1) // maxLines="1" singleLine="true"
+                    }
+                    .padding(.leading, 10) // marginStart="10dp"
                 }
-            }) {
-                Image("crosssvg")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 22, height: 22)
-                    .foregroundColor(Color("blue"))
+                .frame(maxWidth: .infinity, alignment: .leading) // layout_weight="1"
+                
+                // Right side - cancel button matching Android ImageView cancel
+                Button(action: {
+                    withAnimation {
+                        showReplyLayout = false
+                        replyMessage = ""
+                        replySenderName = ""
+                    }
+                }) {
+                    Image("crosssvg")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 22, height: 22) // width="22dp" height="22dp"
+                        .foregroundColor(Color("blue")) // tint="@color/blue"
+                }
+                .padding(.trailing, 12) // marginEnd="12dp" (approximate from layout)
+                .padding(.vertical, 5) // margin="5dp" for button
             }
-            .padding(.trailing, 12)
+            .padding(7) // layout_margin="7dp"
+            .frame(height: 55) // height="55dp"
         }
-        .frame(height: 55) // Matching Android height="55dp"
+        .padding(.horizontal, 2) // marginStart="2dp" marginEnd="2dp"
+        .padding(.top, 2) // marginTop="2dp"
         .background(
-            RoundedRectangle(cornerRadius: 20)
+            // Use RoundedCorner for top corners only (matching message_box_bg_3.xml)
+            // topLeftRadius="20dp" topRightRadius="20dp" bottomLeftRadius="0dp" bottomRightRadius="0dp"
+            RoundedCorner(radius: 20, corners: [.topLeft, .topRight])
                 .fill(Color("message_box_bg_3"))
         )
     }
