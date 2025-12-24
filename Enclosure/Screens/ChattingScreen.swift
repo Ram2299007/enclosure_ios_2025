@@ -53,6 +53,7 @@ struct ChattingScreen: View {
     @State private var replyImageUrl: String? = nil // Image/thumbnail URL for reply preview
     @State private var replyContactName: String? = nil // Contact name for contact type
     @State private var replyFileExtension: String? = nil // File extension for documents/music
+    @State private var replyMessageId: String? = nil // Original message ID for reply (replyCrtPostion)
     @State private var showBlockContainer: Bool = false
     @State private var characterCount: Int = 0
     @State private var showCharacterCount: Bool = false
@@ -1287,15 +1288,16 @@ struct ChattingScreen: View {
                         // Cancel button matching Android ImageView cancel
                         // Uses theme color for sender, black_white_cross for receiver
                         Button(action: {
-                            withAnimation {
-                                showReplyLayout = false
-                                replyMessage = ""
-                                replySenderName = ""
-                                isReplyFromSender = false
-                                replyImageUrl = nil
-                                replyContactName = nil
-                                replyFileExtension = nil
-                            }
+                withAnimation {
+                    showReplyLayout = false
+                    replyMessage = ""
+                    replySenderName = ""
+                    isReplyFromSender = false
+                    replyImageUrl = nil
+                    replyContactName = nil
+                    replyFileExtension = nil
+                    replyMessageId = nil
+                }
                         }) {
                             Image("crosssvg")
                                 .renderingMode(.template)
@@ -2667,6 +2669,7 @@ struct ChattingScreen: View {
             replyImageUrl = imageUrl
             replyContactName = contactName
             replyFileExtension = fileExtension
+            replyMessageId = message.id // Store original message ID for reply
             showReplyLayout = true
             isMessageFieldFocused = true
         }
@@ -2717,8 +2720,10 @@ struct ChattingScreen: View {
         
         // Capture values needed in the closure
         let receiverUid = contact.uid
+        let isReplyVisible = showReplyLayout
         let replyMsg = replyMessage
         let replyType = replyDataType
+        let replyMsgId = replyMessageId
         let limitStatusValue = limitStatus
         let totalMsgLimitValue = totalMsgLimit
         
@@ -2750,6 +2755,30 @@ struct ChattingScreen: View {
                 // Create emoji model array (matching Android - default empty emoji)
                 let emojiModels: [EmojiModel] = [EmojiModel(name: "", emoji: "")]
                 
+                // Reply logic (matching Android createMessageModel - line 14458)
+                // If reply layout is visible, include reply data
+                let replytextData: String?
+                let replyKey: String?
+                let replyTypeValue: String?
+                let replyOldData: String?
+                let replyCrtPostion: String?
+                
+                if isReplyVisible {
+                    // Reply message - include reply data (matching Android reply logic)
+                    replytextData = message // Current message text (matching Android binding.messageBox.getText().toString().trim())
+                    replyKey = "ReplyKey" // Constant.ReplyKey (matching Android)
+                    replyTypeValue = "Text" // Constant.Text (matching Android)
+                    replyOldData = replyMsg // Preview text like "Photo", "Video" (matching Android binding.msgreply.getText().toString())
+                    replyCrtPostion = replyMsgId // Original message ID (matching Android binding.listcrntpostion.getText().toString())
+                } else {
+                    // Non-reply message
+                    replytextData = nil
+                    replyKey = nil
+                    replyTypeValue = nil
+                    replyOldData = nil
+                    replyCrtPostion = nil
+                }
+                
                 // Create message model with all parameters (matching Android messageModel structure)
         let newMessage = ChatMessage(
                     id: modelId,
@@ -2765,11 +2794,11 @@ struct ChattingScreen: View {
                     miceTiming: nil,
                     userName: userName,
                     receiverId: receiverUid,
-                    replytextData: replyMsg.isEmpty ? nil : replyMsg,
-                    replyKey: replyMsg.isEmpty ? nil : modelId,
-                    replyType: replyType.isEmpty ? nil : replyType,
-                    replyOldData: nil,
-                    replyCrtPostion: nil,
+                    replytextData: replytextData,
+                    replyKey: replyKey,
+                    replyType: replyTypeValue,
+                    replyOldData: replyOldData,
+                    replyCrtPostion: replyCrtPostion,
                     forwaredKey: nil,
                     groupName: nil,
                     docSize: nil,
@@ -2842,6 +2871,7 @@ struct ChattingScreen: View {
                     self.replyImageUrl = nil
                     self.replyContactName = nil
                     self.replyFileExtension = nil
+                    self.replyMessageId = nil
                     self.hideEmojiAndGalleryPickers()
                     
                     // Hide down arrow cardview when new message is added (user is at bottom)
