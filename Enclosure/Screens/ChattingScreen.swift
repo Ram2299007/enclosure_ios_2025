@@ -9268,8 +9268,8 @@ struct ReplyView: View {
     @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
-        // Main container matching Android replylyoutGlobal (150dp width, wrap_content height)
-        // Everything is inside one container with rounded background
+        // Main vertical container matching Android replylyoutGlobal (150dp width, wrap_content height)
+        // Everything is inside one vertical container with theme color background for sender
         VStack(spacing: 0) {
             // Upper container - Reply preview section (matching Android replyTheme area)
             // Android has 2 layers: replyTheme (blue) and inner layer (circlebtnhover)
@@ -9409,7 +9409,7 @@ struct ReplyView: View {
             .frame(width: 150, height: 50)
             
             // Lower container - Reply text section (matching Android replydatalyt)
-            // Show reply text below the upper part, inside the same container
+            // Show reply text below the upper part, inside the same vertical container
             if let replytextData = message.replytextData, !replytextData.isEmpty {
                 HStack(spacing: 5) {
                     // Reply text (matching Android repliedData)
@@ -9424,15 +9424,115 @@ struct ReplyView: View {
                         .padding(.bottom, 4.5) // marginBottom="4.5dp"
                 }
                 .frame(width: 150, alignment: .leading) // Match container width
+                .overlay(
+                    // Border only on left, right, and bottom (not top) for receiver side
+                    // With 20dp corner radius at bottom corners
+                    Group {
+                        if !isSentByMe {
+                            GeometryReader { geometry in
+                                let width = geometry.size.width
+                                let height = geometry.size.height
+                                let cornerRadius: CGFloat = 20
+                                let borderWidth: CGFloat = 0.5
+                                
+                                // Draw box border with 20dp corner radius at bottom corners only
+                                // Use RoundedCorner shape with bottom corners rounded, then mask top border
+                                RoundedCorner(radius: cornerRadius, corners: [.bottomLeft, .bottomRight])
+                                    .stroke(getGlassBorder(), lineWidth: borderWidth)
+                                    .frame(width: width, height: height)
+                                    .mask(
+                                        // Mask to hide top border - show everything except top edge
+                                        Rectangle()
+                                            .frame(width: width, height: height + borderWidth)
+                                            .offset(y: borderWidth / 2)
+                                    )
+                            }
+                        }
+                    }
+                )
             }
         }
         .frame(width: 150) // Main container width
         .background(
-            // Background matching Android message_box_bg_3 with modetheme2 tint
-            // Single container wrapping everything - use minimal corner radius (4dp) to match Android's rectangular appearance
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Color("BackgroundColor"))
+            Group {
+                if isSentByMe {
+                    // Sender: theme-based color (matching senderMessageBackgroundColor logic)
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(getReplyContainerBackgroundColor())
+                } else {
+                    // Receiver: glassmorphism background (matching modern_glass_background_receiver.xml)
+                    // Linear gradient at 135 degrees with glass colors
+                    // Border is applied only to reply text area (left, right, bottom), not entire container
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    getGlassBgStart(),
+                                    getGlassBgCenter(),
+                                    getGlassBgEnd()
+                                ]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
+            }
         )
+    }
+    
+    // Get reply container background color (matching senderMessageBackgroundColor logic)
+    private func getReplyContainerBackgroundColor() -> Color {
+        // Light mode: always use legacy bubble color (#011224) to match Android light theme
+        guard colorScheme == .dark else {
+            return Color(hex: "#011224")
+        }
+        
+        // Dark mode: use theme-based tinted backgrounds (matching Android)
+        let themeColor = Constant.themeColor
+        let colorKey = themeColor.lowercased()
+        
+        switch colorKey {
+        case "#ff0080": return Color(hex: "#4D0026")
+        case "#00a3e9": return Color(hex: "#01253B")
+        case "#7adf2a": return Color(hex: "#25430D")
+        case "#ec0001": return Color(hex: "#470000")
+        case "#16f3ff": return Color(hex: "#05495D")
+        case "#ff8a00": return Color(hex: "#663700")
+        case "#7f7f7f": return Color(hex: "#2B3137")
+        case "#d9b845": return Color(hex: "#413815")
+        case "#346667": return Color(hex: "#1F3D3E")
+        case "#9846d9": return Color(hex: "#2d1541")
+        case "#a81010": return Color(hex: "#430706")
+        default: return Color(hex: "#01253B")
+        }
+    }
+    
+    // Get glass background start color (matching Android glass_bg_start)
+    private func getGlassBgStart() -> Color {
+        // Light mode: #80FFFFFF (50% opacity white)
+        // Dark mode: #4D1B1B1B (semi-transparent dark)
+        return colorScheme == .dark ? Color(hex: "#4D1B1B1B") : Color(hex: "#80FFFFFF")
+    }
+    
+    // Get glass background center color (matching Android glass_bg_center)
+    private func getGlassBgCenter() -> Color {
+        // Light mode: #66FFFFFF (40% opacity white)
+        // Dark mode: #331B1B1B (more transparent)
+        return colorScheme == .dark ? Color(hex: "#331B1B1B") : Color(hex: "#66FFFFFF")
+    }
+    
+    // Get glass background end color (matching Android glass_bg_end)
+    private func getGlassBgEnd() -> Color {
+        // Light mode: #4DFFFFFF (30% opacity white)
+        // Dark mode: #1A1B1B1B (even more transparent)
+        return colorScheme == .dark ? Color(hex: "#1A1B1B1B") : Color(hex: "#4DFFFFFF")
+    }
+    
+    // Get glass border color (matching Android glass_border)
+    private func getGlassBorder() -> Color {
+        // Light mode: #80000000 (50% opacity black)
+        // Dark mode: #40FFFFFF (25% opacity white) - matching Android values-night/colors.xml
+        return colorScheme == .dark ? Color(hex: "#40FFFFFF") : Color(hex: "#80000000")
     }
 }
 
@@ -9837,8 +9937,7 @@ struct MessageBubbleView: View {
                             }
                             .frame(width: calculateBunchWidth(selectionCount: selectionCount)) // Container width matches bunch width exactly
                             .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color("message_box_bg"))
+                                getReceiverGlassBackground(cornerRadius: 12)
                             )
                             Spacer(minLength: 0)
                         }
@@ -9884,9 +9983,8 @@ struct MessageBubbleView: View {
                             }
                             .frame(width: calculateImageSize(imageWidth: message.imageWidth, imageHeight: message.imageHeight, aspectRatio: message.aspectRatio).width) // Container width matches image width exactly
                             .background(
-                                // Container background matching receiver text message (same as Constant.Text receiver messages)
-                                RoundedRectangle(cornerRadius: 12) // matching receiver text message corner radius
-                                    .fill(Color("message_box_bg")) // Same background as receiver text messages
+                                // Container background with glassmorphism (matching modern_glass_background_receiver.xml)
+                                getReceiverGlassBackground(cornerRadius: 12) // matching receiver text message corner radius
                             )
                             Spacer(minLength: 0) // Don't expand beyond content
                         }
@@ -9927,8 +10025,7 @@ struct MessageBubbleView: View {
                             }
                             .frame(width: calculateImageSize(imageWidth: message.imageWidth, imageHeight: message.imageHeight, aspectRatio: message.aspectRatio).width) // Container width matches video width exactly
                             .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color("message_box_bg"))
+                                getReceiverGlassBackground(cornerRadius: 12)
                             )
                             Spacer(minLength: 0)
                         }
@@ -9966,8 +10063,7 @@ struct MessageBubbleView: View {
                                 }
                             }
                             .background(
-                                RoundedRectangle(cornerRadius: 20) // Android: contactContainer should match message container corner radius
-                                    .fill(Color("message_box_bg"))
+                                getReceiverGlassBackground(cornerRadius: 20) // Android: contactContainer should match message container corner radius
                             )
                             Spacer(minLength: 0)
                         }
@@ -10005,8 +10101,7 @@ struct MessageBubbleView: View {
                                 }
                             }
                             .background(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .fill(Color("message_box_bg"))
+                                getReceiverGlassBackground(cornerRadius: 20)
                             )
                             Spacer(minLength: 0)
                         }
@@ -10046,8 +10141,7 @@ struct MessageBubbleView: View {
                                 }
                             }
                             .background(
-                                RoundedRectangle(cornerRadius: 20) // Changed to 20dp to match Android
-                                    .fill(Color("message_box_bg"))
+                                getReceiverGlassBackground(cornerRadius: 20) // Changed to 20dp to match Android
                             )
                             Spacer(minLength: 0)
                         }
@@ -10082,8 +10176,7 @@ struct MessageBubbleView: View {
                                     .padding(.top, 5) // paddingTop="5dp"
                                     .padding(.bottom, 6) // paddingBottom="6dp"
                                     .background(
-                                        RoundedRectangle(cornerRadius: 12) // matching Android corner radius
-                                            .fill(Color("message_box_bg"))
+                                        getReceiverGlassBackground(cornerRadius: 12) // matching Android corner radius
                                     )
                                 Spacer(minLength: 0) // Don't expand beyond content
                             }
@@ -10365,6 +10458,57 @@ struct MessageBubbleView: View {
         case "#a81010": return Color(hex: "#430706")
         default: return Color(hex: "#01253B")
         }
+    }
+    
+    // Get receiver message glassmorphism background (matching modern_glass_background_receiver.xml)
+    @ViewBuilder
+    private func getReceiverGlassBackground(cornerRadius: CGFloat) -> some View {
+        // Linear gradient at 135 degrees with glass colors
+        RoundedRectangle(cornerRadius: cornerRadius)
+            .fill(
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        getReceiverGlassBgStart(),
+                        getReceiverGlassBgCenter(),
+                        getReceiverGlassBgEnd()
+                    ]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(
+                // Subtle border for glass effect (0.5dp, matching Android stroke)
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(getReceiverGlassBorder(), lineWidth: 0.5)
+            )
+    }
+    
+    // Get glass background start color (matching Android glass_bg_start)
+    private func getReceiverGlassBgStart() -> Color {
+        // Light mode: #80FFFFFF (50% opacity white)
+        // Dark mode: #4D1B1B1B (semi-transparent dark)
+        return colorScheme == .dark ? Color(hex: "#4D1B1B1B") : Color(hex: "#80FFFFFF")
+    }
+    
+    // Get glass background center color (matching Android glass_bg_center)
+    private func getReceiverGlassBgCenter() -> Color {
+        // Light mode: #66FFFFFF (40% opacity white)
+        // Dark mode: #331B1B1B (more transparent)
+        return colorScheme == .dark ? Color(hex: "#331B1B1B") : Color(hex: "#66FFFFFF")
+    }
+    
+    // Get glass background end color (matching Android glass_bg_end)
+    private func getReceiverGlassBgEnd() -> Color {
+        // Light mode: #4DFFFFFF (30% opacity white)
+        // Dark mode: #1A1B1B1B (even more transparent)
+        return colorScheme == .dark ? Color(hex: "#1A1B1B1B") : Color(hex: "#4DFFFFFF")
+    }
+    
+    // Get glass border color (matching Android glass_border)
+    private func getReceiverGlassBorder() -> Color {
+        // Light mode: #80000000 (50% opacity black)
+        // Dark mode: #40FFFFFF (25% opacity white) - matching Android values-night/colors.xml
+        return colorScheme == .dark ? Color(hex: "#40FFFFFF") : Color(hex: "#80000000")
     }
     
     // Progress indicator styling based on Android LinearProgressIndicator
@@ -13492,6 +13636,57 @@ struct ReceiverRichLinkView: View {
         Color(hex: Constant.themeColor)
     }
     
+    // Get receiver message glassmorphism background (matching modern_glass_background_receiver.xml)
+    @ViewBuilder
+    private func getReceiverGlassBackground(cornerRadius: CGFloat) -> some View {
+        // Linear gradient at 135 degrees with glass colors
+        RoundedRectangle(cornerRadius: cornerRadius)
+            .fill(
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        getReceiverGlassBgStart(),
+                        getReceiverGlassBgCenter(),
+                        getReceiverGlassBgEnd()
+                    ]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(
+                // Subtle border for glass effect (0.5dp, matching Android stroke)
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(getReceiverGlassBorder(), lineWidth: 0.5)
+            )
+    }
+    
+    // Get glass background start color (matching Android glass_bg_start)
+    private func getReceiverGlassBgStart() -> Color {
+        // Light mode: #80FFFFFF (50% opacity white)
+        // Dark mode: #4D1B1B1B (semi-transparent dark)
+        return colorScheme == .dark ? Color(hex: "#4D1B1B1B") : Color(hex: "#80FFFFFF")
+    }
+    
+    // Get glass background center color (matching Android glass_bg_center)
+    private func getReceiverGlassBgCenter() -> Color {
+        // Light mode: #66FFFFFF (40% opacity white)
+        // Dark mode: #331B1B1B (more transparent)
+        return colorScheme == .dark ? Color(hex: "#331B1B1B") : Color(hex: "#66FFFFFF")
+    }
+    
+    // Get glass background end color (matching Android glass_bg_end)
+    private func getReceiverGlassBgEnd() -> Color {
+        // Light mode: #4DFFFFFF (30% opacity white)
+        // Dark mode: #1A1B1B1B (even more transparent)
+        return colorScheme == .dark ? Color(hex: "#1A1B1B1B") : Color(hex: "#4DFFFFFF")
+    }
+    
+    // Get glass border color (matching Android glass_border)
+    private func getReceiverGlassBorder() -> Color {
+        // Light mode: #80000000 (50% opacity black)
+        // Dark mode: #40FFFFFF (25% opacity white) - matching Android values-night/colors.xml
+        return colorScheme == .dark ? Color(hex: "#40FFFFFF") : Color(hex: "#80000000")
+    }
+    
     @ViewBuilder
     private var linkImageView: some View {
         let imageUrlString = linkImageUrl ?? fetchedImageUrl
@@ -13618,11 +13813,11 @@ struct ReceiverRichLinkView: View {
                                 .padding(.bottom, 1)
                             }
                             .padding(10)
-                            .background(Color("message_box_bg")) // Matching Constant.voiceAudio receiver container color
+                            .background(getReceiverGlassBackground(cornerRadius: 20)) // Matching Constant.voiceAudio receiver container color with glassmorphism
                         }
                         .background(Color("receiverChatBox")) // Android: background="@color/receiverChatBox"
                     }
-                    .background(Color("message_box_bg")) // Android: cardBackgroundColor matching Constant.Text receiver messages
+                    .background(getReceiverGlassBackground(cornerRadius: 20)) // Android: cardBackgroundColor matching modern_glass_background_receiver.xml
                     .clipShape(RoundedRectangle(cornerRadius: 20)) // Android: cardCornerRadius="20dp"
                     .onTapGesture {
                         if let url = URL(string: self.url) {
