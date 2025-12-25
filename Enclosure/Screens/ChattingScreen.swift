@@ -1214,7 +1214,7 @@ struct ChattingScreen: View {
                                     .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0)) // textColor="#78787A"
                                     .lineLimit(1) // maxLines="1" singleLine="true"
                             }
-                        }
+            }
                         .padding(.leading, 10) // marginStart="10dp"
                     }
                     .frame(maxWidth: .infinity, alignment: .leading) // layout_weight="1"
@@ -1287,7 +1287,7 @@ struct ChattingScreen: View {
                         
                         // Cancel button matching Android ImageView cancel
                         // Uses theme color for sender, black_white_cross for receiver
-                        Button(action: {
+            Button(action: {
                 withAnimation {
                     showReplyLayout = false
                     replyMessage = ""
@@ -1298,22 +1298,22 @@ struct ChattingScreen: View {
                     replyFileExtension = nil
                     replyMessageId = nil
                 }
-                        }) {
-                            Image("crosssvg")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
+            }) {
+                Image("crosssvg")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
                                 .frame(width: 22, height: 22) // width="22dp" height="22dp"
                                 .foregroundColor(replyColor) // Theme color for sender, black_white_cross for receiver
-                        }
+            }
                         .padding(.trailing, 12) // marginEnd="12dp" (approximate from layout)
                         .padding(.vertical, 5) // margin="5dp" for button
-                    }
+        }
                 }
                 .padding(7) // layout_margin="7dp"
                 .frame(height: 55) // height="55dp"
             }
-            .background(
+        .background(
                 // White layer background (matching backgroundTint="@color/circlebtnhover")
                 RoundedCorner(radius: 20, corners: [.topLeft, .topRight])
                     .fill(Color("message_box_bg_3"))
@@ -9261,6 +9261,181 @@ struct BunchImageView: View {
     }
 }
 
+// MARK: - Reply View (matching Android replylyoutGlobal)
+struct ReplyView: View {
+    let message: ChatMessage
+    let isSentByMe: Bool
+    @Environment(\.colorScheme) private var colorScheme
+    
+    var body: some View {
+        // Main container matching Android replylyoutGlobal (150dp width, wrap_content height)
+        // Everything is inside one container with rounded background
+        VStack(spacing: 0) {
+            // Upper container - Reply preview section (matching Android replyTheme area)
+            // Android has 2 layers: replyTheme (blue) and inner layer (circlebtnhover)
+            ZStack(alignment: .topLeading) {
+                // Layer 1: replyTheme - Blue background layer (matching Android replyTheme)
+                // android:layout_marginVertical="1dp", backgroundTint="@color/blue"
+                // message_box_bg_3 has rounded corners only on top (20dp topLeft/topRight, 0dp bottom)
+                RoundedCorner(radius: 20, corners: [.topLeft, .topRight])
+                    .fill(Color(hex: Constant.themeColor))
+                    .frame(width: 150, height: 50) // 150dp height
+                    .padding(.vertical, 1) // marginVertical="1dp"
+                
+                // Layer 2: Inner content layer (matching Android second LinearLayout)
+                // android:layout_marginStart="1dp" marginTop="1dp" marginEnd="1dp"
+                // android:backgroundTint="@color/circlebtnhover" (chattingMessageBox color)
+                // This layer sits inside Layer 1 with 1dp margins
+                RoundedCorner(radius: 20, corners: [.topLeft, .topRight])
+                    .fill(Color("chattingMessageBox")) // circlebtnhover = chattingMessageBox
+                    .frame(width: 148, height: 50) // 150 - 1dp start - 1dp end = 148
+                    .offset(x: 1, y: 1) // marginStart="1dp" marginTop="1dp"
+                    .overlay(
+                            // Content
+                            HStack(spacing: 0) {
+                                // Left side - text content (matching Android LinearLayout with marginHorizontal="10dp")
+                                VStack(alignment: .leading, spacing: 2) {
+                                    // "You" text (matching Android replyYou)
+                                    Text("You")
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.black) // textFontWeight="1000"
+                                        .foregroundColor(Color(hex: Constant.themeColor)) // textColor="@color/blue"
+                                    
+                                    // Reply preview text (matching Android msgreplyText)
+                                    if let replyOldData = message.replyOldData, !replyOldData.isEmpty {
+                                        Text(replyOldData)
+                                            .font(.custom("Inter18pt-Regular", size: 14))
+                                            .foregroundColor(Color(hex: "#78787A")) // textColor="#78787A"
+                                            .lineLimit(1)
+                                    }
+                                }
+                                .padding(.horizontal, 10) // marginHorizontal="10dp"
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                
+                                // Right side - thumbnails/icons (matching Android right side layout)
+                                HStack(spacing: 12) {
+                                    // Image/Video thumbnail (matching Android imgcardview - 35dp)
+                                    // Show when replyType is Text and there's an image/video to display
+                                    if let replyType = message.replyType, replyType == Constant.Text {
+                                        // Check if replyOldData contains a URL (starts with http) or is preview text
+                                        if let replyOldData = message.replyOldData, !replyOldData.isEmpty {
+                                            // If replyOldData is a URL, use it directly (matching Android model.getReplyOldData())
+                                            // Otherwise, check if it's "Photo" or "Video" and use document/thumbnail
+                                            let imageUrl: String? = {
+                                                if replyOldData.hasPrefix("http://") || replyOldData.hasPrefix("https://") {
+                                                    return replyOldData
+                                                } else if replyOldData == "Photo" || replyOldData == "Video" {
+                                                    // For Photo, use document; for Video, use thumbnail or document
+                                                    return replyOldData == "Photo" ? message.document : (message.thumbnail ?? message.document)
+                                                } else {
+                                                    // Try document or thumbnail as fallback
+                                                    return !message.document.isEmpty ? message.document : message.thumbnail
+                                                }
+                                            }()
+                                            
+                                            if let url = imageUrl, !url.isEmpty {
+                                                AsyncImage(url: URL(string: url)) { phase in
+                                                    switch phase {
+                                                    case .success(let image):
+                                                        image
+                                                            .resizable()
+                                                            .scaledToFill()
+                                                    case .failure(_), .empty:
+                                                        Color.gray.opacity(0.3)
+                                                    @unknown default:
+                                                        Color.gray.opacity(0.3)
+                                                    }
+                                                }
+                                                .frame(width: 35, height: 35)
+                                                .clipShape(RoundedRectangle(cornerRadius: 20))
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Contact container (matching Android contactContainerReply - 35dp)
+                                    // Show when original message was a contact (check replyType or dataType)
+                                    if message.dataType == Constant.contact || message.replyType == Constant.contact {
+                                        ZStack {
+                                            Circle()
+                                                .fill(
+                                                    LinearGradient(
+                                                        gradient: Gradient(colors: [
+                                                            Color(hex: Constant.themeColor).opacity(0.8),
+                                                            Color(hex: Constant.themeColor).opacity(0.6)
+                                                        ]),
+                                                        startPoint: .topLeading,
+                                                        endPoint: .bottomTrailing
+                                                    )
+                                                )
+                                                .frame(width: 35, height: 35)
+                                            
+                                            // First letter of contact name
+                                            Text((message.name?.prefix(1) ?? "A").uppercased())
+                                                .font(.custom("Inter18pt-Regular", size: 14))
+                                                .foregroundColor(.black)
+                                        }
+                                    }
+                                    
+                                    // Document/PDF icon (matching Android pageLyt - 26dp)
+                                    // Show when original message was a document
+                                    if message.dataType == Constant.doc || message.replyType == Constant.doc {
+                                        ZStack {
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .fill(Color("TextColor"))
+                                                .frame(width: 26, height: 26)
+                                            
+                                            Text((message.fileExtension ?? "PDF").uppercased().prefix(4))
+                                                .font(.custom("Inter18pt-Bold", size: 7.5))
+                                                .foregroundColor(Color("BackgroundColor"))
+                                                .lineLimit(1)
+                                        }
+                                    }
+                                    
+                                    // Music icon (matching Android musicReply - 20dp)
+                                    // Show when original message was voice audio
+                                    if message.dataType == Constant.voiceAudio || message.replyType == Constant.voiceAudio {
+                                        Image(systemName: "music.note")
+                                            .resizable()
+                                            .scaledToFit()
+                                            .frame(width: 20, height: 20)
+                                            .foregroundColor(Color("TextColor"))
+                                    }
+                                }
+                                .padding(.trailing, 12) // marginEnd="12dp"
+                            }
+                            .padding(.vertical, 5) // marginVertical="5dp"
+                        )
+            }
+            .frame(width: 150, height: 50)
+            
+            // Lower container - Reply text section (matching Android replydatalyt)
+            // Show reply text below the upper part, inside the same container
+            if let replytextData = message.replytextData, !replytextData.isEmpty {
+                HStack(spacing: 5) {
+                    // Reply text (matching Android repliedData)
+                    // Android: maxWidth="220dp", textColor="#e7ebf4", textSize="15sp"
+                    Text(replytextData)
+                        .font(.custom("Inter18pt-Regular", size: 15))
+                        .foregroundColor(isSentByMe ? Color(hex: "#e7ebf4") : Color("TextColor"))
+                        .lineLimit(2)
+                        .frame(maxWidth: 220) // maxWidth="220dp"
+                        .padding(.horizontal, 12) // marginHorizontal="12dp"
+                        .padding(.top, 2) // marginTop="2dp"
+                        .padding(.bottom, 4.5) // marginBottom="4.5dp"
+                }
+                .frame(width: 150, alignment: .leading) // Match container width
+            }
+        }
+        .frame(width: 150) // Main container width
+        .background(
+            // Background matching Android message_box_bg_3 with modetheme2 tint
+            // Single container wrapping everything - use minimal corner radius (4dp) to match Android's rectangular appearance
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color("BackgroundColor"))
+        )
+    }
+}
+
 // MARK: - Message Bubble View (matching Android sample_sender.xml)
 struct MessageBubbleView: View {
     let message: ChatMessage
@@ -9284,8 +9459,38 @@ struct MessageBubbleView: View {
             }
             
             VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+                // Reply layout (matching Android replylyoutGlobal) - show if replyKey == "ReplyKey"
+                if let replyKey = message.replyKey, replyKey == "ReplyKey" {
+                    HStack {
+                        if isSentByMe {
+                            Spacer(minLength: 0)
+                        }
+                        
+                        // Reply container (matching Android replylyoutGlobal)
+                        // Use ReplyView exactly as it is - same design for both sender and receiver
+                        // This includes both upper preview section and lower reply text section
+                        ReplyView(message: message, isSentByMe: isSentByMe)
+                        
+                        if !isSentByMe {
+                            Spacer(minLength: 0)
+                        }
+                    }
+                    .padding(.bottom, 4) // Add spacing between reply and main message
+                }
+                
                 // Main message bubble container (matching Android MainSenderBox)
-                if isSentByMe {
+                // Hide main message content when replyKey == "ReplyKey" and replyType == Constant.Text
+                // (matching Android behavior where sendMessage is set to GONE for text replies)
+                let shouldHideMainMessage: Bool = {
+                    if let replyKey = message.replyKey, replyKey == "ReplyKey",
+                       let replyType = message.replyType, replyType == Constant.Text {
+                        return true
+                    }
+                    return false
+                }()
+                
+                if !shouldHideMainMessage {
+                    if isSentByMe {
                     // Check if this is an image bunch message (matching Android senderImgBunchLyt)
                     // Allow selectionCount >= 2 (including 5+ images which show 2x2 grid with +N overlay)
                     if message.dataType == Constant.img,
@@ -9886,6 +10091,7 @@ struct MessageBubbleView: View {
                         }
                     }
                 }
+                } // End of if !shouldHideMainMessage
                 
                 // Time row with progress indicator beside time (matching Android placement)
                 HStack(spacing: 6) {
