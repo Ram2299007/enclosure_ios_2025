@@ -9417,7 +9417,7 @@ struct ReplyView: View {
                     Text(replytextData)
                         .font(.custom("Inter18pt-Regular", size: 15))
                         .foregroundColor(isSentByMe ? Color(hex: "#e7ebf4") : Color("TextColor"))
-                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true) // Allow text to wrap and expand vertically
                         .frame(maxWidth: 220) // maxWidth="220dp"
                         .padding(.horizontal, 12) // marginHorizontal="12dp"
                         .padding(.top, 2) // marginTop="2dp"
