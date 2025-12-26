@@ -90,6 +90,7 @@ struct ChattingScreen: View {
     @State private var showScrollDownButton: Bool = false // Show when user is away from bottom
     @State private var isLastItemVisible: Bool = false // Track if last message is visible (matching Android)
     @State private var isTouchGestureActive: Bool = false // Track touch to debounce touch gesture
+    @State private var highlightedMessageId: String? = nil // Track highlighted message ID for reply navigation
     
     // MARK: - Errors
     private enum MultiImageUploadError: Error {
@@ -486,6 +487,119 @@ struct ChattingScreen: View {
         return receiverUid + uid
     }
     
+    // MARK: - Helper function to get sender room
+    private func getSenderRoom() -> String {
+        let receiverUid = contact.uid
+        let uid = Constant.SenderIdMy
+        return uid + receiverUid
+    }
+    
+    // MARK: - Scroll to target message and highlight it (matching Android scrollToTargetModelId)
+    private func scrollToTargetMessage(targetModelId: String) {
+        guard let proxy = scrollViewProxy else {
+            print("⚠️ [scrollToTargetMessage] ScrollViewProxy not available")
+            return
+        }
+        
+        // Check if message exists in current messages list
+        if let foundIndex = messages.firstIndex(where: { $0.id == targetModelId }) {
+            let message = messages[foundIndex]
+            print("✅ [scrollToTargetMessage] Found message at index \(foundIndex), scrolling to: \(targetModelId)")
+            
+            // Scroll to message
+            DispatchQueue.main.async {
+                withAnimation {
+                    proxy.scrollTo(message.id, anchor: .center)
+                }
+                
+                // Highlight the message after a short delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self.highlightedMessageId = targetModelId
+                    
+                    // Remove highlight after 1 second
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        self.highlightedMessageId = nil
+                    }
+                }
+            }
+        } else {
+            print("⚠️ [scrollToTargetMessage] Message not found in current list, checking Firebase")
+            // Message not in current list, need to load more pages
+            loadPagesUntilMessageFound(targetModelId: targetModelId)
+        }
+    }
+    
+    // MARK: - Load pages until message is found (matching Android loadPagesUntilModelFound)
+    private func loadPagesUntilMessageFound(targetModelId: String) {
+        // Check if message exists in current messages
+        let modelFound = messages.contains { $0.id == targetModelId }
+        
+        if modelFound {
+            scrollToTargetMessage(targetModelId: targetModelId)
+            return
+        }
+        
+        // Load more messages
+        let receiverRoom = getReceiverRoom()
+        loadMore(receiverRoom: receiverRoom)
+        
+        // Retry after a delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            loadPagesUntilMessageFound(targetModelId: targetModelId)
+        }
+    }
+    
+    // MARK: - Handle reply tap (matching Android onClick for replyKey)
+    private func handleReplyTap(message: ChatMessage) {
+        guard let replyKey = message.replyKey, replyKey == "ReplyKey" else {
+            return
+        }
+        
+        guard let targetModelId = message.replyCrtPostion, !targetModelId.isEmpty else {
+            print("⚠️ [handleReplyTap] Reply modelId is null or empty")
+            return
+        }
+        
+        print("📱 [handleReplyTap] Reply tapped, target modelId: \(targetModelId)")
+        
+        // Check both receiverRoom and senderRoom in Firebase (matching Android)
+        let receiverRoom = getReceiverRoom()
+        let senderRoom = getSenderRoom()
+        
+        // Check receiverRoom
+        checkMessageInFirebase(room: receiverRoom, targetModelId: targetModelId) { found in
+            if found {
+                print("✅ [handleReplyTap] Message found in receiverRoom, scrolling...")
+                self.scrollToTargetMessage(targetModelId: targetModelId)
+            } else {
+                // Check senderRoom
+                self.checkMessageInFirebase(room: senderRoom, targetModelId: targetModelId) { found in
+                    if found {
+                        print("✅ [handleReplyTap] Message found in senderRoom, scrolling...")
+                        self.scrollToTargetMessage(targetModelId: targetModelId)
+                    } else {
+                        print("⚠️ [handleReplyTap] Message not found in either room")
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Check if message exists in Firebase room
+    private func checkMessageInFirebase(room: String, targetModelId: String, completion: @escaping (Bool) -> Void) {
+        let database = Database.database().reference()
+        let chatPath = "\(Constant.CHAT)/\(room)"
+        
+        database.child(chatPath).child(targetModelId).observeSingleEvent(of: .value) { snapshot in
+            let exists = snapshot.exists()
+            print("📱 [checkMessageInFirebase] Room: \(room), ModelId: \(targetModelId), Exists: \(exists)")
+            completion(exists)
+        } withCancel: { error in
+            print("❌ [checkMessageInFirebase] Error checking room \(room): \(error.localizedDescription)")
+            completion(false)
+        }
+    }
+    
     // MARK: - Header View
     private var headerView: some View {
         VStack(spacing: 0) {
@@ -670,7 +784,11 @@ struct ChattingScreen: View {
                                     message: message,
                                     onHalfSwipe: { swipedMessage in
                                         handleHalfSwipeReply(swipedMessage)
-                                    }
+                                    },
+                                    onReplyTap: { message in
+                                        handleReplyTap(message: message)
+                                    },
+                                    isHighlighted: highlightedMessageId == message.id
                                 )
                                     .id(message.id)
                                     .background(
@@ -9265,7 +9383,14 @@ struct BunchImageView: View {
 struct ReplyView: View {
     let message: ChatMessage
     let isSentByMe: Bool
+    let onTap: (() -> Void)?
     @Environment(\.colorScheme) private var colorScheme
+    
+    init(message: ChatMessage, isSentByMe: Bool, onTap: (() -> Void)? = nil) {
+        self.message = message
+        self.isSentByMe = isSentByMe
+        self.onTap = onTap
+    }
     
     var body: some View {
         // Main vertical container matching Android replylyoutGlobal (150dp width, wrap_content height)
@@ -9478,6 +9603,12 @@ struct ReplyView: View {
                 }
             }
         )
+        .onTapGesture {
+            // Handle tap on reply view (matching Android onClick for replyKey)
+            if let replyKey = message.replyKey, replyKey == "ReplyKey" {
+                onTap?()
+            }
+        }
     }
     
     // Get reply container background color (matching senderMessageBackgroundColor logic)
@@ -9541,19 +9672,23 @@ struct MessageBubbleView: View {
     let message: ChatMessage
     let isSentByMe: Bool
     let onHalfSwipe: (ChatMessage) -> Void
+    let onReplyTap: ((ChatMessage) -> Void)?
+    let isHighlighted: Bool
     @GestureState private var dragTranslation: CGSize = .zero
     @State private var isDragging: Bool = false
     private let halfSwipeThreshold: CGFloat = 60
     @Environment(\.colorScheme) private var colorScheme
     
-    init(message: ChatMessage, onHalfSwipe: @escaping (ChatMessage) -> Void = { _ in }) {
+    init(message: ChatMessage, onHalfSwipe: @escaping (ChatMessage) -> Void = { _ in }, onReplyTap: ((ChatMessage) -> Void)? = nil, isHighlighted: Bool = false) {
         self.message = message
         self.isSentByMe = message.uid == Constant.SenderIdMy
         self.onHalfSwipe = onHalfSwipe
+        self.onReplyTap = onReplyTap
+        self.isHighlighted = isHighlighted
     }
     
     var body: some View {
-        HStack {
+        HStack(spacing: 0) {
             if isSentByMe {
                 Spacer()
             }
@@ -9569,7 +9704,9 @@ struct MessageBubbleView: View {
                         // Reply container (matching Android replylyoutGlobal)
                         // Use ReplyView exactly as it is - same design for both sender and receiver
                         // This includes both upper preview section and lower reply text section
-                        ReplyView(message: message, isSentByMe: isSentByMe)
+                        ReplyView(message: message, isSentByMe: isSentByMe) {
+                            onReplyTap?(message)
+                        }
                         
                         if !isSentByMe {
                             Spacer(minLength: 0)
@@ -10210,6 +10347,22 @@ struct MessageBubbleView: View {
             }
         }
         .padding(.horizontal, 10) // side margin like Android screen margins
+        .padding(.vertical, 5) // vertical spacing 5px
+        .background(
+            // Highlight background when message is highlighted (matching Android highlightcolor)
+            // Light mode: #e7ebf4, Dark mode: #1B1C1C
+            // Applied to full width including horizontal padding (matching Android holder.itemView.setBackgroundColor)
+            Group {
+                if isHighlighted {
+                    GeometryReader { geometry in
+                        Rectangle()
+                            .fill(colorScheme == .dark ? Color(hex: "#1B1C1C") : Color(hex: "#e7ebf4"))
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .animation(.easeInOut(duration: 0.3), value: isHighlighted)
+                    }
+                }
+            }
+        )
         .contentShape(Rectangle())
         .offset(x: isDragging && dragTranslation.width > 0 ? min(dragTranslation.width, halfSwipeThreshold) : 0)
         .overlay(
