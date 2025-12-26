@@ -9667,6 +9667,149 @@ struct ReplyView: View {
     }
 }
 
+// MARK: - Character Extension for Emoji Detection
+extension Character {
+    var isEmoji: Bool {
+        guard let scalar = unicodeScalars.first else { return false }
+        return scalar.properties.isEmoji && (scalar.value > 0x238C || unicodeScalars.count > 1)
+    }
+}
+
+// MARK: - Emoji Analysis Helper Functions (matching Android analyzeTextContent and countEmojis)
+private func analyzeTextContent(_ content: String) -> String {
+    // Remove whitespace and check if content is empty
+    let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+        return "only_text"
+    }
+    
+    // Check if content contains only emojis
+    var hasOnlyEmojis = true
+    var hasText = false
+    
+    for scalar in trimmed.unicodeScalars {
+        if CharacterSet.whitespacesAndNewlines.contains(scalar) {
+            continue // Skip whitespace
+        }
+        
+        // Check if character is an emoji
+        // Emojis are typically in these ranges:
+        // - 0x1F300-0x1F9FF (Misc Symbols and Pictographs)
+        // - 0x2600-0x26FF (Misc symbols)
+        // - 0x2700-0x27BF (Dingbats)
+        // - 0xFE00-0xFE0F (Variation Selectors)
+        // - 0x1F900-0x1F9FF (Supplemental Symbols and Pictographs)
+        // - 0x1F1E0-0x1F1FF (Regional Indicator Symbols - flags)
+        // - 0x200D (Zero Width Joiner)
+        // - 0x20E3 (Combining Enclosing Keycap)
+        // - 0xFE0F (Variation Selector-16)
+        let codePoint = scalar.value
+        let isEmoji = (codePoint >= 0x1F300 && codePoint <= 0x1F9FF) ||
+                     (codePoint >= 0x2600 && codePoint <= 0x26FF) ||
+                     (codePoint >= 0x2700 && codePoint <= 0x27BF) ||
+                     (codePoint >= 0xFE00 && codePoint <= 0xFE0F) ||
+                     (codePoint >= 0x1F900 && codePoint <= 0x1F9FF) ||
+                     (codePoint >= 0x1F1E0 && codePoint <= 0x1F1FF) ||
+                     codePoint == 0x200D ||
+                     codePoint == 0x20E3 ||
+                     codePoint == 0xFE0F ||
+                     (codePoint >= 0x1FA00 && codePoint <= 0x1FAFF) // Extended emoji range
+        
+        if !isEmoji {
+            hasOnlyEmojis = false
+            hasText = true
+            break
+        }
+    }
+    
+    if hasOnlyEmojis && !hasText {
+        return "only_emoji"
+    } else if hasText {
+        // Check if there are any emojis mixed with text
+        let emojiPattern = #"[^\x00-\x7F]"# // Non-ASCII characters (simplified emoji detection)
+        if trimmed.range(of: emojiPattern, options: .regularExpression) != nil {
+            return "text_and_emoji"
+        }
+        return "only_text"
+    }
+    
+    return "only_text"
+}
+
+private func countEmojis(_ content: String) -> Int {
+    let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+        return 0
+    }
+    
+    // Use Character's emoji detection which handles complex sequences better
+    var emojiCount = 0
+    var currentIndex = trimmed.startIndex
+    
+    while currentIndex < trimmed.endIndex {
+        let char = trimmed[currentIndex]
+        
+        // Skip whitespace
+        if char.isWhitespace || char.isNewline {
+            currentIndex = trimmed.index(after: currentIndex)
+            continue
+        }
+        
+        // Check if character is an emoji using Swift's built-in emoji detection
+        // This handles complex emoji sequences (flags, skin tones, ZWJ sequences) correctly
+        if char.isEmoji {
+            emojiCount += 1
+            
+            // Move to the end of this emoji sequence
+            // Swift's Character already handles multi-scalar emojis, but we need to skip continuation characters
+            var nextIndex = trimmed.index(after: currentIndex)
+            
+            // Skip over variation selectors and zero-width joiners that are part of the emoji
+            while nextIndex < trimmed.endIndex {
+                let nextChar = trimmed[nextIndex]
+                
+                // Check if this is a continuation character (variation selector, ZWJ, etc.)
+                let scalar = nextChar.unicodeScalars.first
+                if let scalar = scalar {
+                    let codePoint = scalar.value
+                    if codePoint == 0xFE0F || // Variation Selector-16
+                       codePoint == 0xFE00 || // Variation Selector-1
+                       (codePoint >= 0xFE01 && codePoint <= 0xFE0F) || // Variation Selectors
+                       codePoint == 0x200D || // Zero Width Joiner
+                       codePoint == 0x20E3 { // Combining Enclosing Keycap
+                        nextIndex = trimmed.index(after: nextIndex)
+                        continue
+                    }
+                }
+                
+                // If next character is also an emoji, it might be part of a sequence (like flags)
+                if nextChar.isEmoji {
+                    // Check if it's a regional indicator (flag) or part of a ZWJ sequence
+                    let nextScalar = nextChar.unicodeScalars.first
+                    if let nextScalar = nextScalar {
+                        let nextCodePoint = nextScalar.value
+                        if (nextCodePoint >= 0x1F1E6 && nextCodePoint <= 0x1F1FF) { // Regional Indicator Symbols
+                            // This is part of a flag sequence, continue
+                            nextIndex = trimmed.index(after: nextIndex)
+                            continue
+                        }
+                    }
+                }
+                
+                // Not part of emoji sequence, break
+                break
+            }
+            
+            currentIndex = nextIndex
+        } else {
+            // Not an emoji, move to next character
+            currentIndex = trimmed.index(after: currentIndex)
+        }
+    }
+    
+    return emojiCount
+}
+
 // MARK: - Message Bubble View (matching Android sample_sender.xml)
 struct MessageBubbleView: View {
     let message: ChatMessage
@@ -10011,24 +10154,64 @@ struct MessageBubbleView: View {
                             }
                             .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
                         } else {
-                            // Regular text message
+                            // Regular text message with emoji handling (matching Android senderViewHolder)
+                            let content = message.message
+                            let textContentType = analyzeTextContent(content)
+                            
+                            // Compute emoji styling values using a closure to avoid view builder issues
+                            let (fontSize, showBackground): (CGFloat, Bool) = {
+                                if textContentType == "only_emoji" {
+                                    let emojiCount = countEmojis(content)
+                                    if emojiCount == 1 {
+                                        return (80, false) // 80sp for single emoji, no background
+                                    } else if emojiCount == 2 {
+                                        return (45, false) // 45sp for 2 emojis, no background
+                                    } else if emojiCount == 3 {
+                                        return (35, false) // 35sp for 3 emojis, no background
+                                    } else {
+                                        return (15, true) // 15sp for 4+ emojis, with background
+                                    }
+                                } else {
+                                    return (15, true) // Default size for text messages, with background
+                                }
+                            }()
+                            
                             HStack {
                                 Spacer(minLength: 0) // Push content to end
-                                Text(message.message)
-                                    .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp", textFontWeight="200" (light)
-                                    .fontWeight(.light) // textFontWeight="200" = Light weight
-                                    .foregroundColor(Color(hex: "#e7ebf4")) // textColor="#e7ebf4"
-                                    .lineSpacing(7) // lineHeight="22dp" (22 - 15 = 7dp spacing)
-                                    .multilineTextAlignment(.leading)
-                                    .fixedSize(horizontal: false, vertical: true) // allow wrapping
-                                    .padding(.horizontal, 12) // layout_marginHorizontal="12dp"
-                                    .padding(.top, 5) // paddingTop="5dp"
-                                    .padding(.bottom, 6) // paddingBottom="6dp"
-                                    .background(
-                                        // Background matching message_bg_blue.xml with theme color support
-                                        RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
-                                            .fill(getSenderMessageBackgroundColor()) // Theme-based background color
-                                    )
+                                Group {
+                                    if textContentType == "only_emoji" {
+                                        Text(content)
+                                            .font(.custom("Inter18pt-Regular", size: fontSize))
+                                            .fontWeight(.light)
+                                            .foregroundColor(Color(hex: "#e7ebf4"))
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .padding(.horizontal, showBackground ? 12 : 0) // padding only if background
+                                            .padding(.top, showBackground ? 5 : 0)
+                                            .padding(.bottom, showBackground ? 6 : 0)
+                                            .background(
+                                                showBackground ? RoundedRectangle(cornerRadius: 20)
+                                                    .fill(getSenderMessageBackgroundColor()) : nil
+                                            )
+                                    } else {
+                                        // Default text message styling for text_and_emoji and only_text
+                                        Text(content)
+                                            .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp", textFontWeight="200" (light)
+                                            .fontWeight(.light) // textFontWeight="200" = Light weight
+                                            .foregroundColor(Color(hex: "#e7ebf4")) // textColor="#e7ebf4"
+                                            .lineSpacing(7) // lineHeight="22dp" (22 - 15 = 7dp spacing)
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true) // allow wrapping
+                                            .padding(.horizontal, 12) // layout_marginHorizontal="12dp"
+                                            .padding(.top, 5) // paddingTop="5dp"
+                                            .padding(.bottom, 6) // paddingBottom="6dp"
+                                            .background(
+                                                // Background matching message_bg_blue.xml with theme color support
+                                                RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
+                                                    .fill(getSenderMessageBackgroundColor()) // Theme-based background color
+                                            )
+                                    }
+                                }
                             }
                             .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
                         }
@@ -10300,21 +10483,60 @@ struct MessageBubbleView: View {
                             }
                             .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
                         } else {
-                            // Regular text message
+                            // Regular text message with emoji handling (matching Android receiverViewHolder)
+                            let content = message.message
+                            let textContentType = analyzeTextContent(content)
+                            
+                            // Compute emoji styling values using a closure to avoid view builder issues
+                            let (fontSize, showBackground): (CGFloat, Bool) = {
+                                if textContentType == "only_emoji" {
+                                    let emojiCount = countEmojis(content)
+                                    if emojiCount == 1 {
+                                        return (80, false) // 80sp for single emoji, no background
+                                    } else if emojiCount == 2 {
+                                        return (45, false) // 45sp for 2 emojis, no background
+                                    } else if emojiCount == 3 {
+                                        return (35, false) // 35sp for 3 emojis, no background
+                                    } else {
+                                        return (15, true) // 15sp for 4+ emojis, with background
+                                    }
+                                } else {
+                                    return (15, true) // Default size for text messages, with background
+                                }
+                            }()
+                            
                             HStack {
-                                Text(message.message)
-                                    .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp" (matching Android)
-                                    .fontWeight(.light) // textFontWeight="200" (matching Android)
-                                    .foregroundColor(Color("TextColor"))
-                                    .lineSpacing(7) // lineHeight="22dp" (22 - 15 = 7dp spacing)
-                                    .multilineTextAlignment(.leading)
-                                    .fixedSize(horizontal: false, vertical: true) // allow wrapping
-                                    .padding(.horizontal, 12) // layout_marginHorizontal="12dp"
-                                    .padding(.top, 5) // paddingTop="5dp"
-                                    .padding(.bottom, 6) // paddingBottom="6dp"
-                                    .background(
-                                        getReceiverGlassBackground(cornerRadius: 12) // matching Android corner radius
-                                    )
+                                Group {
+                                    if textContentType == "only_emoji" {
+                                        Text(content)
+                                            .font(.custom("Inter18pt-Regular", size: fontSize))
+                                            .fontWeight(.light)
+                                            .foregroundColor(Color("TextColor"))
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .padding(.horizontal, showBackground ? 12 : 0) // padding only if background
+                                            .padding(.top, showBackground ? 5 : 0)
+                                            .padding(.bottom, showBackground ? 6 : 0)
+                                            .background(
+                                                showBackground ? getReceiverGlassBackground(cornerRadius: 12) : nil
+                                            )
+                                    } else {
+                                        // Default text message styling for text_and_emoji and only_text
+                                        Text(content)
+                                            .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp" (matching Android)
+                                            .fontWeight(.light) // textFontWeight="200" (matching Android)
+                                            .foregroundColor(Color("TextColor"))
+                                            .lineSpacing(7) // lineHeight="22dp" (22 - 15 = 7dp spacing)
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true) // allow wrapping
+                                            .padding(.horizontal, 12) // layout_marginHorizontal="12dp"
+                                            .padding(.top, 5) // paddingTop="5dp"
+                                            .padding(.bottom, 6) // paddingBottom="6dp"
+                                            .background(
+                                                getReceiverGlassBackground(cornerRadius: 12) // matching Android corner radius
+                                            )
+                                    }
+                                }
                                 Spacer(minLength: 0) // Don't expand beyond content
                             }
                             .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
@@ -10350,7 +10572,7 @@ struct MessageBubbleView: View {
         .padding(.vertical, 5) // vertical spacing 5px
         .background(
             // Highlight background when message is highlighted (matching Android highlightcolor)
-            // Light mode: #e7ebf4, Dark mode: #1B1C1C
+            // Light mode#e7ebf4, Dark mode: #1B1C1C
             // Applied to full width including horizontal padding (matching Android holder.itemView.setBackgroundColor)
             Group {
                 if isHighlighted {
