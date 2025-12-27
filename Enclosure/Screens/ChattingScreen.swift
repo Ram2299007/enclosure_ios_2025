@@ -14967,6 +14967,200 @@ struct MessageLongPressDialog: View {
         .padding(.top, 2)
     }
     
+    // Contact message preview view - matching MessageBubbleView exact styling
+    @ViewBuilder
+    private var contactMessagePreviewView: some View {
+        VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+            // Show reply layout if present (matching MessageBubbleView structure)
+            replyLayoutPreviewView
+            
+            // Main contact content - hide if this is a reply message
+            if !shouldHideMainMessage {
+                if isSentByMe {
+                    // Sender contact message (matching Android contactContainer design)
+                    HStack {
+                        Spacer(minLength: 0) // Push content to end
+                        
+                        // Container wrapping contact and caption with same background as Constant.Text sender messages
+                        VStack(alignment: .trailing, spacing: 0) {
+                            SenderContactView(
+                                contactName: message.name ?? "",
+                                contactPhone: message.phone ?? "",
+                                backgroundColor: getSenderMessageBackgroundColor(colorScheme: colorScheme),
+                                contactDocumentUrl: message.document.isEmpty ? nil : message.document
+                            )
+                            
+                            // Caption text if present (matching Android caption display)
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color(hex: "#e7ebf4"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(getSenderMessageBackgroundColor(colorScheme: colorScheme))
+                        )
+                    }
+                    .frame(maxWidth: 250)
+                } else {
+                    // Receiver contact message (matching Android contactContainer design)
+                    HStack {
+                        // Container wrapping contact and caption with same background as Constant.Text receiver messages
+                        VStack(alignment: .leading, spacing: 0) {
+                            ReceiverContactView(
+                                contactName: message.name ?? "",
+                                contactPhone: message.phone ?? "",
+                                contactDocumentUrl: message.document.isEmpty ? nil : message.document
+                            )
+                            
+                            // Caption text if present (matching Android caption display)
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color("TextColor"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .background(
+                            getReceiverGlassBackground(cornerRadius: 20) // Android: contactContainer should match message container corner radius
+                        )
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: 250)
+                }
+            }
+        }
+        .padding(.horizontal, isSentByMe ? 16 : 12)
+        .padding(.top, 2)
+    }
+    
+    // Video message preview view - matching MessageBubbleView exact styling
+    @ViewBuilder
+    private var videoMessagePreviewView: some View {
+        VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+            // Show reply layout if present (matching MessageBubbleView structure)
+            replyLayoutPreviewView
+            
+            // Main video content - hide if this is a reply message
+            if !shouldHideMainMessage {
+                if isSentByMe {
+                    // Sender video message (matching Android sendervideoLyt design)
+                    HStack {
+                        Spacer(minLength: 0) // Push content to end
+                        
+                        // Container wrapping video and caption with same background as Constant.Text sender messages
+                        VStack(alignment: .trailing, spacing: 0) {
+                            SenderVideoView(
+                                videoUrl: message.document,
+                                thumbnailUrl: message.thumbnail,
+                                fileName: message.fileName,
+                                imageWidth: message.imageWidth,
+                                imageHeight: message.imageHeight,
+                                aspectRatio: message.aspectRatio,
+                                backgroundColor: getSenderMessageBackgroundColor(colorScheme: colorScheme)
+                            )
+                            
+                            // Caption text if present (matching Android caption display)
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color(hex: "#e7ebf4"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .frame(width: calculateImageSize(imageWidth: message.imageWidth, imageHeight: message.imageHeight, aspectRatio: message.aspectRatio).width) // Container width matches video width exactly
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(getSenderMessageBackgroundColor(colorScheme: colorScheme))
+                        )
+                    }
+                    .frame(maxWidth: 250)
+                } else {
+                    // Receiver video message (matching Android receivervideoLyt design)
+                    HStack {
+                        // Container wrapping video and caption with same background as Constant.Text receiver messages
+                        VStack(alignment: .leading, spacing: 0) {
+                            ReceiverVideoView(
+                                videoUrl: message.document,
+                                thumbnailUrl: message.thumbnail,
+                                fileName: message.fileName,
+                                imageWidth: message.imageWidth,
+                                imageHeight: message.imageHeight,
+                                aspectRatio: message.aspectRatio
+                            )
+                            
+                            // Caption text if present (matching Android caption display)
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color("TextColor"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .frame(width: calculateImageSize(imageWidth: message.imageWidth, imageHeight: message.imageHeight, aspectRatio: message.aspectRatio).width) // Container width matches video width exactly
+                        .background(
+                            getReceiverGlassBackground(cornerRadius: 12)
+                        )
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: 250)
+                }
+            }
+        }
+        .padding(.horizontal, isSentByMe ? 16 : 12)
+        .padding(.top, 2)
+    }
+    
     // Image message preview view - matching MessageBubbleView exact styling
     @ViewBuilder
     private var imageMessagePreviewView: some View {
@@ -15240,9 +15434,15 @@ struct MessageLongPressDialog: View {
                             } else if message.dataType == Constant.img && !message.document.isEmpty {
                                 // Image message preview - matching MessageBubbleView exact styling
                                 imageMessagePreviewView
+                            } else if message.dataType == Constant.video && !message.document.isEmpty {
+                                // Video message preview - matching MessageBubbleView exact styling
+                                videoMessagePreviewView
                             } else if message.dataType == Constant.doc {
                                 // Document message preview - matching MessageBubbleView exact styling
                                 documentMessagePreviewView
+                            } else if message.dataType == Constant.contact {
+                                // Contact message preview - matching MessageBubbleView exact styling
+                                contactMessagePreviewView
                             } else {
                                 // For other non-text messages, show simplified preview
                                 VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
