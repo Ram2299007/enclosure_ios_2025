@@ -91,6 +91,8 @@ struct ChattingScreen: View {
     @State private var isLastItemVisible: Bool = false // Track if last message is visible (matching Android)
     @State private var isTouchGestureActive: Bool = false // Track touch to debounce touch gesture
     @State private var highlightedMessageId: String? = nil // Track highlighted message ID for reply navigation
+    @State private var showLongPressDialog: Bool = false // Track long press dialog visibility
+    @State private var longPressedMessage: ChatMessage? = nil // Track which message was long pressed
     
     // MARK: - Errors
     private enum MultiImageUploadError: Error {
@@ -216,6 +218,45 @@ struct ChattingScreen: View {
             // Menu overlay
             if showMenu {
                 menuOverlay
+            }
+            
+            // Long press dialog overlay - full screen
+            if showLongPressDialog, let message = longPressedMessage {
+                MessageLongPressDialog(
+                    message: message,
+                    isSentByMe: message.uid == Constant.SenderIdMy,
+                    isPresented: $showLongPressDialog,
+                    onReply: {
+                        showLongPressDialog = false
+                        longPressedMessage = nil
+                        // TODO: Handle reply action
+                        print("Reply to message: \(message.id)")
+                    },
+                    onForward: {
+                        showLongPressDialog = false
+                        longPressedMessage = nil
+                        // TODO: Implement forward action
+                        print("Forward message: \(message.message)")
+                    },
+                    onCopy: {
+                        showLongPressDialog = false
+                        longPressedMessage = nil
+                        // Copy message to clipboard
+                        UIPasteboard.general.string = message.message
+                    },
+                    onDelete: {
+                        showLongPressDialog = false
+                        longPressedMessage = nil
+                        // TODO: Implement delete action
+                        print("Delete message: \(message.id)")
+                    },
+                    onMultiSelect: {
+                        showLongPressDialog = false
+                        longPressedMessage = nil
+                        // TODO: Implement multi-select action
+                        print("Multi-select message: \(message.id)")
+                    }
+                )
             }
         }
         .navigationBarHidden(true)
@@ -787,6 +828,10 @@ struct ChattingScreen: View {
                                     },
                                     onReplyTap: { message in
                                         handleReplyTap(message: message)
+                                    },
+                                    onLongPress: { message in
+                                        longPressedMessage = message
+                                        showLongPressDialog = true
                                     },
                                     isHighlighted: highlightedMessageId == message.id
                                 )
@@ -9816,17 +9861,19 @@ struct MessageBubbleView: View {
     let isSentByMe: Bool
     let onHalfSwipe: (ChatMessage) -> Void
     let onReplyTap: ((ChatMessage) -> Void)?
+    let onLongPress: ((ChatMessage) -> Void)?
     let isHighlighted: Bool
     @GestureState private var dragTranslation: CGSize = .zero
     @State private var isDragging: Bool = false
     private let halfSwipeThreshold: CGFloat = 60
     @Environment(\.colorScheme) private var colorScheme
     
-    init(message: ChatMessage, onHalfSwipe: @escaping (ChatMessage) -> Void = { _ in }, onReplyTap: ((ChatMessage) -> Void)? = nil, isHighlighted: Bool = false) {
+    init(message: ChatMessage, onHalfSwipe: @escaping (ChatMessage) -> Void = { _ in }, onReplyTap: ((ChatMessage) -> Void)? = nil, onLongPress: ((ChatMessage) -> Void)? = nil, isHighlighted: Bool = false) {
         self.message = message
         self.isSentByMe = message.uid == Constant.SenderIdMy
         self.onHalfSwipe = onHalfSwipe
         self.onReplyTap = onReplyTap
+        self.onLongPress = onLongPress
         self.isHighlighted = isHighlighted
     }
     
@@ -9837,39 +9884,69 @@ struct MessageBubbleView: View {
             }
             
             VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
-                // Reply layout (matching Android replylyoutGlobal) - show if replyKey == "ReplyKey"
-                if let replyKey = message.replyKey, replyKey == "ReplyKey" {
-                    HStack {
-                        if isSentByMe {
-                            Spacer(minLength: 0)
-                        }
-                        
-                        // Reply container (matching Android replylyoutGlobal)
-                        // Use ReplyView exactly as it is - same design for both sender and receiver
-                        // This includes both upper preview section and lower reply text section
-                        ReplyView(message: message, isSentByMe: isSentByMe) {
-                            onReplyTap?(message)
-                        }
-                        
-                        if !isSentByMe {
-                            Spacer(minLength: 0)
-                        }
-                    }
-                    .padding(.bottom, 4) // Add spacing between reply and main message
+                replyLayoutView
+                mainMessageContentView
+                timeRowView
+            }
+            
+            if !isSentByMe {
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 10) // side margin like Android screen margins
+        .padding(.vertical, 5) // vertical spacing 5px
+        .background(highlightBackground)
+        .contentShape(Rectangle())
+        .offset(x: isDragging && dragTranslation.width > 0 ? min(dragTranslation.width, halfSwipeThreshold) : 0)
+        .overlay(swipeFeedbackOverlay)
+        .simultaneousGesture(swipeGesture)
+        .onLongPressGesture(minimumDuration: 0.5) {
+            // Handle long press - trigger callback
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onLongPress?(message)
+        }
+    }
+    
+    // MARK: - View Components
+    
+    @ViewBuilder
+    private var replyLayoutView: some View {
+        // Reply layout (matching Android replylyoutGlobal) - show if replyKey == "ReplyKey"
+        if let replyKey = message.replyKey, replyKey == "ReplyKey" {
+            HStack {
+                if isSentByMe {
+                    Spacer(minLength: 0)
                 }
                 
-                // Main message bubble container (matching Android MainSenderBox)
-                // Hide main message content when replyKey == "ReplyKey" and replyType == Constant.Text
-                // (matching Android behavior where sendMessage is set to GONE for text replies)
-                let shouldHideMainMessage: Bool = {
-                    if let replyKey = message.replyKey, replyKey == "ReplyKey",
-                       let replyType = message.replyType, replyType == Constant.Text {
-                        return true
-                    }
-                    return false
-                }()
+                // Reply container (matching Android replylyoutGlobal)
+                // Use ReplyView exactly as it is - same design for both sender and receiver
+                // This includes both upper preview section and lower reply text section
+                ReplyView(message: message, isSentByMe: isSentByMe) {
+                    onReplyTap?(message)
+                }
                 
-                if !shouldHideMainMessage {
+                if !isSentByMe {
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.bottom, 4) // Add spacing between reply and main message
+        }
+    }
+    
+    private var shouldHideMainMessage: Bool {
+        if let replyKey = message.replyKey, replyKey == "ReplyKey",
+           let replyType = message.replyType, replyType == Constant.Text {
+            return true
+        }
+        return false
+    }
+    
+    @ViewBuilder
+    private var mainMessageContentView: some View {
+        // Main message bubble container (matching Android MainSenderBox)
+        // Hide main message content when replyKey == "ReplyKey" and replyType == Constant.Text
+        // (matching Android behavior where sendMessage is set to GONE for text replies)
+        if !shouldHideMainMessage {
                     if isSentByMe {
                     // Check if this is an image bunch message (matching Android senderImgBunchLyt)
                     // Allow selectionCount >= 2 (including 5+ images which show 2x2 grid with +N overlay)
@@ -10543,91 +10620,82 @@ struct MessageBubbleView: View {
                         }
                     }
                 }
-                } // End of if !shouldHideMainMessage
-                
-                // Time row with progress indicator beside time (matching Android placement)
-                HStack(spacing: 6) {
-                    if isSentByMe {
-                        progressIndicatorView(isSender: true)
-                        Text(message.time)
-                            .font(.custom("Inter18pt-Regular", size: 10))
-                            .foregroundColor(Color("gray3"))
-                    } else {
-                        Text(message.time)
-                            .font(.custom("Inter18pt-Regular", size: 10))
-                            .foregroundColor(Color("gray3"))
-                        progressIndicatorView(isSender: false)
-                    }
-                }
-                .padding(.top, 5)
-                .padding(.bottom, 7)
-                .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading)
-            }
-            
-            if !isSentByMe {
-                Spacer()
+            } // End of if !shouldHideMainMessage
+        }
+    
+    @ViewBuilder
+    private var timeRowView: some View {
+        // Time row with progress indicator beside time (matching Android placement)
+        HStack(spacing: 6) {
+            if isSentByMe {
+                progressIndicatorView(isSender: true)
+                Text(message.time)
+                    .font(.custom("Inter18pt-Regular", size: 10))
+                    .foregroundColor(Color("gray3"))
+            } else {
+                Text(message.time)
+                    .font(.custom("Inter18pt-Regular", size: 10))
+                    .foregroundColor(Color("gray3"))
+                progressIndicatorView(isSender: false)
             }
         }
-        .padding(.horizontal, 10) // side margin like Android screen margins
-        .padding(.vertical, 5) // vertical spacing 5px
-        .background(
-            // Highlight background when message is highlighted (matching Android highlightcolor)
-            // Light mode#e7ebf4, Dark mode: #1B1C1C
-            // Applied to full width including horizontal padding (matching Android holder.itemView.setBackgroundColor)
-            Group {
-                if isHighlighted {
-                    GeometryReader { geometry in
-                        Rectangle()
-                            .fill(colorScheme == .dark ? Color(hex: "#1B1C1C") : Color(hex: "#e7ebf4"))
-                            .frame(width: geometry.size.width, height: geometry.size.height)
-                            .animation(.easeInOut(duration: 0.3), value: isHighlighted)
-                    }
+        .padding(.top, 5)
+        .padding(.bottom, 7)
+        .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading)
+    }
+    
+    @ViewBuilder
+    private var highlightBackground: some View {
+        // Highlight background when message is highlighted (matching Android highlightcolor)
+        // Light mode#e7ebf4, Dark mode: #1B1C1C
+        // Applied to full width including horizontal padding (matching Android holder.itemView.setBackgroundColor)
+        Group {
+            if isHighlighted {
+                GeometryReader { geometry in
+                    Rectangle()
+                        .fill(colorScheme == .dark ? Color(hex: "#1B1C1C") : Color(hex: "#e7ebf4"))
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .animation(.easeInOut(duration: 0.3), value: isHighlighted)
                 }
             }
-        )
-        .contentShape(Rectangle())
-        .offset(x: isDragging && dragTranslation.width > 0 ? min(dragTranslation.width, halfSwipeThreshold) : 0)
-        .overlay(
-            // Real-time swipe feedback overlay (matching Android HalfSwipeCallback drawReplyIconWithoutBackground)
-            swipeFeedbackOverlay
-        )
-        .simultaneousGesture(
-            // Use simultaneousGesture so it doesn't block vertical scrolling
-            DragGesture(minimumDistance: 15)
-                .updating($dragTranslation) { value, state, _ in
-                    let horizontal = value.translation.width
-                    let vertical = abs(value.translation.height)
-                    
-                    // Only activate if horizontal movement is clearly dominant (2x vertical) and swiping right
-                    // This ensures vertical scrolling works smoothly
-                    if horizontal > 15 && abs(horizontal) > vertical * 2.0 {
-                        // Cap the translation at threshold (matching Android behavior)
-                        let cappedHorizontal = min(horizontal, halfSwipeThreshold)
-                        state = CGSize(width: cappedHorizontal, height: 0)
-                        isDragging = true
-                    } else {
-                        // Reset immediately if vertical movement dominates - let scroll view handle it
-                        state = .zero
-                        isDragging = false
-                    }
+        }
+    }
+    
+    private var swipeGesture: some Gesture {
+        // Use simultaneousGesture so it doesn't block vertical scrolling
+        DragGesture(minimumDistance: 15)
+            .updating($dragTranslation) { value, state, _ in
+                let horizontal = value.translation.width
+                let vertical = abs(value.translation.height)
+                
+                // Only activate if horizontal movement is clearly dominant (2x vertical) and swiping right
+                // This ensures vertical scrolling works smoothly
+                if horizontal > 15 && abs(horizontal) > vertical * 2.0 {
+                    // Cap the translation at threshold (matching Android behavior)
+                    let cappedHorizontal = min(horizontal, halfSwipeThreshold)
+                    state = CGSize(width: cappedHorizontal, height: 0)
+                    isDragging = true
+                } else {
+                    // Reset immediately if vertical movement dominates - let scroll view handle it
+                    state = .zero
+                    isDragging = false
                 }
-                .onEnded { value in
-                    let horizontal = value.translation.width
-                    let vertical = abs(value.translation.height)
-                    
-                    // Trigger reply only for deliberate right swipes with clear horizontal dominance
-                    if horizontal > halfSwipeThreshold && abs(horizontal) > vertical * 2.0 {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        onHalfSwipe(message)
-                    }
-                    
-                    // Reset drag state with animation
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        isDragging = false
-                    }
+            }
+            .onEnded { value in
+                let horizontal = value.translation.width
+                let vertical = abs(value.translation.height)
+                
+                // Trigger reply only for deliberate right swipes with clear horizontal dominance
+                if horizontal > halfSwipeThreshold && abs(horizontal) > vertical * 2.0 {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onHalfSwipe(message)
                 }
-        )
-        
+                
+                // Reset drag state with animation
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    isDragging = false
+                }
+            }
     }
     
     // Real-time swipe feedback overlay (matching Android HalfSwipeCallback)
@@ -14561,3 +14629,293 @@ struct ShareSheet: UIViewControllerRepresentable {
     )
 }
 
+// MARK: - Message Long Press Dialog (matching Android sender_long_press_dialogue.xml and receiver_long_press_dialogue.xml)
+struct MessageLongPressDialog: View {
+    let message: ChatMessage
+    let isSentByMe: Bool
+    @Binding var isPresented: Bool
+    let onReply: () -> Void
+    let onForward: () -> Void
+    let onCopy: () -> Void
+    let onDelete: () -> Void
+    let onMultiSelect: () -> Void
+    
+    @Environment(\.colorScheme) private var colorScheme
+    
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                // Blurred background overlay - matching chatView.swift ChatLongPressDialog
+                Color.black.opacity(0.3)
+                    .background(.ultraThinMaterial)
+                    .ignoresSafeArea()
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .zIndex(0) // Background layer
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            isPresented = false
+                        }
+                    }
+                
+                // Dialog content positioned at center or appropriate location
+                VStack(spacing: 0) {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            // Emoji reactions card (matching Android emojiCard)
+                            VStack(spacing: 0) {
+                                // Emoji RecyclerView placeholder (matching Android emojiLongRec)
+                                // TODO: Implement emoji reactions display
+                                HStack {
+                                    // Placeholder for emoji reactions
+                                    Text("😀 😂 ❤️ 👍")
+                                        .font(.system(size: 20))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 5)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 5)
+                                
+                                // Add emoji button (matching Android addEmoji)
+                                HStack {
+                                    Spacer()
+                                    Button(action: {
+                                        // TODO: Show emoji picker
+                                        print("Add emoji")
+                                    }) {
+                                        Image(systemName: "plus.circle.fill")
+                                            .font(.system(size: 24))
+                                            .foregroundColor(Color("gray3"))
+                                    }
+                                    .padding(.trailing, 15)
+                                    .padding(.bottom, 5)
+                                }
+                            }
+                            .frame(width: 305)
+                            .background(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(Color("cardBackgroundColornew"))
+                            )
+                            .padding(.horizontal, isSentByMe ? 16 : 12)
+                            .padding(.top, 2)
+                            .padding(.bottom, 2)
+                            
+                            // Message preview section (matching Android MainSenderBox/MainReceiverBox)
+                            VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+                                // Message content preview
+                                if let replyKey = message.replyKey, replyKey == "ReplyKey" {
+                                    // Show reply preview
+                                    ReplyView(message: message, isSentByMe: isSentByMe) {
+                                        onReply()
+                                    }
+                                    .padding(.horizontal, 12)
+                                } else {
+                                    // Show message content based on dataType
+                                    if message.dataType == Constant.Text {
+                                        Text(message.message)
+                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .foregroundColor(isSentByMe ? Color(hex: "#e7ebf4") : Color("TextColor"))
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 5)
+                                    } else if message.dataType == Constant.img {
+                                        // Image preview placeholder
+                                        Text("📷 Image")
+                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .foregroundColor(isSentByMe ? Color(hex: "#e7ebf4") : Color("TextColor"))
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 5)
+                                    } else if message.dataType == Constant.video {
+                                        // Video preview placeholder
+                                        Text("🎥 Video")
+                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .foregroundColor(isSentByMe ? Color(hex: "#e7ebf4") : Color("TextColor"))
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 5)
+                                    } else if message.dataType == Constant.voiceAudio {
+                                        // Audio preview placeholder
+                                        Text("🎤 Audio")
+                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .foregroundColor(isSentByMe ? Color(hex: "#e7ebf4") : Color("TextColor"))
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 5)
+                                    } else if message.dataType == Constant.doc {
+                                        // Document preview placeholder
+                                        Text("📄 Document")
+                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .foregroundColor(isSentByMe ? Color(hex: "#e7ebf4") : Color("TextColor"))
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 5)
+                                    }
+                                }
+                                
+                                // Time display (matching Android sendTime/recTime)
+                                Text(message.time)
+                                    .font(.custom("Inter18pt-Regular", size: 10))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, isSentByMe ? 16 : 15)
+                                    .padding(.vertical, 5)
+                                    .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading)
+                            }
+                            .frame(maxWidth: 220)
+                            .background(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(isSentByMe ? getSenderMessageBackgroundColor(colorScheme: colorScheme) : getReceiverMessageBackgroundColor())
+                            )
+                            .padding(.horizontal, isSentByMe ? 16 : 12)
+                            .padding(.top, 2)
+                            
+                            // Action buttons card (matching Android cardview)
+                            VStack(spacing: 0) {
+                                // Multi-Select button (matching Android SelectLyt)
+                                Button(action: {
+                                    onMultiSelect()
+                                }) {
+                                    HStack {
+                                        Text("Multi-Select")
+                                            .font(.custom("Inter18pt-Regular", size: 16))
+                                            .fontWeight(.bold)
+                                            .foregroundColor(Color("TextColor"))
+                                        Spacer()
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 24))
+                                            .foregroundColor(Color("gray3"))
+                                    }
+                                    .padding(.horizontal, 15)
+                                    .padding(.vertical, 10)
+                                }
+                                
+                                Divider()
+                                    .background(Color("gray2"))
+                                    .opacity(0.1)
+                                
+                                // Forward button (matching Android forward)
+                                Button(action: {
+                                    onForward()
+                                }) {
+                                    HStack {
+                                        Text("Forward")
+                                            .font(.custom("Inter18pt-Regular", size: 16))
+                                            .fontWeight(.bold)
+                                            .foregroundColor(Color("TextColor"))
+                                        Spacer()
+                                        Image(systemName: "arrowshape.turn.up.right.fill")
+                                            .font(.system(size: 24))
+                                            .foregroundColor(Color("gray3"))
+                                    }
+                                    .padding(.horizontal, 15)
+                                    .padding(.vertical, 10)
+                                }
+                                
+                                Divider()
+                                    .background(Color("gray2"))
+                                    .opacity(0.1)
+                                
+                                // Delete button (matching Android deletelyt)
+                                Button(action: {
+                                    onDelete()
+                                }) {
+                                    HStack {
+                                        Text("Delete")
+                                            .font(.custom("Inter18pt-Regular", size: 16))
+                                            .fontWeight(.bold)
+                                            .foregroundColor(Color("TextColor"))
+                                        Spacer()
+                                        Image(systemName: "trash.fill")
+                                            .font(.system(size: 24))
+                                            .foregroundColor(Color("gray3"))
+                                    }
+                                    .padding(.horizontal, 15)
+                                    .padding(.vertical, 10)
+                                }
+                                
+                                Divider()
+                                    .background(Color("gray2"))
+                                    .opacity(0.1)
+                                
+                                // Copy button (matching Android copy)
+                                Button(action: {
+                                    onCopy()
+                                }) {
+                                    HStack {
+                                        Text("Copy message")
+                                            .font(.custom("Inter18pt-Regular", size: 16))
+                                            .fontWeight(.bold)
+                                            .foregroundColor(Color("TextColor"))
+                                        Spacer()
+                                        Image(systemName: "doc.on.doc.fill")
+                                            .font(.system(size: 23))
+                                            .foregroundColor(Color("gray3"))
+                                    }
+                                    .padding(.horizontal, 15)
+                                    .padding(.vertical, 10)
+                                }
+                            }
+                            .frame(width: 220)
+                            .background(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(Color("cardBackgroundColornew"))
+                            )
+                            .padding(.horizontal, isSentByMe ? 16 : 12)
+                            .padding(.top, 2)
+                            .padding(.bottom, 20)
+                    }
+                }
+                .frame(width: 310)
+                .frame(maxHeight: geometry.size.height * 0.8)
+            }
+                .frame(maxWidth: .infinity) // match_parent width like Android XML
+                .background(Color.clear) // Ensure background doesn't block touches
+                .offset(x: adjustedOffsetX(in: geometry), y: adjustedOffsetY(in: geometry))
+                .zIndex(1) // Dialog content on top of blur
+            }
+        }
+        .ignoresSafeArea()
+    }
+    
+    // Calculate adjusted offset X - center the dialog horizontally
+    private func adjustedOffsetX(in geometry: GeometryProxy) -> CGFloat {
+        // Center the dialog horizontally
+        let dialogWidth: CGFloat = 310
+        return (geometry.size.width - dialogWidth) / 2
+    }
+    
+    // Calculate adjusted offset Y - position dialog vertically centered or near touch point
+    private func adjustedOffsetY(in geometry: GeometryProxy) -> CGFloat {
+        let dialogHeight: CGFloat = min(geometry.size.height * 0.8, 600) // Max height constraint
+        let padding: CGFloat = 20
+        // Center vertically with some padding
+        return max(padding, (geometry.size.height - dialogHeight) / 2)
+    }
+    
+    // Get sender message background color (matching Android senderMessageBackgroundColor)
+    private func getSenderMessageBackgroundColor(colorScheme: ColorScheme) -> Color {
+        // Light mode: always use legacy bubble color (#011224) to match Android light theme
+        guard colorScheme == .dark else {
+            return Color(hex: "#011224")
+        }
+        
+        // Dark mode: use theme-based tinted backgrounds (matching Android)
+        let themeColor = Constant.themeColor
+        let colorKey = themeColor.lowercased()
+        
+        switch colorKey {
+        case "#ff0080": return Color(hex: "#4D0026")
+        case "#00a3e9": return Color(hex: "#01253B")
+        case "#7adf2a": return Color(hex: "#25430D")
+        case "#ec0001": return Color(hex: "#470000")
+        case "#16f3ff": return Color(hex: "#05495D")
+        case "#ff8a00": return Color(hex: "#663700")
+        case "#7f7f7f": return Color(hex: "#2B3137")
+        case "#d9b845": return Color(hex: "#413815")
+        case "#346667": return Color(hex: "#1F3D3E")
+        case "#9846d9": return Color(hex: "#2d1541")
+        case "#a81010": return Color(hex: "#430706")
+        default: return Color(hex: "#01253B")
+        }
+    }
+    
+    // Get receiver message background color (matching Android receiver glass background)
+    private func getReceiverMessageBackgroundColor() -> Color {
+        // Use glassmorphism background similar to receiver messages
+        return Color("cardBackgroundColornew")
+    }
+}
