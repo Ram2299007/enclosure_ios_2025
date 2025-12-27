@@ -14841,6 +14841,177 @@ struct MessageLongPressDialog: View {
         .padding(.top, 2)
     }
     
+    // Image message preview view - matching MessageBubbleView exact styling
+    @ViewBuilder
+    private var imageMessagePreviewView: some View {
+        VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+            // Show reply layout if present (matching MessageBubbleView structure)
+            replyLayoutPreviewView
+            
+            // Main image content - hide if this is a reply message
+            if !shouldHideMainMessage {
+                if isSentByMe {
+                    // Sender image message (matching Android senderImg design)
+                    HStack {
+                        Spacer(minLength: 0) // Push content to end
+                        
+                        // Container wrapping image and caption with same background as Constant.Text sender messages
+                        VStack(alignment: .trailing, spacing: 0) {
+                            DynamicImageView(
+                                imageUrl: message.document,
+                                fileName: message.fileName,
+                                imageWidth: message.imageWidth,
+                                imageHeight: message.imageHeight,
+                                aspectRatio: message.aspectRatio,
+                                backgroundColor: getSenderMessageBackgroundColor(colorScheme: colorScheme)
+                            )
+                            
+                            // Caption text if present (matching Android caption display)
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color(hex: "#e7ebf4"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .frame(width: calculateImageSize(imageWidth: message.imageWidth, imageHeight: message.imageHeight, aspectRatio: message.aspectRatio).width)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(getSenderMessageBackgroundColor(colorScheme: colorScheme))
+                        )
+                    }
+                    .frame(maxWidth: 250)
+                } else {
+                    // Receiver image message (matching Android receiverImg design)
+                    HStack {
+                        // Container wrapping image and caption with same background as Constant.Text receiver messages
+                        VStack(alignment: .leading, spacing: 0) {
+                            ReceiverDynamicImageView(
+                                imageUrl: message.document,
+                                fileName: message.fileName,
+                                imageWidth: message.imageWidth,
+                                imageHeight: message.imageHeight,
+                                aspectRatio: message.aspectRatio
+                            )
+                            
+                            // Caption text if present (matching Android caption display)
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color("TextColor"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .frame(width: calculateImageSize(imageWidth: message.imageWidth, imageHeight: message.imageHeight, aspectRatio: message.aspectRatio).width)
+                        .background(
+                            getReceiverGlassBackground(cornerRadius: 12)
+                        )
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: 250)
+                }
+            }
+        }
+        .padding(.horizontal, isSentByMe ? 16 : 12)
+        .padding(.top, 2)
+    }
+    
+    // Calculate image size (matching MessageBubbleView calculateImageSize)
+    private func calculateImageSize(imageWidth: String?, imageHeight: String?, aspectRatio: String?) -> CGSize {
+        var imageWidthPx: CGFloat = 300
+        var imageHeightPx: CGFloat = 300
+        var aspectRatioValue: CGFloat = 1.0
+        
+        if let widthStr = imageWidth, !widthStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let width = Float(widthStr) {
+                imageWidthPx = CGFloat(width)
+            }
+        }
+        
+        if let heightStr = imageHeight, !heightStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let height = Float(heightStr) {
+                imageHeightPx = CGFloat(height)
+            }
+        }
+        
+        if let ratioStr = aspectRatio, !ratioStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let ratio = Float(ratioStr), ratio > 0 {
+                aspectRatioValue = CGFloat(ratio)
+            } else {
+                if imageHeightPx > 0 {
+                    aspectRatioValue = imageWidthPx / imageHeightPx
+                }
+            }
+        } else {
+            if imageHeightPx > 0 {
+                aspectRatioValue = imageWidthPx / imageHeightPx
+            }
+        }
+        
+        let MAX_WIDTH_PT: CGFloat = 210
+        let MAX_HEIGHT_PT: CGFloat = 250
+        let scale = UIScreen.main.scale
+        var maxWidthPx = MAX_WIDTH_PT * scale
+        var maxHeightPx = MAX_HEIGHT_PT * scale
+        
+        maxWidthPx = min(maxWidthPx, 600)
+        maxHeightPx = min(maxHeightPx, 600)
+        
+        var finalWidthPx: CGFloat = 0
+        var finalHeightPx: CGFloat = 0
+        
+        let orientation = UIDevice.current.orientation
+        let isLandscape = orientation.isLandscape || (UIScreen.main.bounds.width > UIScreen.main.bounds.height)
+        
+        if isLandscape {
+            finalWidthPx = maxWidthPx
+            finalHeightPx = maxWidthPx / aspectRatioValue
+            if finalHeightPx > maxHeightPx {
+                finalHeightPx = maxHeightPx
+                finalWidthPx = maxHeightPx * aspectRatioValue
+            }
+        } else {
+            finalHeightPx = maxHeightPx
+            finalWidthPx = maxHeightPx * aspectRatioValue
+            if finalWidthPx > maxWidthPx {
+                finalWidthPx = maxWidthPx
+                finalHeightPx = maxWidthPx / aspectRatioValue
+            }
+        }
+        
+        finalWidthPx = min(finalWidthPx, maxWidthPx)
+        finalHeightPx = min(finalHeightPx, maxHeightPx)
+        
+        let finalWidthPt = finalWidthPx / scale
+        let finalHeightPt = finalHeightPx / scale
+        
+        return CGSize(width: finalWidthPt, height: finalHeightPt)
+    }
+    
     // Get receiver glass background (matching MessageBubbleView)
     @ViewBuilder
     private func getReceiverGlassBackground(cornerRadius: CGFloat) -> some View {
@@ -14940,8 +15111,11 @@ struct MessageLongPressDialog: View {
                             // Use exact same styling as MessageBubbleView for text messages
                             if message.dataType == Constant.Text {
                                 textMessagePreviewView
+                            } else if message.dataType == Constant.img && !message.document.isEmpty {
+                                // Image message preview - matching MessageBubbleView exact styling
+                                imageMessagePreviewView
                             } else {
-                                // For non-text messages, show simplified preview
+                                // For other non-text messages, show simplified preview
                                 VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
                                     if let replyKey = message.replyKey, replyKey == "ReplyKey" {
                                         ReplyView(message: message, isSentByMe: isSentByMe) {
