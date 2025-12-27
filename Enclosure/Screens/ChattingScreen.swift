@@ -14756,13 +14756,41 @@ struct MessageLongPressDialog: View {
             // Main message content - hide if this is a reply message with text replyType
             // (matching MessageBubbleView shouldHideMainMessage logic)
             if !shouldHideMainMessage {
-                HStack {
-                if isSentByMe {
-                    Spacer(minLength: 0)
-                }
-                
-                Group {
-                if textContentType == "only_emoji" {
+                // Check if message contains a URL (matching Android URLUtil.isValidUrl)
+                if let url = messageContent.extractURL(), url.isValidURL() {
+                    // Show rich link preview (matching Android richLinkViewLyt)
+                    HStack {
+                        if isSentByMe {
+                            Spacer(minLength: 0) // Push content to end
+                            SenderRichLinkView(
+                                url: url,
+                                backgroundColor: getSenderMessageBackgroundColor(colorScheme: colorScheme),
+                                linkTitle: message.linkTitle,
+                                linkDescription: message.linkDescription,
+                                linkImageUrl: message.linkImageUrl,
+                                favIconUrl: message.favIconUrl
+                            )
+                        } else {
+                            ReceiverRichLinkView(
+                                url: url,
+                                linkTitle: message.linkTitle,
+                                linkDescription: message.linkDescription,
+                                linkImageUrl: message.linkImageUrl,
+                                favIconUrl: message.favIconUrl
+                            )
+                            Spacer(minLength: 0) // Don't expand beyond content
+                        }
+                    }
+                    .frame(maxWidth: 250) // maxWidth constraint - wrap content up to max
+                } else {
+                    // Regular text message (no URL)
+                    HStack {
+                    if isSentByMe {
+                        Spacer(minLength: 0)
+                    }
+                    
+                    Group {
+                    if textContentType == "only_emoji" {
                     if shouldShowBackground {
                         if isSentByMe {
                             Text(messageContent)
@@ -14835,6 +14863,104 @@ struct MessageLongPressDialog: View {
                 Spacer(minLength: 0)
             }
         }
+                }
+            }
+        }
+        .padding(.horizontal, isSentByMe ? 16 : 12)
+        .padding(.top, 2)
+    }
+    
+    // Document message preview view - matching MessageBubbleView exact styling
+    @ViewBuilder
+    private var documentMessagePreviewView: some View {
+        VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+            // Show reply layout if present (matching MessageBubbleView structure)
+            replyLayoutPreviewView
+            
+            // Main document content - hide if this is a reply message
+            if !shouldHideMainMessage {
+                if isSentByMe {
+                    // Sender document message (matching Android docLyt design)
+                    HStack {
+                        Spacer(minLength: 0) // Push content to end
+                        
+                        // Container wrapping document and caption with same background as Constant.Text sender messages
+                        VStack(alignment: .trailing, spacing: 0) {
+                            SenderDocumentView(
+                                documentUrl: message.document.isEmpty ? (message.fileName ?? "") : message.document,
+                                fileName: message.fileName ?? message.message,
+                                docSize: message.docSize,
+                                fileExtension: message.fileExtension,
+                                backgroundColor: getSenderMessageBackgroundColor(colorScheme: colorScheme),
+                                micPhoto: message.micPhoto
+                            )
+                            
+                            // Caption text if present (matching Android caption display)
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color(hex: "#e7ebf4"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(getSenderMessageBackgroundColor(colorScheme: colorScheme))
+                        )
+                    }
+                    .frame(maxWidth: 250)
+                } else {
+                    // Receiver document message (matching Android docLyt design)
+                    HStack {
+                        // Container wrapping document and caption with same background as Constant.Text receiver messages
+                        VStack(alignment: .leading, spacing: 0) {
+                            ReceiverDocumentView(
+                                documentUrl: message.document.isEmpty ? (message.fileName ?? "") : message.document,
+                                fileName: message.fileName ?? message.message,
+                                docSize: message.docSize,
+                                fileExtension: message.fileExtension,
+                                micPhoto: message.micPhoto
+                            )
+                            
+                            // Caption text if present (matching Android caption display)
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color("TextColor"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .background(
+                            getReceiverGlassBackground(cornerRadius: 20) // Changed to 20dp to match Android
+                        )
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: 250)
+                }
             }
         }
         .padding(.horizontal, isSentByMe ? 16 : 12)
@@ -15114,6 +15240,9 @@ struct MessageLongPressDialog: View {
                             } else if message.dataType == Constant.img && !message.document.isEmpty {
                                 // Image message preview - matching MessageBubbleView exact styling
                                 imageMessagePreviewView
+                            } else if message.dataType == Constant.doc {
+                                // Document message preview - matching MessageBubbleView exact styling
+                                documentMessagePreviewView
                             } else {
                                 // For other non-text messages, show simplified preview
                                 VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
