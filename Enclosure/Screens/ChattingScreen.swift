@@ -9635,6 +9635,10 @@ struct ReplyView: View {
             }
         }
         .frame(width: 150) // Main container width
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onTap?()
+        }
         .background(
             Group {
                 if isSentByMe {
@@ -11133,7 +11137,8 @@ struct MultiImagePreviewDialog: View {
     }
     
     private var selectedAssets: [PHAsset] {
-        photoAssets.filter { selectedAssetIds.contains($0.localIdentifier)         }
+        photoAssets.filter { selectedAssetIds.contains($0.localIdentifier)
+        }
     }
     
     var body: some View {
@@ -14708,15 +14713,55 @@ struct MessageLongPressDialog: View {
         }
     }
     
+    // Check if main message should be hidden (matching MessageBubbleView shouldHideMainMessage logic)
+    private var shouldHideMainMessage: Bool {
+        if let replyKey = message.replyKey, replyKey == "ReplyKey",
+           let replyType = message.replyType, replyType == Constant.Text {
+            return true
+        }
+        return false
+    }
+    
+    // Reply layout view - matching MessageBubbleView replyLayoutView
+    @ViewBuilder
+    private var replyLayoutPreviewView: some View {
+        // Reply layout (matching Android replylyoutGlobal) - show if replyKey == "ReplyKey"
+        if let replyKey = message.replyKey, replyKey == "ReplyKey" {
+            HStack {
+                if isSentByMe {
+                    Spacer(minLength: 0)
+                }
+                
+                // Reply container (matching Android replylyoutGlobal)
+                // Use ReplyView exactly as it is - same design for both sender and receiver
+                ReplyView(message: message, isSentByMe: isSentByMe) {
+                    onReply()
+                }
+                
+                if !isSentByMe {
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.bottom, 4) // Add spacing between reply and main message
+        }
+    }
+    
     // Text message preview view - matching MessageBubbleView exact styling
     @ViewBuilder
     private var textMessagePreviewView: some View {
-        HStack {
-            if isSentByMe {
-                Spacer(minLength: 0)
-            }
+        VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+            // Show reply layout if present (matching MessageBubbleView structure)
+            replyLayoutPreviewView
             
-            Group {
+            // Main message content - hide if this is a reply message with text replyType
+            // (matching MessageBubbleView shouldHideMainMessage logic)
+            if !shouldHideMainMessage {
+                HStack {
+                if isSentByMe {
+                    Spacer(minLength: 0)
+                }
+                
+                Group {
                 if textContentType == "only_emoji" {
                     if shouldShowBackground {
                         if isSentByMe {
@@ -14788,6 +14833,8 @@ struct MessageLongPressDialog: View {
             
             if !isSentByMe {
                 Spacer(minLength: 0)
+            }
+        }
             }
         }
         .padding(.horizontal, isSentByMe ? 16 : 12)
