@@ -93,6 +93,7 @@ struct ChattingScreen: View {
     @State private var highlightedMessageId: String? = nil // Track highlighted message ID for reply navigation
     @State private var showLongPressDialog: Bool = false // Track long press dialog visibility
     @State private var longPressedMessage: ChatMessage? = nil // Track which message was long pressed
+    @State private var longPressPosition: CGPoint = .zero // Track long press position
     
     // MARK: - Errors
     private enum MultiImageUploadError: Error {
@@ -225,6 +226,7 @@ struct ChattingScreen: View {
                 MessageLongPressDialog(
                     message: message,
                     isSentByMe: message.uid == Constant.SenderIdMy,
+                    position: longPressPosition,
                     isPresented: $showLongPressDialog,
                     onReply: {
                         showLongPressDialog = false
@@ -829,9 +831,12 @@ struct ChattingScreen: View {
                                     onReplyTap: { message in
                                         handleReplyTap(message: message)
                                     },
-                                    onLongPress: { message in
+                                    onLongPress: { message, position in
+                                        print("🔵 Long press callback triggered for message: \(message.id), position: \(position)")
                                         longPressedMessage = message
+                                        longPressPosition = position
                                         showLongPressDialog = true
+                                        print("🔵 Dialog state - showLongPressDialog: \(showLongPressDialog), message: \(longPressedMessage?.id ?? "nil")")
                                     },
                                     isHighlighted: highlightedMessageId == message.id
                                 )
@@ -4684,6 +4689,13 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
 }
 
 // MARK: - First Visible Item Preference Key (for detecting first visible message for date display)
+struct MessageFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
 struct FirstVisibleItemPreferenceKey: PreferenceKey {
     static var defaultValue: Int? = nil
     static func reduce(value: inout Int?, nextValue: () -> Int?) {
@@ -9861,14 +9873,15 @@ struct MessageBubbleView: View {
     let isSentByMe: Bool
     let onHalfSwipe: (ChatMessage) -> Void
     let onReplyTap: ((ChatMessage) -> Void)?
-    let onLongPress: ((ChatMessage) -> Void)?
+    let onLongPress: ((ChatMessage, CGPoint) -> Void)?
     let isHighlighted: Bool
     @GestureState private var dragTranslation: CGSize = .zero
     @State private var isDragging: Bool = false
+    @State private var viewFrame: CGRect = .zero
     private let halfSwipeThreshold: CGFloat = 60
     @Environment(\.colorScheme) private var colorScheme
     
-    init(message: ChatMessage, onHalfSwipe: @escaping (ChatMessage) -> Void = { _ in }, onReplyTap: ((ChatMessage) -> Void)? = nil, onLongPress: ((ChatMessage) -> Void)? = nil, isHighlighted: Bool = false) {
+    init(message: ChatMessage, onHalfSwipe: @escaping (ChatMessage) -> Void = { _ in }, onReplyTap: ((ChatMessage) -> Void)? = nil, onLongPress: ((ChatMessage, CGPoint) -> Void)? = nil, isHighlighted: Bool = false) {
         self.message = message
         self.isSentByMe = message.uid == Constant.SenderIdMy
         self.onHalfSwipe = onHalfSwipe
@@ -9899,12 +9912,28 @@ struct MessageBubbleView: View {
         .contentShape(Rectangle())
         .offset(x: isDragging && dragTranslation.width > 0 ? min(dragTranslation.width, halfSwipeThreshold) : 0)
         .overlay(swipeFeedbackOverlay)
-        .simultaneousGesture(swipeGesture)
-        .onLongPressGesture(minimumDuration: 0.5) {
-            // Handle long press - trigger callback
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            onLongPress?(message)
+        .background(
+            GeometryReader { geometry in
+                Color.clear
+                    .preference(key: MessageFramePreferenceKey.self, value: geometry.frame(in: .global))
+            }
+        )
+        .onPreferenceChange(MessageFramePreferenceKey.self) { frame in
+            DispatchQueue.main.async {
+                viewFrame = frame
+            }
         }
+        .highPriorityGesture(
+            LongPressGesture(minimumDuration: 0.5)
+                .onEnded { _ in
+                    // Handle long press - trigger callback with position
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    let centerPoint = CGPoint(x: viewFrame.midX, y: viewFrame.midY)
+                    print("🔵 Long press detected at: \(centerPoint), frame: \(viewFrame)")
+                    onLongPress?(message, centerPoint)
+                }
+        )
+        .simultaneousGesture(swipeGesture)
     }
     
     // MARK: - View Components
@@ -14633,6 +14662,7 @@ struct ShareSheet: UIViewControllerRepresentable {
 struct MessageLongPressDialog: View {
     let message: ChatMessage
     let isSentByMe: Bool
+    let position: CGPoint
     @Binding var isPresented: Bool
     let onReply: () -> Void
     let onForward: () -> Void
@@ -14641,6 +14671,166 @@ struct MessageLongPressDialog: View {
     let onMultiSelect: () -> Void
     
     @Environment(\.colorScheme) private var colorScheme
+    
+    // Computed properties for text message preview
+    private var messageContent: String {
+        message.message
+    }
+    
+    private var textContentType: String {
+        detectTextContentType(messageContent)
+    }
+    
+    private var emojiFontSize: CGFloat {
+        if textContentType == "only_emoji" {
+            let emojiCount = countEmojis(messageContent)
+            if emojiCount == 1 {
+                return 80 // 80sp for single emoji, no background
+            } else if emojiCount == 2 {
+                return 45 // 45sp for 2 emojis, no background
+            } else if emojiCount == 3 {
+                return 35 // 35sp for 3 emojis, no background
+            } else {
+                return 15 // 15sp for 4+ emojis, with background
+            }
+        } else {
+            return 15 // Default size for text messages
+        }
+    }
+    
+    private var shouldShowBackground: Bool {
+        if textContentType == "only_emoji" {
+            let emojiCount = countEmojis(messageContent)
+            // No background for 1-3 emojis, background for 4+ emojis
+            return emojiCount >= 4
+        } else {
+            return true
+        }
+    }
+    
+    // Text message preview view - matching MessageBubbleView exact styling
+    @ViewBuilder
+    private var textMessagePreviewView: some View {
+        HStack {
+            if isSentByMe {
+                Spacer(minLength: 0)
+            }
+            
+            Group {
+                if textContentType == "only_emoji" {
+                    if shouldShowBackground {
+                        if isSentByMe {
+                            Text(messageContent)
+                                .font(.custom("Inter18pt-Regular", size: emojiFontSize))
+                                .fontWeight(.light)
+                                .foregroundColor(Color(hex: "#e7ebf4"))
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, 12)
+                                .padding(.top, 5)
+                                .padding(.bottom, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 20)
+                                        .fill(getSenderMessageBackgroundColor(colorScheme: colorScheme))
+                                )
+                        } else {
+                            Text(messageContent)
+                                .font(.custom("Inter18pt-Regular", size: emojiFontSize))
+                                .fontWeight(.light)
+                                .foregroundColor(Color("TextColor"))
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, 12)
+                                .padding(.top, 5)
+                                .padding(.bottom, 6)
+                                .background(getReceiverGlassBackground(cornerRadius: 12))
+                        }
+                    } else {
+                        Text(messageContent)
+                            .font(.custom("Inter18pt-Regular", size: emojiFontSize))
+                            .fontWeight(.light)
+                            .foregroundColor(isSentByMe ? Color(hex: "#e7ebf4") : Color("TextColor"))
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                } else {
+                    if isSentByMe {
+                        Text(messageContent)
+                            .font(.custom("Inter18pt-Regular", size: 15))
+                            .fontWeight(.light)
+                            .foregroundColor(Color(hex: "#e7ebf4"))
+                            .lineSpacing(7)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 12)
+                            .padding(.top, 5)
+                            .padding(.bottom, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(getSenderMessageBackgroundColor(colorScheme: colorScheme))
+                            )
+                    } else {
+                        Text(messageContent)
+                            .font(.custom("Inter18pt-Regular", size: 15))
+                            .fontWeight(.regular)
+                            .foregroundColor(Color("TextColor"))
+                            .lineSpacing(7)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 12)
+                            .padding(.top, 5)
+                            .padding(.bottom, 6)
+                            .background(getReceiverGlassBackground(cornerRadius: 12))
+                    }
+                }
+            }
+            .frame(maxWidth: 250)
+            
+            if !isSentByMe {
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.horizontal, isSentByMe ? 16 : 12)
+        .padding(.top, 2)
+    }
+    
+    // Get receiver glass background (matching MessageBubbleView)
+    @ViewBuilder
+    private func getReceiverGlassBackground(cornerRadius: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: cornerRadius)
+            .fill(
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        getReceiverGlassBgStart(),
+                        getReceiverGlassBgCenter(),
+                        getReceiverGlassBgEnd()
+                    ]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(getReceiverGlassBorder(), lineWidth: 0.5)
+            )
+    }
+    
+    // Helper functions for receiver glass background (matching MessageBubbleView)
+    private func getReceiverGlassBgStart() -> Color {
+        Color("cardBackgroundColornew").opacity(0.9)
+    }
+    
+    private func getReceiverGlassBgCenter() -> Color {
+        Color("cardBackgroundColornew").opacity(0.7)
+    }
+    
+    private func getReceiverGlassBgEnd() -> Color {
+        Color("cardBackgroundColornew").opacity(0.9)
+    }
+    
+    private func getReceiverGlassBorder() -> Color {
+        Color.gray.opacity(0.2)
+    }
     
     var body: some View {
         GeometryReader { geometry in
@@ -14700,68 +14890,34 @@ struct MessageLongPressDialog: View {
                             .padding(.bottom, 2)
                             
                             // Message preview section (matching Android MainSenderBox/MainReceiverBox)
-                            VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
-                                // Message content preview
-                                if let replyKey = message.replyKey, replyKey == "ReplyKey" {
-                                    // Show reply preview
-                                    ReplyView(message: message, isSentByMe: isSentByMe) {
-                                        onReply()
-                                    }
-                                    .padding(.horizontal, 12)
-                                } else {
-                                    // Show message content based on dataType
-                                    if message.dataType == Constant.Text {
-                                        Text(message.message)
+                            // Use exact same styling as MessageBubbleView for text messages
+                            if message.dataType == Constant.Text {
+                                textMessagePreviewView
+                            } else {
+                                // For non-text messages, show simplified preview
+                                VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+                                    if let replyKey = message.replyKey, replyKey == "ReplyKey" {
+                                        ReplyView(message: message, isSentByMe: isSentByMe) {
+                                            onReply()
+                                        }
+                                        .padding(.horizontal, 12)
+                                    } else {
+                                        Text(getMessagePreviewText())
                                             .font(.custom("Inter18pt-Regular", size: 15))
                                             .foregroundColor(isSentByMe ? Color(hex: "#e7ebf4") : Color("TextColor"))
                                             .padding(.horizontal, 12)
-                                            .padding(.vertical, 5)
-                                    } else if message.dataType == Constant.img {
-                                        // Image preview placeholder
-                                        Text("📷 Image")
-                                            .font(.custom("Inter18pt-Regular", size: 15))
-                                            .foregroundColor(isSentByMe ? Color(hex: "#e7ebf4") : Color("TextColor"))
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 5)
-                                    } else if message.dataType == Constant.video {
-                                        // Video preview placeholder
-                                        Text("🎥 Video")
-                                            .font(.custom("Inter18pt-Regular", size: 15))
-                                            .foregroundColor(isSentByMe ? Color(hex: "#e7ebf4") : Color("TextColor"))
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 5)
-                                    } else if message.dataType == Constant.voiceAudio {
-                                        // Audio preview placeholder
-                                        Text("🎤 Audio")
-                                            .font(.custom("Inter18pt-Regular", size: 15))
-                                            .foregroundColor(isSentByMe ? Color(hex: "#e7ebf4") : Color("TextColor"))
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 5)
-                                    } else if message.dataType == Constant.doc {
-                                        // Document preview placeholder
-                                        Text("📄 Document")
-                                            .font(.custom("Inter18pt-Regular", size: 15))
-                                            .foregroundColor(isSentByMe ? Color(hex: "#e7ebf4") : Color("TextColor"))
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 5)
+                                            .padding(.top, 5)
+                                            .padding(.bottom, 6)
                                     }
                                 }
-                                
-                                // Time display (matching Android sendTime/recTime)
-                                Text(message.time)
-                                    .font(.custom("Inter18pt-Regular", size: 10))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, isSentByMe ? 16 : 15)
-                                    .padding(.vertical, 5)
-                                    .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading)
+                                .frame(maxWidth: 220)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 20)
+                                        .fill(isSentByMe ? getSenderMessageBackgroundColor(colorScheme: colorScheme) : getReceiverMessageBackgroundColor())
+                                )
+                                .padding(.horizontal, isSentByMe ? 16 : 12)
+                                .padding(.top, 2)
                             }
-                            .frame(maxWidth: 220)
-                            .background(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .fill(isSentByMe ? getSenderMessageBackgroundColor(colorScheme: colorScheme) : getReceiverMessageBackgroundColor())
-                            )
-                            .padding(.horizontal, isSentByMe ? 16 : 12)
-                            .padding(.top, 2)
                             
                             // Action buttons card (matching Android cardview)
                             VStack(spacing: 0) {
@@ -14871,20 +15027,69 @@ struct MessageLongPressDialog: View {
         .ignoresSafeArea()
     }
     
-    // Calculate adjusted offset X - center the dialog horizontally
+    // Calculate adjusted offset X - position dialog based on message alignment
     private func adjustedOffsetX(in geometry: GeometryProxy) -> CGFloat {
-        // Center the dialog horizontally
         let dialogWidth: CGFloat = 310
-        return (geometry.size.width - dialogWidth) / 2
+        let padding: CGFloat = 20
+        
+        // Position dialog near the message bubble
+        // For sent messages (right-aligned), position dialog to the right
+        // For received messages (left-aligned), position dialog to the left
+        if isSentByMe {
+            // Right-aligned: position dialog near right edge with padding
+            return max(padding, geometry.size.width - dialogWidth - padding)
+        } else {
+            // Left-aligned: position dialog near left edge with padding
+            return padding
+        }
     }
     
-    // Calculate adjusted offset Y - position dialog vertically centered or near touch point
+    // Calculate adjusted offset Y - position dialog near the message bubble
     private func adjustedOffsetY(in geometry: GeometryProxy) -> CGFloat {
         let dialogHeight: CGFloat = min(geometry.size.height * 0.8, 600) // Max height constraint
         let padding: CGFloat = 20
-        // Center vertically with some padding
-        return max(padding, (geometry.size.height - dialogHeight) / 2)
+        let frame = geometry.frame(in: .global)
+        let localY = position.y - frame.minY
+        
+        // Position dialog near the message bubble, centered vertically on touch point
+        let centeredY = localY - (dialogHeight / 2)
+        let maxY = geometry.size.height - dialogHeight - padding
+        return min(max(centeredY, padding), maxY)
     }
+    
+    // Helper function to get message preview text for non-text messages
+    private func getMessagePreviewText() -> String {
+        switch message.dataType {
+        case Constant.img:
+            return "📷 Image"
+        case Constant.video:
+            return "🎥 Video"
+        case Constant.voiceAudio:
+            return "🎤 Audio"
+        case Constant.doc:
+            return "📄 Document"
+        case Constant.contact:
+            return "📇 Contact"
+        default:
+            return message.message
+        }
+    }
+    
+    // Helper function to detect text content type (matching MessageBubbleView logic)
+    private func detectTextContentType(_ text: String) -> String {
+        let emojiPattern = "^[\\p{Emoji}\\s]+$"
+        let emojiRegex = try? NSRegularExpression(pattern: emojiPattern, options: [])
+        let range = NSRange(location: 0, length: text.utf16.count)
+        
+        if let regex = emojiRegex, regex.firstMatch(in: text, options: [], range: range) != nil {
+            return "only_emoji"
+        } else if text.rangeOfCharacter(from: CharacterSet(charactersIn: "😀😁😂😃😄😅😆😇😈😉😊😋😌😍😎😏😐😑😒😓😔😕😖😗😘😙😚😛😜😝😞😟😠😡😢😣😤😥😦😧😨😩😪😫😬😭😮😯😰😱😲😳😴😵😶😷😸😹😺😻😼😽😾😿🙀🙁🙂🙃🙄🙅🙆🙇🙈🙉🙊🙋🙌🙍🙎🙏")) != nil {
+            return "text_and_emoji"
+        } else {
+            return "only_text"
+        }
+    }
+    
     
     // Get sender message background color (matching Android senderMessageBackgroundColor)
     private func getSenderMessageBackgroundColor(colorScheme: ColorScheme) -> Color {
