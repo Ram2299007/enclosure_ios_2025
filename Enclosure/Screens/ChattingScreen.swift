@@ -15161,6 +15161,99 @@ struct MessageLongPressDialog: View {
         .padding(.top, 2)
     }
     
+    // Voice audio message preview view - matching MessageBubbleView exact styling
+    @ViewBuilder
+    private var voiceAudioMessagePreviewView: some View {
+        VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+            // Show reply layout if present (matching MessageBubbleView structure)
+            replyLayoutPreviewView
+            
+            // Main voice audio content - hide if this is a reply message
+            if !shouldHideMainMessage {
+                if isSentByMe {
+                    // Sender voice audio message (matching Android miceContainer design)
+                    HStack {
+                        Spacer(minLength: 0) // Push content to end
+                        
+                        // Container wrapping voice audio and caption with same background as Constant.Text sender messages
+                        VStack(alignment: .trailing, spacing: 0) {
+                            SenderVoiceAudioView(
+                                audioUrl: message.document,
+                                audioTiming: message.miceTiming ?? "00:00",
+                                micPhoto: message.micPhoto,
+                                backgroundColor: getSenderMessageBackgroundColor(colorScheme: colorScheme)
+                            )
+                            
+                            // Caption text if present (matching Android caption display)
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color(hex: "#e7ebf4"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(getSenderMessageBackgroundColor(colorScheme: colorScheme))
+                        )
+                    }
+                    .frame(maxWidth: 250)
+                } else {
+                    // Receiver voice audio message (matching Android miceContainer design)
+                    HStack {
+                        // Container wrapping voice audio and caption with same background as Constant.Text receiver messages
+                        VStack(alignment: .leading, spacing: 0) {
+                            ReceiverVoiceAudioView(
+                                audioUrl: message.document,
+                                audioTiming: message.miceTiming ?? "00:00",
+                                micPhoto: message.micPhoto
+                            )
+                            
+                            // Caption text if present (matching Android caption display)
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color("TextColor"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .background(
+                            getReceiverGlassBackground(cornerRadius: 20)
+                        )
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: 250)
+                }
+            }
+        }
+        .padding(.horizontal, isSentByMe ? 16 : 12)
+        .padding(.top, 2)
+    }
+    
     // Image message preview view - matching MessageBubbleView exact styling
     @ViewBuilder
     private var imageMessagePreviewView: some View {
@@ -15443,6 +15536,9 @@ struct MessageLongPressDialog: View {
                             } else if message.dataType == Constant.contact {
                                 // Contact message preview - matching MessageBubbleView exact styling
                                 contactMessagePreviewView
+                            } else if message.dataType == Constant.voiceAudio {
+                                // Voice audio message preview - matching MessageBubbleView exact styling
+                                voiceAudioMessagePreviewView
                             } else {
                                 // For other non-text messages, show simplified preview
                                 VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
