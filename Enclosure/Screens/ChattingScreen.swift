@@ -9900,6 +9900,8 @@ struct MessageBubbleView: View {
     @GestureState private var dragTranslation: CGSize = .zero
     @State private var isDragging: Bool = false
     @State private var viewFrame: CGRect = .zero
+    @State private var longPressLocation: CGPoint = .zero
+    @State private var longPressTimer: Timer?
     private let halfSwipeThreshold: CGFloat = 60
     @Environment(\.colorScheme) private var colorScheme
     
@@ -9955,18 +9957,41 @@ struct MessageBubbleView: View {
                 viewFrame = frame
             }
         }
-        .highPriorityGesture(
-            LongPressGesture(minimumDuration: 0.5)
-                .onEnded { _ in
-                    // Handle long press - trigger callback with position
-                    // Match Android: getLocationOnScreen() returns top-left corner (location[0], location[1])
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    // Capture the exact initial touch location in global coordinates
+                    // Use startLocation to get where the user first touched
+                    let localLocation = value.startLocation
+                    // Convert to global screen coordinates by adding viewFrame origin
+                    let globalX = viewFrame.minX + localLocation.x
+                    let globalY = viewFrame.minY + localLocation.y
+                    longPressLocation = CGPoint(x: globalX, y: globalY)
+                    
+                    // Start timer for long press detection (only once)
+                    if longPressTimer == nil {
+                        longPressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+                            // Long press detected - trigger callback with exact touch location
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    let topLeftPoint = CGPoint(x: viewFrame.minX, y: viewFrame.minY)
-                    print("🔵 Long press detected at: \(topLeftPoint), frame: \(viewFrame)")
-                    onLongPress?(message, topLeftPoint)
+                            print("🔵 Long press detected at exact location: \(longPressLocation), frame: \(viewFrame)")
+                            onLongPress?(message, longPressLocation)
+                            longPressTimer?.invalidate()
+                            longPressTimer = nil
+                        }
+                    }
+                }
+                .onEnded { _ in
+                    // Cancel timer if gesture ends before long press completes
+                    longPressTimer?.invalidate()
+                    longPressTimer = nil
         }
         )
         .simultaneousGesture(swipeGesture)
+        .onDisappear {
+            // Clean up timer when view disappears
+            longPressTimer?.invalidate()
+            longPressTimer = nil
+        }
     }
     
     // MARK: - View Components
@@ -11059,7 +11084,7 @@ struct MessageBubbleView: View {
     }
     
     // Get glass background start color (matching Android glass_bg_start)
-    private func getReceiverGlassBgStart() -> Color {
+    private func getReceiverGlassBgStart() -> Color { 
         // Light mode: #80FFFFFF (50% opacity white)
         // Dark mode: #4D1B1B1B (semi-transparent dark)
         return colorScheme == .dark ? Color(hex: "#4D1B1B1B") : Color(hex: "#80FFFFFF")
@@ -14785,6 +14810,31 @@ struct MessageLongPressDialog: View {
     @State private var showEmojiPicker: Bool = false
     @State private var emojiListenerHandle: DatabaseHandle?
     
+    // Animation state for Android-style unfold animation
+    // Initial values: sender starts at -45°, receiver at 45°, both scale from 0
+    @State private var rotationAngle: Double = 0.0 // Will be set based on isSentByMe
+    @State private var scaleValue: CGFloat = 0.0
+    @State private var opacityValue: Double = 0.0
+    @State private var isDismissing: Bool = false // Track if we're currently dismissing
+    
+    // Helper function for smooth dismissal
+    private func dismissDialog() {
+        guard !isDismissing else { return } // Prevent multiple taps
+        isDismissing = true
+        // Smooth dismissal animation - reverse the unfold with spring animation for smoother feel
+        // Both sender and receiver animate from top-left, so both go back to 45°
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            rotationAngle = 45.0
+            scaleValue = 0.0
+            opacityValue = 0.0
+        }
+        // Dismiss after animation completes (slightly longer to ensure smooth transition)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            isPresented = false
+            isDismissing = false
+        }
+    }
+    
     // Static emojis list (matching Android get_emojiChatadapter)
     private let staticEmojis: [DisplayEmoji] = [
         DisplayEmoji(slug: "e0-6-thumbs-up", character: "👍", unicodeName: "E0.6 thumbs up", codePoint: "1F44D"),
@@ -15645,26 +15695,29 @@ struct MessageLongPressDialog: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Blurred background overlay - matching chatView.swift ChatLongPressDialog
-                Color.black.opacity(0.3)
+                // Blurred background overlay - covers entire screen and is tappable everywhere
+                Color.black.opacity(opacityValue * 0.3)
                     .background(.ultraThinMaterial)
+                    .contentShape(Rectangle()) // Make entire area tappable
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
-                    .frame(width: geometry.size.width, height: geometry.size.height)
                     .zIndex(0) // Background layer
-                    .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            isPresented = false
-                        }
-                    }
+                    .simultaneousGesture(
+                        // Use simultaneous gesture so background can receive taps even when dialog is visible
+                        TapGesture()
+                            .onEnded { _ in
+                                dismissDialog()
+                            }
+                    )
                 
-                // Dialog content positioned at center or appropriate location
-                // Match MessageBubbleView structure: HStack with Spacer for alignment, then padding
+                // Dialog content positioned at exact touch location
+                // Match reference file: use HStack with Spacers for X positioning, offset only for Y
                 HStack(spacing: 0) {
                     // For sender (end gravity): add spacer at start to push content to right
                     // For receiver (start gravity): no spacer - content aligns to left
                     if isSentByMe {
-                                    Spacer()
-                                }
+                        Spacer()
+                    }
                     
                     VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
                         ScrollView {
@@ -15829,28 +15882,85 @@ struct MessageLongPressDialog: View {
                 }
                 .frame(width: 310)
                 .frame(maxHeight: geometry.size.height * 0.8)
+                .allowsHitTesting(true) // Allow touches on ScrollView content
+                // Android unfold animation: rotate and scale with correct anchor points
+                // Apply animation to content VStack so anchor is relative to 310-width content, not full-width container
+                // Both sender and receiver animate from top-left
+                .rotationEffect(.degrees(rotationAngle), anchor: .topLeading)
+                .scaleEffect(scaleValue, anchor: .topLeading)
+                .opacity(opacityValue)
                     
                     // For receiver (start gravity): add spacer at end
                     // For sender (end gravity): no spacer - content aligns to right
                     if !isSentByMe {
                         Spacer()
-            }
+                    }
                 }
                 .frame(maxWidth: .infinity) // Ensure HStack takes full width
             }
             .frame(maxWidth: .infinity) // Ensure ZStack content takes full width
-                .background(Color.clear) // Ensure background doesn't block touches
-            .offset(x: 0, y: adjustedOffsetY(in: geometry)) // Only offset Y, X is handled by padding
+            .offset(x: 0, y: adjustedOffsetY(in: geometry)) // Only offset Y, X is handled by HStack padding (matching reference file)
                 .zIndex(1) // Dialog content on top of blur
+                .background(Color.clear.contentShape(Rectangle()).allowsHitTesting(false)) // Don't block touches in empty areas
             }
         }
         .ignoresSafeArea(edges: .all)
+        .onAppear {
+            // Set initial state (no animation) - start from folded position
+            // Both sender and receiver animate from top-left, so both start at 45°
+            rotationAngle = 45.0
+            scaleValue = 0.0
+            opacityValue = 0.0
+            
+            // Small delay to ensure initial state is set, then animate
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                // Android unfold animation: 400ms duration, simultaneous rotate and scale
+                // Both sender and receiver: rotate from 45° to 0°, scale from 0 to 1, pivot at top-left
+                withAnimation(.easeOut(duration: 0.4)) {
+                    rotationAngle = 0.0 // End rotation (0 degrees)
+                    scaleValue = 1.0 // End scale (full size)
+                    opacityValue = 1.0 // Fade in
+                }
+            }
+        }
+        .onChange(of: isPresented) { newValue in
+            if !newValue && !isDismissing {
+                // Animate dialog dismissal - reverse the unfold animation with spring for smoother feel
+                // Only animate if not already dismissing (prevents double animation)
+                isDismissing = true
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    rotationAngle = 45.0 // Both return to 45° (top-left animation)
+                    scaleValue = 0.0 // Start scale
+                    opacityValue = 0.0 // Fade out
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    isDismissing = false
+                }
+            } else if newValue {
+                // Reset dismissing flag when presenting
+                isDismissing = false
+                // Reset to initial state when presenting (before animation)
+                // Both sender and receiver start at 45° for top-left animation
+                rotationAngle = 45.0
+                scaleValue = 0.0
+                opacityValue = 0.0
+                
+                // Small delay then animate
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                    withAnimation(.easeOut(duration: 0.4)) {
+                        rotationAngle = 0.0
+                        scaleValue = 1.0
+                        opacityValue = 1.0
+                    }
+                }
+            }
+        }
     }
     
     // Horizontal spacing constant - exactly 10px from edges
     private let horizontalSpacing: CGFloat = 10
     
-    // Calculate adjusted offset Y - position message preview at exact message bubble position
+    // Calculate adjusted offset Y - position dialog at exact touch location
     private func adjustedOffsetY(in geometry: GeometryProxy) -> CGFloat {
         // Estimate message preview height (similar to contactCardHeight in ChatLongPressDialog)
         // This is approximate - actual height may vary based on message type
@@ -15869,20 +15979,21 @@ struct MessageLongPressDialog: View {
         }
         
         let frame = geometry.frame(in: .global)
-        // Match Android: position is top-left corner (getLocationOnScreen returns location[0], location[1])
-        // position.y is the top Y of the message bubble (minY from viewFrame)
+        // position is now the exact touch location in global coordinates
+        // Convert to local coordinates within the dialog's parent view
         let localY = position.y - frame.minY
         
-        // Position message preview at the exact same top Y position as the original message bubble
-        // The message preview is positioned after emoji card, so:
-        // - Message preview top Y = localY (bubble top Y)
-        // - Dialog top Y = message preview top Y - emojiCardHeight
-        let messagePreviewTopY = localY
-        let dialogTopY = messagePreviewTopY - emojiCardHeight
-        let maxY = geometry.size.height - dialogHeight - padding
+        // Position dialog so the touch location is near the center of the emoji card
+        // This provides a better UX - the dialog appears centered around where the user touched
+        let emojiCardCenterOffset = emojiCardHeight / 2
+        let dialogTopY = localY - emojiCardCenterOffset
         
-        print("🟣 [MessageLongPressDialog] Positioning - Bubble Top Y: \(position.y), Local Y: \(localY), Message Preview Top Y: \(messagePreviewTopY), Dialog Top Y: \(dialogTopY), isSentByMe: \(isSentByMe)")
-        return min(max(dialogTopY, padding), maxY)
+        // Ensure dialog stays within screen bounds
+        let maxY = geometry.size.height - dialogHeight - padding
+        let minY = padding
+        
+        print("🟣 [MessageLongPressDialog] Positioning - Touch Y: \(position.y), Local Y: \(localY), Dialog Top Y: \(dialogTopY), isSentByMe: \(isSentByMe)")
+        return min(max(dialogTopY, minY), maxY)
     }
     
     // MARK: - Emoji Reactions View (matching Android emojiCard and emojiLongRec)
