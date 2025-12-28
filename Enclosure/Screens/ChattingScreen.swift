@@ -15818,8 +15818,15 @@ struct MessageLongPressDialog: View {
                 rightGradientBars
                 // Add emoji button (matching Android addEmoji - 40dp x 40dp, aligned to end)
                 Button(action: {
-                    // Show emoji picker (matching Android bottomsheetEmoji)
+                    // Haptic feedback (matching Android Constant.Vibrator for Android Q+)
+                    let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                    impactFeedback.impactOccurred()
+                    
+                    // Show emoji picker (matching Android Constant.bottomsheetEmoji and bottomSheetDialog.show())
                     showEmojiPicker = true
+                    
+                    // Fetch available emojis (matching Android Webservice.get_emojiAdd)
+                    // Always fetch when button is clicked (Android calls get_emojiAdd every time)
                     fetchAvailableEmojis()
                 }) {
                     Image(systemName: "plus.circle.fill")
@@ -15951,88 +15958,76 @@ struct MessageLongPressDialog: View {
             currentEmojiModels = emojiModels.filter { !$0.name.isEmpty && !$0.emoji.isEmpty }
         }
         
-        // Listen for Firebase updates and combine with static emojis (matching Android)
+        // Listen for Firebase updates and combine with static emojis (matching Android get_emojiChatadapter)
+        // Use continuous listener to update when new emojis are added (matching Android adapter behavior)
         emojiListenerHandle = database.child(emojiPath).observe(.value) { snapshot in
             var emojiModels: [EmojiModel] = []
             var emojiHashSet = Set<String>() // Track duplicates (matching Android HashSet)
             
-            // Add static emojis to HashSet first
+            // Add static emojis to HashSet first (matching Android)
             for emoji in self.staticEmojis {
                 emojiHashSet.insert(emoji.character)
             }
             
-            // Get Firebase emojis
+            // Get Firebase emojis (matching Android snapshot.getChildren())
             if let emojiArray = snapshot.value as? [[String: Any]] {
                 for emojiDict in emojiArray {
-                    let name = emojiDict["name"] as? String ?? ""
                     let emoji = emojiDict["emoji"] as? String ?? ""
-                    if !name.isEmpty && !emoji.isEmpty {
+                    let name = emojiDict["name"] as? String ?? ""
+                    
+                    // Only process non-empty emojis (matching Android null checks)
+                    if !emoji.isEmpty && !name.isEmpty {
                         emojiModels.append(EmojiModel(name: name, emoji: emoji))
                         
-                        // Add Firebase emojis that aren't in static list (matching Android)
+                        // Track unique emojis (matching Android HashSet logic)
                         if !emojiHashSet.contains(emoji) {
-                            let firebaseEmoji = DisplayEmoji(
-                                slug: "",
-                                character: emoji,
-                                unicodeName: name,
-                                codePoint: "",
-                                isFromFirebase: true
-                            )
-                            // Add to displayEmojis if not already present
-                            if !self.displayEmojis.contains(where: { $0.character == emoji }) {
-                                self.displayEmojis.append(firebaseEmoji)
-                            }
                             emojiHashSet.insert(emoji)
                         }
                     }
                 }
             }
             
-            // Always add empty emoji at end if last one isn't empty (matching Android)
-            if let lastEmoji = self.displayEmojis.last, !lastEmoji.character.isEmpty {
-                let emptyEmoji = DisplayEmoji(
-                    slug: "e0-6-red-heart",
-                    character: "",
-                    unicodeName: "",
-                    codePoint: "2764 FE0F"
-                )
-                self.displayEmojis.append(emptyEmoji)
-            }
-            
+            // Update currentEmojiModels and rebuild displayEmojis (matching Android adapter.notifyDataSetChanged())
             DispatchQueue.main.async {
                 self.currentEmojiModels = emojiModels
-                // Update displayEmojis
+                // Rebuild displayEmojis from static + Firebase (matching Android)
                 self.updateDisplayEmojis()
             }
         }
     }
     
-    // Update display emojis combining static and Firebase (matching Android)
+    // Update display emojis combining static and Firebase (matching Android get_emojiChatadapter)
     private func updateDisplayEmojis() {
         var combinedEmojis = staticEmojis
-        var emojiHashSet = Set<String>()
+        var emojiHashSet = Set<String>() // Track duplicates (matching Android HashSet)
         
-        // Add static emojis to HashSet
+        // Add static emojis to HashSet first (matching Android)
         for emoji in staticEmojis {
             emojiHashSet.insert(emoji.character)
         }
         
-        // Add Firebase emojis that aren't in static list
+        // Add Firebase emojis that aren't in static list (matching Android logic)
+        // Android: if (emoji != null && name != null && !emojiHashSet.contains(emoji))
         for emojiModel in currentEmojiModels {
-            if !emojiHashSet.contains(emojiModel.emoji) {
+            let emoji = emojiModel.emoji
+            let name = emojiModel.name
+            
+            // Only add if emoji is not null, name is not null, and not already in HashSet
+            if !emoji.isEmpty && !name.isEmpty && !emojiHashSet.contains(emoji) {
                 let firebaseEmoji = DisplayEmoji(
                     slug: "",
-                    character: emojiModel.emoji,
-                    unicodeName: emojiModel.name,
+                    character: emoji,
+                    unicodeName: name,
                     codePoint: "",
                     isFromFirebase: true
                 )
                 combinedEmojis.append(firebaseEmoji)
-                emojiHashSet.insert(emojiModel.emoji)
+                emojiHashSet.insert(emoji) // Add to HashSet to prevent duplicates
             }
         }
         
         // Always add empty emoji at end if last one isn't empty (matching Android)
+        // Android: if (!emojis.get(emojis.size() - 1).getCharacter().isEmpty())
         if let lastEmoji = combinedEmojis.last, !lastEmoji.character.isEmpty {
             let emptyEmoji = DisplayEmoji(
                 slug: "e0-6-red-heart",
@@ -16043,6 +16038,7 @@ struct MessageLongPressDialog: View {
             combinedEmojis.append(emptyEmoji)
         }
         
+        // Update displayEmojis (matching Android adapter.notifyDataSetChanged())
         displayEmojis = combinedEmojis
     }
     
@@ -16062,6 +16058,7 @@ struct MessageLongPressDialog: View {
     
     // Fetch available emojis from API (matching Android Webservice.get_emojiAdd)
     private func fetchAvailableEmojis() {
+        // If already loading or already have emojis, skip (matching Android behavior)
         guard !isLoadingEmojis else { return }
         guard availableEmojis.isEmpty else { return }
         
@@ -16184,6 +16181,64 @@ struct MessageLongPressDialog: View {
         }
     }
     
+    // Add emoji from picker (matching Android emoji_adapter_addbtn onClick logic exactly)
+    private func addEmojiFromPicker(emojiCharacter: String) {
+        let currentUserId = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !currentUserId.isEmpty else { return } // Ensure name is non-empty (matching Android)
+        
+        let receiverUid = contact.uid
+        let receiverRoom = receiverUid + currentUserId
+        let senderRoom = currentUserId + receiverUid
+        let messageId = message.id
+        
+        let database = Database.database().reference()
+        let emojiPath = "\(Constant.CHAT)/\(receiverRoom)/\(messageId)/emojiModel"
+        
+        database.child(emojiPath).observeSingleEvent(of: .value) { snapshot in
+            var emojiMap: [String: EmojiModel] = [:]
+            var isUpdated = false
+            let newEmoji = emojiCharacter
+            
+            // Load old data (matching Android snapshot.exists() check)
+            if snapshot.exists(), let emojiArray = snapshot.value as? [[String: Any]] {
+                for emojiDict in emojiArray {
+                    let name = emojiDict["name"] as? String ?? ""
+                    let emoji = emojiDict["emoji"] as? String ?? ""
+                    if !name.isEmpty {
+                        if name == currentUserId {
+                            // Update existing emoji for the same name (matching Android existingEmoji.setEmoji(newEmoji))
+                            emojiMap[name] = EmojiModel(name: name, emoji: newEmoji)
+                            isUpdated = true
+                        } else {
+                            emojiMap[name] = EmojiModel(name: name, emoji: emoji)
+                        }
+                    }
+                }
+            }
+            
+            // If not updated, add new entry (matching Android)
+            if !isUpdated {
+                emojiMap[currentUserId] = EmojiModel(name: currentUserId, emoji: newEmoji)
+            }
+            
+            // Update database only if changes are made (matching Android !emojiMap.isEmpty check)
+            if !emojiMap.isEmpty {
+                let emojiList = Array(emojiMap.values)
+                let emojiCountStr = String(emojiList.count)
+                
+                // Update receiver room (matching Android emojiRef.setValue)
+                database.child(emojiPath).setValue(emojiList.map { ["name": $0.name, "emoji": $0.emoji] }) { error, _ in
+                    if error == nil {
+                        // Update emoji count (matching Android onCompleteListener)
+                        database.child("\(Constant.CHAT)/\(receiverRoom)/\(messageId)/emojiCount").setValue(emojiCountStr)
+                        database.child("\(Constant.CHAT)/\(senderRoom)/\(messageId)/emojiModel").setValue(emojiList.map { ["name": $0.name, "emoji": $0.emoji] })
+                        database.child("\(Constant.CHAT)/\(senderRoom)/\(messageId)/emojiCount").setValue(emojiCountStr)
+                    }
+                }
+            }
+        }
+    }
+    
     // Remove emoji from Firebase (matching Android emojiAdapterChatAdapter remove logic)
     private func removeEmoji(emojiCharacter: String) {
         let currentUserId = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
@@ -16231,28 +16286,45 @@ struct MessageLongPressDialog: View {
     // Emoji picker sheet (matching Android bottom_emoji_lyt)
     @ViewBuilder
     private var emojiPickerSheet: some View {
-        // TODO: Implement emoji picker sheet matching Android bottom_emoji_lyt
-        // For now, show a simple list
         NavigationView {
-            List {
-                ForEach(availableEmojis.prefix(50), id: \.slug) { emojiData in
-                    Button(action: {
-                        // Add emoji to Firebase (matching Android emoji_adapter_addbtn onClick)
-                        addEmoji(emojiCharacter: emojiData.character)
-                        
-                        // Dismiss emoji picker sheet (matching Android Constant.bottomSheetDialog.dismiss())
-                        showEmojiPicker = false
-                        
-                        // Dismiss long press dialog (matching Android BlurHelper.dialogLayoutColor.dismiss())
-                        isPresented = false
-                    }) {
-                        HStack {
-                            Text(emojiData.character)
-                                .font(.system(size: 30))
-                            Text(emojiData.slug)
-                                .foregroundColor(.primary)
-                            Spacer()
+            ZStack {
+                // Show progress indicator while loading (matching Android ProgressBar visibility)
+                if isLoadingEmojis {
+                    VStack {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text("Loading emojis...")
+                            .font(.custom("Inter18pt-Regular", size: 14))
+                            .foregroundColor(Color("gray3"))
+                            .padding(.top, 10)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    // Show emoji list (matching Android RecyclerView with GridLayoutManager, 9 columns)
+                    ScrollView {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 40), spacing: 8)], spacing: 8) {
+                            ForEach(availableEmojis, id: \.slug) { emojiData in
+                                Button(action: {
+                                    // Haptic feedback (matching Android Constant.Vibrator for Android Q+)
+                                    let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                                    impactFeedback.impactOccurred()
+                                    
+                                    // Add emoji to Firebase (matching Android emoji_adapter_addbtn onClick)
+                                    addEmojiFromPicker(emojiCharacter: emojiData.character)
+                                    
+                                    // Dismiss emoji picker sheet (matching Android Constant.bottomSheetDialog.dismiss())
+                                    showEmojiPicker = false
+                                    
+                                    // Dismiss long press dialog (matching Android BlurHelper.dialogLayoutColor.dismiss())
+                                    isPresented = false
+                                }) {
+                                    Text(emojiData.character)
+                                        .font(.system(size: 30))
+                                        .frame(width: 40, height: 40)
+                                }
+                            }
                         }
+                        .padding(8)
                     }
                 }
             }
