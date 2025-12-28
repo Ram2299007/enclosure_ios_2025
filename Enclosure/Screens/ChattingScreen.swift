@@ -95,6 +95,13 @@ struct ChattingScreen: View {
     @State private var longPressedMessage: ChatMessage? = nil // Track which message was long pressed
     @State private var longPressPosition: CGPoint = .zero // Track long press position
     
+    // Emoji reactions bottom sheet state
+    @State private var showEmojiReactionsSheet: Bool = false
+    @State private var emojiReactionsMessage: ChatMessage? = nil
+    @State private var emojiReactionsList: [EmojiModel] = []
+    @State private var isLoadingEmojiReactions: Bool = false
+    @State private var emojiReactionsListenerHandle: DatabaseHandle?
+    
     // MARK: - Errors
     private enum MultiImageUploadError: Error {
         case dataUnavailable
@@ -261,6 +268,9 @@ struct ChattingScreen: View {
                     }
                 )
             }
+        }
+        .sheet(isPresented: $showEmojiReactionsSheet) {
+            emojiReactionsBottomSheet
         }
         .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showCameraView) {
@@ -838,6 +848,12 @@ struct ChattingScreen: View {
                                         longPressPosition = position
                                         showLongPressDialog = true
                                         print("🔵 Dialog state - showLongPressDialog: \(showLongPressDialog), message: \(longPressedMessage?.id ?? "nil")")
+                                    },
+                                    onEmojiCardTap: { message in
+                                        // Handle emoji card tap - open emoji reactions bottom sheet
+                                        emojiReactionsMessage = message
+                                        showEmojiReactionsSheet = true
+                                        loadEmojiReactions(for: message)
                                     },
                                     isHighlighted: highlightedMessageId == message.id
                                 )
@@ -9879,6 +9895,7 @@ struct MessageBubbleView: View {
     let onHalfSwipe: (ChatMessage) -> Void
     let onReplyTap: ((ChatMessage) -> Void)?
     let onLongPress: ((ChatMessage, CGPoint) -> Void)?
+    let onEmojiCardTap: ((ChatMessage) -> Void)?
     let isHighlighted: Bool
     @GestureState private var dragTranslation: CGSize = .zero
     @State private var isDragging: Bool = false
@@ -9886,12 +9903,13 @@ struct MessageBubbleView: View {
     private let halfSwipeThreshold: CGFloat = 60
     @Environment(\.colorScheme) private var colorScheme
     
-    init(message: ChatMessage, onHalfSwipe: @escaping (ChatMessage) -> Void = { _ in }, onReplyTap: ((ChatMessage) -> Void)? = nil, onLongPress: ((ChatMessage, CGPoint) -> Void)? = nil, isHighlighted: Bool = false) {
+    init(message: ChatMessage, onHalfSwipe: @escaping (ChatMessage) -> Void = { _ in }, onReplyTap: ((ChatMessage) -> Void)? = nil, onLongPress: ((ChatMessage, CGPoint) -> Void)? = nil, onEmojiCardTap: ((ChatMessage) -> Void)? = nil, isHighlighted: Bool = false) {
         self.message = message
         self.isSentByMe = message.uid == Constant.SenderIdMy
         self.onHalfSwipe = onHalfSwipe
         self.onReplyTap = onReplyTap
         self.onLongPress = onLongPress
+        self.onEmojiCardTap = onEmojiCardTap
         self.isHighlighted = isHighlighted
     }
     
@@ -9904,7 +9922,16 @@ struct MessageBubbleView: View {
             VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
                 replyLayoutView
                 mainMessageContentView
+                // Time row and emoji card are at the same level (both layout_below="@id/rl" in Android)
+                // Emoji card stays positioned relative to progress bar area
+                ZStack(alignment: .bottom) {
+                    // Time row (matching Android sendTime with progress indicator)
                 timeRowView
+                        .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading)
+                    // Emoji card (matching Android emojiTextCard) - positioned relative to progress bar
+                    emojiReactionsCardView
+                        .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading)
+                }
             }
             
             if !isSentByMe {
@@ -10677,6 +10704,76 @@ struct MessageBubbleView: View {
         .padding(.top, 5)
         .padding(.bottom, 7)
         .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading)
+    }
+    
+    // MARK: - Emoji Reactions Card (matching Android emojiTextCard)
+    @ViewBuilder
+    private var emojiReactionsCardView: some View {
+        // Show emoji card only if emojiCount is not empty (matching Android visibility logic)
+        if let emojiCount = message.emojiCount, !emojiCount.isEmpty {
+            // Emoji card (matching Android emojiTextCard CardView)
+            // layout_below="@id/rl", layout_alignParentEnd="true" (sender) or layout_alignParentStart="true" (receiver)
+            // layout_marginTop="-4dp", layout_marginEnd="54dp" (sender) or layout_marginStart="54dp" (receiver)
+            Button(action: {
+                // Handle emoji card tap - open emoji reactions bottom sheet (matching Android onClick)
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                // Open emoji reactions bottom sheet
+                if let onEmojiCardTap = onEmojiCardTap {
+                    onEmojiCardTap(message)
+                }
+            }) {
+                // Emoji text container (matching Android emojiText TextView)
+                HStack(spacing: 0) {
+                    // Build emoji text from emojiModel (matching Android logic)
+                    let emojiText = buildEmojiText()
+                    
+                    // Display emoji text with count if emojiCount is "2"
+                    if emojiCount == "2" {
+                        // Show emojis with " 2 " at the end (matching Android SpannableString)
+                        HStack(spacing: 0) {
+                            Text(emojiText)
+                                .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp"
+                            Text(" 2 ")
+                                .font(.custom("Inter18pt-Regular", size: 13.5)) // 0.9f relative size (15 * 0.9 = 13.5)
+                        }
+                    } else {
+                        // Show emojis without count
+                        Text(emojiText)
+                            .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp"
+                    }
+                }
+                .foregroundColor(Color("gray3")) // textColor="@color/gray3"
+                .padding(.horizontal, 5) // paddingHorizontal="5dp"
+                .padding(.vertical, 1.5) // paddingVertical="1.5dp"
+                .background(
+                    // CardView with corner radius 360dp (circular) and cardBackgroundColornew
+                    RoundedRectangle(cornerRadius: 360)
+                        .fill(Color("cardBackgroundColornew"))
+                )
+            }
+            .offset(y: -4) // layout_marginTop="-4dp" to overlap message bubble
+            .padding(isSentByMe ? .trailing : .leading, 54) // marginEnd="54dp" for sender, marginStart="54dp" for receiver
+        }
+    }
+    
+    // Build emoji text from emojiModel (matching Android logic)
+    private func buildEmojiText() -> String {
+        let emojiModels = message.emojiModel ?? []
+        
+        // Remove duplicates using Set (matching Android HashSet<emojiModel>)
+        // EmojiModel conforms to Hashable, so duplicates are removed based on both name and emoji
+        let uniqueEmojiList = Array(Set(emojiModels))
+        
+        // Build emoji text by appending unique emojis with spaces (matching Android StringBuilder)
+        var emojiText = ""
+        for emojiModel in uniqueEmojiList {
+            let emoji = emojiModel.emoji
+            if !emoji.isEmpty {
+                emojiText += emoji + " " // Add space between emojis (matching Android)
+            }
+        }
+        
+        return emojiText.trimmingCharacters(in: .whitespaces) // Trim trailing space
     }
     
     @ViewBuilder
@@ -14805,7 +14902,7 @@ struct MessageLongPressDialog: View {
                 // Check if message contains a URL (matching Android URLUtil.isValidUrl)
                 if let url = messageContent.extractURL(), url.isValidURL() {
                     // Show rich link preview (matching Android richLinkViewLyt)
-                    HStack {
+                                HStack {
                         if isSentByMe {
                             Spacer(minLength: 0) // Push content to end (right side gravity - end)
                             SenderRichLinkView(
@@ -14918,7 +15015,7 @@ struct MessageLongPressDialog: View {
                 progressIndicatorPreviewView(isSender: true)
                 Text(message.time)
                     .font(.custom("Inter18pt-Regular", size: 10))
-                    .foregroundColor(Color("gray3"))
+                                            .foregroundColor(Color("gray3"))
             } else {
                 Text(message.time)
                     .font(.custom("Inter18pt-Regular", size: 10))
@@ -16118,9 +16215,15 @@ struct MessageLongPressDialog: View {
     private func handleEmojiTap(displayEmoji: DisplayEmoji) {
         guard !displayEmoji.character.isEmpty else { return } // Skip empty emoji
         
+        // Haptic feedback (matching Android Constant.Vibrator(mContext))
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        
         let currentUserId = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         // Check if user already reacted with this emoji
         let userReaction = currentEmojiModels.first { $0.name == currentUserId && $0.emoji == displayEmoji.character }
+        
+        // Dismiss dialog when tapping emoji (matching Android BlurHelper.dialogLayoutColor.dismiss())
+        isPresented = false
         
         if let reaction = userReaction {
             // Remove emoji (matching Android delete emoji logic)
@@ -16372,8 +16475,106 @@ struct MessageLongPressDialog: View {
             return "only_text"
         }
     }
+}
+
+// MARK: - ChattingScreen Extension for Emoji Reactions
+extension ChattingScreen {
+    // MARK: - Emoji Reactions Bottom Sheet (matching Android bottom_emoji_lyt)
+    @ViewBuilder
+    var emojiReactionsBottomSheet: some View {
+        VStack(spacing: 0) {
+            // Custom drag handle (matching Android CardView with black_white_cross background)
+            // CardView (40dp x 5dp) containing LinearLayout with two small dots inside
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color("black_white_cross"))
+                    .frame(width: 40, height: 5)
+                
+                // Two small dots inside the bar (matching Android LinearLayout inside CardView)
+                HStack(spacing: 5) {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color("edittextBg"))
+                        .frame(width: 3, height: 3)
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color("edittextBg"))
+                        .frame(width: 3, height: 3)
+                }
+            }
+            .padding(.vertical, 5)
+            
+            // Emoji reactions list (matching Android RecyclerView)
+            if isLoadingEmojiReactions {
+                ProgressView()
+                    .progressViewStyle(LinearProgressViewStyle(tint: Color("TextColor")))
+                    .frame(height: 4)
+                    .padding()
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(emojiReactionsList, id: \.name) { emojiModel in
+                            EmojiReactionRow(emojiModel: emojiModel, receiverUid: contact.uid)
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                }
+                .frame(height: 400) // android:layout_height="400dp"
+            }
+        }
+        .background(Color("BackgroundColor"))
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.hidden) // Hide default drag indicator, use custom one
+        .applyPresentationBackground() // Remove white background (iOS 16.4+)
+        .onDisappear {
+            removeEmojiReactionsListener()
+        }
+    }
     
+    // Load emoji reactions from Firebase (matching Android emojiRef.addValueEventListener)
+    func loadEmojiReactions(for message: ChatMessage) {
+        isLoadingEmojiReactions = true
+        emojiReactionsList = []
+        
+        let currentUserId = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        let receiverUid = contact.uid
+        let receiverRoom = receiverUid + currentUserId
+        let messageId = message.id
+        
+        let database = Database.database().reference()
+        let emojiPath = "\(Constant.CHAT)/\(receiverRoom)/\(messageId)/emojiModel"
+        
+        // Remove existing listener if any
+        removeEmojiReactionsListener()
+        
+        // Add listener for real-time updates
+        emojiReactionsListenerHandle = database.child(emojiPath).observe(.value) { snapshot in
+            var emojiList: [EmojiModel] = []
+            
+            if snapshot.exists(), let emojiArray = snapshot.value as? [[String: Any]] {
+                for emojiDict in emojiArray {
+                    let name = emojiDict["name"] as? String ?? ""
+                    let emoji = emojiDict["emoji"] as? String ?? ""
+                    if !name.isEmpty && !emoji.isEmpty {
+                        emojiList.append(EmojiModel(name: name, emoji: emoji))
+                    }
+                }
+            }
+            
+            emojiReactionsList = emojiList
+            isLoadingEmojiReactions = false
+        }
+    }
     
+    // Remove emoji reactions listener
+    func removeEmojiReactionsListener() {
+        if let handle = emojiReactionsListenerHandle {
+            Database.database().reference().removeObserver(withHandle: handle)
+            emojiReactionsListenerHandle = nil
+        }
+    }
+}
+
+// MARK: - MessageLongPressDialog Extension
+extension MessageLongPressDialog {
     // Get sender message background color (matching Android senderMessageBackgroundColor)
     private func getSenderMessageBackgroundColor(colorScheme: ColorScheme) -> Color {
         // Light mode: always use legacy bubble color (#011224) to match Android light theme
@@ -16405,5 +16606,93 @@ struct MessageLongPressDialog: View {
     private func getReceiverMessageBackgroundColor() -> Color {
         // Use glassmorphism background similar to receiver messages
         return Color("cardBackgroundColornew")
+    }
+}
+
+// MARK: - View Extension for Presentation Background
+extension View {
+    @ViewBuilder
+    func applyPresentationBackground() -> some View {
+        if #available(iOS 16.4, *) {
+            self.presentationBackground(Color("BackgroundColor"))
+        } else {
+            self
+        }
+    }
+}
+
+// MARK: - Emoji Reaction Row (matching Android emoji_people_row.xml)
+struct EmojiReactionRow: View {
+    let emojiModel: EmojiModel
+    let receiverUid: String
+    @State private var userName: String = ""
+    @State private var userPhotoUrl: String = ""
+    @State private var isLoading: Bool = true
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            // Profile image (matching Android contact1img)
+            AsyncImage(url: URL(string: userPhotoUrl)) { phase in
+                switch phase {
+                case .empty:
+                    Image("inviteimg")
+                        .resizable()
+                        .scaledToFill()
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                case .failure:
+                    Image("inviteimg")
+                        .resizable()
+                        .scaledToFill()
+                @unknown default:
+                    Image("inviteimg")
+                        .resizable()
+                        .scaledToFill()
+                }
+            }
+            .frame(width: 48, height: 48)
+            .clipShape(Circle())
+            .padding(.leading, 16)
+            .padding(.trailing, 16)
+            .padding(.top, 16)
+            
+            // User name (matching Android contact1text)
+            Text(userName)
+                .font(.custom("Inter18pt-Bold", size: 16))
+                .fontWeight(.semibold)
+                .foregroundColor(Color("TextColor"))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            
+            // Emoji (matching Android emojiTxt)
+            Text(emojiModel.emoji)
+                .font(.system(size: 22))
+                .foregroundColor(Color(hex: "#000000"))
+                .padding(.trailing, 10)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color("BackgroundColor"))
+        .onAppear {
+            loadUserInfo()
+        }
+    }
+    
+    private func loadUserInfo() {
+        let currentUserId = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        
+        if emojiModel.name == currentUserId {
+            // Current user - use local data (matching Android logic)
+            userName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
+            userPhotoUrl = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
+            isLoading = false
+        } else {
+            // Other user - fetch from API (matching Android Webservice.get_profile_UserInfoEmoji)
+            // TODO: Implement API call to fetch user info
+            // For now, use the UID as name
+            userName = emojiModel.name
+            isLoading = false
+        }
     }
 }
