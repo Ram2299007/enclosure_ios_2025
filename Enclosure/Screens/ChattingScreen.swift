@@ -45,6 +45,10 @@ struct ChattingScreen: View {
     @State private var searchText: String = ""
     @State private var showMultiSelectHeader: Bool = false
     @State private var selectedCount: Int = 0
+    
+    // Multi-selection state (matching Android chatAdapter)
+    @State private var isMultiSelectMode: Bool = false
+    @State private var selectedMessageIds: Set<String> = [] // Track selected message IDs
     @State private var showReplyLayout: Bool = false
     @State private var replyMessage: String = ""
     @State private var replySenderName: String = ""
@@ -193,8 +197,12 @@ struct ChattingScreen: View {
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Header
-                headerView
+                // Header - show multi-select header when in multi-select mode, otherwise show normal header
+                if isMultiSelectMode {
+                    multiSelectHeaderView
+                } else {
+                    headerView
+                }
                 
                 // Message list
                 ZStack(alignment: .top) {
@@ -219,8 +227,10 @@ struct ChattingScreen: View {
                     }
                 }
                 
-                // Bottom input area
-                bottomInputView
+                // Bottom input area - hide when in multi-select mode (matching Android binding.bottom.setVisibility(View.GONE))
+                if !isMultiSelectMode {
+                    bottomInputView
+                }
             }
             
             // Menu overlay
@@ -261,10 +271,13 @@ struct ChattingScreen: View {
                         print("Delete message: \(message.id)")
                     },
                     onMultiSelect: {
+                        // Enter multi-select mode and auto-select the current message (matching Android addSelectLytClickListener)
                         showLongPressDialog = false
+                        enterMultiSelectMode()
+                        if let messageId = longPressedMessage?.id {
+                            toggleMessageSelection(messageId: messageId)
+                        }
                         longPressedMessage = nil
-                        // TODO: Implement multi-select action
-                        print("Multi-select message: \(message.id)")
                     }
                 )
             }
@@ -837,12 +850,27 @@ struct ChattingScreen: View {
                                 MessageBubbleView(
                                     message: message,
                                     onHalfSwipe: { swipedMessage in
+                                        // Handle multi-select mode first (matching Android)
+                                        if isMultiSelectMode {
+                                            toggleMessageSelection(messageId: swipedMessage.id)
+                                            return
+                                        }
                                         handleHalfSwipeReply(swipedMessage)
                                     },
                                     onReplyTap: { message in
+                                        // Handle multi-select mode first (matching Android)
+                                        if isMultiSelectMode {
+                                            toggleMessageSelection(messageId: message.id)
+                                            return
+                                        }
                                         handleReplyTap(message: message)
                                     },
                                     onLongPress: { message, position in
+                                        // Handle multi-select mode first (matching Android)
+                                        if isMultiSelectMode {
+                                            toggleMessageSelection(messageId: message.id)
+                                            return
+                                        }
                                         print("🔵 Long press callback triggered for message: \(message.id), position: \(position)")
                                         longPressedMessage = message
                                         longPressPosition = position
@@ -850,12 +878,22 @@ struct ChattingScreen: View {
                                         print("🔵 Dialog state - showLongPressDialog: \(showLongPressDialog), message: \(longPressedMessage?.id ?? "nil")")
                                     },
                                     onEmojiCardTap: { message in
+                                        // Handle multi-select mode first (matching Android)
+                                        if isMultiSelectMode {
+                                            toggleMessageSelection(messageId: message.id)
+                                            return
+                                        }
                                         // Handle emoji card tap - open emoji reactions bottom sheet
                                         emojiReactionsMessage = message
                                         showEmojiReactionsSheet = true
                                         loadEmojiReactions(for: message)
                                     },
-                                    isHighlighted: highlightedMessageId == message.id
+                                    isHighlighted: highlightedMessageId == message.id,
+                                    isMultiSelectMode: isMultiSelectMode,
+                                    isSelected: isMessageSelected(messageId: message.id),
+                                    onSelectionToggle: { messageId in
+                                        toggleMessageSelection(messageId: messageId)
+                                    }
                                 )
                                     .id(message.id)
                                     .background(
@@ -1898,6 +1936,13 @@ struct ChattingScreen: View {
             isPressed = true
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            // If multi-select mode is active, exit it first (matching Android back button behavior)
+            if isMultiSelectMode {
+                exitMultiSelectMode()
+                isPressed = false
+                return
+            }
+            
             // If gallery picker is open, hide it first (two-step back behavior)
             if showGalleryPicker {
                 withAnimation {
@@ -2879,6 +2924,167 @@ struct ChattingScreen: View {
         default:
             return message.message.isEmpty ? "Message" : message.message
         }
+    }
+    
+    // MARK: - Multi-Selection Functions (matching Android chatAdapter)
+    
+    /// Enter multi-select mode (matching Android enterMultiSelectMode)
+    private func enterMultiSelectMode() {
+        isMultiSelectMode = true
+        selectedMessageIds.removeAll()
+        selectedCount = 0
+        showMultiSelectHeader = true
+    }
+    
+    /// Exit multi-select mode (matching Android exitMultiSelectMode)
+    private func exitMultiSelectMode() {
+        isMultiSelectMode = false
+        selectedMessageIds.removeAll()
+        selectedCount = 0
+        showMultiSelectHeader = false
+    }
+    
+    /// Toggle message selection (matching Android toggleSelection)
+    private func toggleMessageSelection(messageId: String) {
+        if selectedMessageIds.contains(messageId) {
+            selectedMessageIds.remove(messageId)
+        } else {
+            selectedMessageIds.insert(messageId)
+        }
+        selectedCount = selectedMessageIds.count
+        
+        // Exit multi-select mode if no messages are selected (optional - Android doesn't do this automatically)
+        if selectedMessageIds.isEmpty {
+            // Keep mode active even with 0 selections (matching Android behavior)
+        }
+    }
+    
+    // MARK: - Multi-Select Header View (matching Android header2Cardview)
+    private var multiSelectHeaderView: some View {
+        // CardView: match_parent width, 50dp height, 1dp marginBottom, edittextBg background
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 0) { // Vertically center all elements
+                // Cross button (matching Android cross LinearLayout)
+                // layout_width="40dp" layout_height="40dp" layout_marginEnd="5dp"
+                Button(action: {
+                    // Exit multi-select mode (matching Android binding.cross.setOnClickListener)
+                    exitMultiSelectMode()
+                }) {
+                    ZStack {
+                        // Background matching Android custome_ripple_circle
+                        Circle()
+                            .fill(Color("edittextBg"))
+                            .frame(width: 40, height: 40)
+                        
+                        // Inner LinearLayout: 26x26dp
+                        ZStack {
+                            // ImageView: crossimg, 25x18dp, padding="2dp"
+                            Image("crossimg")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 25, height: 18)
+                                .foregroundColor(Color("TextColor"))
+                                .padding(2)
+                        }
+                        .frame(width: 26, height: 26)
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding(.leading, 20) // layout_marginStart="20dp"
+                .padding(.trailing, 5) // layout_marginEnd="5dp"
+                
+                // Selected counter text container (matching Android LinearLayout with weight=1)
+                HStack(spacing: 0) {
+                    // Selected counter text (matching Android selectedCounterTxt)
+                    // layout_marginStart="21dp" layout_weight="1"
+                    Text("\(selectedCount) selected")
+                        .font(.custom("Inter18pt-Medium", size: 16))
+                        .fontWeight(.medium)
+                        .foregroundColor(Color("TextColor"))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 21)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 50) // Match header height for vertical centering
+                
+                // Forward button container (matching Android LinearLayout with weight=1, gravity=end)
+                HStack(alignment: .center) { // Vertically center forward button
+                    Spacer()
+                    
+                    // Forward button (matching Android forwardAll exactly)
+                    // background="@drawable/forward_drawable" with theme color border (5dp stroke, 20dp corner radius)
+                    // drawableEnd="@drawable/forward_wrapped_3" drawablePadding="5dp" paddingHorizontal="10dp"
+                    Button(action: {
+                        // Handle forward action (matching Android binding.forwardAll.setOnClickListener)
+                        let selectedMessages = getSelectedMessages()
+                        if !selectedMessages.isEmpty {
+                            // TODO: Implement forward functionality
+                            print("Forward \(selectedMessages.count) selected messages")
+                        }
+                    }) {
+                        HStack(alignment: .center, spacing: 2) { // Small spacing between text and icon
+                            // Text vertically centered
+                            Text("forward")
+                                .font(.custom("Inter18pt-Regular", size: 10))
+                                .foregroundColor(Color("TextColor"))
+                                .multilineTextAlignment(.center)
+                            
+                            Spacer(minLength: 0) // Minimal space to push icon to end side
+                            
+                            // Icon matching Android forward_wrapped_3: 24dp x 24dp, positioned on end side
+                            Image("forward_svg")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20) // Reduced icon size
+                                .foregroundColor(Color("TextColor")) // android:drawableTint="@color/TextColor"
+                        }
+                        .frame(width: 78) // Keep width 78px
+                        .padding(.horizontal, 6) // Reduced horizontal padding
+                        .padding(.vertical, 4) // Reduced vertical padding
+                        .background(
+                            // Background matching Android forward_drawable.xml exactly
+                            // Layer 1: Outer Border (stroke 5dp, corner radius 20dp)
+                            // Layer 2: Inner Background (solid chattingMessageBox, left inset 3dp, corner radius 20dp)
+                            GeometryReader { geometry in
+                                ZStack(alignment: .leading) {
+                                    // Layer 1: Outer Border (matching Android border item)
+                                    // stroke android:width="5dp" corners android:radius="20dp"
+                                    // Note: Java code applies theme color to border dynamically (borderDrawable.setStroke(5, Color.parseColor(themeColor2)))
+                                    RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
+                                        .stroke(Color(hex: Constant.themeColor), lineWidth: 5)
+                                        .frame(height: geometry.size.height-5) // Match content height for proper centering
+                                    
+                                    // Layer 2: Inner Background (matching Android background item)
+                                    // android:left="3dp" solid android:color="@color/chattingMessageBox" corners android:radius="20dp"
+                                    RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
+                                        .fill(Color("chattingMessageBox")) // solid android:color="@color/chattingMessageBox"
+                                        .frame(width: geometry.size.width + 3, height: geometry.size.height) // Match content height
+                                        .offset(x: 2) // Position 3dp from left edge
+                                }
+                            }
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.trailing, 10) // layout_marginEnd="10dp"
+            }
+            .frame(height: 50) // layout_height="50dp"
+        }
+        .background(Color("edittextBg")) // app:cardBackgroundColor="@color/edittextBg"
+        .padding(.bottom, 1) // layout_marginBottom="1dp"
+    }
+    
+    /// Check if message is selected (matching Android isSelected)
+    private func isMessageSelected(messageId: String) -> Bool {
+        return selectedMessageIds.contains(messageId)
+    }
+    
+    /// Get selected messages (matching Android getSelectedMessages)
+    private func getSelectedMessages() -> [ChatMessage] {
+        return messages.filter { selectedMessageIds.contains($0.id) }
     }
     
     // MARK: - Send Button Handler (matching Android sendGrp.setOnClickListener)
@@ -9897,6 +10103,9 @@ struct MessageBubbleView: View {
     let onLongPress: ((ChatMessage, CGPoint) -> Void)?
     let onEmojiCardTap: ((ChatMessage) -> Void)?
     let isHighlighted: Bool
+    let isMultiSelectMode: Bool
+    let isSelected: Bool
+    let onSelectionToggle: ((String) -> Void)?
     @GestureState private var dragTranslation: CGSize = .zero
     @State private var isDragging: Bool = false
     @State private var viewFrame: CGRect = .zero
@@ -9905,7 +10114,7 @@ struct MessageBubbleView: View {
     private let halfSwipeThreshold: CGFloat = 60
     @Environment(\.colorScheme) private var colorScheme
     
-    init(message: ChatMessage, onHalfSwipe: @escaping (ChatMessage) -> Void = { _ in }, onReplyTap: ((ChatMessage) -> Void)? = nil, onLongPress: ((ChatMessage, CGPoint) -> Void)? = nil, onEmojiCardTap: ((ChatMessage) -> Void)? = nil, isHighlighted: Bool = false) {
+    init(message: ChatMessage, onHalfSwipe: @escaping (ChatMessage) -> Void = { _ in }, onReplyTap: ((ChatMessage) -> Void)? = nil, onLongPress: ((ChatMessage, CGPoint) -> Void)? = nil, onEmojiCardTap: ((ChatMessage) -> Void)? = nil, isHighlighted: Bool = false, isMultiSelectMode: Bool = false, isSelected: Bool = false, onSelectionToggle: ((String) -> Void)? = nil) {
         self.message = message
         self.isSentByMe = message.uid == Constant.SenderIdMy
         self.onHalfSwipe = onHalfSwipe
@@ -9913,10 +10122,24 @@ struct MessageBubbleView: View {
         self.onLongPress = onLongPress
         self.onEmojiCardTap = onEmojiCardTap
         self.isHighlighted = isHighlighted
+        self.isMultiSelectMode = isMultiSelectMode
+        self.isSelected = isSelected
+        self.onSelectionToggle = onSelectionToggle
     }
     
     var body: some View {
         HStack(spacing: 0) {
+            // Checkbox for sender (on left side) - matching Android
+            if isMultiSelectMode && isSentByMe {
+                Image("multitick")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 24, height: 24)
+                    .foregroundColor(isSelected ? Color(hex: Constant.themeColor) : Color("gray3"))
+                    .padding(.trailing, 8)
+            }
+            
             if isSentByMe {
                 Spacer()
             }
@@ -9936,12 +10159,31 @@ struct MessageBubbleView: View {
                 }
             }
             
+            // Checkbox for receiver (on right side) - matching Android
+            if isMultiSelectMode && !isSentByMe {
+                Image("multitick")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 24, height: 24)
+                    .foregroundColor(isSelected ? Color(hex: Constant.themeColor) : Color("gray3"))
+                    .padding(.leading, 8)
+            }
+            
             if !isSentByMe {
                 Spacer()
             }
         }
         .padding(.horizontal, 10) // side margin like Android screen margins
         .padding(.vertical, 5) // vertical spacing 5px
+        .background(highlightBackground)
+        .contentShape(Rectangle()) // Make entire area tappable
+        .onTapGesture {
+            // Handle tap in multi-select mode (matching Android)
+            if isMultiSelectMode {
+                onSelectionToggle?(message.id)
+            }
+        }
         .background(highlightBackground)
         .contentShape(Rectangle())
         .offset(x: isDragging && dragTranslation.width > 0 ? min(dragTranslation.width, halfSwipeThreshold) : 0)
@@ -10803,11 +11045,11 @@ struct MessageBubbleView: View {
     
     @ViewBuilder
     private var highlightBackground: some View {
-        // Highlight background when message is highlighted (matching Android highlightcolor)
+        // Highlight background when message is highlighted or selected in multi-select mode (matching Android highlightcolor)
         // Light mode#e7ebf4, Dark mode: #1B1C1C
         // Applied to full width including horizontal padding (matching Android holder.itemView.setBackgroundColor)
         Group {
-            if isHighlighted {
+            if isHighlighted || (isMultiSelectMode && isSelected) {
                 GeometryReader { geometry in
                     Rectangle()
                         .fill(colorScheme == .dark ? Color(hex: "#1B1C1C") : Color(hex: "#e7ebf4"))
@@ -15783,101 +16025,187 @@ struct MessageLongPressDialog: View {
                             .padding(.top, 2)
                                 }
                             
-                            // Action buttons card (matching Android cardview)
+                            // Action buttons card (matching Android cardview exactly)
+                            // CardView: width=220dp, cornerRadius=20dp, elevation=5dp, marginEnd=16dp, marginTop=2dp, marginBottom=20dp
                             VStack(spacing: 0) {
                                 // Multi-Select button (matching Android SelectLyt)
+                                // paddingTop=10dp, marginStart=15dp, icon size=24dp, marginStart=3dp
                                 Button(action: {
                                     onMultiSelect()
                                 }) {
-                                    HStack {
+                                    HStack(spacing: 0) {
+                                        // TextView: weight=1, marginStart=15dp, textSize=16sp, bold, Inter font, lineHeight=24dp
                                         Text("Multi-Select")
                                             .font(.custom("Inter18pt-Regular", size: 16))
                                             .fontWeight(.bold)
                                             .foregroundColor(Color("TextColor"))
-                                        Spacer()
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .font(.system(size: 24))
-                                            .foregroundColor(Color("gray3"))
+                                            .lineLimit(1)
+                                            .lineSpacing(0) // lineHeight="24dp"
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.leading, 15)
+                                        
+                                        // ImageView container: weight=4, size=24dp, marginStart=3dp (from container edge)
+                                        HStack {
+                                            Spacer()
+                                            Image("multitick")
+                                                .renderingMode(.template)
+                                                .resizable()
+                                                .scaledToFit()
+                                                .frame(width: 24, height: 24)
+                                                .foregroundColor(Color("gray3"))
+                                                .padding(.trailing, 15) // Right edge margin to match Android layout
+                                        }
+                                        .frame(maxWidth: .infinity)
                                     }
-                                    .padding(.horizontal, 15)
-                                    .padding(.vertical, 10)
+                                    .frame(minHeight: 36) // Reduced height for tighter spacing
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.top, 6) // Reduced vertical padding
                                 }
+                                .buttonStyle(PlainButtonStyle())
                                 
-                                Divider()
-                                    .background(Color("gray2"))
-                                    .opacity(0.1)
+                                // Divider: height=0.5dp, marginTop=6dp, invisible (reduced spacing)
+                                Rectangle()
+                                    .fill(Color("gray2"))
+                                    .frame(height: 0.5)
+                                    .padding(.top, 6)
+                                    .opacity(0) // invisible
                                 
                                 // Forward button (matching Android forward)
+                                // paddingTop=10dp, marginStart=15dp, icon size=26.05x24dp, marginStart=3dp
                                 Button(action: {
                                     onForward()
                                 }) {
-                                    HStack {
+                                    HStack(spacing: 0) {
+                                        // TextView: weight=1, marginStart=15dp, lineHeight=24dp
                                         Text("Forward")
                                             .font(.custom("Inter18pt-Regular", size: 16))
                                             .fontWeight(.bold)
                                             .foregroundColor(Color("TextColor"))
-                                        Spacer()
-                                        Image(systemName: "arrowshape.turn.up.right.fill")
-                                            .font(.system(size: 24))
-                                            .foregroundColor(Color("gray3"))
+                                            .lineLimit(1)
+                                            .lineSpacing(0) // lineHeight="24dp"
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.leading, 15)
+                                        
+                                        // ImageView container: weight=4, size=26.05x24dp (matching Android exactly)
+                                        HStack {
+                                            Spacer()
+                                            Image("forward_svg")
+                                                .renderingMode(.template)
+                                                .resizable()
+                                                .scaledToFit()
+                                                .frame(width: 26.05, height: 24) // Exact Android size: 26.05dp x 24dp
+                                                .foregroundColor(Color("gray3"))
+                                                .padding(.trailing, 15) // Right edge margin to match Android layout
+                                        }
+                                        .frame(maxWidth: .infinity)
                                     }
-                                    .padding(.horizontal, 15)
-                                    .padding(.vertical, 10)
+                                    .frame(minHeight: 36) // Reduced height for tighter spacing
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.top, 6) // Reduced vertical padding
                                 }
+                                .buttonStyle(PlainButtonStyle())
                                 
-                                Divider()
-                                    .background(Color("gray2"))
-                                    .opacity(0.1)
-                                
-                                // Delete button (matching Android deletelyt)
-                                Button(action: {
-                                    onDelete()
-                                }) {
-                                    HStack {
-                                        Text("Delete")
-                                            .font(.custom("Inter18pt-Regular", size: 16))
-                                            .fontWeight(.bold)
-                                            .foregroundColor(Color("TextColor"))
-                                        Spacer()
-                                        Image(systemName: "trash.fill")
-                                            .font(.system(size: 24))
-                                            .foregroundColor(Color("gray3"))
-                                    }
-                                    .padding(.horizontal, 15)
-                                    .padding(.vertical, 10)
-                                }
-                                
-                                Divider()
-                                    .background(Color("gray2"))
-                                    .opacity(0.1)
+                                // Divider: height=0.5dp, marginTop=6dp, invisible (reduced spacing)
+                                Rectangle()
+                                    .fill(Color("gray2"))
+                                    .frame(height: 0.5)
+                                    .padding(.top, 6)
+                                    .opacity(0) // invisible
                                 
                                 // Copy button (matching Android copy)
+                                // paddingTop=10dp, marginStart=15dp, icon size=23x23dp, marginStart=5dp
                                 Button(action: {
                                     onCopy()
                                 }) {
-                                    HStack {
+                                    HStack(spacing: 0) {
+                                        // TextView: weight=1, marginStart=15dp, lineHeight=24dp
                                         Text("Copy message")
                                             .font(.custom("Inter18pt-Regular", size: 16))
                                             .fontWeight(.bold)
                                             .foregroundColor(Color("TextColor"))
-                                        Spacer()
-                                        Image(systemName: "doc.on.doc.fill")
-                                            .font(.system(size: 23))
-                                            .foregroundColor(Color("gray3"))
+                                            .lineLimit(1)
+                                            .lineSpacing(0) // lineHeight="24dp"
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.leading, 15)
+                                        
+                                        // ImageView container: weight=4, size=23x23dp (matching Android exactly)
+                                        HStack {
+                                            Spacer()
+                                            Image("copy_svg")
+                                                .renderingMode(.template)
+                                                .resizable()
+                                                .scaledToFit()
+                                                .frame(width: 23, height: 23) // Exact Android size: 23dp x 23dp
+                                                .foregroundColor(Color("gray3")) // app:tint="@color/gray3"
+                                                .padding(.trailing, 15) // Right edge margin to match Android layout
+                                        }
+                                        .frame(maxWidth: .infinity)
                                     }
-                                    .padding(.horizontal, 15)
-                                    .padding(.vertical, 10)
+                                    .frame(minHeight: 36) // Reduced height for tighter spacing
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.top, 6) // Reduced vertical padding
                                 }
+                                .buttonStyle(PlainButtonStyle())
+                                
+                                // Divider: height=1dp, marginTop=6dp, invisible (reduced spacing)
+                                Rectangle()
+                                    .fill(Color("gray2"))
+                                    .frame(height: 1)
+                                    .padding(.top, 6)
+                                    .opacity(0) // invisible
+                                
+                                // Delete button (matching Android deletelyt)
+                                // paddingTop=10dp, marginStart=15dp, icon size=26.05x24dp, marginStart=3dp
+                                Button(action: {
+                                    onDelete()
+                                }) {
+                                    HStack(spacing: 0) {
+                                        // TextView: weight=1, marginStart=15dp, lineHeight=24dp
+                                        Text("Delete")
+                                            .font(.custom("Inter18pt-Regular", size: 16))
+                                            .fontWeight(.bold)
+                                            .foregroundColor(Color("TextColor"))
+                                            .lineLimit(1)
+                                            .lineSpacing(0) // lineHeight="24dp"
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.leading, 15)
+                                        
+                                        // ImageView container: weight=4, size=26.05x24dp (matching Android exactly)
+                                        HStack {
+                                            Spacer()
+                                            Image("baseline_delete_forever_24")
+                                                .renderingMode(.template)
+                                                .resizable()
+                                                .scaledToFit()
+                                                .frame(width: 26.05, height: 24) // Exact Android size: 26.05dp x 24dp
+                                                .foregroundColor(Color("gray3")) // app:tint="@color/gray3"
+                                                .padding(.trailing, 15) // Right edge margin to match Android layout
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                    }
+                                    .frame(minHeight: 36) // Reduced height for tighter spacing
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.top, 6) // Reduced vertical padding
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                
+                                // Divider: height=0.5dp, marginTop=6dp, invisible (reduced spacing)
+                                Rectangle()
+                                    .fill(Color("gray2"))
+                                    .frame(height: 0.5)
+                                    .padding(.top, 6)
+                                    .opacity(0) // invisible
                             }
-                            .frame(width: 220)
+                            .frame(width: 220) // layout_width="220dp"
                             .background(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .fill(Color("cardBackgroundColornew"))
+                                RoundedRectangle(cornerRadius: 20) // cardCornerRadius="20dp"
+                                    .fill(Color("cardBackgroundColornew")) // style="@style/cardBackgroundColor"
+                                    .shadow(color: Color.black.opacity(0.2), radius: 5, x: 0, y: 2) // cardElevation="5dp"
                             )
-                                .padding(.trailing, isSentByMe ? 16 : 0)
-                                .padding(.leading, isSentByMe ? 0 : 0)
-                            .padding(.top, 2)
-                            .padding(.bottom, 20)
+                            .padding(.trailing, isSentByMe ? 16 : 0) // layout_marginEnd="16dp"
+                            .padding(.leading, isSentByMe ? 0 : 0)
+                            .padding(.top, 2) // layout_marginTop="2dp"
+                            .padding(.bottom, 20) // layout_marginBottom="20dp"
                     }
                 }
                 .frame(width: 310)
