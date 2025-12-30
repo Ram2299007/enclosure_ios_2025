@@ -274,10 +274,16 @@ struct ChattingScreen: View {
                         UIPasteboard.general.string = message.message
                     },
                     onDelete: {
+                        // Dismiss the long press dialog (matching Android BlurHelper.dialogLayoutColor.dismiss())
                         showLongPressDialog = false
+                        
+                        // Store last deleted model ID (matching Android Constant.setSF.putString(Constant.last_deleted_model_id, model.getModelId()))
+                        UserDefaults.standard.set(message.id, forKey: "last_deleted_model_id")
+                        
+                        // Delete the message (matching Android delete functionality)
+                        deleteMessage(message: message)
+                        
                         longPressedMessage = nil
-                        // TODO: Implement delete action
-                        print("Delete message: \(message.id)")
                     },
                     onMultiSelect: {
                         // Enter multi-select mode and auto-select the current message (matching Android addSelectLytClickListener)
@@ -3249,6 +3255,109 @@ struct ChattingScreen: View {
                 // Add small delay to prevent overwhelming the server (matching Android Thread.sleep(100))
                 if messageIndex < selectedMessagesForForward.count - 1 || contactIndex < contacts.count - 1 {
                     Thread.sleep(forTimeInterval: 0.1)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Delete Message Handler (matching Android deleteLyt.setOnClickListener)
+    private func deleteMessage(message: ChatMessage) {
+        print("🔴 [deleteMessage] Deleting message: \(message.id)")
+        
+        // Get current timestamp and message timestamp
+        // Android uses milliseconds, iOS timestamp is TimeInterval (seconds), so convert to milliseconds
+        let currentTimestamp = Int64(Date().timeIntervalSince1970 * 1000) // Current time in milliseconds
+        let messageTimestamp = Int64(message.timestamp * 1000) // Convert TimeInterval (seconds) to milliseconds
+        let diffMillis = currentTimestamp - messageTimestamp
+        let totalHours = diffMillis / (1000 * 60 * 60)
+        
+        print("🔴 [deleteMessage] Current timestamp: \(currentTimestamp), Message timestamp: \(messageTimestamp)")
+        print("🔴 [deleteMessage] Total hours: \(totalHours)")
+        
+        // Get receiver and sender rooms
+        let receiverRoom = getReceiverRoom()
+        let senderRoom = getSenderRoom()
+        let database = Database.database().reference()
+        
+        // Delete from Firebase (matching Android delete functionality)
+        if totalHours <= 24 {
+            // Message is less than 24 hours old - delete from both rooms
+            print("🔴 [deleteMessage] Message is less than 24 hours old, deleting from both rooms")
+            
+            // Delete from receiver room first
+            database.child(Constant.CHAT).child(receiverRoom).child(message.id).removeValue { error, _ in
+                if let error = error {
+                    print("🔴 [deleteMessage] Error deleting from receiver room: \(error.localizedDescription)")
+                } else {
+                    print("🔴 [deleteMessage] Successfully deleted from receiver room")
+                    
+                    // Delete from sender room
+                    database.child(Constant.CHAT).child(senderRoom).child(message.id).removeValue { error, _ in
+                        if let error = error {
+                            print("🔴 [deleteMessage] Error deleting from sender room: \(error.localizedDescription)")
+                        } else {
+                            print("🔴 [deleteMessage] Successfully deleted from sender room")
+                            
+                            // Remove from local messages list (matching Android removeItem)
+                            DispatchQueue.main.async {
+                                if let index = self.messages.firstIndex(where: { $0.id == message.id }) {
+                                    self.messages.remove(at: index)
+                                    print("🔴 [deleteMessage] Removed message from local list at index: \(index)")
+                                    self.updateEmptyState(isEmpty: self.messages.isEmpty)
+                                }
+                            }
+                            
+                            // Call API to delete from server (matching Android Webservice.delete_chatingindivisual)
+                            ApiService.delete_chatingindivisual(
+                                modelId: message.id,
+                                senderId: message.uid,
+                                receiverId: self.contact.uid
+                            ) { success, message in
+                                DispatchQueue.main.async {
+                                    if success {
+                                        print("🔴 [deleteMessage] API delete SUCCESS: \(message)")
+                                    } else {
+                                        print("🔴 [deleteMessage] API delete FAILED: \(message)")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // Message is older than 24 hours - only delete from receiver room
+            print("🔴 [deleteMessage] Message is older than 24 hours, deleting from receiver room only")
+            
+            database.child(Constant.CHAT).child(receiverRoom).child(message.id).removeValue { error, _ in
+                if let error = error {
+                    print("🔴 [deleteMessage] Error deleting from receiver room: \(error.localizedDescription)")
+                } else {
+                    print("🔴 [deleteMessage] Successfully deleted from receiver room")
+                    
+                    // Remove from local messages list (matching Android removeItem)
+                    DispatchQueue.main.async {
+                        if let index = self.messages.firstIndex(where: { $0.id == message.id }) {
+                            self.messages.remove(at: index)
+                            print("🔴 [deleteMessage] Removed message from local list at index: \(index)")
+                            self.updateEmptyState(isEmpty: self.messages.isEmpty)
+                        }
+                    }
+                    
+                    // Call API to delete from server (matching Android Webservice.delete_chatingindivisual)
+                    ApiService.delete_chatingindivisual(
+                        modelId: message.id,
+                        senderId: message.uid,
+                        receiverId: self.contact.uid
+                    ) { success, message in
+                        DispatchQueue.main.async {
+                            if success {
+                                print("🔴 [deleteMessage] API delete SUCCESS: \(message)")
+                            } else {
+                                print("🔴 [deleteMessage] API delete FAILED: \(message)")
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -15342,6 +15451,19 @@ struct ShareSheet: UIViewControllerRepresentable {
     )
 }
 
+// MARK: - Custom Button Style with Hover Effect
+struct DialogButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                // Hover/press effect background (matching Android ripple effect)
+                Color.gray.opacity(configuration.isPressed ? 0.1 : 0.0)
+            )
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
 // MARK: - Message Long Press Dialog (matching Android sender_long_press_dialogue.xml and receiver_long_press_dialogue.xml)
 struct MessageLongPressDialog: View {
     let message: ChatMessage
@@ -16342,6 +16464,8 @@ struct MessageLongPressDialog: View {
                                 // Multi-Select button (matching Android SelectLyt)
                                 // paddingTop=10dp, marginStart=15dp, icon size=24dp, marginStart=3dp
                                 Button(action: {
+                                    // Haptic feedback (matching Android Constant.Vibrator)
+                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                     onMultiSelect()
                                 }) {
                                     HStack(spacing: 0) {
@@ -16372,7 +16496,7 @@ struct MessageLongPressDialog: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.top, 6) // Reduced vertical padding
                                 }
-                                .buttonStyle(PlainButtonStyle())
+                                .buttonStyle(DialogButtonStyle())
                                 
                                 // Divider: height=0.5dp, marginTop=6dp, invisible (reduced spacing)
                                 Rectangle()
@@ -16384,6 +16508,8 @@ struct MessageLongPressDialog: View {
                                 // Forward button (matching Android forward)
                                 // paddingTop=10dp, marginStart=15dp, icon size=26.05x24dp, marginStart=3dp
                                 Button(action: {
+                                    // Haptic feedback (matching Android Constant.Vibrator)
+                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                     onForward()
                                 }) {
                                     HStack(spacing: 0) {
@@ -16414,7 +16540,7 @@ struct MessageLongPressDialog: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.top, 6) // Reduced vertical padding
                                 }
-                                .buttonStyle(PlainButtonStyle())
+                                .buttonStyle(DialogButtonStyle())
                                 
                                 // Divider: height=0.5dp, marginTop=6dp, invisible (reduced spacing)
                                 Rectangle()
@@ -16428,6 +16554,8 @@ struct MessageLongPressDialog: View {
                                 // paddingTop=10dp, marginStart=15dp, icon size=23x23dp, marginStart=5dp
                                 if message.dataType == Constant.Text {
                                     Button(action: {
+                                        // Haptic feedback (matching Android Constant.Vibrator)
+                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                         onCopy()
                                     }) {
                                         HStack(spacing: 0) {
@@ -16470,6 +16598,8 @@ struct MessageLongPressDialog: View {
                                 // Delete button (matching Android deletelyt)
                                 // paddingTop=10dp, marginStart=15dp, icon size=26.05x24dp, marginStart=3dp
                                 Button(action: {
+                                    // Haptic feedback (matching Android Constant.Vibrator)
+                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                     onDelete()
                                 }) {
                                     HStack(spacing: 0) {
@@ -16500,7 +16630,7 @@ struct MessageLongPressDialog: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.top, 6) // Reduced vertical padding
                                 }
-                                .buttonStyle(PlainButtonStyle())
+                                .buttonStyle(DialogButtonStyle())
                                 
                                 // Divider: height=0.5dp, marginTop=6dp, invisible (reduced spacing)
                                 Rectangle()

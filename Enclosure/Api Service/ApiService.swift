@@ -546,6 +546,41 @@ class ApiService {
             }
     }
     
+    // Delete individual chatting message (matching Android Webservice.delete_chatingindivisual)
+    static func delete_chatingindivisual(modelId: String, senderId: String, receiverId: String, completion: @escaping (Bool, String) -> Void) {
+        let url = Constant.baseURL + "delete_chatingindivisual"
+        let parameters: [String: Any] = [
+            "model_id": modelId,
+            "sender_id": senderId,
+            "receiver_id": receiverId
+        ]
+        
+        print("🔴 [ApiService] delete_chatingindivisual - URL: \(url)")
+        print("🔴 [ApiService] delete_chatingindivisual - Parameters: \(parameters)")
+        
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseJSON { response in
+                print("🔴 [ApiService] Response received - Status: \(response.response?.statusCode ?? 0)")
+                
+                switch response.result {
+                case .success(let value):
+                    if let json = value as? [String: Any] {
+                        print("🔴 [ApiService] Response JSON: \(json)")
+                        let message = json["message"] as? String ?? "Message deleted successfully"
+                        completion(true, message)
+                    } else {
+                        print("🔴 [ApiService] Invalid response format")
+                        completion(false, "Invalid response format")
+                    }
+                    
+                case .failure(let error):
+                    print("🔴 [ApiService] Request failed - error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription)
+                }
+            }
+    }
+    
     // Delete voice call log
     static func delete_voice_call_log(uid: String, friendId: String, callType: String, completion: @escaping (Bool, String) -> Void) {
         let url = Constant.baseURL + "delete_voice_call_log"
