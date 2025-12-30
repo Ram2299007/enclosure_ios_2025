@@ -16517,7 +16517,7 @@ struct MessageLongPressDialog: View {
                             )
                             .padding(.trailing, isSentByMe ? 16 : 0) // layout_marginEnd="16dp"
                                 .padding(.leading, isSentByMe ? 0 : 0)
-                            .padding(.top, 2) // layout_marginTop="2dp"
+                            .padding(.top, 5) // 3rd container top margin: 5px
                             .padding(.bottom, 20) // layout_marginBottom="20dp"
                     }
                 }
