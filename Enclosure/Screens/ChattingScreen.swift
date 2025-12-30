@@ -3111,24 +3111,140 @@ struct ChattingScreen: View {
     private func forwardMessagesToContacts(contacts: [UserActiveContactModel]) {
         guard !selectedMessagesForForward.isEmpty, !contacts.isEmpty else {
             print("Forward: No messages or contacts to forward")
+            Constant.showToast(message: "No messages or contacts to forward")
             return
         }
         
         print("Forward: Forwarding \(selectedMessagesForForward.count) messages to \(contacts.count) contacts")
         
-        // TODO: Implement actual forward logic
-        // This should:
-        // 1. Loop through each contact
-        // 2. For each contact, forward all selected messages
-        // 3. Use UploadChatHelperForward equivalent to upload messages
-        // 4. Exit multi-select mode after forwarding
-        // 5. Navigate to the last contact's chat if only one contact, or back to main if multiple
+        // Get current time in "hh:mm a" format (matching Android)
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "hh:mm a"
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        let currentDateTimeString = dateFormatter.string(from: Date())
         
-        // For now, just exit multi-select mode
-        exitMultiSelectMode()
+        // Get current date (matching Android Constant.getCurrentDate())
+        let currentDateFormatter = DateFormatter()
+        currentDateFormatter.dateFormat = "yyyy-MM-dd"
+        let currentDateString = currentDateFormatter.string(from: Date())
         
-        // Clear selected messages
-        selectedMessagesForForward.removeAll()
+        // Get user FCM token (matching Android)
+        let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
+        let myUID = Constant.SenderIdMy
+        let deviceType = "2" // iOS device type
+        
+        // Get user name and photo
+        let userName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
+        let micPhoto = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
+        
+        // Create emoji model array (matching Android - default empty emoji)
+        let emojiModels: [EmojiModel] = [EmojiModel(name: "", emoji: "")]
+        
+        // Track total messages to forward
+        let totalMessages = selectedMessagesForForward.count * contacts.count
+        var completedMessages = 0
+        var failedMessages = 0
+        
+        // Loop through each contact (matching Android forwardText.setOnClickListener)
+        for (contactIndex, contact) in contacts.enumerated() {
+            let contactId = contact.uid
+            let contactName = contact.fullName
+            let contactToken = contact.fToken ?? ""
+            
+            guard !contactId.isEmpty else {
+                print("Forward: Skipping contact with empty ID")
+                continue
+            }
+            
+            // Loop through all selected messages for this contact
+            for (messageIndex, originalMessage) in selectedMessagesForForward.enumerated() {
+                // Generate new message ID (matching Android database.getReference().push().getKey())
+                let newMessageId = UUID().uuidString
+                
+                // Create new forwarded message (matching Android messageModel constructor)
+                let forwardedMessage = ChatMessage(
+                    id: newMessageId,
+                    uid: myUID,
+                    message: originalMessage.message,
+                    time: currentDateTimeString,
+                    document: originalMessage.document,
+                    dataType: originalMessage.dataType,
+                    fileExtension: originalMessage.fileExtension,
+                    name: originalMessage.name,
+                    phone: originalMessage.phone,
+                    micPhoto: micPhoto,
+                    miceTiming: originalMessage.miceTiming,
+                    userName: userName,
+                    receiverId: contactId, // Set receiver to the contact
+                    replytextData: originalMessage.replytextData,
+                    replyKey: originalMessage.replyKey,
+                    replyType: originalMessage.replyType,
+                    replyOldData: originalMessage.replyOldData,
+                    replyCrtPostion: originalMessage.replyCrtPostion,
+                    forwaredKey: "forwordKey", // Set forward key (matching Android Constant.forwordKey)
+                    groupName: originalMessage.groupName,
+                    docSize: originalMessage.docSize,
+                    fileName: originalMessage.fileName,
+                    thumbnail: originalMessage.thumbnail,
+                    fileNameThumbnail: originalMessage.fileNameThumbnail,
+                    caption: originalMessage.caption,
+                    notification: originalMessage.notification,
+                    currentDate: currentDateString,
+                    emojiModel: emojiModels,
+                    emojiCount: nil,
+                    timestamp: Date().timeIntervalSince1970,
+                    imageWidth: originalMessage.imageWidth,
+                    imageHeight: originalMessage.imageHeight,
+                    aspectRatio: originalMessage.aspectRatio,
+                    selectionCount: originalMessage.selectionCount,
+                    selectionBunch: originalMessage.selectionBunch,
+                    receiverLoader: 0,
+                    linkTitle: originalMessage.linkTitle,
+                    linkDescription: originalMessage.linkDescription,
+                    linkImageUrl: originalMessage.linkImageUrl,
+                    favIconUrl: originalMessage.favIconUrl
+                )
+                
+                // Upload message using MessageUploadService (matching Android UploadChatHelperForward)
+                MessageUploadService.shared.uploadMessage(
+                    model: forwardedMessage,
+                    filePath: nil, // Forwarded messages use existing URLs
+                    userFTokenKey: contactToken.isEmpty ? userFTokenKey : contactToken,
+                    deviceType: deviceType
+                ) { success, errorMessage in
+                    DispatchQueue.main.async {
+                        if success {
+                            completedMessages += 1
+                            print("✅ Forward: Successfully forwarded message \(messageIndex + 1) to \(contactName)")
+                        } else {
+                            failedMessages += 1
+                            print("❌ Forward: Failed to forward message \(messageIndex + 1) to \(contactName): \(errorMessage ?? "Unknown error")")
+                        }
+                        
+                        // Check if all messages are processed
+                        if completedMessages + failedMessages >= totalMessages {
+                            // Show completion message
+                            if failedMessages == 0 {
+                                Constant.showToast(message: "Successfully forwarded \(completedMessages) messages")
+                            } else {
+                                Constant.showToast(message: "Forwarded \(completedMessages) messages, \(failedMessages) failed")
+                            }
+                            
+                            // Exit multi-select mode after forwarding (matching Android chatAdapter.exitMultiSelectMode())
+                            exitMultiSelectMode()
+                            
+                            // Clear selected messages
+                            selectedMessagesForForward.removeAll()
+                        }
+                    }
+                }
+                
+                // Add small delay to prevent overwhelming the server (matching Android Thread.sleep(100))
+                if messageIndex < selectedMessagesForForward.count - 1 || contactIndex < contacts.count - 1 {
+                    Thread.sleep(forTimeInterval: 0.1)
+                }
+            }
+        }
     }
     
     // MARK: - Send Button Handler (matching Android sendGrp.setOnClickListener)
@@ -10173,24 +10289,77 @@ struct MessageBubbleView: View {
     
     var body: some View {
         HStack(spacing: 0) {
-            // Checkbox for sender (on left side) - matching Android
-            if isMultiSelectMode && isSentByMe {
-                Image("multitick")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 24, height: 24)
-                    .foregroundColor(isSelected ? Color(hex: Constant.themeColor) : Color("gray3"))
-                    .padding(.trailing, 8)
-            }
-            
             if isSentByMe {
                 Spacer()
             }
             
             VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
                 replyLayoutView
-                mainMessageContentView
+                
+                // Forwarded indicator and message bubble in horizontal layout (matching Android sendLinear/recLinear)
+                // In Android: horizontal LinearLayout contains selectionCheckbox, forwarded TextView, and MainSenderBox/MainReceiverBox
+                // For sender: checkbox → forwarded → message bubble
+                // For receiver: message bubble → forwarded → checkbox
+                HStack(alignment: .center, spacing: 0) {
+                    if isSentByMe {
+                        Spacer()
+                    }
+                    
+                    // Checkbox for sender (FIRST in horizontal layout, matching Android sample_sender.xml)
+                    // android:layout_marginStart="8dp" android:layout_marginEnd="8dp"
+                    if isMultiSelectMode && isSentByMe {
+                        Image("multitick")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(isSelected ? Color(hex: Constant.themeColor) : Color("gray3"))
+                            .padding(.leading, 8) // android:layout_marginStart="8dp"
+                            .padding(.trailing, 8) // android:layout_marginEnd="8dp"
+                    }
+                    
+                    // Forwarded indicator positioning differs for sender vs receiver
+                    if let forwaredKey = message.forwaredKey,
+                       forwaredKey == "forwordKey" {
+                        if isSentByMe {
+                            // Sender: forwarded indicator BEFORE message bubble (matching Android sample_sender.xml)
+                            // android:layout_marginEnd="20dp"
+                            forwardedIndicatorView
+                                .padding(.trailing, 20) // android:layout_marginEnd="20dp"
+                        }
+                    }
+                    
+                    mainMessageContentView
+                    
+                    // Receiver: forwarded indicator AFTER message bubble (matching Android sample_receiver.xml)
+                    // In Android: forwarded TextView comes after MainReceiverBox in the horizontal LinearLayout
+                    // Negative offset to bring it as close as possible to message bubble
+                    if !isSentByMe,
+                       let forwaredKey = message.forwaredKey,
+                       forwaredKey == "forwordKey" {
+                        receiverForwardedIndicatorView
+                            .offset(x: -2) // Negative offset to bring it closer to message bubble
+                    }
+                    
+                    // Checkbox for receiver (AFTER forwarded indicator, matching Android sample_receiver.xml)
+                    // Matching Android: selectionCheckbox is in the same horizontal LinearLayout
+                    // android:layout_marginStart="8dp" android:layout_marginEnd="8dp"
+                    if isMultiSelectMode && !isSentByMe {
+                        Image("multitick")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(isSelected ? Color(hex: Constant.themeColor) : Color("gray3"))
+                            .padding(.leading, 8) // android:layout_marginStart="8dp"
+                            .padding(.trailing, 8) // android:layout_marginEnd="8dp"
+                    }
+                    
+                    if !isSentByMe {
+                        Spacer()
+                    }
+                }
+                
                 // Time row and emoji card are at the same level (both layout_below="@id/rl" in Android)
                 // Emoji card stays positioned relative to progress bar area
                 ZStack(alignment: .bottom) {
@@ -10201,17 +10370,6 @@ struct MessageBubbleView: View {
                     emojiReactionsCardView
                         .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading)
                 }
-            }
-            
-            // Checkbox for receiver (on right side) - matching Android
-            if isMultiSelectMode && !isSentByMe {
-                Image("multitick")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 24, height: 24)
-                    .foregroundColor(isSelected ? Color(hex: Constant.themeColor) : Color("gray3"))
-                    .padding(.leading, 8)
             }
             
             if !isSentByMe {
@@ -10281,6 +10439,110 @@ struct MessageBubbleView: View {
     }
     
     // MARK: - View Components
+    
+    // Forwarded indicator view for sender (matching Android sample_sender.xml forwarded TextView)
+    // android:id="@+id/forwarded" android:background="@drawable/forward_drawable"
+    // android:drawableEnd="@drawable/forward_wrapped" android:drawableTint="@color/blue"
+    // android:text="forwarded" android:textSize="8sp"
+    // android:paddingStart="8dp" android:paddingEnd="2dp" android:drawablePadding="2dp"
+    @ViewBuilder
+    private var forwardedIndicatorView: some View {
+        HStack(alignment: .center, spacing: 2) { // android:drawablePadding="2dp"
+            // Text "forwarded" (matching Android)
+            Text("forwarded")
+                .font(.custom("Inter18pt-Regular", size: 8)) // android:textSize="8sp"
+                .foregroundColor(Color("TextColor"))
+                .multilineTextAlignment(.center)
+            
+            // Icon matching Android forward_wrapped (using forward_svg with theme-based color)
+            // android:drawableEnd="@drawable/forward_wrapped" 
+            // Use TextColor for black/white theme-based color instead of blue
+            Image("forward_svg")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16) // Smaller icon for forwarded indicator
+                .foregroundColor(Color("TextColor")) // Theme-based black/white color
+        }
+        .padding(.leading, 8) // android:paddingStart="8dp"
+        .padding(.trailing, 2) // android:paddingEnd="2dp"
+        .padding(.vertical, 4) // Match forward button vertical padding
+        .background(
+            // Background matching Android forward_drawable.xml exactly (same as forward button)
+            // Layer 1: Outer Border (stroke 5dp, corner radius 20dp)
+            // Layer 2: Inner Background (solid chattingMessageBox, left inset 3dp, corner radius 20dp)
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    // Layer 1: Outer Border (matching Android border item)
+                    // stroke android:width="5dp" corners android:radius="20dp"
+                    // Note: Java code applies theme color to border dynamically
+                    RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
+                        .stroke(Color(hex: Constant.themeColor), lineWidth: 5)
+                        .frame(height: geometry.size.height-5) // Match content height for proper centering
+                    
+                    // Layer 2: Inner Background (matching Android background item)
+                    // android:left="3dp" solid android:color="@color/chattingMessageBox" corners android:radius="20dp"
+                    RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
+                        .fill(Color("chattingMessageBox")) // solid android:color="@color/chattingMessageBox"
+                        .frame(width: geometry.size.width + 3, height: geometry.size.height) // Match content height
+                        .offset(x: 2) // Position 3dp from left edge
+                }
+            }
+        )
+    }
+    
+    // Forwarded indicator view for receiver (matching Android sample_receiver.xml forwarded TextView)
+    // android:id="@+id/forwarded" android:background="@drawable/forward_drawable_2"
+    // android:drawableStart="@drawable/forward_wrapper_2" android:drawableTint="@color/blue"
+    // android:text="forwarded" android:textSize="10sp"
+    // android:paddingStart="2dp" android:paddingEnd="8dp" android:drawablePadding="2dp"
+    @ViewBuilder
+    private var receiverForwardedIndicatorView: some View {
+        HStack(alignment: .center, spacing: 2) { // android:drawablePadding="2dp"
+            // Icon matching Android forward_wrapper_2 (using forward_svg with theme-based color)
+            // android:drawableStart="@drawable/forward_wrapper_2"
+            // Use TextColor for black/white theme-based color instead of blue
+            // Mirror the icon for receiver side (left side)
+            Image("forward_svg")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16) // Icon for forwarded indicator
+                .scaleEffect(x: -1, y: 1) // Mirror horizontally for receiver side
+                .foregroundColor(Color("TextColor")) // Theme-based black/white color
+            
+            // Text "forwarded" (matching Android)
+            Text("forwarded")
+                .font(.custom("Inter18pt-Regular", size: 10)) // android:textSize="10sp" (larger for receiver)
+                .foregroundColor(Color("TextColor"))
+                .multilineTextAlignment(.center)
+        }
+        .padding(.leading, 2) // android:paddingStart="2dp"
+        .padding(.trailing, 8) // android:paddingEnd="8dp"
+        .padding(.vertical, 4) // Match forward button vertical padding
+        .background(
+            // Background matching Android forward_drawable_2.xml (receiver version)
+            // Layer 1: Outer Border (stroke 5dp, corner radius 20dp)
+            // Layer 2: Inner Background (solid chattingMessageBox, right inset 3dp, corner radius 20dp)
+            GeometryReader { geometry in
+                ZStack(alignment: .trailing) {
+                    // Layer 1: Outer Border (matching Android border item)
+                    // stroke android:width="5dp" corners android:radius="20dp"
+                    // Note: Java code applies theme color to border dynamically
+                    RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
+                        .stroke(Color(hex: Constant.themeColor), lineWidth: 5)
+                        .frame(height: geometry.size.height-5) // Match content height for proper centering
+                    
+                    // Layer 2: Inner Background (matching Android background item)
+                    // android:right="3dp" solid android:color="@color/chattingMessageBox" corners android:radius="20dp"
+                    RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
+                        .fill(Color("chattingMessageBox")) // solid android:color="@color/chattingMessageBox"
+                        .frame(width: geometry.size.width + 3, height: geometry.size.height) // Match content height
+                        .offset(x: -2) // Position 3dp from right edge (opposite of sender)
+                }
+            }
+        )
+    }
     
     @ViewBuilder
     private var replyLayoutView: some View {
