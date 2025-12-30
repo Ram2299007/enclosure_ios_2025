@@ -42,6 +42,8 @@ struct ChattingScreen: View {
     @State private var showFilePickerActionSheet: Bool = false
     @State private var wasGalleryPickerOpenBeforeContactPicker: Bool = false
     @State private var showSearch: Bool = false
+    @State private var showForwardContactPicker: Bool = false // Show forward contact picker
+    @State private var selectedMessagesForForward: [ChatMessage] = [] // Store selected messages for forwarding
     @State private var searchText: String = ""
     @State private var showMultiSelectHeader: Bool = false
     @State private var selectedCount: Int = 0
@@ -201,7 +203,7 @@ struct ChattingScreen: View {
                 if isMultiSelectMode {
                     multiSelectHeaderView
                 } else {
-                    headerView
+                headerView
                 }
                 
                 // Message list
@@ -229,7 +231,7 @@ struct ChattingScreen: View {
                 
                 // Bottom input area - hide when in multi-select mode (matching Android binding.bottom.setVisibility(View.GONE))
                 if !isMultiSelectMode {
-                    bottomInputView
+                bottomInputView
                 }
             }
             
@@ -496,6 +498,14 @@ struct ChattingScreen: View {
                 }
             )
             .interactiveDismissDisabled(true) // Prevent swipe to dismiss (matching Android setCanceledOnTouchOutside(false))
+        }
+        .fullScreenCover(isPresented: $showForwardContactPicker) {
+            // Forward contact picker (matching Android showForwardDialog)
+            // Shows active chat users instead of device contacts
+            ForwardContactPicker(maxSelection: 50) { (contacts: [UserActiveContactModel]) in
+                // Handle forward to selected contacts (matching Android forwardText.setOnClickListener)
+                forwardMessagesToContacts(contacts: contacts)
+            }
         }
         .overlay(
             CustomActionSheet(
@@ -3017,11 +3027,8 @@ struct ChattingScreen: View {
                     // drawableEnd="@drawable/forward_wrapped_3" drawablePadding="5dp" paddingHorizontal="10dp"
                     Button(action: {
                         // Handle forward action (matching Android binding.forwardAll.setOnClickListener)
-                        let selectedMessages = getSelectedMessages()
-                        if !selectedMessages.isEmpty {
-                            // TODO: Implement forward functionality
-                            print("Forward \(selectedMessages.count) selected messages")
-                        }
+                        // Matching Android: chatAdapter.onForwardSelected()
+                        openContactSelectionForForward()
                     }) {
                         HStack(alignment: .center, spacing: 2) { // Small spacing between text and icon
                             // Text vertically centered
@@ -3085,6 +3092,43 @@ struct ChattingScreen: View {
     /// Get selected messages (matching Android getSelectedMessages)
     private func getSelectedMessages() -> [ChatMessage] {
         return messages.filter { selectedMessageIds.contains($0.id) }
+    }
+    
+    // MARK: - Forward Functions (matching Android forward functionality)
+    
+    /// Open contact selection for forwarding (matching Android openContactSelectionForForward)
+    private func openContactSelectionForForward() {
+        let selectedMessages = getSelectedMessages()
+        if !selectedMessages.isEmpty {
+            // Store selected messages for forwarding
+            selectedMessagesForForward = selectedMessages
+            // Show forward contact picker
+            showForwardContactPicker = true
+        }
+    }
+    
+    /// Forward messages to selected contacts (matching Android forwardText.setOnClickListener)
+    private func forwardMessagesToContacts(contacts: [UserActiveContactModel]) {
+        guard !selectedMessagesForForward.isEmpty, !contacts.isEmpty else {
+            print("Forward: No messages or contacts to forward")
+            return
+        }
+        
+        print("Forward: Forwarding \(selectedMessagesForForward.count) messages to \(contacts.count) contacts")
+        
+        // TODO: Implement actual forward logic
+        // This should:
+        // 1. Loop through each contact
+        // 2. For each contact, forward all selected messages
+        // 3. Use UploadChatHelperForward equivalent to upload messages
+        // 4. Exit multi-select mode after forwarding
+        // 5. Navigate to the last contact's chat if only one contact, or back to main if multiple
+        
+        // For now, just exit multi-select mode
+        exitMultiSelectMode()
+        
+        // Clear selected messages
+        selectedMessagesForForward.removeAll()
     }
     
     // MARK: - Send Button Handler (matching Android sendGrp.setOnClickListener)
@@ -11326,7 +11370,7 @@ struct MessageBubbleView: View {
     }
     
     // Get glass background start color (matching Android glass_bg_start)
-    private func getReceiverGlassBgStart() -> Color { 
+    private func getReceiverGlassBgStart() -> Color {
         // Light mode: #80FFFFFF (50% opacity white)
         // Dark mode: #4D1B1B1B (semi-transparent dark)
         return colorScheme == .dark ? Color(hex: "#4D1B1B1B") : Color(hex: "#80FFFFFF")
@@ -15958,8 +16002,8 @@ struct MessageLongPressDialog: View {
                     // For sender (end gravity): add spacer at start to push content to right
                     // For receiver (start gravity): no spacer - content aligns to left
                     if isSentByMe {
-                        Spacer()
-                    }
+                                    Spacer()
+                                }
                     
                     VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
                         ScrollView {
@@ -16046,13 +16090,13 @@ struct MessageLongPressDialog: View {
                                         
                                         // ImageView container: weight=4, size=24dp, marginStart=3dp (from container edge)
                                         HStack {
-                                            Spacer()
+                                        Spacer()
                                             Image("multitick")
                                                 .renderingMode(.template)
                                                 .resizable()
                                                 .scaledToFit()
                                                 .frame(width: 24, height: 24)
-                                                .foregroundColor(Color("gray3"))
+                                            .foregroundColor(Color("gray3"))
                                                 .padding(.trailing, 15) // Right edge margin to match Android layout
                                         }
                                         .frame(maxWidth: .infinity)
@@ -16088,13 +16132,13 @@ struct MessageLongPressDialog: View {
                                         
                                         // ImageView container: weight=4, size=26.05x24dp (matching Android exactly)
                                         HStack {
-                                            Spacer()
+                                        Spacer()
                                             Image("forward_svg")
                                                 .renderingMode(.template)
                                                 .resizable()
                                                 .scaledToFit()
                                                 .frame(width: 26.05, height: 24) // Exact Android size: 26.05dp x 24dp
-                                                .foregroundColor(Color("gray3"))
+                                            .foregroundColor(Color("gray3"))
                                                 .padding(.trailing, 15) // Right edge margin to match Android layout
                                         }
                                         .frame(maxWidth: .infinity)
@@ -16130,7 +16174,7 @@ struct MessageLongPressDialog: View {
                                         
                                         // ImageView container: weight=4, size=23x23dp (matching Android exactly)
                                         HStack {
-                                            Spacer()
+                                        Spacer()
                                             Image("copy_svg")
                                                 .renderingMode(.template)
                                                 .resizable()
@@ -16172,7 +16216,7 @@ struct MessageLongPressDialog: View {
                                         
                                         // ImageView container: weight=4, size=26.05x24dp (matching Android exactly)
                                         HStack {
-                                            Spacer()
+                                        Spacer()
                                             Image("baseline_delete_forever_24")
                                                 .renderingMode(.template)
                                                 .resizable()
@@ -16203,7 +16247,7 @@ struct MessageLongPressDialog: View {
                                     .shadow(color: Color.black.opacity(0.2), radius: 5, x: 0, y: 2) // cardElevation="5dp"
                             )
                             .padding(.trailing, isSentByMe ? 16 : 0) // layout_marginEnd="16dp"
-                            .padding(.leading, isSentByMe ? 0 : 0)
+                                .padding(.leading, isSentByMe ? 0 : 0)
                             .padding(.top, 2) // layout_marginTop="2dp"
                             .padding(.bottom, 20) // layout_marginBottom="20dp"
                     }
@@ -16222,7 +16266,7 @@ struct MessageLongPressDialog: View {
                     // For sender (end gravity): no spacer - content aligns to right
                     if !isSentByMe {
                         Spacer()
-                    }
+            }
                 }
                 .frame(maxWidth: .infinity) // Ensure HStack takes full width
             }
