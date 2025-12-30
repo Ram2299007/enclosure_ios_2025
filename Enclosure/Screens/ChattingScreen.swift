@@ -255,9 +255,16 @@ struct ChattingScreen: View {
                         print("Reply to message: \(message.id)")
                     },
                     onForward: {
+                        // Dismiss the long press dialog (matching Android BlurHelper.dialogLayoutColor.dismiss())
                         showLongPressDialog = false
+                        
+                        // Add the message to selected messages for forwarding (matching Android forward functionality)
+                        selectedMessagesForForward = [message]
+                        
+                        // Show forward contact picker (matching Android Constant.bottomsheetforward)
+                        showForwardContactPicker = true
+                        
                         longPressedMessage = nil
-                        // TODO: Implement forward action
                         print("Forward message: \(message.message)")
                     },
                     onCopy: {
