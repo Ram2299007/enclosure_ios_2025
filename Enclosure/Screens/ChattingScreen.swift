@@ -15573,12 +15573,11 @@ struct MessageLongPressDialog: View {
                         } else {
                             if isSentByMe {
                                 Text(messageContent)
-                                    .font(.custom("Inter18pt-Regular", size: 15))
+                                    .font(.custom("Inter18pt-Regular", size: 13))
                                     .fontWeight(.light)
                                     .foregroundColor(Color(hex: "#e7ebf4"))
-                                    .lineSpacing(7)
-                                    .multilineTextAlignment(.leading)
-                                    .fixedSize(horizontal: false, vertical: true)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
                                     .padding(.horizontal, 12)
                                     .padding(.top, 5)
                                     .padding(.bottom, 6)
@@ -15588,12 +15587,11 @@ struct MessageLongPressDialog: View {
                                     )
                             } else {
                                 Text(messageContent)
-                                    .font(.custom("Inter18pt-Regular", size: 15))
+                                    .font(.custom("Inter18pt-Regular", size: 13))
                                     .fontWeight(.regular)
                                     .foregroundColor(Color("TextColor"))
-                                    .lineSpacing(7)
-                                    .multilineTextAlignment(.leading)
-                                    .fixedSize(horizontal: false, vertical: true)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
                                     .padding(.horizontal, 12)
                                     .padding(.top, 5)
                                     .padding(.bottom, 6)
@@ -16321,7 +16319,7 @@ struct MessageLongPressDialog: View {
                                     .padding(.horizontal, 12)
                                 } else {
                                             Text(getMessagePreviewText())
-                                            .font(.custom("Inter18pt-Regular", size: 15))
+                                            .font(.custom("Inter18pt-Regular", size: 13))
                                             .foregroundColor(isSentByMe ? Color(hex: "#e7ebf4") : Color("TextColor"))
                                             .padding(.horizontal, 12)
                                                 .padding(.top, 5)
@@ -16426,39 +16424,41 @@ struct MessageLongPressDialog: View {
                                     .opacity(0) // invisible
                                 
                                 // Copy button (matching Android copy)
+                                // Only show for Text datatype messages
                                 // paddingTop=10dp, marginStart=15dp, icon size=23x23dp, marginStart=5dp
-                                Button(action: {
-                                    onCopy()
-                                }) {
-                                    HStack(spacing: 0) {
-                                        // TextView: weight=1, marginStart=15dp, lineHeight=24dp
-                                        Text("Copy message")
-                                            .font(.custom("Inter18pt-Regular", size: 16))
-                                            .fontWeight(.bold)
-                                            .foregroundColor(Color("TextColor"))
-                                            .lineLimit(1)
-                                            .lineSpacing(0) // lineHeight="24dp"
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .padding(.leading, 15)
-                                        
-                                        // ImageView container: weight=4, size=23x23dp (matching Android exactly)
-                                        HStack {
-                                        Spacer()
-                                            Image("copy_svg")
-                                                .renderingMode(.template)
-                                                .resizable()
-                                                .scaledToFit()
-                                                .frame(width: 23, height: 23) // Exact Android size: 23dp x 23dp
-                                                .foregroundColor(Color("gray3")) // app:tint="@color/gray3"
-                                                .padding(.trailing, 15) // Right edge margin to match Android layout
+                                if message.dataType == Constant.Text {
+                                    Button(action: {
+                                        onCopy()
+                                    }) {
+                                        HStack(spacing: 0) {
+                                            // TextView: weight=1, marginStart=15dp, lineHeight=24dp
+                                            Text("Copy")
+                                                .font(.custom("Inter18pt-Regular", size: 16))
+                                                .fontWeight(.bold)
+                                                .foregroundColor(Color("TextColor"))
+                                                .lineSpacing(0) // lineHeight="24dp"
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .padding(.leading, 15)
+                                            
+                                            // ImageView container: weight=4, size=23x23dp (matching Android exactly)
+                                            HStack {
+                                            Spacer()
+                                                Image("copy_svg")
+                                                    .renderingMode(.template)
+                                                    .resizable()
+                                                    .scaledToFit()
+                                                    .frame(width: 23, height: 23) // Exact Android size: 23dp x 23dp
+                                                    .foregroundColor(Color("gray3")) // app:tint="@color/gray3"
+                                                    .padding(.trailing, 15) // Right edge margin to match Android layout
+                                            }
+                                            .frame(maxWidth: .infinity)
                                         }
-                                        .frame(maxWidth: .infinity)
+                                        .frame(minHeight: 36) // Reduced height for tighter spacing
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.top, 6) // Reduced vertical padding
                                     }
-                                    .frame(minHeight: 36) // Reduced height for tighter spacing
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.top, 6) // Reduced vertical padding
+                                    .buttonStyle(PlainButtonStyle())
                                 }
-                                .buttonStyle(PlainButtonStyle())
                                 
                                 // Divider: height=1dp, marginTop=6dp, invisible (reduced spacing)
                                 Rectangle()
