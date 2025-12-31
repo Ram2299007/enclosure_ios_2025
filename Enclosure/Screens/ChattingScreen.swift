@@ -83,6 +83,7 @@ struct ChattingScreen: View {
     @State private var lastLoadMoreTime: Date? = nil // Track last loadMore call time for throttling
     @State private var hasMoreMessages: Bool = true // Track if there are more messages to load
     @State private var lastScrollOffsetUpdateTime: Date? = nil //ƒvideos Track last scroll offset update time for throttling
+    @State private var lastScrollOffset: CGFloat = 0 // Track last scroll offset to detect scrolling
     @State private var isInitialScrollInProgress: Bool = false // Prevent loadMore during initial scroll
     @State private var initialScrollCompletedTime: Date? = nil // Track when initial scroll completed
     @State private var scrollDebounceWorkItem: DispatchWorkItem? = nil // Debounce scroll for rapid message additions
@@ -209,12 +210,15 @@ struct ChattingScreen: View {
                 // Message list
                 ZStack(alignment: .top) {
                     messageListView
+                        .contentShape(Rectangle()) // Ensure entire area is tappable
+                        .allowsHitTesting(true) // Ensure ScrollView can receive touches
                     
                     // Date view overlay (matching Android datelyt)
                     if showDateView {
                         dateView
                             .zIndex(1000) // Ensure it's on top
                             .padding(.top, 8) // Add some top padding
+                            .allowsHitTesting(false) // Don't block touches to ScrollView
                     }
                     
                     // Scroll down button overlay
@@ -226,6 +230,7 @@ struct ChattingScreen: View {
                                 scrollDownButton
                             }
                         }
+                        .allowsHitTesting(true) // Allow button to receive touches
                     }
                 }
                 
@@ -586,28 +591,34 @@ struct ChattingScreen: View {
     
     // MARK: - Scroll to target message and highlight it (matching Android scrollToTargetModelId)
     private func scrollToTargetMessage(targetModelId: String) {
+        print("📜 [SCROLL] scrollToTargetMessage called - targetModelId: \(targetModelId.prefix(8)), messages.count: \(messages.count)")
+        
         guard let proxy = scrollViewProxy else {
-            print("⚠️ [scrollToTargetMessage] ScrollViewProxy not available")
+            print("📜 [SCROLL] ⚠️ ScrollViewProxy not available")
             return
         }
         
         // Check if message exists in current messages list
         if let foundIndex = messages.firstIndex(where: { $0.id == targetModelId }) {
             let message = messages[foundIndex]
-            print("✅ [scrollToTargetMessage] Found message at index \(foundIndex), scrolling to: \(targetModelId)")
+            print("📜 [SCROLL] ✅ Message found at index \(foundIndex)/\(messages.count - 1), scrolling to: \(targetModelId.prefix(8))")
             
             // Scroll to message
             DispatchQueue.main.async {
+                print("📜 [SCROLL] Executing scrollTo with animation - anchor: .center")
                 withAnimation {
                     proxy.scrollTo(message.id, anchor: .center)
                 }
+                print("📜 [SCROLL] ScrollTo completed")
                 
                 // Highlight the message after a short delay
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    print("📜 [SCROLL] Highlighting message: \(targetModelId.prefix(8))")
                     self.highlightedMessageId = targetModelId
                     
                     // Remove highlight after 1 second
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        print("📜 [SCROLL] Removing highlight from message: \(targetModelId.prefix(8))")
                         self.highlightedMessageId = nil
                     }
                 }
@@ -818,8 +829,8 @@ struct ChattingScreen: View {
     private var messageListView: some View {
         GeometryReader { geometry in
             ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 8) { // spacing="8dp" matching Android layout_marginTop="8dp"
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVStack(spacing: 4, pinnedViews: []) { // Reduced spacing for better performance
                         // Loading indicator at top when loading more (matching Android)
                         if isLoadingMore {
                             HStack {
@@ -919,41 +930,19 @@ struct ChattingScreen: View {
                                     }
                                 )
                                     .id(message.id)
-                                    .background(
-                                        // Detect when first message (index 0) becomes visible (matching Android findFirstVisibleItemPosition == 0)
-                                        Group {
-                                            if index == 0 {
-                                                GeometryReader { geo in
-                                                    Color.clear.preference(
-                                                        key: ScrollOffsetPreferenceKey.self,
-                                                        value: geo.frame(in: .named("scroll")).minY
-                                                    )
-                                                }
-                                    }
-                                        }
-                                    )
-                                    .background(
-                                        // Track first visible message for date display
-                                        GeometryReader { geo in
-                                            let frame = geo.frame(in: .named("scroll"))
-                                            // Consider item visible if it's in the visible area (minY >= 0 and maxY <= screen height)
-                                            let isVisible = frame.minY >= -50 && frame.maxY <= UIScreen.main.bounds.height + 50
-                                            return Color.clear.preference(
-                                                key: FirstVisibleItemPreferenceKey.self,
-                                                value: isVisible ? index : nil
-                                            )
-                                        }
-                                    )
                                     .onAppear {
-                                        handleLastItemVisibility(id: message.id, index: index, isAppearing: true)
+                                        // Optimize: Only handle visibility for last item to reduce overhead
+                                        if index == messages.count - 1 {
+                                            handleLastItemVisibility(id: message.id, index: index, isAppearing: true)
+                                        }
                                         
                                         // When last message appears, scroll to it once (for initial load only)
                                         // This ensures we only scroll once when the view is actually rendered (like WhatsApp)
                                         if index == messages.count - 1 && hasPerformedInitialScroll && !hasScrolledToBottom {
-                                            print("🟢 [SCROLL_DEBUG] Last message appeared - performing single scroll to: \(message.id)")
+                                            print("🟢 [SCROLL] Last message appeared - performing single scroll to: \(message.id)")
                                             
                                             // Scroll immediately when last message appears (like WhatsApp)
-                                            print("🟢 [SCROLL_DEBUG] Executing scroll to: \(message.id)")
+                                            print("🟢 [SCROLL] Executing scroll to: \(message.id)")
                                             
                                             // Scroll without animation (like WhatsApp)
                                             CATransaction.begin()
@@ -970,35 +959,25 @@ struct ChattingScreen: View {
                                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                                                 self.isInitialScrollInProgress = false
                                                 self.initialScrollCompletedTime = Date()
-                                                print("🟢 [SCROLL_DEBUG] Initial scroll completed - loadMore enabled")
                                             }
                                         }
                                     }
                                     .onDisappear {
-                                        handleLastItemVisibility(id: message.id, index: index, isAppearing: false)
+                                        // Optimize: Only handle visibility for last item to reduce overhead
+                                        if index == messages.count - 1 {
+                                            handleLastItemVisibility(id: message.id, index: index, isAppearing: false)
+                                        }
                                     }
                             }
                         }
                     }
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 4) // Reduced padding for better performance
                 }
-                .coordinateSpace(name: "scroll")
-                // Show date view on touch anywhere in the message list (drag with minimumDistance 0 = touch down)
-                .contentShape(Rectangle())
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { _ in
-                            // Fire once per touch sequence
-                            if !isTouchGestureActive {
-                                isTouchGestureActive = true
-                                print("📅 [DATE_TAP] List touched - calling expandDateView()")
-                                expandDateView()
-                            }
-                        }
-                        .onEnded { _ in
-                            isTouchGestureActive = false
-                        }
-                )
+                .frame(width: geometry.size.width, height: geometry.size.height) // Fixed frame for ScrollView
+                // Removed coordinateSpace - no longer needed after removing preference handler
+                // Performance optimization: Reduce layout calculations during scroll
+                .scrollDismissesKeyboard(.interactively)
+                // Removed preference change handler to improve scroll performance - it was causing stuttering
                 .onAppear {
                     scrollViewProxy = proxy
                 }
@@ -1010,11 +989,12 @@ struct ChattingScreen: View {
                 }
                 // Initial scroll is driven by onAppear of the last message; no scroll here
                 .onChange(of: initialLoadDone) { done in
-                    print("🟢 [SCROLL_DEBUG] onChange(initialLoadDone) called - done: \(done), hasScrolledToBottom: \(hasScrolledToBottom), messages.count: \(messages.count)")
+                    // Initial load done - no action needed, scroll handled by onAppear of last message
                 }
                 .onChange(of: pendingInitialScrollId) { targetId in
-                    guard let id = targetId, !hasScrolledToBottom else { return }
-                    print("🟢 [SCROLL_DEBUG] Performing initial scroll via pendingInitialScrollId - id: \(id)")
+                    guard let id = targetId, !hasScrolledToBottom else {
+                        return
+                    }
                     isInitialScrollInProgress = true
                     CATransaction.begin()
                     CATransaction.setDisableActions(true)
@@ -1027,31 +1007,33 @@ struct ChattingScreen: View {
                         isInitialScrollInProgress = false
                         initialScrollCompletedTime = Date()
                         allowAnimatedScroll = true
-                        print("🟢 [SCROLL_DEBUG] Initial scroll completed - loadMore enabled")
                     }
                 }
                 .onChange(of: messages.count) { newCount in
-                    print("🔵 [SCROLL_DEBUG] onChange(messages.count) called - newCount: \(newCount), hasScrolledToBottom: \(hasScrolledToBottom), previousCount: \(messages.count), isInitialScrollInProgress: \(isInitialScrollInProgress), hasPerformedInitialScroll: \(hasPerformedInitialScroll)")
+                    // Optimize: Debounce scroll updates to improve performance
                     guard newCount > 0, let lastMessage = messages.last else {
-                        print("🔵 [SCROLL_DEBUG] Scroll skipped - no messages or no lastMessage")
                         return
                     }
                     
                     // For new incoming messages after initial scroll
-                    if hasScrolledToBottom && !isInitialScrollInProgress && hasPerformedInitialScroll {
-                        if allowAnimatedScroll {
-                            withAnimation {
+                    // Use async to avoid blocking main thread during scroll
+                    DispatchQueue.main.async {
+                        if self.hasScrolledToBottom && !self.isInitialScrollInProgress && self.hasPerformedInitialScroll {
+                            if self.allowAnimatedScroll {
+                                withAnimation {
+                                    proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                                }
+                            } else {
+                                CATransaction.begin()
+                                CATransaction.setDisableActions(true)
+                                CATransaction.setAnimationDuration(0)
                                 proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                                CATransaction.commit()
                             }
-                        } else {
-                            CATransaction.begin()
-                            CATransaction.setDisableActions(true)
-                            CATransaction.setAnimationDuration(0)
-                            proxy.scrollTo(lastMessage.id, anchor: .bottom)
-                            CATransaction.commit()
                         }
                     }
                 }
+                .frame(width: geometry.size.width, height: geometry.size.height) // Frame on ScrollViewReader container
             }
         }
     }
@@ -1097,6 +1079,8 @@ struct ChattingScreen: View {
     // MARK: - Scroll Down Button
     private var scrollDownButton: some View {
         Button(action: {
+            print("📜 [SCROLL] Scroll down button tapped - allowAnimatedScroll: \(allowAnimatedScroll), messages.count: \(messages.count)")
+            
             // Light haptic feedback (Android-style tap vibration)
             let generator = UIImpactFeedbackGenerator(style: .light)
             generator.impactOccurred()
@@ -2841,7 +2825,9 @@ struct ChattingScreen: View {
     
     /// Scroll to the bottom message, optionally animated (mirrors Android smooth scroll)
     private func scrollToBottom(animated: Bool) {
-        guard let lastId = messages.last?.id, let proxy = scrollViewProxy else { return }
+        guard let lastId = messages.last?.id, let proxy = scrollViewProxy else {
+            return
+        }
         
         if animated {
             withAnimation {
@@ -10385,8 +10371,7 @@ struct MessageBubbleView: View {
     @GestureState private var dragTranslation: CGSize = .zero
     @State private var isDragging: Bool = false
     @State private var viewFrame: CGRect = .zero
-    @State private var longPressLocation: CGPoint = .zero
-    @State private var longPressTimer: Timer?
+    // Removed longPressLocation - no longer needed with onLongPressGesture
     private let halfSwipeThreshold: CGFloat = 60
     @Environment(\.colorScheme) private var colorScheme
     
@@ -10445,7 +10430,7 @@ struct MessageBubbleView: View {
                         }
                     }
                     
-                    mainMessageContentView
+                mainMessageContentView
                     
                     // Receiver: forwarded indicator AFTER message bubble (matching Android sample_receiver.xml)
                     // In Android: forwarded TextView comes after MainReceiverBox in the horizontal LinearLayout
@@ -10513,45 +10498,17 @@ struct MessageBubbleView: View {
             }
         )
         .onPreferenceChange(MessageFramePreferenceKey.self) { frame in
-            DispatchQueue.main.async {
-                viewFrame = frame
-            }
+            viewFrame = frame // Update synchronously to avoid delays
         }
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    // Capture the exact initial touch location in global coordinates
-                    // Use startLocation to get where the user first touched
-                    let localLocation = value.startLocation
-                    // Convert to global screen coordinates by adding viewFrame origin
-                    let globalX = viewFrame.minX + localLocation.x
-                    let globalY = viewFrame.minY + localLocation.y
-                    longPressLocation = CGPoint(x: globalX, y: globalY)
-                    
-                    // Start timer for long press detection (only once)
-                    if longPressTimer == nil {
-                        longPressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
-                            // Long press detected - trigger callback with exact touch location
+        // Use onLongPressGesture which allows scrolling to take priority
+        .onLongPressGesture(minimumDuration: 0.5, maximumDistance: .infinity) {
+            // Long press detected - trigger callback with exact touch location
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            print("🔵 Long press detected at exact location: \(longPressLocation), frame: \(viewFrame)")
-                            onLongPress?(message, longPressLocation)
-                            longPressTimer?.invalidate()
-                            longPressTimer = nil
-                        }
-                    }
-                }
-                .onEnded { _ in
-                    // Cancel timer if gesture ends before long press completes
-                    longPressTimer?.invalidate()
-                    longPressTimer = nil
+            onLongPress?(message, CGPoint(x: viewFrame.midX, y: viewFrame.midY))
         }
-        )
-        .simultaneousGesture(swipeGesture)
-        .onDisappear {
-            // Clean up timer when view disappears
-            longPressTimer?.invalidate()
-            longPressTimer = nil
-        }
+        // Only apply swipe gesture if not in multi-select mode to avoid gesture conflicts
+        // Use highPriorityGesture for swipe so it doesn't interfere with ScrollView
+        .simultaneousGesture(isMultiSelectMode ? nil : swipeGesture)
     }
     
     // MARK: - View Components
@@ -11484,14 +11441,15 @@ struct MessageBubbleView: View {
     
     private var swipeGesture: some Gesture {
         // Use simultaneousGesture so it doesn't block vertical scrolling
-        DragGesture(minimumDistance: 15)
+        // Increased minimumDistance to 30 to avoid interfering with ScrollView touches
+        DragGesture(minimumDistance: 30)
             .updating($dragTranslation) { value, state, _ in
                 let horizontal = value.translation.width
                 let vertical = abs(value.translation.height)
                 
-                // Only activate if horizontal movement is clearly dominant (2x vertical) and swiping right
-                // This ensures vertical scrolling works smoothly
-                if horizontal > 15 && abs(horizontal) > vertical * 2.0 {
+                // Only activate if horizontal movement is clearly dominant (3x vertical) and swiping right
+                // Increased threshold to avoid interfering with ScrollView touches
+                if horizontal > 30 && abs(horizontal) > vertical * 3.0 {
                     // Cap the translation at threshold (matching Android behavior)
                     let cappedHorizontal = min(horizontal, halfSwipeThreshold)
                     state = CGSize(width: cappedHorizontal, height: 0)
@@ -15538,7 +15496,23 @@ struct MessageLongPressDialog: View {
         var isFromFirebase: Bool = false // Track if emoji came from Firebase
         
         init(slug: String, character: String, unicodeName: String, codePoint: String, isFromFirebase: Bool = false) {
-            self.id = slug.isEmpty ? character : slug
+            // Ensure unique ID: if slug is empty, use character; if character is also empty, use unique identifier
+            if slug.isEmpty {
+                if character.isEmpty {
+                    // For empty emoji, use a unique static identifier to avoid duplicate IDs
+                    self.id = "empty-emoji-placeholder"
+                } else {
+                    self.id = character
+                }
+            } else {
+                // If slug exists, check if character is empty to ensure uniqueness
+                if character.isEmpty {
+                    // Use a unique identifier for empty emoji with slug to avoid conflicts
+                    self.id = "\(slug)-empty-placeholder"
+                } else {
+                    self.id = slug
+                }
+            }
             self.slug = slug
             self.character = character
             self.unicodeName = unicodeName
@@ -16553,24 +16527,24 @@ struct MessageLongPressDialog: View {
                                 // Only show for Text datatype messages
                                 // paddingTop=10dp, marginStart=15dp, icon size=23x23dp, marginStart=5dp
                                 if message.dataType == Constant.Text {
-                                    Button(action: {
+                                Button(action: {
                                         // Haptic feedback (matching Android Constant.Vibrator)
                                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                         onCopy()
-                                    }) {
+                                }) {
                                         HStack(spacing: 0) {
                                             // TextView: weight=1, marginStart=15dp, lineHeight=24dp
                                             Text("Copy")
-                                                .font(.custom("Inter18pt-Regular", size: 16))
-                                                .fontWeight(.bold)
-                                                .foregroundColor(Color("TextColor"))
+                                            .font(.custom("Inter18pt-Regular", size: 16))
+                                            .fontWeight(.bold)
+                                            .foregroundColor(Color("TextColor"))
                                                 .lineSpacing(0) // lineHeight="24dp"
                                                 .frame(maxWidth: .infinity, alignment: .leading)
                                                 .padding(.leading, 15)
                                             
                                             // ImageView container: weight=4, size=23x23dp (matching Android exactly)
                                             HStack {
-                                            Spacer()
+                                        Spacer()
                                                 Image("copy_svg")
                                                     .renderingMode(.template)
                                                     .resizable()
