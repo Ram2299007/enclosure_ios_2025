@@ -60,7 +60,7 @@ struct ChattingScreen: View {
     @State private var replyContactName: String? = nil // Contact name for contact type
     @State private var replyFileExtension: String? = nil // File extension for documents/music
     @State private var replyMessageId: String? = nil // Original message ID for reply (replyCrtPostion)
-    @State private var showBlockContainer: Bool = false
+    @State private var isBlockedByUser: Bool = false // Track if current user is blocked by the other user
     @State private var characterCount: Int = 0
     @State private var showCharacterCount: Bool = false
     @State private var isPressed: Bool = false
@@ -193,11 +193,23 @@ struct ChattingScreen: View {
     @State private var dateScrollDebounceWorkItem: DispatchWorkItem? = nil // Debounce for date view scroll detection
     @State private var lastScrollEventTime: Date? = nil // Track last scroll event time
     
+    // Block functionality state (matching Android blockUser, blockContainer)
+    @State private var isUserBlocked: Bool = false // Track if user is blocked (matching Android blockUser TextView)
+    @State private var showBlockCard: Bool = false // Track if block card should be shown (matching Android blockContainer visibility)
+    @State private var blockedUserName: String = "" // Name of blocked user (matching Android originalNumber)
+    @State private var blockedUserSubtitle: String = "" // Subtitle for blocked user (matching Android originalName)
+    
     var body: some View {
         ZStack {
             // Background color matching Android modetheme2
             Color("BackgroundColor")
                 .ignoresSafeArea()
+                .onAppear {
+                    print("🚫 [BLOCK] ChattingScreen appeared - showBlockCard: \(showBlockCard), isUserBlocked: \(isUserBlocked)")
+                    print("🚫 [BLOCK] Contact: \(contact.fullName), UID: \(contact.uid)")
+                    // Check block status when screen appears (matching Android handleIntent block check)
+                    checkBlockStatus()
+                }
             
             VStack(spacing: 0) {
                 // Header - show multi-select header when in multi-select mode, otherwise show normal header
@@ -212,6 +224,20 @@ struct ChattingScreen: View {
                     messageListView
                         .contentShape(Rectangle()) // Ensure entire area is tappable
                         .allowsHitTesting(true) // Ensure ScrollView can receive touches
+                    
+                    // Block card view (matching Android cardview below datelyt)
+                    if showBlockCard {
+                        blockCardView
+                            .zIndex(999) // Below date view but above messages
+                            .padding(.top, showDateView ? 60 : 8) // Position below date view if visible
+                            .padding(.horizontal, 12) // layout_marginHorizontal="12dp"
+                            .allowsHitTesting(true) // Allow button interactions
+                            .onAppear {
+                                print("🚫 [BLOCK] ✅ Block card view rendered in ZStack - showBlockCard: \(showBlockCard)")
+                                print("🚫 [BLOCK] Block card position - top padding: \(showDateView ? 60 : 8), horizontal: 12")
+                            }
+                    }
+                    
                     
                     // Date view overlay (matching Android datelyt)
                     if showDateView {
@@ -933,7 +959,7 @@ struct ChattingScreen: View {
                                     .onAppear {
                                         // Optimize: Only handle visibility for last item to reduce overhead
                                         if index == messages.count - 1 {
-                                            handleLastItemVisibility(id: message.id, index: index, isAppearing: true)
+                                        handleLastItemVisibility(id: message.id, index: index, isAppearing: true)
                                         }
                                         
                                         // When last message appears, scroll to it once (for initial load only)
@@ -965,11 +991,11 @@ struct ChattingScreen: View {
                                     .onDisappear {
                                         // Optimize: Only handle visibility for last item to reduce overhead
                                         if index == messages.count - 1 {
-                                            handleLastItemVisibility(id: message.id, index: index, isAppearing: false)
-                                        }
+                                        handleLastItemVisibility(id: message.id, index: index, isAppearing: false)
                                     }
                             }
                         }
+                    }
                     }
                     .padding(.vertical, 4) // Reduced padding for better performance
                 }
@@ -1020,22 +1046,112 @@ struct ChattingScreen: View {
                     DispatchQueue.main.async {
                         if self.hasScrolledToBottom && !self.isInitialScrollInProgress && self.hasPerformedInitialScroll {
                             if self.allowAnimatedScroll {
-                                withAnimation {
-                                    proxy.scrollTo(lastMessage.id, anchor: .bottom)
-                                }
-                            } else {
-                                CATransaction.begin()
-                                CATransaction.setDisableActions(true)
-                                CATransaction.setAnimationDuration(0)
+                            withAnimation {
                                 proxy.scrollTo(lastMessage.id, anchor: .bottom)
-                                CATransaction.commit()
                             }
+                        } else {
+                            CATransaction.begin()
+                            CATransaction.setDisableActions(true)
+                            CATransaction.setAnimationDuration(0)
+                            proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                            CATransaction.commit()
                         }
                     }
+                }
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height) // Frame on ScrollViewReader container
             }
         }
+    }
+    
+    // MARK: - Block Card View (matching Android cardview with originalDelete and originalAdd)
+    private var blockCardView: some View {
+        // Use contact name if blockedUserName is empty
+        let displayName = blockedUserName.isEmpty ? contact.fullName : blockedUserName
+        let displaySubtitle = blockedUserSubtitle.isEmpty ? "~ \(contact.fullName)" : blockedUserSubtitle
+        
+        return VStack(spacing: 0) {
+            VStack(spacing: 0) {
+                // Name TextView (matching Android originalNumber)
+                Text(displayName)
+                    .font(.custom("Inter18pt-Medium", size: 15)) // android:textSize="15sp" android:fontFamily="@font/inter_medium"
+                    .foregroundColor(Color("TextColor")) // style="@style/TextColor"
+                    .frame(maxWidth: .infinity)
+                    .multilineTextAlignment(.center)
+                    .padding(.bottom, 8) // android:layout_marginTop="8dp"
+                    .onAppear {
+                        print("🚫 [BLOCK] ✅ Block card view content appeared")
+                        print("🚫 [BLOCK] Display Name: '\(displayName)', Subtitle: '\(displaySubtitle)'")
+                        print("🚫 [BLOCK] Block status - isUserBlocked: \(isUserBlocked), showBlockCard: \(showBlockCard)")
+                    }
+                
+                // Subtitle TextView (matching Android originalName)
+                Text(displaySubtitle)
+                    .font(.custom("Inter18pt-Regular", size: 10)) // android:textSize="10sp" android:fontFamily="@font/inter"
+                    .foregroundColor(Color("TextColor")) // style="@style/TextColor"
+                    .frame(maxWidth: .infinity)
+                    .multilineTextAlignment(.center)
+                
+                // Buttons container (matching Android LinearLayout with originalDelete and originalAdd)
+                HStack(spacing: 25) { // android:layout_marginStart="25dp" for second button
+                    // Block button (matching Android originalDelete)
+                    Button(action: {
+                        handleBlockUser()
+                    }) {
+                        HStack(spacing: 5) { // android:drawablePadding="2dp" + marginStart="5dp"
+                            Image("unblock") // android:src="@drawable/unblock"
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20) // android:layout_width="20dp" android:layout_height="20dp"
+                                .foregroundColor(.red) // app:tint="@color/red"
+                            
+                            Text("Block") // android:text="Block"
+                                .font(.custom("Inter18pt-Regular", size: 14)) // android:textSize="14sp" android:fontFamily="@font/inter"
+                                .foregroundColor(.red) // android:textColor="@color/red"
+                        }
+                        .padding(.horizontal, 12) // android:layout_marginHorizontal="12dp"
+                        .padding(.vertical, 8) // android:padding="8dp"
+                    }
+                    .background(
+                        RoundedRectangle(cornerRadius: 8) // Matching gallary_bgcontent drawable
+                            .fill(Color("BackgroundColor"))
+                    )
+                    
+                    // Add button (matching Android originalAdd)
+                    Button(action: {
+                        handleAddUser()
+                    }) {
+                        HStack(spacing: 5) { // android:drawablePadding="2dp" + marginStart="5dp"
+                            Image("addperson") // android:src="@drawable/addperson"
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20) // android:layout_width="20dp" android:layout_height="20dp"
+                                .foregroundColor(Color("green_call")) // app:tint="@color/green_call"
+                            
+                            Text("Add") // android:text="Add"
+                                .font(.custom("Inter18pt-Regular", size: 14)) // android:textSize="14sp" android:fontFamily="@font/inter"
+                                .foregroundColor(Color("green_call")) // android:textColor="@color/green_call"
+                        }
+                        .padding(.horizontal, 12) // android:layout_marginHorizontal="12dp"
+                        .padding(.vertical, 8) // android:padding="8dp"
+                    }
+                    .background(
+                        RoundedRectangle(cornerRadius: 8) // Matching gallary_bgcontent drawable
+                            .fill(Color("BackgroundColor"))
+                    )
+                }
+                .padding(.top, 20) // android:layout_marginTop="20dp"
+                .frame(maxWidth: .infinity)
+            }
+            .padding(15) // android:padding="15dp"
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 20) // app:cardCornerRadius="20dp"
+                .fill(Color("chattingMessageBox")) // app:cardBackgroundColor="@color/chattingMessageBox"
+        )
+        .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2) // app:cardElevation="0dp" but subtle shadow for depth
     }
     
     // MARK: - Date View (matching Android datelyt)
@@ -1122,67 +1238,94 @@ struct ChattingScreen: View {
     // MARK: - Bottom Input View
     private var bottomInputView: some View {
         VStack(spacing: 0) {
-            // Block container (hidden by default)
-            if showBlockContainer {
+            // Block container (shown when current user is blocked by the other user)
+            if isBlockedByUser {
                 blockContainerView
             }
             
-            // Message input container (messageboxContainer)
-            messageInputContainer
+            // Message input container (messageboxContainer) - hide when blocked by user
+            if !isBlockedByUser {
+                messageInputContainer
+            }
         }
         .background(Color("edittextBg"))
     }
     
     private var blockContainerView: some View {
-        HStack(spacing: 50) {
-            // Clear All button
-            Button(action: {
-                // TODO: Clear all messages
-            }) {
-                HStack {
-                    Image("deleteicon")
-                        .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 20, height: 20)
-                        .foregroundColor(.red)
-                    
-                    Text("Clear All")
-                        .font(.custom("Inter18pt-Bold", size: 14))
-                        .foregroundColor(.red)
+        // Main container (matching Android block_container LinearLayout)
+        VStack(spacing: 0) {
+            // Inner horizontal container (matching Android LinearLayout with horizontal orientation)
+            HStack(spacing: 0) {
+                // Clear All button container (matching Android LinearLayout with gallary_bgcontent)
+                HStack(spacing: 0) {
+                    Button(action: {
+                        // TODO: Clear all messages
+                        print("🚫 [BLOCK] Clear All button tapped")
+                    }) {
+                        // Button content (matching Android LinearLayoutCompat with custome_ripple_circle2)
+                        HStack(spacing: 5) { // android:layout_marginStart="5dp" for text
+                            Image("deleteicon")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20) // android:layout_width="20dp" android:layout_height="20dp"
+                                .foregroundColor(.red) // app:tint="@color/red"
+                            
+                            Text("Clear All")
+                                .font(.custom("Inter18pt-Regular", size: 14)) // android:fontFamily="@font/inter" android:textSize="14sp"
+                                .fontWeight(.bold) // android:textStyle="bold"
+                                .foregroundColor(.red) // android:textColor="@color/red"
+                        }
+                        .padding(.horizontal, 12) // android:layout_marginHorizontal="12dp"
+                        .padding(.vertical, 8) // android:padding="8dp"
+                    }
+                    .buttonStyle(PlainButtonStyle()) // Remove default button styling
                 }
-                .padding(8)
                 .background(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: 8) // Matching gallary_bgcontent drawable
+                        .fill(Color("BackgroundColor"))
+                )
+                
+                // Spacer between buttons (matching Android layout_marginStart="50dp")
+                Spacer()
+                    .frame(width: 50)
+                
+                // Unblock button container (matching Android LinearLayout with gallary_bgcontent)
+                HStack(spacing: 0) {
+                    Button(action: {
+                        // Unblock user functionality (when current user is blocked by the other user)
+                        print("🚫 [BLOCK] Unblock button tapped (user blocked me)")
+                        handleUnblockWhenBlockedByUser()
+                    }) {
+                        // Button content (matching Android LinearLayoutCompat with custome_ripple_circle2)
+                        HStack(spacing: 5) { // android:layout_marginStart="5dp" for text
+                            Image("unblock") // android:src="@drawable/unblock"
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20) // android:layout_width="20dp" android:layout_height="20dp"
+                                .foregroundColor(Color("green_call")) // app:tint="@color/green_call"
+                            
+                            Text("Unblock")
+                                .font(.custom("Inter18pt-Regular", size: 14)) // android:fontFamily="@font/inter" android:textSize="14sp"
+                                .fontWeight(.bold) // android:textStyle="bold"
+                                .foregroundColor(Color("green_call")) // android:textColor="@color/green_call"
+                        }
+                        .padding(.horizontal, 12) // android:layout_marginHorizontal="12dp"
+                        .padding(.vertical, 8) // android:padding="8dp"
+                    }
+                    .buttonStyle(PlainButtonStyle()) // Remove default button styling
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 8) // Matching gallary_bgcontent drawable
                         .fill(Color("BackgroundColor"))
                 )
             }
-            
-            // Unblock button
-            Button(action: {
-                // TODO: Unblock user
-            }) {
-                HStack {
-                    Image("unblock")
-                        .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 20, height: 20)
-                        .foregroundColor(Color("green_call"))
-                    
-                    Text("Unblock")
-                        .font(.custom("Inter18pt-Bold", size: 14))
-                        .foregroundColor(Color("green_call"))
-                }
-                .padding(8)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color("BackgroundColor"))
-                )
-            }
+            .frame(maxWidth: .infinity) // match_parent width
         }
-        .padding(20)
-        .background(Color("chattingMessageBox"))
+        .frame(maxWidth: .infinity) // match_parent width
+        .padding(20) // android:padding="20dp"
+        .background(Color("chattingMessageBox")) // android:background="@color/chattingMessageBox"
     }
     
     private var messageInputContainer: some View {
@@ -2841,6 +2984,193 @@ struct ChattingScreen: View {
             CATransaction.commit()
         }
     }
+    
+    // MARK: - Block User Functionality
+    private func checkBlockStatus() {
+        // Check if user is blocked (matching Android handleIntent block check)
+        // In Android, this comes from Intent extra "block"
+        let uid = Constant.SenderIdMy
+        let receiverUid = contact.uid
+        
+        print("🚫 [BLOCK] Checking block status - UID: \(uid), Receiver: \(receiverUid)")
+        
+        // Check from API if user is blocked (current user blocked the other user)
+        ApiService.checkIfBlocked(uid: uid, receiverId: receiverUid) { [self] isBlocked, message in
+            DispatchQueue.main.async {
+                print("🚫 [BLOCK] Block status check result - isBlocked: \(isBlocked), message: \(message)")
+                if isBlocked {
+                    showBlockCard = true
+                    isUserBlocked = true
+                    blockedUserName = contact.fullName
+                    blockedUserSubtitle = "~ \(contact.fullName)"
+                    print("🚫 [BLOCK] ✅ Block card will be shown")
+                } else {
+                    showBlockCard = false
+                    isUserBlocked = false
+                    print("🚫 [BLOCK] ❌ Block card will be hidden")
+                }
+            }
+        }
+        
+        // Check if current user is blocked by the other user (reverse check)
+        checkIfBlockedByUser()
+    }
+    
+    private func checkIfBlockedByUser() {
+        // Check if current user is blocked by the other user (reverse check)
+        let uid = Constant.SenderIdMy
+        let receiverUid = contact.uid
+        
+        print("🚫 [BLOCK] Checking if current user is blocked by other user - UID: \(uid), Blocker: \(receiverUid)")
+        
+        // Reverse the check: check if receiverUid blocked uid
+        ApiService.checkIfBlocked(uid: receiverUid, receiverId: uid) { [self] isBlocked, message in
+            DispatchQueue.main.async {
+                print("🚫 [BLOCK] Blocked by user check result - isBlocked: \(isBlocked), message: \(message)")
+                if isBlocked {
+                    isBlockedByUser = true
+                    print("🚫 [BLOCK] ✅ Current user is blocked by other user - showing block container")
+                } else {
+                    isBlockedByUser = false
+                    print("🚫 [BLOCK] ❌ Current user is not blocked by other user - hiding block container")
+                }
+            }
+        }
+    }
+    
+    private func handleUnblockWhenBlockedByUser() {
+        // Handle unblock when current user is blocked by the other user
+        // This means the other user needs to unblock the current user, or we check status again
+        let uid = Constant.SenderIdMy
+        let receiverUid = contact.uid
+        
+        print("🚫 [BLOCK] handleUnblockWhenBlockedByUser() called")
+        print("🚫 [BLOCK] UID: \(uid), Blocker UID: \(receiverUid)")
+        
+        // Re-check if still blocked by user (the other user may have unblocked)
+        checkIfBlockedByUser()
+        
+        // Note: The actual unblocking needs to be done by the other user
+        // This button might be used to refresh the status or request unblock
+    }
+    
+    private func handleBlockUser() {
+        // Block user functionality (matching Android originalDelete onClick)
+        let receiverUid = contact.uid
+        let uid = Constant.SenderIdMy
+        
+        print("🚫 [BLOCK] handleBlockUser() called")
+        print("🚫 [BLOCK] UID: \(uid), Blocked UID: \(receiverUid)")
+        print("🚫 [BLOCK] Contact name: \(contact.fullName)")
+        
+        ApiService.blockUser(uid: uid, blockedUid: receiverUid) { [self] success, message in
+            DispatchQueue.main.async {
+                print("🚫 [BLOCK] Block API response - success: \(success), message: \(message)")
+                if success {
+                    isUserBlocked = true
+                    showBlockCard = true
+                    blockedUserName = contact.fullName
+                    blockedUserSubtitle = "~ \(contact.fullName)"
+                    print("🚫 [BLOCK] ✅ User blocked successfully")
+                    print("🚫 [BLOCK] Updated state - isUserBlocked: \(isUserBlocked), showBlockCard: \(showBlockCard)")
+                    print("🚫 [BLOCK] Block card should now be visible")
+                    // Hide message input container (matching Android messageboxContainer.setVisibility(View.GONE))
+                } else {
+                    // Show error if needed
+                    print("🚫 [BLOCK] ❌ Failed to block user: \(message)")
+                }
+            }
+        }
+    }
+    
+    private func handleAddUser() {
+        // Add user functionality - block if not blocked, unblock if blocked
+        let receiverUid = contact.uid
+        let uid = Constant.SenderIdMy
+        
+        print("🚫 [BLOCK] handleAddUser() called")
+        print("🚫 [BLOCK] UID: \(uid), Target UID: \(receiverUid)")
+        print("🚫 [BLOCK] Contact name: \(contact.fullName)")
+        print("🚫 [BLOCK] Current isUserBlocked state: \(isUserBlocked)")
+        
+        // Use local state to determine action, then handle API responses appropriately
+        if isUserBlocked {
+            // Local state says user is blocked, so try to unblock
+            print("🚫 [BLOCK] Local state indicates user is blocked, unblocking...")
+            ApiService.unblockUser(uid: uid, blockedUid: receiverUid) { [self] success, message in
+                DispatchQueue.main.async {
+                    print("🚫 [BLOCK] Unblock API response - success: \(success), message: \(message)")
+                    if success {
+                        isUserBlocked = false
+                        showBlockCard = false
+                        print("🚫 [BLOCK] ✅ User unblocked successfully")
+                        print("🚫 [BLOCK] Updated state - isUserBlocked: \(isUserBlocked), showBlockCard: \(showBlockCard)")
+                        print("🚫 [BLOCK] Block card should now be hidden")
+                        // Show message input container (matching Android messageboxContainer.setVisibility(View.VISIBLE))
+                    } else {
+                        // If unblock fails with "not blocked", try blocking instead
+                        if message.lowercased().contains("not blocked") {
+                            print("🚫 [BLOCK] User is not actually blocked, blocking instead...")
+                            ApiService.blockUser(uid: uid, blockedUid: receiverUid) { [self] success, message in
+                                DispatchQueue.main.async {
+                                    print("🚫 [BLOCK] Block API response - success: \(success), message: \(message)")
+                                    if success {
+                                        isUserBlocked = true
+                                        showBlockCard = true
+                                        blockedUserName = contact.fullName
+                                        blockedUserSubtitle = "~ \(contact.fullName)"
+                                        print("🚫 [BLOCK] ✅ User blocked successfully")
+                                    } else {
+                                        print("🚫 [BLOCK] ❌ Failed to block user: \(message)")
+                                    }
+                                }
+                            }
+                        } else {
+                            print("🚫 [BLOCK] ❌ Failed to unblock user: \(message)")
+                        }
+                    }
+                }
+            }
+        } else {
+            // Local state says user is not blocked, so try to block
+            print("🚫 [BLOCK] Local state indicates user is not blocked, blocking...")
+            ApiService.blockUser(uid: uid, blockedUid: receiverUid) { [self] success, message in
+                DispatchQueue.main.async {
+                    print("🚫 [BLOCK] Block API response - success: \(success), message: \(message)")
+                    if success {
+                        isUserBlocked = true
+                        showBlockCard = true
+                        blockedUserName = contact.fullName
+                        blockedUserSubtitle = "~ \(contact.fullName)"
+                        print("🚫 [BLOCK] ✅ User blocked successfully")
+                        print("🚫 [BLOCK] Updated state - isUserBlocked: \(isUserBlocked), showBlockCard: \(showBlockCard)")
+                        print("🚫 [BLOCK] Block card should now be visible")
+                        // Hide message input container (matching Android messageboxContainer.setVisibility(View.GONE))
+                    } else {
+                        // If block fails with "already blocked", try unblocking instead
+                        if message.lowercased().contains("already blocked") {
+                            print("🚫 [BLOCK] User is already blocked, unblocking instead...")
+                            ApiService.unblockUser(uid: uid, blockedUid: receiverUid) { [self] success, message in
+                                DispatchQueue.main.async {
+                                    print("🚫 [BLOCK] Unblock API response - success: \(success), message: \(message)")
+                                    if success {
+                                        isUserBlocked = false
+                                        showBlockCard = false
+                                        print("🚫 [BLOCK] ✅ User unblocked successfully")
+                                    } else {
+                                        print("🚫 [BLOCK] ❌ Failed to unblock user: \(message)")
+                                    }
+                                }
+                            }
+                        } else {
+                            print("🚫 [BLOCK] ❌ Failed to block user: \(message)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
     
     /// Track last item visibility to toggle down arrow (matching Android isLastItemVisible logic)
     private func handleLastItemVisibility(id: String, index: Int, isAppearing: Bool) {

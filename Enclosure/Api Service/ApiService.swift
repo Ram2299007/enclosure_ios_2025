@@ -1318,6 +1318,128 @@ class ApiService {
             }
     }
     
+    // MARK: - Block User Functionality
+    static func blockUser(uid: String, blockedUid: String, completion: @escaping (Bool, String) -> Void) {
+        let url = Constant.baseURL + "block_user"
+        let parameters: [String: Any] = [
+            "uid": uid,
+            "blocked_uid": blockedUid
+        ]
+        
+        print("🚫 [BLOCK API] Block user request - URL: \(url)")
+        print("🚫 [BLOCK API] Parameters: \(parameters)")
+        
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseJSON { response in
+                print("🚫 [BLOCK API] Response status code: \(response.response?.statusCode ?? -1)")
+                switch response.result {
+                case .success(let value):
+                    print("🚫 [BLOCK API] Response JSON: \(value)")
+                    if let json = value as? [String: Any],
+                       let status = json["status"] as? String,
+                       let message = json["message"] as? String {
+                        print("🚫 [BLOCK API] Status: \(status), Message: \(message)")
+                        if status.lowercased() == "success" {
+                            completion(true, message)
+                        } else {
+                            completion(false, message)
+                        }
+                    } else {
+                        print("🚫 [BLOCK API] ❌ Invalid response format")
+                        completion(false, "Invalid response format")
+                    }
+                case .failure(let error):
+                    print("🚫 [BLOCK API] ❌ Error: \(error.localizedDescription)")
+                    if let data = response.data, let errorString = String(data: data, encoding: .utf8) {
+                        print("🚫 [BLOCK API] Error response data: \(errorString)")
+                    }
+                    completion(false, error.localizedDescription)
+                }
+            }
+    }
+    
+    // MARK: - Check Block Status
+    static func checkIfBlocked(uid: String, receiverId: String, completion: @escaping (Bool, String) -> Void) {
+        let url = Constant.baseURL + "is_user_blocked"
+        let parameters: [String: Any] = [
+            "uid": uid,
+            "receiver_id": receiverId
+        ]
+        
+        print("🚫 [BLOCK API] Check block status request - URL: \(url)")
+        print("🚫 [BLOCK API] Parameters: \(parameters)")
+        
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseJSON { response in
+                print("🚫 [BLOCK API] Response status code: \(response.response?.statusCode ?? -1)")
+                switch response.result {
+                case .success:
+                    // Status 200 means user is blocked
+                    if response.response?.statusCode == 200 {
+                        print("🚫 [BLOCK API] ✅ User is blocked")
+                        completion(true, "User is blocked")
+                    } else {
+                        print("🚫 [BLOCK API] ❌ User is not blocked")
+                        completion(false, "User is not blocked")
+                    }
+                case .failure(let error):
+                    // Status 401 means not blocked
+                    if response.response?.statusCode == 401 {
+                        print("🚫 [BLOCK API] ❌ User is not blocked (401)")
+                        completion(false, "User is not blocked")
+                    } else {
+                        print("🚫 [BLOCK API] ❌ Error: \(error.localizedDescription)")
+                        if let data = response.data, let errorString = String(data: data, encoding: .utf8) {
+                            print("🚫 [BLOCK API] Error response data: \(errorString)")
+                        }
+                        completion(false, error.localizedDescription)
+                    }
+                }
+            }
+    }
+    
+    static func unblockUser(uid: String, blockedUid: String, completion: @escaping (Bool, String) -> Void) {
+        let url = Constant.baseURL + "unblock_user"
+        let parameters: [String: Any] = [
+            "uid": uid,
+            "blocked_uid": blockedUid
+        ]
+        
+        print("🚫 [BLOCK API] Unblock user request - URL: \(url)")
+        print("🚫 [BLOCK API] Parameters: \(parameters)")
+        
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseJSON { response in
+                print("🚫 [BLOCK API] Response status code: \(response.response?.statusCode ?? -1)")
+                switch response.result {
+                case .success(let value):
+                    print("🚫 [BLOCK API] Response JSON: \(value)")
+                    if let json = value as? [String: Any],
+                       let status = json["status"] as? String,
+                       let message = json["message"] as? String {
+                        print("🚫 [BLOCK API] Status: \(status), Message: \(message)")
+                        if status.lowercased() == "success" {
+                            completion(true, message)
+                        } else {
+                            completion(false, message)
+                        }
+                    } else {
+                        print("🚫 [BLOCK API] ❌ Invalid response format")
+                        completion(false, "Invalid response format")
+                    }
+                case .failure(let error):
+                    print("🚫 [BLOCK API] ❌ Error: \(error.localizedDescription)")
+                    if let data = response.data, let errorString = String(data: data, encoding: .utf8) {
+                        print("🚫 [BLOCK API] Error response data: \(errorString)")
+                    }
+                    completion(false, error.localizedDescription)
+                }
+            }
+    }
+    
     static func set_message_limit_for_user_chat(uid: String, friend_id: String, msg_limit: String, completion: @escaping (Bool, String) -> Void) {
         let url = Constant.baseURL+"set_message_limit_for_user_chat"
         let parameters: [String: Any] = ["uid": uid, "friend_id": friend_id, "msg_limit": msg_limit]
