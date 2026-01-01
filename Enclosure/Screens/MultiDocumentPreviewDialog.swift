@@ -9,6 +9,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import QuickLook
 import FirebaseStorage
+import FirebaseDatabase
 
 struct MultiDocumentPreviewDialog: View {
     @Environment(\.dismiss) private var dismiss
@@ -18,6 +19,7 @@ struct MultiDocumentPreviewDialog: View {
     let contact: UserActiveContactModel
     let onSend: (String) -> Void
     let onDismiss: () -> Void
+    let onMessageAdded: ((ChatMessage) -> Void)? // Callback to add message immediately to list
     
     @State private var currentIndex: Int = 0
     @State private var keyboardHeight: CGFloat = 0
@@ -247,6 +249,42 @@ struct MultiDocumentPreviewDialog: View {
         case uploadFailed(String)
     }
     
+    /// Check if message exists in Firebase and stop progress bar (matching Android behavior)
+    private func checkMessageInFirebaseAndStopProgress(messageId: String, receiverUid: String) {
+        let senderId = Constant.SenderIdMy
+        let receiverRoom = receiverUid + senderId
+        let database = Database.database().reference()
+        let messageRef = database.child(Constant.CHAT).child(receiverRoom).child(messageId)
+        
+        print("🔍 [ProgressBar] Checking if document message exists in Firebase: \(messageId)")
+        
+        // Check if message exists in Firebase (matching Android addListenerForSingleValueEvent)
+        messageRef.observeSingleEvent(of: .value) { snapshot in
+            if snapshot.exists() {
+                print("✅ [ProgressBar] Document message confirmed in Firebase, stopping animation and updating receiverLoader")
+                
+                // Remove from pending table (matching Android removePendingMessage)
+                let removed = DatabaseHelper.shared.removePendingMessage(modelId: messageId, receiverUid: receiverUid)
+                if removed {
+                    print("✅ [PendingMessages] Removed pending document message from SQLite: \(messageId)")
+                }
+                
+                // Update receiverLoader to 1 to stop progress bar (matching Android setIndeterminate(false))
+                let receiverLoaderRef = database.child(Constant.CHAT).child(receiverRoom).child(messageId).child("receiverLoader")
+                receiverLoaderRef.setValue(1) { error, _ in
+                    if let error = error {
+                        print("❌ [ProgressBar] Error updating receiverLoader: \(error.localizedDescription)")
+                    } else {
+                        print("✅ [ProgressBar] receiverLoader updated to 1 for document message: \(messageId)")
+                    }
+                }
+            } else {
+                print("⚠️ [ProgressBar] Document message not found in Firebase yet, keeping animation")
+                // Keep receiverLoader as 0, animation continues
+            }
+        }
+    }
+    
     private func handleMultiDocumentSend(caption: String) {
         print("MultiDocumentPreviewDialog: === MULTI-DOCUMENT SEND ===")
         print("MultiDocumentPreviewDialog: Selected documents count: \(selectedDocuments.count)")
@@ -406,6 +444,13 @@ struct MultiDocumentPreviewDialog: View {
                 
                 print("MultiDocumentPreviewDialog: ChatMessage created with caption: '\(newMessage.caption ?? "nil")'")
                 
+                // Store message in SQLite pending table before upload (matching Android insertPendingMessage)
+                DatabaseHelper.shared.insertPendingMessage(newMessage)
+                print("✅ [PendingMessages] Document message stored in pending table: \(documentModelId)")
+                
+                // Add message to UI immediately with progress bar (matching Android messageList.add + itemAdd)
+                onMessageAdded?(newMessage)
+                
                 let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
                 
                 MessageUploadService.shared.uploadMessage(
@@ -417,12 +462,16 @@ struct MultiDocumentPreviewDialog: View {
                     if success {
                         print("✅ [MULTI_DOCUMENT] Uploaded document \(index + 1)/\(sortedResults.count) for modelId=\(documentModelId)")
                         
+                        // Check if message exists in Firebase and stop progress bar (matching Android)
+                        self.checkMessageInFirebaseAndStopProgress(messageId: documentModelId, receiverUid: receiverUid)
+                        
                         // Save document to local storage after successful upload
                         // Use the fileName from the message to ensure it matches what's stored in Firebase
                         saveDocumentToLocalStorage(documentURL: result.originalURL, fileName: newMessage.fileName ?? result.fileName)
                     } else {
                         print("❌ [MULTI_DOCUMENT] Upload error: \(errorMessage ?? "Unknown error")")
                         Constant.showToast(message: "Failed to send document. Please try again.")
+                        // Keep receiverLoader as 0 to show progress bar (message still pending)
                     }
                 }
             }

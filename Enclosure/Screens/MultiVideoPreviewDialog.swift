@@ -10,6 +10,7 @@ import AVFoundation
 import AVKit
 import Photos
 import FirebaseStorage
+import FirebaseDatabase
 
 // MARK: - Multi-Video Preview Dialog (matching MultiImagePreviewDialog design)
 struct MultiVideoPreviewDialog: View {
@@ -22,6 +23,7 @@ struct MultiVideoPreviewDialog: View {
     let contact: UserActiveContactModel
     let onSend: (String) -> Void
     let onDismiss: () -> Void
+    let onMessageAdded: ((ChatMessage) -> Void)? = nil // Callback to add message immediately to list (optional, defaults to nil)
     
     @State private var currentIndex: Int = 0
     @State private var videoPlayers: [AVPlayer?] = []
@@ -405,6 +407,42 @@ struct MultiVideoPreviewDialog: View {
         case uploadFailed(String)
     }
     
+    /// Check if message exists in Firebase and stop progress bar (matching Android behavior)
+    private func checkMessageInFirebaseAndStopProgress(messageId: String, receiverUid: String) {
+        let senderId = Constant.SenderIdMy
+        let receiverRoom = receiverUid + senderId
+        let database = Database.database().reference()
+        let messageRef = database.child(Constant.CHAT).child(receiverRoom).child(messageId)
+        
+        print("🔍 [ProgressBar] Checking if video message exists in Firebase: \(messageId)")
+        
+        // Check if message exists in Firebase (matching Android addListenerForSingleValueEvent)
+        messageRef.observeSingleEvent(of: .value) { snapshot in
+            if snapshot.exists() {
+                print("✅ [ProgressBar] Video message confirmed in Firebase, stopping animation and updating receiverLoader")
+                
+                // Remove from pending table (matching Android removePendingMessage)
+                let removed = DatabaseHelper.shared.removePendingMessage(modelId: messageId, receiverUid: receiverUid)
+                if removed {
+                    print("✅ [PendingMessages] Removed pending video message from SQLite: \(messageId)")
+                }
+                
+                // Update receiverLoader to 1 to stop progress bar (matching Android setIndeterminate(false))
+                let receiverLoaderRef = database.child(Constant.CHAT).child(receiverRoom).child(messageId).child("receiverLoader")
+                receiverLoaderRef.setValue(1) { error, _ in
+                    if let error = error {
+                        print("❌ [ProgressBar] Error updating receiverLoader: \(error.localizedDescription)")
+                    } else {
+                        print("✅ [ProgressBar] receiverLoader updated to 1 for video message: \(messageId)")
+                    }
+                }
+            } else {
+                print("⚠️ [ProgressBar] Video message not found in Firebase yet, keeping animation")
+                // Keep receiverLoader as 0, animation continues
+            }
+        }
+    }
+    
     private func handleMultiVideoSend(caption: String) {
         print("MultiVideoPreviewDialog: === MULTI-VIDEO SEND ===")
         print("MultiVideoPreviewDialog: Selected videos count: \(selectedAssets.count)")
@@ -573,6 +611,13 @@ struct MultiVideoPreviewDialog: View {
                     receiverLoader: 0
                 )
                 print("MultiVideoPreviewDialog: ChatMessage created with caption: '\(newMessage.caption ?? "nil")'")
+                
+                // Store message in SQLite pending table before upload (matching Android insertPendingMessage)
+                DatabaseHelper.shared.insertPendingMessage(newMessage)
+                print("✅ [PendingMessages] Video message stored in pending table: \(videoModelId)")
+                
+                // Add message to UI immediately with progress bar (matching Android messageList.add + itemAdd)
+                onMessageAdded?(newMessage)
                 
                 let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
                 

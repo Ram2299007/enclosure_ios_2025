@@ -217,6 +217,9 @@ struct ChattingScreen: View {
                     print("🚫 [BLOCK] Contact: \(contact.fullName), UID: \(contact.uid)")
                     // Check block status when screen appears (matching Android handleIntent block check)
                     checkBlockStatus()
+                    
+                    // Load pending messages from SQLite (matching Android loadPendingMessages on onResume)
+                    loadPendingMessages()
                 }
             
             VStack(spacing: 0) {
@@ -505,6 +508,17 @@ struct ChattingScreen: View {
                 },
                 onDismiss: {
                     showMultiDocumentPreview = false
+                },
+                onMessageAdded: { message in
+                    // Add message to list immediately with progress bar (matching Android messageList.add)
+                    DispatchQueue.main.async {
+                        if !self.messages.contains(where: { $0.id == message.id }) {
+                            self.messages.append(message)
+                            self.isLastItemVisible = true
+                            self.showScrollDownButton = false
+                            print("✅ [MULTI_DOCUMENT] Message added to UI immediately: \(message.id)")
+                        }
+                    }
                 }
             )
             .onAppear {
@@ -529,6 +543,17 @@ struct ChattingScreen: View {
                 },
                 onDismiss: {
                     showMultiContactPreview = false
+                },
+                onMessageAdded: { message in
+                    // Add message to list immediately with progress bar (matching Android messageList.add)
+                    DispatchQueue.main.async {
+                        if !self.messages.contains(where: { $0.id == message.id }) {
+                            self.messages.append(message)
+                            self.isLastItemVisible = true
+                            self.showScrollDownButton = false
+                            print("✅ [MULTI_CONTACT] Message added to UI immediately: \(message.id)")
+                        }
+                    }
                 }
             )
             .onAppear {
@@ -2542,11 +2567,21 @@ struct ChattingScreen: View {
                         let isChanged = oldModel.message != updatedModel.message ||
                                       oldModel.emojiCount != updatedModel.emojiCount ||
                                       oldModel.timestamp != updatedModel.timestamp ||
-                                      oldModel.document != updatedModel.document
+                                      oldModel.document != updatedModel.document ||
+                                      oldModel.receiverLoader != updatedModel.receiverLoader // Check receiverLoader changes
                         
                         if isChanged {
                             DispatchQueue.main.async {
                                 self.messages[index] = updatedModel
+                                
+                                // Log receiverLoader changes (progress bar visibility)
+                                if oldModel.receiverLoader != updatedModel.receiverLoader {
+                                    print("📱 [onChildChanged] receiverLoader changed from \(oldModel.receiverLoader) to \(updatedModel.receiverLoader) for message: \(changedKey)")
+                                    if updatedModel.receiverLoader == 1 {
+                                        print("✅ [ProgressBar] Progress bar hidden - message confirmed in Firebase")
+                                    }
+                                }
+                                
                                 print("📱 [onChildChanged] Message updated for key: \(changedKey)")
                             }
                         } else {
@@ -2710,6 +2745,14 @@ struct ChattingScreen: View {
         guard model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video || model.dataType == Constant.doc || model.dataType == Constant.contact || model.dataType == Constant.voiceAudio else {
             print("📱 [handleChildAdded] Skipping unsupported message type: \(model.dataType)")
             return
+        }
+        
+        // Remove from pending table when message is confirmed in Firebase (matching Android removePendingMessage)
+        // This happens when the message appears in Firebase, meaning it was successfully sent
+        let receiverUid = contact.uid
+        let removed = DatabaseHelper.shared.removePendingMessage(modelId: model.id, receiverUid: receiverUid)
+        if removed {
+            print("✅ [PendingMessages] Removed pending message from SQLite (confirmed in Firebase): \(model.id)")
         }
         
         // Check if message already exists in current list (matching Android duplicate check)
@@ -3640,6 +3683,116 @@ struct ChattingScreen: View {
         }
     }
     
+    /// Load pending messages from SQLite and add to UI (matching Android loadPendingMessages on onResume)
+    private func loadPendingMessages() {
+        let receiverUid = contact.uid
+        print("📱 [loadPendingMessages] Loading pending messages for receiver: \(receiverUid)")
+        
+        DatabaseHelper.shared.getPendingMessages(receiverUid: receiverUid) { pendingMessages in
+            guard !pendingMessages.isEmpty else {
+                print("📱 [loadPendingMessages] No pending messages found")
+                return
+            }
+            
+            print("📱 [loadPendingMessages] Found \(pendingMessages.count) pending messages")
+            
+            DispatchQueue.main.async {
+                var addedCount = 0
+                // Add pending messages to the list if they don't already exist
+                for pendingMessage in pendingMessages {
+                    // Check if message already exists in the list
+                    if !self.messages.contains(where: { $0.id == pendingMessage.id }) {
+                        print("📱 [loadPendingMessages] Adding pending message to UI: \(pendingMessage.id), dataType: \(pendingMessage.dataType), receiverLoader: \(pendingMessage.receiverLoader)")
+                        self.messages.append(pendingMessage)
+                        addedCount += 1
+                    } else {
+                        print("📱 [loadPendingMessages] Pending message already in list: \(pendingMessage.id)")
+                    }
+                }
+                
+                if addedCount > 0 {
+                    // Sort messages by timestamp to maintain order
+                    self.messages.sort { $0.timestamp < $1.timestamp }
+                    
+                    // Set last item visible to show progress bar
+                    self.isLastItemVisible = true
+                    self.showScrollDownButton = false
+                    
+                    print("📱 [loadPendingMessages] ✅ Added \(addedCount) pending messages to UI with progress bars")
+                }
+            }
+        }
+    }
+    
+    /// Check if message exists in Firebase and stop progress bar (matching Android behavior)
+    /// This is called after successful upload to verify message is in Firebase
+    private func checkMessageInFirebaseAndStopProgress(messageId: String, receiverUid: String) {
+        let senderId = Constant.SenderIdMy
+        let receiverRoom = receiverUid + senderId
+        let database = Database.database().reference()
+        let messageRef = database.child(Constant.CHAT).child(receiverRoom).child(messageId)
+        
+        print("🔍 [ProgressBar] Checking if message exists in Firebase: \(messageId)")
+        
+        // Check if message exists in Firebase (matching Android addListenerForSingleValueEvent)
+        messageRef.observeSingleEvent(of: .value) { snapshot in
+            if snapshot.exists() {
+                print("✅ [ProgressBar] Message confirmed in Firebase, stopping animation and updating receiverLoader")
+                
+                // Remove from pending table (matching Android removePendingMessage)
+                let removed = DatabaseHelper.shared.removePendingMessage(modelId: messageId, receiverUid: receiverUid)
+                if removed {
+                    print("✅ [PendingMessages] Removed pending message from SQLite: \(messageId)")
+                }
+                
+                // Wait 900ms then stop animation and update receiverLoader (matching Android Handler.postDelayed)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                    // Update receiverLoader to 1 to stop progress bar animation (matching Android setIndeterminate(false))
+                    self.updateReceiverLoaderForMessage(messageId: messageId, receiverLoader: 1)
+                }
+            } else {
+                print("⚠️ [ProgressBar] Message not found in Firebase yet, keeping animation")
+                // Keep receiverLoader as 0, animation continues
+            }
+        }
+    }
+    
+    /// Update receiverLoader for a message in Firebase (matching Android setValue receiverLoader)
+    private func updateReceiverLoaderForMessage(messageId: String, receiverLoader: Int) {
+        let receiverUid = contact.uid
+        let senderId = Constant.SenderIdMy
+        
+        guard !receiverUid.isEmpty && !senderId.isEmpty else {
+            print("⚠️ [updateReceiverLoader] Missing receiverUid or senderId")
+            return
+        }
+        
+        let receiverRoom = receiverUid + senderId
+        let database = Database.database().reference()
+        let messageRef = database.child(Constant.CHAT).child(receiverRoom).child(messageId).child("receiverLoader")
+        
+        print("🔄 [updateReceiverLoader] Updating receiverLoader to \(receiverLoader) for message: \(messageId)")
+        print("   Path: \(messageRef)")
+        
+        messageRef.setValue(receiverLoader) { error, _ in
+            if let error = error {
+                print("❌ [updateReceiverLoader] Error updating receiverLoader: \(error.localizedDescription)")
+            } else {
+                print("✅ [updateReceiverLoader] receiverLoader updated to \(receiverLoader) for message: \(messageId)")
+                
+                // Update local message to reflect the change
+                DispatchQueue.main.async {
+                    if let index = self.messages.firstIndex(where: { $0.id == messageId }) {
+                        var updatedMessage = self.messages[index]
+                        updatedMessage.receiverLoader = receiverLoader
+                        self.messages[index] = updatedMessage
+                        print("✅ [updateReceiverLoader] Local message updated - progress bar \(receiverLoader == 1 ? "hidden" : "shown")")
+                    }
+                }
+            }
+        }
+    }
+    
     /// Trigger reply UI (Android half-swipe) for a given message
     private func handleHalfSwipeReply(_ message: ChatMessage) {
         let isSentByMe = message.uid == Constant.SenderIdMy
@@ -3967,6 +4120,10 @@ struct ChattingScreen: View {
                     favIconUrl: originalMessage.favIconUrl
                 )
                 
+                // Store message in SQLite pending table before upload (matching Android insertPendingMessage)
+                DatabaseHelper.shared.insertPendingMessage(forwardedMessage)
+                print("✅ [PendingMessages] Forwarded message stored in pending table: \(newMessageId)")
+                
                 // Upload message using MessageUploadService (matching Android UploadChatHelperForward)
                 MessageUploadService.shared.uploadMessage(
                     model: forwardedMessage,
@@ -3978,9 +4135,12 @@ struct ChattingScreen: View {
                         if success {
                             completedMessages += 1
                             print("✅ Forward: Successfully forwarded message \(messageIndex + 1) to \(contactName)")
+                            // Check if message exists in Firebase and stop progress bar (matching Android)
+                            self.checkMessageInFirebaseAndStopProgress(messageId: newMessageId, receiverUid: contactId)
                         } else {
                             failedMessages += 1
                             print("❌ Forward: Failed to forward message \(messageIndex + 1) to \(contactName): \(errorMessage ?? "Unknown error")")
+                            // Keep receiverLoader as 0 to show progress bar (message still pending)
                         }
                         
                         // Check if all messages are processed
@@ -4235,8 +4395,9 @@ struct ChattingScreen: View {
                     receiverLoader: 0
                 )
         
-                // TODO: Store message in SQLite pending table before upload
-                // try DatabaseHelper.shared.insertPendingMessage(model)
+                // Store message in SQLite pending table before upload (matching Android insertPendingMessage)
+                DatabaseHelper.shared.insertPendingMessage(newMessage)
+                print("✅ [PendingMessages] Message stored in pending table: \(modelId)")
                 
                 // Check message limit status
                 if limitStatusValue == "0" {
@@ -4255,8 +4416,20 @@ struct ChattingScreen: View {
                         ) { success, errorMessage in
                             if success {
                                 print("✅ MessageUploadService: Message uploaded successfully with ID: \(modelId)")
+                                
+                                // Check if message exists in Firebase before updating receiverLoader (matching Android)
+                                // Android: Checks if modelId exists in database, then sets receiverLoader to 1
+                                let receiverUid = self.contact.uid
+                                let senderId = Constant.SenderIdMy
+                                let receiverRoom = receiverUid + senderId
+                                let database = Database.database().reference()
+                                let messageRef = database.child(Constant.CHAT).child(receiverRoom).child(modelId)
+                                
+                                // Check if message exists in Firebase and stop progress bar (matching Android)
+                                self.checkMessageInFirebaseAndStopProgress(messageId: modelId, receiverUid: receiverUid)
                             } else {
                                 print("❌ MessageUploadService: Error uploading message: \(errorMessage ?? "Unknown error")")
+                                // Keep receiverLoader as 0 to show progress bar (message still pending)
                             }
                         }
                     }
@@ -4269,10 +4442,15 @@ struct ChattingScreen: View {
                     }
                 }
                 
-                // Update UI on main thread
+                // Update UI on main thread - Add message immediately with progress bar (matching Android)
                 DispatchQueue.main.async {
-                    // Add message to list
+                    // Add message to list immediately with receiverLoader: 0 (pending/uploading)
+                    // This shows the animated progress bar (matching Android messageList.add + itemAdd)
                     self.messages.append(newMessage)
+                    
+                    // Set last item visible to show progress (matching Android setLastItemVisible(true))
+                    self.isLastItemVisible = true
+                    self.showScrollDownButton = false
                     
                     // Clear typing status when message is sent
                     self.clearTypingStatus()
@@ -4290,10 +4468,9 @@ struct ChattingScreen: View {
                     self.replyMessageId = nil
                     self.hideEmojiAndGalleryPickers()
                     
-                    // Hide down arrow cardview when new message is added (user is at bottom)
-                    // User is at the last message, hide down button (matching Android)
-                    self.isLastItemVisible = true
-                    self.showScrollDownButton = false
+                    // Scroll to last message (matching Android scrollToPosition)
+                    // This will be handled by ScrollViewReader in messageListView
+                    self.pendingInitialScrollId = newMessage.id
                 }
                 
             } catch {
@@ -4948,7 +5125,67 @@ struct ChattingScreen: View {
         let replyMsg = replyMessage
         let replyType = replyDataType
         
-        // Upload all images to Firebase Storage, then push to API + RTDB
+        // Create message immediately (matching Android - simple approach)
+        // Android: creates model with imageFile.toString() (local file path) and adds to messageList immediately
+        let firstFileName = "\(modelId)_0.jpg"
+        let localFileURL = getLocalImageURL(fileName: firstFileName)
+        
+        // Create message with local file path (matching Android imageFile.toString())
+        let newMessage = ChatMessage(
+            id: modelId,
+            uid: senderId,
+            message: "",
+            time: currentDateTimeString,
+            document: localFileURL.path, // Local file path (matching Android imageFile.toString())
+            dataType: Constant.img,
+            fileExtension: "jpg",
+            name: nil,
+            phone: nil,
+            micPhoto: micPhoto,
+            miceTiming: nil,
+            userName: userName,
+            receiverId: receiverUid,
+            replytextData: replyMsg.isEmpty ? nil : replyMsg,
+            replyKey: replyMsg.isEmpty ? nil : modelId,
+            replyType: replyType.isEmpty ? nil : replyType,
+            replyOldData: nil,
+            replyCrtPostion: nil,
+            forwaredKey: nil,
+            groupName: nil,
+            docSize: nil,
+            fileName: firstFileName,
+            thumbnail: nil,
+            fileNameThumbnail: nil,
+            caption: trimmedCaption,
+            notification: 1,
+            currentDate: currentDateString,
+            emojiModel: [EmojiModel(name: "", emoji: "")],
+            emojiCount: nil,
+            timestamp: timestamp,
+            imageWidth: nil, // Will be updated after export
+            imageHeight: nil, // Will be updated after export
+            aspectRatio: nil, // Will be updated after export
+            selectionCount: "\(selectedAssets.count)",
+            selectionBunch: nil, // Will be updated after upload
+            receiverLoader: 0 // Show progress bar (matching Android setLastItemVisible(true))
+        )
+        
+        // Store message in SQLite pending table before upload (matching Android insertPendingMessage)
+        DatabaseHelper.shared.insertPendingMessage(newMessage)
+        print("✅ [PendingMessages] Image message stored in pending table: \(modelId)")
+        
+        // Add to UI immediately (matching Android: messageList.add, itemAdd, setLastItemVisible, notifyItemInserted, scrollToPosition)
+        DispatchQueue.main.async {
+            if !self.messages.contains(where: { $0.id == modelId }) {
+                self.messages.append(newMessage)
+                self.isLastItemVisible = true // Show progress for pending message (matching Android setLastItemVisible(true))
+                self.showScrollDownButton = false // Hide down button (matching Android downCardview.setVisibility(View.GONE))
+                print("✅ [MULTI_IMAGE] Message added to UI immediately: \(modelId)")
+            }
+        }
+        
+        // Upload in background (matching Android UploadChatHelper.uploadContent)
+        // Export and upload all images
         let dispatchGroup = DispatchGroup()
         let lockQueue = DispatchQueue(label: "com.enclosure.multiImageUpload.lock")
         
@@ -4963,11 +5200,12 @@ struct ChattingScreen: View {
         var uploadResults: [UploadedImageResult] = []
         var uploadErrors: [Error] = []
         
+        // Upload all images
         for (index, asset) in selectedAssets.enumerated() {
             dispatchGroup.enter()
             let remoteFileName = "\(modelId)_\(index).jpg"
             
-            exportImageAsset(asset, fileName: remoteFileName) { exportResult in
+            self.exportImageAsset(asset, fileName: remoteFileName) { exportResult in
                 switch exportResult {
                 case .failure(let error):
                     lockQueue.sync { uploadErrors.append(error) }
@@ -4976,6 +5214,7 @@ struct ChattingScreen: View {
                     // Save image to local storage (matching Android Enclosure/Media/Images)
                     self.saveImageToLocalStorage(data: export.data, fileName: remoteFileName)
                     
+                    // Upload to Firebase Storage
                     self.uploadImageFileToFirebase(data: export.data, remoteFileName: remoteFileName) { uploadResult in
                         switch uploadResult {
                         case .failure(let error):
@@ -4996,6 +5235,7 @@ struct ChattingScreen: View {
             }
         }
         
+        // After all uploads complete, update message and send to API
         dispatchGroup.notify(queue: .main) {
             if uploadResults.isEmpty {
                 print("❌ [MULTI_IMAGE] Upload failed - no results")
@@ -5022,63 +5262,44 @@ struct ChattingScreen: View {
                 aspectRatioValue = ""
             }
             
-            let newMessage = ChatMessage(
-                id: modelId,
-                uid: senderId,
-                message: "",
-                time: currentDateTimeString,
-                document: first.downloadURL,
-                dataType: Constant.img,
-                fileExtension: "jpg",
-                name: nil,
-                phone: nil,
-                micPhoto: micPhoto,
-                miceTiming: nil,
-                userName: userName,
-                receiverId: receiverUid,
-                replytextData: replyMsg.isEmpty ? nil : replyMsg,
-                replyKey: replyMsg.isEmpty ? nil : modelId,
-                replyType: replyType.isEmpty ? nil : replyType,
-                replyOldData: nil,
-                replyCrtPostion: nil,
-                forwaredKey: nil,
-                groupName: nil,
-                docSize: nil,
-                fileName: first.fileName,
-                thumbnail: nil,
-                fileNameThumbnail: nil,
-                caption: trimmedCaption,
-                notification: 1,
-                currentDate: currentDateString,
-                emojiModel: [EmojiModel(name: "", emoji: "")],
-                emojiCount: nil,
-                timestamp: timestamp,
-                imageWidth: "\(first.width)",
-                imageHeight: "\(first.height)",
-                aspectRatio: aspectRatioValue,
-                selectionCount: "\(sortedResults.count)",
-                selectionBunch: selectionBunchModels,
-                receiverLoader: 0
-            )
-            
-            // Add to UI immediately
-            self.messages.append(newMessage)
-            self.isLastItemVisible = true
-            self.showScrollDownButton = false
-            
-            let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
-            
-            MessageUploadService.shared.uploadMessage(
-                model: newMessage,
-                filePath: nil,
-                userFTokenKey: userFTokenKey,
-                deviceType: "2"
-            ) { success, errorMessage in
-                if success {
-                    print("✅ [MULTI_IMAGE] Uploaded \(sortedResults.count) images for modelId=\(modelId)")
-                } else {
-                    print("❌ [MULTI_IMAGE] Upload error: \(errorMessage ?? "Unknown error")")
-                    Constant.showToast(message: "Failed to send images. Please try again.")
+            // Update message with Firebase URLs (matching Android - update after upload)
+            DispatchQueue.main.async {
+                if let messageIndex = self.messages.firstIndex(where: { $0.id == modelId }) {
+                    var updatedMessage = self.messages[messageIndex]
+                    // Update with Firebase download URL
+                    updatedMessage.document = first.downloadURL
+                    updatedMessage.fileName = first.fileName
+                    updatedMessage.imageWidth = "\(first.width)"
+                    updatedMessage.imageHeight = "\(first.height)"
+                    updatedMessage.aspectRatio = aspectRatioValue
+                    updatedMessage.selectionBunch = selectionBunchModels
+                    
+                    // Update the message in the list
+                    self.messages[messageIndex] = updatedMessage
+                    
+                    // Update pending message in SQLite with actual URLs
+                    DatabaseHelper.shared.insertPendingMessage(updatedMessage)
+                    print("✅ [MULTI_IMAGE] Message updated with Firebase URLs: \(modelId)")
+                    
+                    // Upload to API and Firebase RTDB (matching Android UploadChatHelper)
+                    let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
+                    
+                    MessageUploadService.shared.uploadMessage(
+                        model: updatedMessage,
+                        filePath: nil,
+                        userFTokenKey: userFTokenKey,
+                        deviceType: "2"
+                    ) { success, errorMessage in
+                        if success {
+                            print("✅ [MULTI_IMAGE] Uploaded \(sortedResults.count) images for modelId=\(modelId)")
+                            // Check if message exists in Firebase and stop progress bar (matching Android)
+                            self.checkMessageInFirebaseAndStopProgress(messageId: modelId, receiverUid: receiverUid)
+                        } else {
+                            print("❌ [MULTI_IMAGE] Upload error: \(errorMessage ?? "Unknown error")")
+                            Constant.showToast(message: "Failed to send images. Please try again.")
+                            // Keep receiverLoader as 0 to show progress bar (message still pending)
+                        }
+                    }
                 }
             }
         }
@@ -5598,7 +5819,11 @@ struct ChattingScreen: View {
                     receiverLoader: 0
                 )
                 
-                // Add to UI immediately
+                // Store message in SQLite pending table before upload (matching Android insertPendingMessage)
+                DatabaseHelper.shared.insertPendingMessage(newMessage)
+                print("✅ [PendingMessages] Voice audio message stored in pending table: \(modelId)")
+                
+                // Add to UI immediately with progress bar (matching Android messageList.add + itemAdd)
                 DispatchQueue.main.async {
                     self.messages.append(newMessage)
                     self.isLastItemVisible = true
@@ -5616,9 +5841,12 @@ struct ChattingScreen: View {
                 ) { success, errorMessage in
                     if success {
                         print("✅ [VOICE_RECORDING] Uploaded audio for modelId=\(modelId)")
+                        // Check if message exists in Firebase and stop progress bar (matching Android)
+                        self.checkMessageInFirebaseAndStopProgress(messageId: modelId, receiverUid: receiverUid)
                     } else {
                         print("❌ [VOICE_RECORDING] Upload error: \(errorMessage ?? "Unknown error")")
                         Constant.showToast(message: "Failed to send audio. Please try again.")
+                        // Keep receiverLoader as 0 to show progress bar (message still pending)
                     }
                 }
             }
@@ -11160,7 +11388,7 @@ struct MessageBubbleView: View {
             VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
                 // Hide reply layout for typing indicator (matching Android behavior)
                 if message.dataType != Constant.TYPEINDICATOR {
-                    replyLayoutView
+                replyLayoutView
                 }
                 
                 // Forwarded indicator and message bubble in horizontal layout (matching Android sendLinear/recLinear)
@@ -11169,64 +11397,64 @@ struct MessageBubbleView: View {
                 // For receiver: message bubble → forwarded → checkbox
                 // Hide forwarded indicator and checkboxes for typing indicator (matching Android behavior)
                 if message.dataType != Constant.TYPEINDICATOR {
-                    HStack(alignment: .center, spacing: 0) {
+                HStack(alignment: .center, spacing: 0) {
+                    if isSentByMe {
+                        Spacer()
+                    }
+                    
+                    // Checkbox for sender (FIRST in horizontal layout, matching Android sample_sender.xml)
+                    // android:layout_marginStart="8dp" android:layout_marginEnd="8dp"
+                    if isMultiSelectMode && isSentByMe {
+                        Image("multitick")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(isSelected ? Color(hex: Constant.themeColor) : Color("gray3"))
+                            .padding(.leading, 8) // android:layout_marginStart="8dp"
+                            .padding(.trailing, 8) // android:layout_marginEnd="8dp"
+                    }
+                    
+                    // Forwarded indicator positioning differs for sender vs receiver
+                    if let forwaredKey = message.forwaredKey,
+                       forwaredKey == "forwordKey" {
                         if isSentByMe {
-                            Spacer()
+                            // Sender: forwarded indicator BEFORE message bubble (matching Android sample_sender.xml)
+                            // android:layout_marginEnd="20dp"
+                            forwardedIndicatorView
+                                .padding(.trailing, 20) // android:layout_marginEnd="20dp"
                         }
-                        
-                        // Checkbox for sender (FIRST in horizontal layout, matching Android sample_sender.xml)
-                        // android:layout_marginStart="8dp" android:layout_marginEnd="8dp"
-                        if isMultiSelectMode && isSentByMe {
-                            Image("multitick")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 24, height: 24)
-                                .foregroundColor(isSelected ? Color(hex: Constant.themeColor) : Color("gray3"))
-                                .padding(.leading, 8) // android:layout_marginStart="8dp"
-                                .padding(.trailing, 8) // android:layout_marginEnd="8dp"
-                        }
-                        
-                        // Forwarded indicator positioning differs for sender vs receiver
-                        if let forwaredKey = message.forwaredKey,
-                           forwaredKey == "forwordKey" {
-                            if isSentByMe {
-                                // Sender: forwarded indicator BEFORE message bubble (matching Android sample_sender.xml)
-                                // android:layout_marginEnd="20dp"
-                                forwardedIndicatorView
-                                    .padding(.trailing, 20) // android:layout_marginEnd="20dp"
-                            }
-                        }
-                        
-                        mainMessageContentView
-                        
-                        // Receiver: forwarded indicator AFTER message bubble (matching Android sample_receiver.xml)
-                        // In Android: forwarded TextView comes after MainReceiverBox in the horizontal LinearLayout
-                        // Negative offset to bring it as close as possible to message bubble
-                        if !isSentByMe,
-                           let forwaredKey = message.forwaredKey,
-                           forwaredKey == "forwordKey" {
-                            receiverForwardedIndicatorView
-                                .offset(x: -2) // Negative offset to bring it closer to message bubble
-                        }
-                        
-                        // Checkbox for receiver (AFTER forwarded indicator, matching Android sample_receiver.xml)
-                        // Matching Android: selectionCheckbox is in the same horizontal LinearLayout
-                        // android:layout_marginStart="8dp" android:layout_marginEnd="8dp"
-                        if isMultiSelectMode && !isSentByMe {
-                            Image("multitick")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 24, height: 24)
-                                .foregroundColor(isSelected ? Color(hex: Constant.themeColor) : Color("gray3"))
-                                .padding(.leading, 8) // android:layout_marginStart="8dp"
-                                .padding(.trailing, 8) // android:layout_marginEnd="8dp"
-                        }
-                        
-                        if !isSentByMe {
-                            Spacer()
-                        }
+                    }
+                    
+                mainMessageContentView
+                    
+                    // Receiver: forwarded indicator AFTER message bubble (matching Android sample_receiver.xml)
+                    // In Android: forwarded TextView comes after MainReceiverBox in the horizontal LinearLayout
+                    // Negative offset to bring it as close as possible to message bubble
+                    if !isSentByMe,
+                       let forwaredKey = message.forwaredKey,
+                       forwaredKey == "forwordKey" {
+                        receiverForwardedIndicatorView
+                            .offset(x: -2) // Negative offset to bring it closer to message bubble
+                    }
+                    
+                    // Checkbox for receiver (AFTER forwarded indicator, matching Android sample_receiver.xml)
+                    // Matching Android: selectionCheckbox is in the same horizontal LinearLayout
+                    // android:layout_marginStart="8dp" android:layout_marginEnd="8dp"
+                    if isMultiSelectMode && !isSentByMe {
+                        Image("multitick")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(isSelected ? Color(hex: Constant.themeColor) : Color("gray3"))
+                            .padding(.leading, 8) // android:layout_marginStart="8dp"
+                            .padding(.trailing, 8) // android:layout_marginEnd="8dp"
+                    }
+                    
+                    if !isSentByMe {
+                        Spacer()
+                    }
                     }
                 } else {
                     // For typing indicator, only show the main message content (typing indicator animation)
@@ -11237,13 +11465,13 @@ struct MessageBubbleView: View {
                 // Emoji card stays positioned relative to progress bar area
                 // Hide time row and emoji card for typing indicator (matching Android behavior)
                 if message.dataType != Constant.TYPEINDICATOR {
-                    ZStack(alignment: .bottom) {
-                        // Time row (matching Android sendTime with progress indicator)
-                        timeRowView
-                            .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading)
-                        // Emoji card (matching Android emojiTextCard) - positioned relative to progress bar
-                        emojiReactionsCardView
-                            .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading)
+                ZStack(alignment: .bottom) {
+                    // Time row (matching Android sendTime with progress indicator)
+                timeRowView
+                        .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading)
+                    // Emoji card (matching Android emojiTextCard) - positioned relative to progress bar
+                    emojiReactionsCardView
+                        .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading)
                     }
                 }
             }
@@ -12538,6 +12766,7 @@ struct MessageBubbleView: View {
     }
     
     // Progress indicator styling based on Android LinearProgressIndicator
+    // Shows animated horizontal progress bar when receiverLoader == 0 (pending message)
     private func progressIndicatorView(isSender: Bool) -> some View {
         let themeColor = Color(hex: Constant.themeColor)
         // Sender: use themeColor for both track and indicator (per ThemeColorKey); Receiver: asset colors
@@ -12545,7 +12774,22 @@ struct MessageBubbleView: View {
         let trackColor = isSender ? themeColor : Color("line")
         let cornerRadius: CGFloat = isSender ? 20 : 10
         
-        return ZStack(alignment: .leading) {
+        // Check if this is a pending message (receiverLoader == 0) for sender messages
+        let isPendingMessage = isSentByMe && message.receiverLoader == 0
+        
+        if isPendingMessage {
+            // Show animated horizontal progress bar for pending messages (matching Android viewnew LinearProgressIndicator)
+            return AnyView(
+                AnimatedProgressBarView(
+                    themeColor: themeColor,
+                    cornerRadius: cornerRadius
+                )
+                .frame(width: 20, height: 1)
+            )
+        } else {
+            // Show static indicator for sent messages (matching Android default behavior)
+            return AnyView(
+                ZStack(alignment: .leading) {
             Capsule()
                 .fill(trackColor)
                 .frame(width: 20, height: 1)
@@ -12555,6 +12799,49 @@ struct MessageBubbleView: View {
         }
         .frame(width: 20, height: 1)
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            )
+        }
+    }
+}
+
+// MARK: - Animated Progress Bar View (matching Android viewnew LinearProgressIndicator)
+// Shows animated horizontal progress bar for pending messages (receiverLoader == 0)
+struct AnimatedProgressBarView: View {
+    let themeColor: Color
+    let cornerRadius: CGFloat
+    @State private var animationProgress: CGFloat = 0
+    
+    var body: some View {
+        GeometryReader { geometry in
+            let barWidth = max(geometry.size.width * 0.4, 8) // 40% of width, minimum 8 points
+            let maxOffset = geometry.size.width - barWidth
+            
+            ZStack(alignment: .leading) {
+                // Track (background) - full width
+                Capsule()
+                    .fill(themeColor.opacity(0.3))
+                    .frame(height: 1)
+                
+                // Animated indicator (matching Android indeterminate progress)
+                // Moves from left to right continuously
+                Capsule()
+                    .fill(themeColor)
+                    .frame(width: barWidth, height: 1)
+                    .offset(x: animationProgress * maxOffset)
+            }
+        }
+        .frame(height: 1)
+        .onAppear {
+            // Start continuous animation (matching Android setIndeterminate(true))
+            // Reset to 0 and animate to 1, then repeat
+            withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+                animationProgress = 1.0
+            }
+        }
+        .onDisappear {
+            // Reset animation when view disappears
+            animationProgress = 0
+        }
     }
 }
 
