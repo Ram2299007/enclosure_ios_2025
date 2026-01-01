@@ -109,6 +109,14 @@ struct ChattingScreen: View {
     @State private var isLoadingEmojiReactions: Bool = false
     @State private var emojiReactionsListenerHandle: DatabaseHandle?
     
+    // Typing indicator state (matching Android)
+    @State private var isTyping: Bool = false
+    @State private var typingRunnable: DispatchWorkItem? = nil
+    @State private var typingListenerHandle: DatabaseHandle? = nil
+    @State private var typingRef: DatabaseReference? = nil
+    @State private var typingListenerHandle2: DatabaseHandle? = nil // Alternative room listener
+    @State private var typingRef2: DatabaseReference? = nil // Alternative room reference
+    
     // MARK: - Errors
     private enum MultiImageUploadError: Error {
         case dataUnavailable
@@ -2554,6 +2562,115 @@ struct ChattingScreen: View {
             print("📱 [onChildRemoved] Child removed with key: \(snapshot.key)")
             self.handleChildRemoved(snapshot: snapshot)
         }
+        
+        // Add typing indicator listener (matching Android setupTypingListener)
+        setupTypingIndicatorListener(receiverRoom: receiverRoom)
+    }
+    
+    /// Setup typing indicator listener (matching Android setupTypingListener)
+    private func setupTypingIndicatorListener(receiverRoom: String) {
+        let database = Database.database().reference()
+        let receiverUid = contact.uid
+        let senderId = Constant.SenderIdMy
+        
+        // Check both possible room combinations (matching Android behavior)
+        // Room 1: receiverUid + senderId (where sender saves typing indicator)
+        // Room 2: senderId + receiverUid (alternative room)
+        let room1 = receiverUid + senderId
+        let room2 = senderId + receiverUid
+        
+        print("🔍 [TypingIndicator] Setting up listener for rooms:")
+        print("   Room 1: \(room1)")
+        print("   Room 2: \(room2)")
+        print("   Current receiverRoom: \(receiverRoom)")
+        
+        // Listen to the room where the sender saves typing (receiverUid + senderId)
+        // This is the room where messages from sender to receiver are stored
+        let typingPath = "\(Constant.CHAT)/\(room1)/typing"
+        
+        typingRef = database.child(typingPath)
+        
+        // Listen for typing indicator changes
+        typingListenerHandle = typingRef?.observe(.value) { snapshot in
+            print("🔔 [TypingIndicator] Listener triggered - exists: \(snapshot.exists())")
+            if snapshot.exists(), let typingDict = snapshot.value as? [String: Any] {
+                print("📥 [TypingIndicator] Received typing data: \(typingDict.keys)")
+                // Parse typing indicator message
+                if let typingMessage = self.parseMessageFromDict(typingDict, messageId: "typing") {
+                    print("✅ [TypingIndicator] Parsed typing message - uid: \(typingMessage.uid), my uid: \(Constant.SenderIdMy)")
+                    // Only show typing indicator if it's from the other user (not ourselves)
+                    if typingMessage.uid != Constant.SenderIdMy {
+                        print("✅ [TypingIndicator] Adding typing indicator to message list")
+                        DispatchQueue.main.async {
+                            self.addTypingIndicatorToMessageList(typingMessage: typingMessage)
+                        }
+                    } else {
+                        print("⚠️ [TypingIndicator] Ignoring typing indicator from self")
+                    }
+                } else {
+                    print("❌ [TypingIndicator] Failed to parse typing message from dict")
+                }
+            } else {
+                // Typing indicator removed - remove from message list
+                print("🗑️ [TypingIndicator] Typing indicator removed from Firebase")
+                DispatchQueue.main.async {
+                    self.removeTypingIndicatorFromMessageList()
+                }
+            }
+        }
+        
+        print("✅ [TypingIndicator] Listener setup complete for path: \(typingPath)")
+        
+        // Also listen to alternative room path (in case messages are stored there)
+        let typingPath2 = "\(Constant.CHAT)/\(room2)/typing"
+        typingRef2 = database.child(typingPath2)
+        
+        typingListenerHandle2 = typingRef2?.observe(.value) { snapshot in
+            print("🔔 [TypingIndicator] Alternative listener triggered - exists: \(snapshot.exists())")
+            if snapshot.exists(), let typingDict = snapshot.value as? [String: Any] {
+                print("📥 [TypingIndicator] Received typing data from alternative room: \(typingDict.keys)")
+                if let typingMessage = self.parseMessageFromDict(typingDict, messageId: "typing") {
+                    if typingMessage.uid != Constant.SenderIdMy {
+                        print("✅ [TypingIndicator] Adding typing indicator from alternative room")
+                        DispatchQueue.main.async {
+                            self.addTypingIndicatorToMessageList(typingMessage: typingMessage)
+                        }
+                    }
+                }
+            } else {
+                DispatchQueue.main.async {
+                    self.removeTypingIndicatorFromMessageList()
+                }
+            }
+        }
+        
+        print("✅ [TypingIndicator] Alternative listener setup complete for path: \(typingPath2)")
+    }
+    
+    /// Add typing indicator to message list (matching Android addTypingIndicatorToMessageList)
+    private func addTypingIndicatorToMessageList(typingMessage: ChatMessage) {
+        print("📝 [TypingIndicator] addTypingIndicatorToMessageList CALLED")
+        print("   typingMessage uid: \(typingMessage.uid)")
+        print("   typingMessage dataType: \(typingMessage.dataType)")
+        
+        // Check if typing indicator already exists
+        if let existingIndex = messages.firstIndex(where: { $0.dataType == Constant.TYPEINDICATOR && $0.uid == typingMessage.uid }) {
+            print("⚠️ [TypingIndicator] Typing indicator already exists at position: \(existingIndex)")
+            // Update existing typing indicator
+            messages[existingIndex] = typingMessage
+            return
+        }
+        
+        // Add typing indicator to the end of the message list
+        messages.append(typingMessage)
+        print("✅ [TypingIndicator] Typing indicator added to message list")
+    }
+    
+    /// Remove typing indicator from message list (matching Android removeTypingIndicatorFromMessageList)
+    private func removeTypingIndicatorFromMessageList() {
+        // Remove all typing indicator messages
+        messages.removeAll { $0.dataType == Constant.TYPEINDICATOR }
+        print("✅ [TypingIndicator] Typing indicator removed from message list")
     }
     
     /// Handle child added event (matching Android handleChildAdded)
@@ -2578,25 +2695,32 @@ struct ChattingScreen: View {
             return
         }
         
+        // Handle typing indicator messages separately
+        if model.dataType == Constant.TYPEINDICATOR {
+            // Only show typing indicator if it's from the other user (not ourselves)
+            if model.uid != Constant.SenderIdMy {
+                DispatchQueue.main.async {
+                    self.addTypingIndicatorToMessageList(typingMessage: model)
+                }
+            }
+            return
+        }
+        
         // Handle Text, Image, Video, Document, Contact, and VoiceAudio datatype messages
         guard model.dataType == Constant.Text || model.dataType == Constant.img || model.dataType == Constant.video || model.dataType == Constant.doc || model.dataType == Constant.contact || model.dataType == Constant.voiceAudio else {
             print("📱 [handleChildAdded] Skipping unsupported message type: \(model.dataType)")
             return
         }
         
-        // Skip messages that were already loaded in initial fetch (prevent duplicates)
-        // When listener attaches, it fires for all existing messages, not just new ones
-        // But we want to add older messages that weren't in the initial load
-        if initiallyLoadedMessageIds.contains(model.id) {
-            print("📱 [handleChildAdded] Skipping duplicate - message already loaded in initial fetch: \(model.id)")
-            return
-        }
+        // Check if message already exists in current list (matching Android duplicate check)
+        // Android: checks if message exists in messageList, if not, adds it
+        // We check here to prevent processing, but still allow updates in the main block below
+        let messageExists = messages.contains(where: { $0.id == model.id })
         
-        // Check if message already exists in current list (additional duplicate check)
-        // This handles cases where message might have been added from listener before
-        if messages.contains(where: { $0.id == model.id }) {
-            print("📱 [handleChildAdded] Skipping duplicate - message already in list: \(model.id)")
-            return
+        if messageExists {
+            // Message already exists - this might be a duplicate from listener firing for existing messages
+            // But we still process it in case it's an update (matching Android behavior)
+            print("📱 [handleChildAdded] Message already exists in list: \(model.id), will process as potential update")
         }
         
         // Ensure modelId is set (matching Android)
@@ -2638,7 +2762,12 @@ struct ChattingScreen: View {
             print("🔵 [SCROLL_DEBUG] handleChildAdded - messages updated, new count: \(updatedMessageList.count), hasScrolledToBottom: \(self.hasScrolledToBottom), hasPerformedInitialScroll: \(self.hasPerformedInitialScroll)")
             
             // Update messages array (matching Android messageList.clear() and addAll())
+            // Force UI update by assigning new array (matching Android chatAdapter.updateMessageListEfficiently)
             self.messages = updatedMessageList
+            
+            // Trigger UI refresh explicitly (matching Android notifyItemInserted/notifyDataSetChanged)
+            // SwiftUI should auto-update, but we ensure it happens immediately
+            print("📱 [handleChildAdded] ✅ UI UPDATE - Messages array updated, count: \(updatedMessageList.count)")
             
             // If initial load is done but initial scroll hasn't been performed yet, wait for listener to finish
             // This ensures we scroll only once to the actual last message (like WhatsApp)
@@ -2666,7 +2795,9 @@ struct ChattingScreen: View {
             // Auto scroll for receiver messages (matching Android real-time scroll)
             if isReceiverMessage {
                 // Scroll will be handled by ScrollViewReader in messageListView
-                print("📱 [handleChildAdded] 🚀 FAST REAL-TIME SCROLL - New receiver message")
+                // Set pending scroll ID for real-time messages (matching Android scrollToPosition)
+                self.pendingInitialScrollId = model.id
+                print("📱 [handleChildAdded] 🚀 FAST REAL-TIME SCROLL - New receiver message, ID: \(model.id)")
             }
             
             // Update empty state
@@ -2809,6 +2940,28 @@ struct ChattingScreen: View {
             firebaseChildListenerHandle = nil
             print("📱 [removeFirebaseListeners] Removed child listener")
         }
+        
+        // Remove typing indicator listener (matching Android cleanupTypingListener)
+        if let handle = typingListenerHandle, let ref = typingRef {
+            ref.removeObserver(withHandle: handle)
+            typingListenerHandle = nil
+            typingRef = nil
+            print("📱 [removeFirebaseListeners] Removed typing indicator listener")
+        }
+        
+        // Remove alternative typing indicator listener
+        if let handle = typingListenerHandle2, let ref = typingRef2 {
+            ref.removeObserver(withHandle: handle)
+            typingListenerHandle2 = nil
+            typingRef2 = nil
+            print("📱 [removeFirebaseListeners] Removed alternative typing indicator listener")
+        }
+        
+        // Clear typing status before cleanup
+        clearTypingStatus()
+        
+        // Remove typing indicator from message list
+        removeTypingIndicatorFromMessageList()
         
         fullListenerAttached = false
     }
@@ -3190,21 +3343,301 @@ struct ChattingScreen: View {
     private func updateMessageText(_ newValue: String) {
         let trimmedText = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
         
+        print("🔤 [TypingIndicator] updateMessageText CALLED")
+        print("   newValue length: \(newValue.count)")
+        print("   trimmedText length: \(trimmedText.count)")
+        print("   trimmedText isEmpty: \(trimmedText.isEmpty)")
+        print("   current isTyping state: \(isTyping)")
+        print("   typingRunnable is nil: \(typingRunnable == nil)")
+        
         if trimmedText.isEmpty {
             // Clear typing status when messageBox is empty
+            print("🔤 [TypingIndicator] Text is empty, calling clearTypingStatus()")
             clearTypingStatus()
         } else {
             // Update typing status when user is typing
+            print("🔤 [TypingIndicator] Text is not empty, calling updateTypingStatus(true)")
             updateTypingStatus(true)
         }
     }
     
+    /// Clear typing status in Firebase (matching Android clearTypingStatus)
     private func clearTypingStatus() {
-        // TODO: Clear typing status in Firebase
+        print("🧹 [TypingIndicator] clearTypingStatus CALLED")
+        print("   current isTyping state: \(isTyping)")
+        print("   typingRunnable is nil: \(typingRunnable == nil)")
+        
+        do {
+            let receiverUid = contact.uid
+            let senderId = Constant.SenderIdMy
+            
+            print("🧹 [TypingIndicator] clearTypingStatus - receiverUid: '\(receiverUid)', senderId: '\(senderId)'")
+            
+            guard !receiverUid.isEmpty && !senderId.isEmpty else {
+                print("⚠️ [TypingIndicator] clearTypingStatus: Missing receiverUid or senderId")
+                return
+            }
+            
+            // Cancel pending runnable
+            if typingRunnable != nil {
+                print("🧹 [TypingIndicator] Cancelling existing typingRunnable")
+                typingRunnable?.cancel()
+                typingRunnable = nil
+                print("🧹 [TypingIndicator] typingRunnable cancelled and set to nil")
+            } else {
+                print("🧹 [TypingIndicator] No typingRunnable to cancel (already nil)")
+            }
+            
+            // Remove typing indicator from Firebase only if currently typing
+            if isTyping {
+                print("🧹 [TypingIndicator] isTyping is true, removing from Firebase")
+                let receiverRoom = receiverUid + senderId
+                let database = Database.database().reference()
+                let typingRef = database.child(Constant.CHAT).child(receiverRoom).child("typing")
+                
+                print("🧹 [TypingIndicator] Removing typing indicator from Firebase path: \(typingRef)")
+                
+                // Remove typing indicator messageModel from Firebase
+                typingRef.removeValue { error, _ in
+                    if let error = error {
+                        print("❌ [TypingIndicator] Error removing typing indicator: \(error.localizedDescription)")
+                    } else {
+                        DispatchQueue.main.async {
+                            self.isTyping = false
+                            print("✅ [TypingIndicator] Typing indicator removed from Firebase at path: \(typingRef)")
+                            print("✅ [TypingIndicator] isTyping set to FALSE")
+                        }
+                    }
+                }
+            } else {
+                print("🧹 [TypingIndicator] isTyping is false, skipping Firebase removal")
+            }
+        } catch {
+            print("❌ [TypingIndicator] Error clearing typing status: \(error.localizedDescription)")
+        }
     }
     
-    private func updateTypingStatus(_ isTyping: Bool) {
-        // TODO: Update typing status in Firebase
+    /// Update typing status in Firebase (matching Android updateTypingStatus)
+    private func updateTypingStatus(_ typing: Bool) {
+        print("📝 [TypingIndicator] updateTypingStatus CALLED")
+        print("   typing parameter: \(typing)")
+        print("   current isTyping state: \(isTyping)")
+        print("   typingRunnable is nil: \(typingRunnable == nil)")
+        
+        do {
+            let receiverUid = contact.uid
+            let senderId = Constant.SenderIdMy
+            
+            print("📝 [TypingIndicator] updateTypingStatus - receiverUid: '\(receiverUid)', senderId: '\(senderId)'")
+            
+            guard !receiverUid.isEmpty && !senderId.isEmpty else {
+                print("⚠️ [TypingIndicator] updateTypingStatus: Missing receiverUid or senderId")
+                return
+            }
+            
+            // Path: chats/{receiverRoom}/typing (store as messageModel structure)
+            // receiverRoom = receiverUid + senderId
+            let receiverRoom = receiverUid + senderId
+            let database = Database.database().reference()
+            let typingRef = database.child(Constant.CHAT).child(receiverRoom).child("typing")
+            
+            if typing {
+                print("📝 [TypingIndicator] Typing is TRUE - processing typing indicator update")
+                
+                // Cancel previous runnable if user is still typing (reset timer on every keystroke)
+                if typingRunnable != nil {
+                    print("📝 [TypingIndicator] Cancelling previous typingRunnable (user still typing)")
+                    typingRunnable?.cancel()
+                    typingRunnable = nil
+                    print("📝 [TypingIndicator] Previous typingRunnable cancelled")
+                } else {
+                    print("📝 [TypingIndicator] No previous typingRunnable to cancel")
+                }
+                
+                // Always update typing indicator on every keystroke (matching Android real-time behavior)
+                // Update timestamp to show continuous typing activity
+                print("💾 [TypingIndicator] SENDER: Updating typing indicator to Firebase (every keystroke)")
+                print("   senderId: \(senderId)")
+                print("   receiverUid: \(receiverUid)")
+                print("   receiverRoom: \(receiverRoom)")
+                print("   Path: \(typingRef)")
+                print("   current isTyping before update: \(isTyping)")
+                
+                // Create typing indicator messageModel
+                let emojiModels: [EmojiModel] = [EmojiModel(name: "", emoji: "")]
+                
+                // Get current date (matching Android Constant.getCurrentDate())
+                let dateFormatter = DateFormatter()
+                dateFormatter.dateFormat = "yyyy-MM-dd"
+                var typingDate = dateFormatter.string(from: Date())
+                
+                // Ensure clean date without colon prefix (matching Android)
+                if typingDate.hasPrefix(":") {
+                    typingDate = String(typingDate.dropFirst()).trimmingCharacters(in: .whitespaces)
+                    print("⚠️ [TypingIndicator] Removed leading colon from typing indicator date: \(typingDate)")
+                }
+                
+                // Get user name from UserDefaults
+                let userName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
+                
+                // Always use current timestamp to show continuous typing
+                let currentTimestamp = Date().timeIntervalSince1970
+                
+                let typingMessage = ChatMessage(
+                    id: "typing_indicator_\(senderId)",
+                    uid: senderId,
+                    message: "",
+                    time: "",
+                    document: "",
+                    dataType: Constant.TYPEINDICATOR,
+                    fileExtension: nil,
+                    name: nil,
+                    phone: nil,
+                    micPhoto: nil,
+                    miceTiming: nil,
+                    userName: userName,
+                    receiverId: receiverUid,
+                    replytextData: nil,
+                    replyKey: nil,
+                    replyType: nil,
+                    replyOldData: nil,
+                    replyCrtPostion: nil,
+                    forwaredKey: nil,
+                    groupName: nil,
+                    docSize: nil,
+                    fileName: nil,
+                    thumbnail: nil,
+                    fileNameThumbnail: nil,
+                    caption: nil,
+                    notification: 1,
+                    currentDate: typingDate,
+                    emojiModel: emojiModels,
+                    emojiCount: nil,
+                    timestamp: currentTimestamp, // Always update timestamp on every keystroke
+                    imageWidth: nil,
+                    imageHeight: nil,
+                    aspectRatio: nil,
+                    selectionCount: "1",
+                    selectionBunch: nil,
+                    receiverLoader: 0
+                )
+                
+                // Convert to dictionary for Firebase (matching Android modelToDictionary)
+                var typingDict: [String: Any] = [:]
+                typingDict["uid"] = typingMessage.uid
+                typingDict["message"] = typingMessage.message
+                typingDict["time"] = typingMessage.time
+                typingDict["document"] = typingMessage.document
+                typingDict["dataType"] = typingMessage.dataType
+                typingDict["extension"] = typingMessage.fileExtension ?? ""
+                typingDict["name"] = typingMessage.name ?? ""
+                typingDict["phone"] = typingMessage.phone ?? ""
+                typingDict["micPhoto"] = typingMessage.micPhoto ?? ""
+                typingDict["miceTiming"] = typingMessage.miceTiming ?? ""
+                typingDict["userName"] = typingMessage.userName ?? ""
+                typingDict["replytextData"] = typingMessage.replytextData ?? ""
+                typingDict["replyKey"] = typingMessage.replyKey ?? ""
+                typingDict["replyType"] = typingMessage.replyType ?? ""
+                typingDict["replyOldData"] = typingMessage.replyOldData ?? ""
+                typingDict["replyCrtPostion"] = typingMessage.replyCrtPostion ?? ""
+                typingDict["modelId"] = typingMessage.id
+                typingDict["receiverUid"] = typingMessage.receiverId
+                typingDict["forwaredKey"] = typingMessage.forwaredKey ?? ""
+                typingDict["groupName"] = typingMessage.groupName ?? ""
+                typingDict["docSize"] = typingMessage.docSize ?? ""
+                typingDict["fileName"] = typingMessage.fileName ?? ""
+                typingDict["thumbnail"] = typingMessage.thumbnail ?? ""
+                typingDict["fileNameThumbnail"] = typingMessage.fileNameThumbnail ?? ""
+                typingDict["caption"] = typingMessage.caption ?? ""
+                typingDict["notification"] = typingMessage.notification
+                typingDict["currentDate"] = typingMessage.currentDate ?? ""
+                typingDict["emojiCount"] = typingMessage.emojiCount ?? ""
+                typingDict["imageWidth"] = typingMessage.imageWidth ?? ""
+                typingDict["imageHeight"] = typingMessage.imageHeight ?? ""
+                typingDict["aspectRatio"] = typingMessage.aspectRatio ?? ""
+                typingDict["selectionCount"] = typingMessage.selectionCount ?? ""
+                typingDict["receiverLoader"] = typingMessage.receiverLoader
+                typingDict["timestamp"] = currentTimestamp // Always update timestamp on every keystroke
+                
+                // Convert emojiModel array
+                if let emojiModels = typingMessage.emojiModel {
+                    var emojiArray: [[String: Any]] = []
+                    for emoji in emojiModels {
+                        emojiArray.append(["name": emoji.name, "emoji": emoji.emoji])
+                    }
+                    typingDict["emojiModel"] = emojiArray
+                }
+                
+                // Always save typing indicator to Firebase on every keystroke (update timestamp)
+                print("💾 [TypingIndicator] Calling Firebase setValue with timestamp: \(currentTimestamp)")
+                typingRef.setValue(typingDict) { error, _ in
+                    if let error = error {
+                        print("❌ [TypingIndicator] ERROR saving typing indicator: \(error.localizedDescription)")
+                    } else {
+                        DispatchQueue.main.async {
+                            let wasTyping = self.isTyping
+                            self.isTyping = true
+                            print("✅ [TypingIndicator] SUCCESS - Typing indicator updated in Firebase (timestamp: \(currentTimestamp))!")
+                            print("   Path: \(typingRef)")
+                            print("   isTyping changed from \(wasTyping) to TRUE")
+                        }
+                    }
+                }
+                
+                // Set a runnable to clear typing status after 3 seconds of no typing activity
+                // This timer is reset on every keystroke, so it only fires when user stops typing
+                // Note: ChattingScreen is a struct (value type), so we capture values instead of using [weak self]
+                let receiverUidForTimer = receiverUid
+                let senderIdForTimer = Constant.SenderIdMy
+                print("⏰ [TypingIndicator] Creating 3-second timer to clear typing indicator if user stops typing")
+                let workItem = DispatchWorkItem {
+                    print("⏰ [TypingIndicator] TIMER FIRED - 3 seconds passed with no typing activity")
+                    let delayedReceiverUid = receiverUidForTimer
+                    let delayedSenderId = senderIdForTimer
+                    
+                    guard !delayedReceiverUid.isEmpty && !delayedSenderId.isEmpty else {
+                        print("⏰ [TypingIndicator] Timer fired but receiverUid or senderId is empty - skipping")
+                        return
+                    }
+                    
+                    let delayedReceiverRoom = delayedReceiverUid + delayedSenderId
+                    let delayedDatabase = Database.database().reference()
+                    let delayedTypingRef = delayedDatabase.child(Constant.CHAT).child(delayedReceiverRoom).child("typing")
+                    
+                    print("⏰ [TypingIndicator] Removing typing indicator from Firebase after 3s inactivity")
+                    print("   Path: \(delayedTypingRef)")
+                    
+                    // Remove typing indicator from Firebase after 3 seconds of inactivity
+                    delayedTypingRef.removeValue { error, _ in
+                        if let error = error {
+                            print("❌ [TypingIndicator] Error removing typing indicator after 3s: \(error.localizedDescription)")
+                        } else {
+                            DispatchQueue.main.async {
+                                let wasTyping = self.isTyping
+                                self.isTyping = false
+                                self.typingRunnable = nil // Clean up the runnable reference
+                                print("✅ [TypingIndicator] Typing indicator removed from Firebase after 3s inactivity")
+                                print("   isTyping changed from \(wasTyping) to FALSE")
+                                print("   typingRunnable set to nil")
+                                print("✅ [TypingIndicator] State reset complete - ready for next typing session")
+                                // Note: State updates will be handled by the typing listener or when updateTypingStatus is called again
+                            }
+                        }
+                    }
+                }
+                
+                typingRunnable = workItem
+                print("⏰ [TypingIndicator] Timer scheduled for 3 seconds from now")
+                // Reset timer on every keystroke - only fires if user stops typing for 3 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: workItem)
+            } else {
+                // Immediately clear typing status
+                print("📝 [TypingIndicator] Typing is FALSE - calling clearTypingStatus()")
+                clearTypingStatus()
+            }
+        } catch {
+            print("❌ [TypingIndicator] Error updating typing status: \(error.localizedDescription)")
+        }
     }
     
     /// Trigger reply UI (Android half-swipe) for a given message
@@ -10725,81 +11158,93 @@ struct MessageBubbleView: View {
             }
             
             VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
-                replyLayoutView
+                // Hide reply layout for typing indicator (matching Android behavior)
+                if message.dataType != Constant.TYPEINDICATOR {
+                    replyLayoutView
+                }
                 
                 // Forwarded indicator and message bubble in horizontal layout (matching Android sendLinear/recLinear)
                 // In Android: horizontal LinearLayout contains selectionCheckbox, forwarded TextView, and MainSenderBox/MainReceiverBox
                 // For sender: checkbox → forwarded → message bubble
                 // For receiver: message bubble → forwarded → checkbox
-                HStack(alignment: .center, spacing: 0) {
-                    if isSentByMe {
-                        Spacer()
-                    }
-                    
-                    // Checkbox for sender (FIRST in horizontal layout, matching Android sample_sender.xml)
-                    // android:layout_marginStart="8dp" android:layout_marginEnd="8dp"
-                    if isMultiSelectMode && isSentByMe {
-                        Image("multitick")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 24, height: 24)
-                            .foregroundColor(isSelected ? Color(hex: Constant.themeColor) : Color("gray3"))
-                            .padding(.leading, 8) // android:layout_marginStart="8dp"
-                            .padding(.trailing, 8) // android:layout_marginEnd="8dp"
-                    }
-                    
-                    // Forwarded indicator positioning differs for sender vs receiver
-                    if let forwaredKey = message.forwaredKey,
-                       forwaredKey == "forwordKey" {
+                // Hide forwarded indicator and checkboxes for typing indicator (matching Android behavior)
+                if message.dataType != Constant.TYPEINDICATOR {
+                    HStack(alignment: .center, spacing: 0) {
                         if isSentByMe {
-                            // Sender: forwarded indicator BEFORE message bubble (matching Android sample_sender.xml)
-                            // android:layout_marginEnd="20dp"
-                            forwardedIndicatorView
-                                .padding(.trailing, 20) // android:layout_marginEnd="20dp"
+                            Spacer()
+                        }
+                        
+                        // Checkbox for sender (FIRST in horizontal layout, matching Android sample_sender.xml)
+                        // android:layout_marginStart="8dp" android:layout_marginEnd="8dp"
+                        if isMultiSelectMode && isSentByMe {
+                            Image("multitick")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 24, height: 24)
+                                .foregroundColor(isSelected ? Color(hex: Constant.themeColor) : Color("gray3"))
+                                .padding(.leading, 8) // android:layout_marginStart="8dp"
+                                .padding(.trailing, 8) // android:layout_marginEnd="8dp"
+                        }
+                        
+                        // Forwarded indicator positioning differs for sender vs receiver
+                        if let forwaredKey = message.forwaredKey,
+                           forwaredKey == "forwordKey" {
+                            if isSentByMe {
+                                // Sender: forwarded indicator BEFORE message bubble (matching Android sample_sender.xml)
+                                // android:layout_marginEnd="20dp"
+                                forwardedIndicatorView
+                                    .padding(.trailing, 20) // android:layout_marginEnd="20dp"
+                            }
+                        }
+                        
+                        mainMessageContentView
+                        
+                        // Receiver: forwarded indicator AFTER message bubble (matching Android sample_receiver.xml)
+                        // In Android: forwarded TextView comes after MainReceiverBox in the horizontal LinearLayout
+                        // Negative offset to bring it as close as possible to message bubble
+                        if !isSentByMe,
+                           let forwaredKey = message.forwaredKey,
+                           forwaredKey == "forwordKey" {
+                            receiverForwardedIndicatorView
+                                .offset(x: -2) // Negative offset to bring it closer to message bubble
+                        }
+                        
+                        // Checkbox for receiver (AFTER forwarded indicator, matching Android sample_receiver.xml)
+                        // Matching Android: selectionCheckbox is in the same horizontal LinearLayout
+                        // android:layout_marginStart="8dp" android:layout_marginEnd="8dp"
+                        if isMultiSelectMode && !isSentByMe {
+                            Image("multitick")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 24, height: 24)
+                                .foregroundColor(isSelected ? Color(hex: Constant.themeColor) : Color("gray3"))
+                                .padding(.leading, 8) // android:layout_marginStart="8dp"
+                                .padding(.trailing, 8) // android:layout_marginEnd="8dp"
+                        }
+                        
+                        if !isSentByMe {
+                            Spacer()
                         }
                     }
-                    
-                mainMessageContentView
-                    
-                    // Receiver: forwarded indicator AFTER message bubble (matching Android sample_receiver.xml)
-                    // In Android: forwarded TextView comes after MainReceiverBox in the horizontal LinearLayout
-                    // Negative offset to bring it as close as possible to message bubble
-                    if !isSentByMe,
-                       let forwaredKey = message.forwaredKey,
-                       forwaredKey == "forwordKey" {
-                        receiverForwardedIndicatorView
-                            .offset(x: -2) // Negative offset to bring it closer to message bubble
-                    }
-                    
-                    // Checkbox for receiver (AFTER forwarded indicator, matching Android sample_receiver.xml)
-                    // Matching Android: selectionCheckbox is in the same horizontal LinearLayout
-                    // android:layout_marginStart="8dp" android:layout_marginEnd="8dp"
-                    if isMultiSelectMode && !isSentByMe {
-                        Image("multitick")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 24, height: 24)
-                            .foregroundColor(isSelected ? Color(hex: Constant.themeColor) : Color("gray3"))
-                            .padding(.leading, 8) // android:layout_marginStart="8dp"
-                            .padding(.trailing, 8) // android:layout_marginEnd="8dp"
-                    }
-                    
-                    if !isSentByMe {
-                        Spacer()
-                    }
+                } else {
+                    // For typing indicator, only show the main message content (typing indicator animation)
+                    mainMessageContentView
                 }
                 
                 // Time row and emoji card are at the same level (both layout_below="@id/rl" in Android)
                 // Emoji card stays positioned relative to progress bar area
-                ZStack(alignment: .bottom) {
-                    // Time row (matching Android sendTime with progress indicator)
-                timeRowView
-                        .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading)
-                    // Emoji card (matching Android emojiTextCard) - positioned relative to progress bar
-                    emojiReactionsCardView
-                        .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading)
+                // Hide time row and emoji card for typing indicator (matching Android behavior)
+                if message.dataType != Constant.TYPEINDICATOR {
+                    ZStack(alignment: .bottom) {
+                        // Time row (matching Android sendTime with progress indicator)
+                        timeRowView
+                            .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading)
+                        // Emoji card (matching Android emojiTextCard) - positioned relative to progress bar
+                        emojiReactionsCardView
+                            .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading)
+                    }
                 }
             }
             
@@ -11333,9 +11778,38 @@ struct MessageBubbleView: View {
                     }
                     
                 } else {
+                    // Check if this is a typing indicator message (matching Android TYPEINDICATOR)
+                    if message.dataType == Constant.TYPEINDICATOR {
+                        // Typing indicator (matching Android typingIndicator LottieAnimationView)
+                        let _ = print("🎬 [TypingIndicator] Rendering typing indicator view")
+                        HStack(spacing: 0) {
+                            // Get animation name based on theme color
+                            let animationName = getTypingIndicatorAnimationName(for: Constant.themeColor)
+                            let _ = print("🎬 [TypingIndicator] Animation name: \(animationName), Theme color: \(Constant.themeColor)")
+                            
+                            #if canImport(Lottie)
+                            let _ = print("✅ [TypingIndicator] Lottie package available, using LottieView")
+                            LottieView(animationName: animationName, speed: 1.0)
+                                .frame(width: 50, height: 50) // Android: 50dp x 50dp
+                                .padding(.leading, 12) // Android: layout_marginStart="12dp"
+                                .padding(.top, 4) // Android: layout_marginTop="4dp"
+                                .padding(.bottom, 4) // Android: layout_marginBottom="4dp"
+                            #else
+                            let _ = print("⚠️ [TypingIndicator] Lottie package NOT available, using fallback dots")
+                            // Fallback: Show animated dots while Lottie package is not available
+                            TypingIndicatorDotsView()
+                                .frame(width: 50, height: 50)
+                                .padding(.leading, 12)
+                                .padding(.top, 4)
+                                .padding(.bottom, 4)
+                            #endif
+                            
+                            Spacer(minLength: 0)
+                        }
+                    }
                     // Check if this is an image bunch message (matching Android recImgBunchLyt)
                     // Allow selectionCount >= 2 (including 5+ images which show 2x2 grid with +N overlay)
-                    if message.dataType == Constant.img,
+                    else if message.dataType == Constant.img,
                        let selectionCount = message.selectionCount,
                        let selectionBunch = message.selectionBunch,
                        (Int(selectionCount) ?? 0) >= 2,
@@ -17879,6 +18353,36 @@ struct EmojiReactionRow: View {
             // For now, use the UID as name
             userName = emojiModel.name
             isLoading = false
+        }
+    }
+}
+
+// MARK: - Typing Indicator Dots View (Fallback when Lottie is not available)
+struct TypingIndicatorDotsView: View {
+    @State private var animationPhase: CGFloat = 0
+    @State private var dotOpacities: [Double] = [0.3, 0.3, 0.3]
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(0..<3, id: \.self) { index in
+                Circle()
+                    .fill(Color("TextColor"))
+                    .frame(width: 8, height: 8)
+                    .opacity(dotOpacities[index])
+            }
+        }
+        .onAppear {
+            let _ = print("🎬 [TypingIndicatorDotsView] View appeared, starting animation")
+            // Animate dots with staggered timing
+            withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true).delay(0.0)) {
+                dotOpacities[0] = 1.0
+            }
+            withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true).delay(0.2)) {
+                dotOpacities[1] = 1.0
+            }
+            withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true).delay(0.4)) {
+                dotOpacities[2] = 1.0
+            }
         }
     }
 }

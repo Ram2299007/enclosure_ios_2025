@@ -43,6 +43,7 @@ struct Constant{
     static let contact = "contact"
     static let voiceAudio = "voiceAudio"
     static let camera = "camera"
+    static let TYPEINDICATOR = "typingIndicator"
 
 
     static var SenderIdMy: String {
