@@ -45,31 +45,32 @@ struct whatsYourNumber: View {
                                     .foregroundColor(Color("TextColor"))
                                     .padding(.leading, 15)
 
-                                TextField("", text: $phoneNumber)
-                                    .keyboardType(.numberPad)
-                                    .font(.custom("Inter18pt-Regular", size: 16))
-                                    .foregroundColor(Color("TextColor"))
-                                    .frame(height: 60)
-                                    .background(Color.clear)
-                                    .overlay(
-                                        ZStack(alignment: .leading) {
-                                            if phoneNumber.isEmpty {
-                                                Text("Enter mobile")
-                                                    .foregroundColor(Color("gray"))
-                                                    .font(.custom("Inter18pt-Regular", size: 16))
-                                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                            }
-                                        }
-                                    )
-                                    .onChange(of: phoneNumber) { newValue in
-                                        phoneError = nil
-                                        // Only limit length for India (+91) to 10 digits
-                                        if selectedCountryCode == "+91" && newValue.count > 10 {
-                                            phoneNumber = String(newValue.prefix(10))
-                                        }
-                                        // For other country codes, no length limit
+                                ZStack(alignment: .leading) {
+                                    // Placeholder text (only when empty and not focused)
+                                    if phoneNumber.isEmpty && !isFocused {
+                                        Text("Enter mobile")
+                                            .foregroundColor(Color("gray"))
+                                            .font(.custom("Inter18pt-Regular", size: 16))
+                                            .frame(maxWidth: .infinity, alignment: .leading)
                                     }
-                                    .focused($isFocused)
+                                    
+                                    TextField("", text: $phoneNumber)
+                                        .keyboardType(.numberPad)
+                                        .font(.custom("Inter18pt-Regular", size: 16))
+                                        .foregroundColor(Color("TextColor"))
+                                        .frame(height: 60)
+                                        .background(Color.clear)
+                                        .focused($isFocused)
+                                        .onChange(of: phoneNumber) { newValue in
+                                            phoneError = nil
+                                            // Only limit length for India (+91) to 10 digits
+                                            if selectedCountryCode == "+91" && newValue.count > 10 {
+                                                phoneNumber = String(newValue.prefix(10))
+                                            }
+                                            // For other country codes, no length limit
+                                        }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
 
                                 NavigationLink(destination: flagScreen(
                                     selectedCountryCode: $selectedCountryCode,
@@ -93,9 +94,12 @@ struct whatsYourNumber: View {
                             .frame(height: 60)
                             .background(
                                 RoundedRectangle(cornerRadius: 15)
-                                    .stroke(isFocused ? Color("TextColor") : Color("gray"), lineWidth: 1)
-                                    .animation(.easeInOut, value: isFocused)
+                                    .stroke(
+                                        isFocused ? Color("TextColor") : Color("gray"),
+                                        lineWidth: isFocused ? 1.5 : 1.0
+                                    )
                             )
+                            .animation(.easeInOut(duration: 0.2), value: isFocused)
 
 
                         }

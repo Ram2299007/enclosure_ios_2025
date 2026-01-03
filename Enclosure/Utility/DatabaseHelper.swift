@@ -23,8 +23,26 @@ final class DatabaseHelper {
     private init() {
         let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         databaseURL = documentsDirectory.appendingPathComponent("enclosureDatabase.db")
+        print("📁 [DatabaseHelper] Database file path: \(databaseURL.path)")
         openDatabase()
         createPendingTableIfNeeded()
+    }
+    
+    /// Get the database file path (for external viewing)
+    func getDatabasePath() -> String {
+        return databaseURL.path
+    }
+    
+    /// Print database file path to console
+    func printDatabasePath() {
+        print("📁 [DatabaseHelper] ===== SQLITE DATABASE FILE PATH =====")
+        print("📁 [DatabaseHelper] Path: \(databaseURL.path)")
+        print("📁 [DatabaseHelper] URL: \(databaseURL.absoluteString)")
+        print("📁 [DatabaseHelper] =====================================")
+        print("📁 [DatabaseHelper] To view database:")
+        print("📁 [DatabaseHelper] 1. Copy the path above")
+        print("📁 [DatabaseHelper] 2. Use SQLite Browser or DB Browser for SQLite")
+        print("📁 [DatabaseHelper] 3. Or use: sqlite3 '\(databaseURL.path)' in Terminal")
     }
     
     deinit {
@@ -234,6 +252,60 @@ final class DatabaseHelper {
         return result
     }
     
+    /// Export all pending messages data as formatted string (for viewing/debugging)
+    func exportAllPendingMessagesData(receiverUid: String) -> String {
+        var result = ""
+        let semaphore = DispatchSemaphore(value: 0)
+        
+        queue.async {
+            guard let db = self.db else {
+                semaphore.signal()
+                return
+            }
+            
+            let query = "SELECT * FROM \(self.TABLE_NAME_PENDING) WHERE receiverUid = ? ORDER BY timestamp ASC;"
+            var statement: OpaquePointer?
+            
+            if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+                sqlite3_bind_text(statement, 1, receiverUid, -1, self.SQLITE_TRANSIENT)
+                
+                result += "===== ALL PENDING MESSAGES DATA (receiverUid: \(receiverUid)) =====\n"
+                result += "Total columns: 35\n\n"
+                
+                var count = 0
+                while sqlite3_step(statement) == SQLITE_ROW {
+                    count += 1
+                    if let message = self.messageFromStatement(statement) {
+                        result += "--- Message #\(count) ---\n"
+                        result += "modelId: \(message.id)\n"
+                        result += "uid: \(message.uid)\n"
+                        result += "receiverUid: \(message.receiverId)\n"
+                        result += "dataType: \(message.dataType)\n"
+                        result += "message: \(message.message)\n"
+                        result += "document: \(message.document)\n"
+                        result += "time: \(message.time)\n"
+                        result += "timestamp: \(message.timestamp)\n"
+                        result += "receiverLoader: \(message.receiverLoader)\n"
+                        result += "fileName: \(message.fileName ?? "nil")\n"
+                        result += "caption: \(message.caption ?? "nil")\n"
+                        result += "notification: \(message.notification)\n"
+                        result += "\n"
+                    }
+                }
+                
+                result += "Total messages: \(count)\n"
+                result += "===========================================\n"
+                
+                sqlite3_finalize(statement)
+            }
+            
+            semaphore.signal()
+        }
+        
+        semaphore.wait()
+        return result
+    }
+    
     /// Log all pending messages in the table for debugging
     func logAllPendingMessages(receiverUid: String) {
         queue.async {
@@ -262,6 +334,47 @@ final class DatabaseHelper {
                 print("📊 [DatabaseHelper] =================================================")
                 
                 sqlite3_finalize(statement)
+            }
+        }
+    }
+    
+    /// Log a specific pending message by key (modelId) for debugging
+    func logPendingMessageByKey(modelId: String, receiverUid: String) {
+        queue.async {
+            guard let db = self.db else { return }
+            
+            let query = "SELECT * FROM \(self.TABLE_NAME_PENDING) WHERE modelId = ? AND receiverUid = ?;"
+            var statement: OpaquePointer?
+            
+            if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+                sqlite3_bind_text(statement, 1, modelId, -1, self.SQLITE_TRANSIENT)
+                sqlite3_bind_text(statement, 2, receiverUid, -1, self.SQLITE_TRANSIENT)
+                
+                print("🔑 [DatabaseHelper] ===== SEARCHING PENDING MESSAGE BY KEY =====")
+                print("🔑 [DatabaseHelper] modelId: \(modelId)")
+                print("🔑 [DatabaseHelper] receiverUid: \(receiverUid)")
+                
+                if sqlite3_step(statement) == SQLITE_ROW {
+                    // Message found - log all fields
+                    if let message = self.messageFromStatement(statement) {
+                        print("🔑 [DatabaseHelper] ✅ MESSAGE FOUND:")
+                        print("🔑 [DatabaseHelper]   - modelId: \(message.id)")
+                        print("🔑 [DatabaseHelper]   - uid: \(message.uid)")
+                        print("🔑 [DatabaseHelper]   - dataType: \(message.dataType)")
+                        print("🔑 [DatabaseHelper]   - message: \(message.message)")
+                        print("🔑 [DatabaseHelper]   - document: \(message.document)")
+                        print("🔑 [DatabaseHelper]   - timestamp: \(message.timestamp)")
+                        print("🔑 [DatabaseHelper]   - receiverLoader: \(message.receiverLoader)")
+                        print("🔑 [DatabaseHelper]   - receiverUid: \(message.receiverId)")
+                    }
+                } else {
+                    print("🔑 [DatabaseHelper] ❌ MESSAGE NOT FOUND in pending_messages table")
+                }
+                
+                print("🔑 [DatabaseHelper] ==============================================")
+                sqlite3_finalize(statement)
+            } else {
+                print("🔑 [DatabaseHelper] ❌ Failed to prepare query: \(String(cString: sqlite3_errmsg(db)))")
             }
         }
     }
