@@ -3851,8 +3851,20 @@ struct ChattingScreen: View {
             } else {
                 print("🗑️ [CLEAR CHAT] ✅ Successfully cleared Firebase data for room: \(receiverRoom)")
                 
-                // Clear local messages
+                // Delete all pending messages from SQLite table FIRST (matching Android clearAllPendingMessages)
+                // This will also log the table contents for debugging
+                let deleted = DatabaseHelper.shared.deleteAllPendingMessages(receiverUid: receiverUid)
+                if deleted {
+                    print("🗑️ [CLEAR CHAT] ✅ Deleted all pending messages from SQLite")
+                } else {
+                    print("🗑️ [CLEAR CHAT] ⚠️ Failed to delete pending messages from SQLite")
+                }
+                
+                // Clear local messages - filter out any pending messages (receiverLoader == 0)
                 DispatchQueue.main.async {
+                    // Remove all messages, including pending ones
+                    let pendingCount = self.messages.filter { $0.receiverLoader == 0 }.count
+                    print("🗑️ [CLEAR CHAT] Removing \(self.messages.count) messages from UI (including \(pendingCount) pending messages)")
                     self.messages.removeAll()
                     self.updateEmptyState(isEmpty: true)
                     print("🗑️ [CLEAR CHAT] ✅ Cleared local messages")
@@ -4190,16 +4202,23 @@ struct ChattingScreen: View {
         let receiverUid = contact.uid
         print("📱 [loadPendingMessages] Loading pending messages for receiver: \(receiverUid)")
         
+        // Log all pending messages in SQLite table for debugging
+        DatabaseHelper.shared.logAllPendingMessages(receiverUid: receiverUid)
+        
         DatabaseHelper.shared.getPendingMessages(receiverUid: receiverUid) { pendingMessages in
             guard !pendingMessages.isEmpty else {
-                print("📱 [loadPendingMessages] No pending messages found")
+                print("📱 [loadPendingMessages] No pending messages found in SQLite")
                 return
             }
             
-            print("📱 [loadPendingMessages] Found \(pendingMessages.count) pending messages")
+            print("📱 [loadPendingMessages] Found \(pendingMessages.count) pending messages in SQLite")
+            for (index, msg) in pendingMessages.enumerated() {
+                print("📱 [loadPendingMessages]   [\(index + 1)] modelId: \(msg.id), dataType: \(msg.dataType), receiverLoader: \(msg.receiverLoader)")
+            }
             
             DispatchQueue.main.async {
                 var addedCount = 0
+                var skippedCount = 0
                 // Add pending messages to the list if they don't already exist
                 for pendingMessage in pendingMessages {
                     // Check if message already exists in the list
@@ -4208,7 +4227,8 @@ struct ChattingScreen: View {
                         self.messages.append(pendingMessage)
                         addedCount += 1
                     } else {
-                        print("📱 [loadPendingMessages] Pending message already in list: \(pendingMessage.id)")
+                        print("📱 [loadPendingMessages] Pending message already in list (skipping): \(pendingMessage.id)")
+                        skippedCount += 1
                     }
                 }
                 
@@ -4220,7 +4240,9 @@ struct ChattingScreen: View {
                     self.isLastItemVisible = true
                     self.showScrollDownButton = false
                     
-                    print("📱 [loadPendingMessages] ✅ Added \(addedCount) pending messages to UI with progress bars")
+                    print("📱 [loadPendingMessages] ✅ Added \(addedCount) pending messages to UI (skipped \(skippedCount) duplicates)")
+                } else {
+                    print("📱 [loadPendingMessages] ⚠️ No new pending messages added (all \(skippedCount) were duplicates)")
                 }
             }
         }

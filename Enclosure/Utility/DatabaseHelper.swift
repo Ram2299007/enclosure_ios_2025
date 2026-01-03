@@ -196,6 +196,76 @@ final class DatabaseHelper {
         }
     }
     
+    /// Delete all pending messages for a receiver (matching Android clearAllPendingMessages)
+    func deleteAllPendingMessages(receiverUid: String) -> Bool {
+        var result = false
+        let semaphore = DispatchSemaphore(value: 0)
+        
+        queue.async {
+            guard let db = self.db else {
+                semaphore.signal()
+                return
+            }
+            
+            // First, log all pending messages before deletion
+            self.logAllPendingMessages(receiverUid: receiverUid)
+            
+            let deleteSQL = "DELETE FROM \(self.TABLE_NAME_PENDING) WHERE receiverUid = ?;"
+            var statement: OpaquePointer?
+            
+            if sqlite3_prepare_v2(db, deleteSQL, -1, &statement, nil) == SQLITE_OK {
+                sqlite3_bind_text(statement, 1, receiverUid, -1, self.SQLITE_TRANSIENT)
+                
+                if sqlite3_step(statement) == SQLITE_DONE {
+                    result = true
+                    let changes = sqlite3_changes(db)
+                    print("✅ [DatabaseHelper] Deleted \(changes) pending messages for receiver: \(receiverUid)")
+                } else {
+                    print("⚠️ [DatabaseHelper] Failed to delete pending messages: \(String(cString: sqlite3_errmsg(db)))")
+                }
+                
+                sqlite3_finalize(statement)
+            }
+            
+            semaphore.signal()
+        }
+        
+        semaphore.wait()
+        return result
+    }
+    
+    /// Log all pending messages in the table for debugging
+    func logAllPendingMessages(receiverUid: String) {
+        queue.async {
+            guard let db = self.db else { return }
+            
+            let query = "SELECT modelId, dataType, timestamp, uploadStatus FROM \(self.TABLE_NAME_PENDING) WHERE receiverUid = ?;"
+            var statement: OpaquePointer?
+            
+            if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+                sqlite3_bind_text(statement, 1, receiverUid, -1, self.SQLITE_TRANSIENT)
+                
+                var count = 0
+                print("📊 [DatabaseHelper] ===== PENDING MESSAGES TABLE DATA (receiverUid: \(receiverUid)) =====")
+                
+                while sqlite3_step(statement) == SQLITE_ROW {
+                    count += 1
+                    let modelId = String(cString: sqlite3_column_text(statement, 0))
+                    let dataType = String(cString: sqlite3_column_text(statement, 1))
+                    let timestamp = sqlite3_column_double(statement, 2)
+                    let uploadStatus = sqlite3_column_int(statement, 3)
+                    
+                    print("📊 [DatabaseHelper] Row \(count): modelId=\(modelId), dataType=\(dataType), timestamp=\(timestamp), uploadStatus=\(uploadStatus)")
+                }
+                
+                print("📊 [DatabaseHelper] Total pending messages in table: \(count)")
+                print("📊 [DatabaseHelper] =================================================")
+                
+                sqlite3_finalize(statement)
+            }
+        }
+    }
+    
     // MARK: - Private Helpers
     
     private func bindMessage(message: ChatMessage, to statement: OpaquePointer?) {
