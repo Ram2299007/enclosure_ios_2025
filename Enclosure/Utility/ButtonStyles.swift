@@ -26,3 +26,14 @@ struct CircularRippleStyle: ButtonStyle {
     }
 }
 
+struct MenuItemRippleStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                Rectangle()
+                    .fill(Color("circlebtnhover").opacity(configuration.isPressed ? 0.2 : 0.0))
+            )
+            .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
+    }
+}
+

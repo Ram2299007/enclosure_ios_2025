@@ -20,6 +20,10 @@ struct UserInfoScreen: View {
     @State private var themeColorHex: String = Constant.themeColor
     @State private var mainvectorTintColor: Color = Color(hex: "#01253B")
     
+    // ShowImageScreen navigation state
+    @State private var navigateToShowImageScreen: Bool = false
+    @State private var selectedImageForShow: SelectionBunchModel?
+    
     @StateObject private var viewModel = EditProfileViewModel()
     
     // Computed property for background tint: appThemeColor in light mode, darker tint in dark mode
@@ -56,6 +60,25 @@ struct UserInfoScreen: View {
                 }
             }
         }
+        .background(
+            // Hidden NavigationLink for ShowImageScreen
+            NavigationLink(
+                destination: Group {
+                    if let selectedImage = selectedImageForShow {
+                        ShowImageScreen(
+                            imageModel: selectedImage,
+                            viewHolderTypeKey: nil // Not from chat
+                        )
+                    } else {
+                        EmptyView()
+                    }
+                },
+                isActive: $navigateToShowImageScreen
+            ) {
+                EmptyView()
+            }
+            .hidden()
+        )
         .navigationBarHidden(true)
         .onAppear {
             print("UserInfoScreen: onAppear - recUserId: \(recUserId), recUserName: \(recUserName)")
@@ -138,6 +161,16 @@ struct UserInfoScreen: View {
                         themeColorHex: themeColorHex
                     )
                     .padding(.trailing, 16)
+                    .onTapGesture {
+                        // Open ShowImageScreen for profile image
+                        if let photo = profile?.photo, !photo.isEmpty {
+                            selectedImageForShow = SelectionBunchModel(
+                                imgUrl: photo,
+                                fileName: ""
+                            )
+                            navigateToShowImageScreen = true
+                        }
+                    }
                 } else {
                     // Show placeholder while loading
                     ThemeBorderProfileImage(
@@ -156,12 +189,19 @@ struct UserInfoScreen: View {
                     HStack(spacing: 15) {
                         ForEach(profileImages.reversed(), id: \.id) { imageData in
                             ThemeBorderStatusImage(imageURL: imageData.photo)
+                                .onTapGesture {
+                                    // Open ShowImageScreen for profile image
+                                    selectedImageForShow = SelectionBunchModel(
+                                        imgUrl: imageData.photo,
+                                        fileName: ""
+                                    )
+                                    navigateToShowImageScreen = true
+                                }
                         }
                     }
                     .padding(.horizontal, 15)
                 }
                 .fixedSize()
-                .allowsHitTesting(false)
             }
             .padding(.top, 27)
         }

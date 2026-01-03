@@ -24,6 +24,8 @@ struct UserActiveContactModel: Codable, Identifiable, Hashable {
     let deviceType: String        // device_type is a string in the JSON
     let messageId: String        // message_id can be Int or String in the JSON
     let createdAt: String        // created_at is a string in the JSON
+    let block: Bool              // block status (current user blocked the other user)
+    let iamblocked: Bool         // iamblocked status (other user blocked current user)
 
     enum CodingKeys: String, CodingKey {
         case photo
@@ -40,6 +42,8 @@ struct UserActiveContactModel: Codable, Identifiable, Hashable {
         case deviceType = "device_type"
         case messageId = "message_id"
         case createdAt = "created_at"
+        case block
+        case iamblocked
     }
     
     init(from decoder: Decoder) throws {
@@ -65,6 +69,24 @@ struct UserActiveContactModel: Codable, Identifiable, Hashable {
         } else {
             messageId = try container.decode(String.self, forKey: .messageId)
         }
+        
+        // Handle block as Bool or String (default to false if missing)
+        if let blockBool = try? container.decode(Bool.self, forKey: .block) {
+            block = blockBool
+        } else if let blockString = try? container.decode(String.self, forKey: .block) {
+            block = blockString.lowercased() == "true" || blockString == "1"
+        } else {
+            block = false
+        }
+        
+        // Handle iamblocked as Bool or String (default to false if missing)
+        if let iamblockedBool = try? container.decode(Bool.self, forKey: .iamblocked) {
+            iamblocked = iamblockedBool
+        } else if let iamblockedString = try? container.decode(String.self, forKey: .iamblocked) {
+            iamblocked = iamblockedString.lowercased() == "true" || iamblockedString == "1"
+        } else {
+            iamblocked = false
+        }
     }
 
     init(
@@ -81,7 +103,9 @@ struct UserActiveContactModel: Codable, Identifiable, Hashable {
         msgLimit: Int,
         deviceType: String,
         messageId: String,
-        createdAt: String
+        createdAt: String,
+        block: Bool = false,
+        iamblocked: Bool = false
     ) {
         self.photo = photo
         self.fullName = fullName
@@ -97,6 +121,8 @@ struct UserActiveContactModel: Codable, Identifiable, Hashable {
         self.deviceType = deviceType
         self.messageId = messageId
         self.createdAt = createdAt
+        self.block = block
+        self.iamblocked = iamblocked
     }
     
     // Hashable conformance

@@ -70,6 +70,8 @@ struct ChattingScreen: View {
     
     // Message list state
     @State private var messages: [ChatMessage] = []
+    @State private var filteredMessages: [ChatMessage] = [] // Filtered messages for search
+    @State private var isSearching: Bool = false // Track if currently searching
     
     // Firebase listener state (matching Android)
     @State private var isLoading: Bool = false
@@ -148,6 +150,15 @@ struct ChattingScreen: View {
     @State private var multiDocumentPreviewCaption: String = ""
     @State private var multiDocumentPreviewURLs: [URL] = [] // Store selected document URLs
     
+    // Bunch image preview state (for navigation to full screen)
+    @State private var navigateToMultipleImageScreen: Bool = false
+    @State private var bunchPreviewImages: [SelectionBunchModel] = []
+    @State private var bunchPreviewCurrentIndex: Int = 0
+    
+    // Single image preview state (for navigation to ShowImageScreen)
+    @State private var navigateToShowImageScreen: Bool = false
+    @State private var selectedImageForShow: SelectionBunchModel?
+    
     // Multi-contact preview dialog state
     @State private var showMultiContactPreview: Bool = false
     @State private var multiContactPreviewCaption: String = ""
@@ -187,6 +198,11 @@ struct ChattingScreen: View {
     @State private var limitStatus: String = "0"
     @State private var totalMsgLimit: String = "0"
     @State private var showLimitStatus: Bool = false
+    
+    // Menu dialog states
+    @State private var showClearChatDialog: Bool = false
+    @State private var showBlockUserDialog: Bool = false
+    @State private var navigateToUserInfo: Bool = false
     @State private var showTotalMsgLimit: Bool = false
     
     // Unique dates tracking (matching Android uniqueDates Set)
@@ -206,6 +222,7 @@ struct ChattingScreen: View {
     @State private var showBlockCard: Bool = false // Track if block card should be shown (matching Android blockContainer visibility)
     @State private var blockedUserName: String = "" // Name of blocked user (matching Android originalNumber)
     @State private var blockedUserSubtitle: String = "" // Subtitle for blocked user (matching Android originalName)
+    @State private var isContactSaved: Bool = false // Track if contact is saved in phone contacts
     
     var body: some View {
         ZStack {
@@ -215,8 +232,28 @@ struct ChattingScreen: View {
                 .onAppear {
                     print("🚫 [BLOCK] ChattingScreen appeared - showBlockCard: \(showBlockCard), isUserBlocked: \(isUserBlocked)")
                     print("🚫 [BLOCK] Contact: \(contact.fullName), UID: \(contact.uid)")
+                    print("🚫 [BLOCK] Contact block status from API - block: \(contact.block), iamblocked: \(contact.iamblocked)")
+                    
+                    // Set initial block status from contact data (matching Android Intent extra "block")
+                    // This ensures we have the correct state even if API check fails
+                    if contact.block {
+                        isUserBlocked = true
+                        showBlockCard = true
+                        blockedUserName = contact.fullName
+                        blockedUserSubtitle = "~ \(contact.fullName)"
+                        print("🚫 [BLOCK] ✅ Initial state set from contact data - isUserBlocked: \(isUserBlocked), showBlockCard: \(showBlockCard)")
+                    }
+                    
+                    if contact.iamblocked {
+                        isBlockedByUser = true
+                        print("🚫 [BLOCK] ✅ Initial state set from contact data - isBlockedByUser: \(isBlockedByUser)")
+                    }
+                    
                     // Check block status when screen appears (matching Android handleIntent block check)
+                    // This will verify/update the state, but initial state is already set from contact data
                     checkBlockStatus()
+                    // Check if contact is saved in phone contacts
+                    checkIfContactSaved()
                     
                     // Load pending messages from SQLite (matching Android loadPendingMessages on onResume)
                     loadPendingMessages()
@@ -237,14 +274,16 @@ struct ChattingScreen: View {
                         .allowsHitTesting(true) // Ensure ScrollView can receive touches
                     
                     // Block card view (matching Android cardview below datelyt)
-                    if showBlockCard {
+                    // Show when user is NOT blocked AND contact is NOT saved (upper container with Add and Block)
+                    // When user is already blocked, show bottom container instead (with Unblock option)
+                    if showBlockCard && !isUserBlocked && !isContactSaved {
                         blockCardView
                             .zIndex(999) // Below date view but above messages
                             .padding(.top, showDateView ? 60 : 8) // Position below date view if visible
                             .padding(.horizontal, 12) // layout_marginHorizontal="12dp"
                             .allowsHitTesting(true) // Allow button interactions
                             .onAppear {
-                                print("🚫 [BLOCK] ✅ Block card view rendered in ZStack - showBlockCard: \(showBlockCard)")
+                                print("🚫 [BLOCK] ✅ Block card view rendered in ZStack - showBlockCard: \(showBlockCard), isUserBlocked: \(isUserBlocked), isContactSaved: \(isContactSaved)")
                                 print("🚫 [BLOCK] Block card position - top padding: \(showDateView ? 60 : 8), horizontal: 12")
                             }
                     }
@@ -297,44 +336,33 @@ struct ChattingScreen: View {
                         print("Reply to message: \(message.id)")
                     },
                     onForward: {
-                        // Dismiss the long press dialog (matching Android BlurHelper.dialogLayoutColor.dismiss())
                         showLongPressDialog = false
-                        
-                        // Add the message to selected messages for forwarding (matching Android forward functionality)
-                        selectedMessagesForForward = [message]
-                        
-                        // Show forward contact picker (matching Android Constant.bottomsheetforward)
-                        showForwardContactPicker = true
-                        
                         longPressedMessage = nil
-                        print("Forward message: \(message.message)")
+                        // TODO: Handle forward action
+                        print("Forward message: \(message.id)")
                     },
                     onCopy: {
                         showLongPressDialog = false
                         longPressedMessage = nil
-                        // Copy message to clipboard
-                        UIPasteboard.general.string = message.message
+                        // TODO: Handle copy action
+                        print("Copy message: \(message.id)")
                     },
                     onDelete: {
-                        // Dismiss the long press dialog (matching Android BlurHelper.dialogLayoutColor.dismiss())
                         showLongPressDialog = false
-                        
-                        // Store last deleted model ID (matching Android Constant.setSF.putString(Constant.last_deleted_model_id, model.getModelId()))
-                        UserDefaults.standard.set(message.id, forKey: "last_deleted_model_id")
-                        
-                        // Delete the message (matching Android delete functionality)
-                        deleteMessage(message: message)
-                        
                         longPressedMessage = nil
+                        // TODO: Handle delete action
+                        print("Delete message: \(message.id)")
                     },
                     onMultiSelect: {
-                        // Enter multi-select mode and auto-select the current message (matching Android addSelectLytClickListener)
                         showLongPressDialog = false
-                        enterMultiSelectMode()
-                        if let messageId = longPressedMessage?.id {
-                            toggleMessageSelection(messageId: messageId)
-                        }
                         longPressedMessage = nil
+                        // TODO: Handle multi-select action
+                        print("Multi-select message: \(message.id)")
+                    },
+                    onImageTap: { imageModel in
+                        // Open ShowImageScreen for single image
+                        selectedImageForShow = imageModel
+                        navigateToShowImageScreen = true
                     }
                 )
             }
@@ -343,6 +371,74 @@ struct ChattingScreen: View {
             emojiReactionsBottomSheet
         }
         .navigationBarHidden(true)
+        .background(
+            // Hidden NavigationLink for UserInfoScreen from menu
+            NavigationLink(
+                destination: UserInfoScreen(
+                    recUserId: contact.uid,
+                    recUserName: contact.fullName
+                )
+                .onDisappear {
+                    // Reset navigation state when UserInfoScreen is dismissed
+                    navigateToUserInfo = false
+                },
+                isActive: $navigateToUserInfo
+            ) {
+                EmptyView()
+            }
+            .hidden()
+        )
+        .overlay(
+            // Custom Block User Dialog (matching Android delete_ac_dialogue.xml)
+            Group {
+                if showBlockUserDialog {
+                    BlockUserDialog(
+                        isPresented: $showBlockUserDialog,
+                        onConfirm: {
+                            // Block user (matching Android Webservice.insertBlockUser)
+                            let receiverUid = contact.uid
+                            let uid = Constant.SenderIdMy
+                            
+                            ApiService.blockUser(uid: uid, blockedUid: receiverUid) { [self] success, message in
+                                DispatchQueue.main.async {
+                                    // Handle "already blocked" as success (matching Android behavior)
+                                    if success || message.lowercased().contains("already blocked") {
+                                        isUserBlocked = true
+                                        showBlockCard = true
+                                        blockedUserName = contact.fullName
+                                        blockedUserSubtitle = "~ \(contact.fullName)"
+                                        print("🚫 [MENU BLOCK] ✅ User blocked successfully (or already blocked)")
+                                        print("🚫 [MENU BLOCK] Updated state - isUserBlocked: \(isUserBlocked), showBlockCard: \(showBlockCard)")
+                                        // Re-check contact saved status when block status changes
+                                        // This will determine which container to show (upper or bottom)
+                                        checkIfContactSaved()
+                                        // Don't call checkBlockStatus() here as it may return false and overwrite our correct state
+                                        // The state is already set correctly above
+                                        // No toast shown (matching Android behavior)
+                                    } else {
+                                        print("🚫 [MENU BLOCK] ❌ Failed to block user: \(message)")
+                                        Constant.showToast(message: "Failed to block user")
+                                    }
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+        )
+        .overlay(
+            // Custom Clear Chat Dialog (matching Android delete_popup_row.xml)
+            Group {
+                if showClearChatDialog {
+                    ClearChatDialog(
+                        isPresented: $showClearChatDialog,
+                        onConfirm: {
+                            clearChat()
+                        }
+                    )
+                }
+            }
+        )
         .fullScreenCover(isPresented: $showCameraView) {
             CameraGalleryView(contact: contact)
         }
@@ -528,6 +624,38 @@ struct ChattingScreen: View {
                 print("MultiDocumentPreviewDialog: Current state documents count: \(multiDocumentPreviewURLs.count)")
             }
         }
+        .background(
+            // Hidden NavigationLink for programmatic navigation (matching Android Activity navigation)
+            NavigationLink(
+                destination: MultipleImageScreen(
+                    images: bunchPreviewImages,
+                    currentIndex: bunchPreviewCurrentIndex
+                ),
+                isActive: $navigateToMultipleImageScreen
+            ) {
+                EmptyView()
+            }
+            .hidden()
+        )
+        .background(
+            // Hidden NavigationLink for ShowImageScreen (single image view)
+            NavigationLink(
+                destination: Group {
+                    if let selectedImage = selectedImageForShow {
+                        ShowImageScreen(
+                            imageModel: selectedImage,
+                            viewHolderTypeKey: Constant.SenderIdMy == contact.uid ? "sender" : "receiver"
+                        )
+                    } else {
+                        EmptyView()
+                    }
+                },
+                isActive: $navigateToShowImageScreen
+            ) {
+                EmptyView()
+            }
+            .hidden()
+        )
         .fullScreenCover(isPresented: $showMultiContactPreview, onDismiss: {
             // Reset caption and contacts when dialog is dismissed
             multiContactPreviewCaption = ""
@@ -803,57 +931,65 @@ struct ChattingScreen: View {
                 .padding(.leading, 10)
                 .padding(.trailing, 8)
                 
-                // Profile section
-                NavigationLink(destination: UserInfoScreen(
-                    recUserId: contact.uid,
-                    recUserName: contact.fullName
-                )) {
-                    HStack(spacing: 0) {
-                        // Profile image with border
-                        ZStack {
-                            Circle()
-                                .stroke(Color("blue"), lineWidth: 2)
-                                .frame(width: 44, height: 44)
-                            
-                            CachedAsyncImage(url: URL(string: contact.photo)) { image in
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 40, height: 40)
-                                    .clipShape(Circle())
-                            } placeholder: {
-                                Image("inviteimg")
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 40, height: 40)
-                                    .clipShape(Circle())
+                // Search field (full width when active - matching Android binding.searchlyt.setVisibility(View.VISIBLE))
+                if showSearch {
+                    TextField("Search...", text: $searchText)
+                        .font(.custom("Inter18pt-Medium", size: 16))
+                        .foregroundColor(Color("TextColor"))
+                        .textFieldStyle(PlainTextFieldStyle())
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.trailing, 10)
+                        .onAppear {
+                            // Focus search field (matching Android binding.searchEt.requestFocus())
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                isMessageFieldFocused = false
                             }
                         }
-                        .padding(.leading, 5)
-                        .padding(.trailing, 16)
-                        
-                        // Name
-                        Text(contact.fullName)
-                            .font(.custom("Inter18pt-Medium", size: 16))
-                            .foregroundColor(Color("TextColor"))
-                            .lineLimit(1)
-                    }
-                }
-                
-                Spacer()
-                
-                // Right side menu
-                HStack(spacing: 0) {
-                    // Search button (hidden by default)
-                    if showSearch {
-                        TextField("Search...", text: $searchText)
-                            .font(.custom("Inter18pt-Medium", size: 16))
-                            .foregroundColor(Color("TextColor"))
-                            .textFieldStyle(PlainTextFieldStyle())
-                            .frame(width: 150)
+                        .onChange(of: searchText) { newValue in
+                            // Handle search text changes (matching Android TextWatcher)
+                            handleSearchTextChanged(newValue)
+                        }
+                } else {
+                    // Profile section (hidden when search is active - matching Android binding.name.setVisibility(View.GONE))
+                    NavigationLink(destination: UserInfoScreen(
+                        recUserId: contact.uid,
+                        recUserName: contact.fullName
+                    )) {
+                        HStack(spacing: 0) {
+                            // Profile image with border
+                            ZStack {
+                                Circle()
+                                    .stroke(Color("blue"), lineWidth: 2)
+                                    .frame(width: 44, height: 44)
+                                
+                                CachedAsyncImage(url: URL(string: contact.photo)) { image in
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 40, height: 40)
+                                        .clipShape(Circle())
+                                } placeholder: {
+                                    Image("inviteimg")
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 40, height: 40)
+                                        .clipShape(Circle())
+                                }
+                            }
+                            .padding(.leading, 5)
+                            .padding(.trailing, 16)
+                            
+                            // Name
+                            Text(contact.fullName)
+                                .font(.custom("Inter18pt-Medium", size: 16))
+                                .foregroundColor(Color("TextColor"))
+                                .lineLimit(1)
+                        }
                     }
                     
-                    // Menu button (three dots)
+                    Spacer()
+                    
+                    // Menu button (three dots) - hidden when search is active (matching Android binding.menu2.setVisibility(View.GONE))
                     Button(action: {
                         withAnimation {
                             showMenu.toggle()
@@ -939,7 +1075,8 @@ struct ChattingScreen: View {
                             }
                             .frame(width: geometry.size.width, height: geometry.size.height)
                         } else {
-                            ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                            // Use filtered messages when searching, otherwise use all messages
+                            ForEach(Array((isSearching ? filteredMessages : messages).enumerated()), id: \.element.id) { index, message in
                                 MessageBubbleView(
                                     message: message,
                                     onHalfSwipe: { swipedMessage in
@@ -964,6 +1101,7 @@ struct ChattingScreen: View {
                                             toggleMessageSelection(messageId: message.id)
                                             return
                                         }
+                                        
                                         print("🔵 Long press callback triggered for message: \(message.id), position: \(position)")
                                         longPressedMessage = message
                                         longPressPosition = position
@@ -981,6 +1119,27 @@ struct ChattingScreen: View {
                                         showEmojiReactionsSheet = true
                                         loadEmojiReactions(for: message)
                                     },
+                                    onBunchLongPress: { selectionBunch in
+                                        // Show preview dialog for bunch images (called on single tap)
+                                        print("📸 [BunchPreview] onBunchLongPress (single tap) called with \(selectionBunch.count) images")
+                                        for (index, img) in selectionBunch.enumerated() {
+                                            print("📸 [BunchPreview] Setting image \(index): fileName=\(img.fileName), imgUrl=\(img.imgUrl.isEmpty ? "empty" : String(img.imgUrl.prefix(50)))")
+                                        }
+                                        
+                                        // Set images first, then navigate to full screen (matching Android Activity navigation)
+                                        bunchPreviewImages = selectionBunch
+                                        bunchPreviewCurrentIndex = 0
+                                        print("📸 [BunchPreview] State updated: bunchPreviewImages.count = \(bunchPreviewImages.count)")
+                                        
+                                        // Navigate to full screen (matching Android startActivity)
+                                        navigateToMultipleImageScreen = true
+                                        print("📸 [BunchPreview] After setting navigateToMultipleImageScreen: bunchPreviewImages.count = \(bunchPreviewImages.count)")
+                                    },
+                                    onImageTap: { imageModel in
+                                        // Open ShowImageScreen for single image
+                                        selectedImageForShow = imageModel
+                                        navigateToShowImageScreen = true
+                                    },
                                     isHighlighted: highlightedMessageId == message.id,
                                     isMultiSelectMode: isMultiSelectMode,
                                     isSelected: isMessageSelected(messageId: message.id),
@@ -991,7 +1150,8 @@ struct ChattingScreen: View {
                                     .id(message.id)
                                     .onAppear {
                                         // Optimize: Only handle visibility for last item to reduce overhead
-                                        if index == messages.count - 1 {
+                                        let currentMessages = isSearching ? filteredMessages : messages
+                                        if index == currentMessages.count - 1 {
                                         handleLastItemVisibility(id: message.id, index: index, isAppearing: true)
                                         }
                                         
@@ -1271,14 +1431,27 @@ struct ChattingScreen: View {
     // MARK: - Bottom Input View
     private var bottomInputView: some View {
         VStack(spacing: 0) {
-            // Block container (shown when current user is blocked by the other user)
-            if isBlockedByUser {
+            // Block container (shown when current user has blocked the other user - matching Android block_container)
+            // Android: binding.blockContainer.setVisibility(View.VISIBLE) when block = true
+            // Note: When isBlockedByUser is true, Android just disables UI, doesn't show block container
+            // Show when user is blocked (bottom container with Clear All and Unblock)
+            // This should always show when user is blocked, regardless of contact saved status
+            if isUserBlocked && showBlockCard {
                 blockContainerView
+                    .onAppear {
+                        print("🚫 [BLOCK CONTAINER] ✅ Bottom container (blockContainerView) appeared - isUserBlocked: \(isUserBlocked), showBlockCard: \(showBlockCard)")
+                    }
+            } else {
+                // Debug: Log why container is not showing
+                let _ = print("🚫 [BLOCK CONTAINER] ❌ Bottom container NOT showing - isUserBlocked: \(isUserBlocked), showBlockCard: \(showBlockCard)")
             }
             
-            // Message input container (messageboxContainer) - hide when blocked by user
-            if !isBlockedByUser {
+            // Message input container (messageboxContainer) - hide when current user blocked other user
+            // Android: binding.messageboxContainer.setVisibility(View.GONE) when block = true
+            // When isBlockedByUser is true, Android disables the input but doesn't hide it completely
+            if !isUserBlocked {
                 messageInputContainer
+                    .disabled(isBlockedByUser) // Disable input when blocked by user (matching Android)
             }
         }
         .background(Color("edittextBg"))
@@ -1292,8 +1465,9 @@ struct ChattingScreen: View {
                 // Clear All button container (matching Android LinearLayout with gallary_bgcontent)
                 HStack(spacing: 0) {
                     Button(action: {
-                        // TODO: Clear all messages
+                        // Show clear chat dialog (matching Android blockClearAll onClick)
                         print("🚫 [BLOCK] Clear All button tapped")
+                        showClearChatDialog = true
                     }) {
                         // Button content (matching Android LinearLayoutCompat with custome_ripple_circle2)
                         HStack(spacing: 5) { // android:layout_marginStart="5dp" for text
@@ -1326,9 +1500,32 @@ struct ChattingScreen: View {
                 // Unblock button container (matching Android LinearLayout with gallary_bgcontent)
                 HStack(spacing: 0) {
                     Button(action: {
-                        // Unblock user functionality (when current user is blocked by the other user)
-                        print("🚫 [BLOCK] Unblock button tapped (user blocked me)")
-                        handleUnblockWhenBlockedByUser()
+                        // Unblock user functionality (matching Android blockUnblock onClick)
+                        // This button is shown when current user has blocked the other user (isUserBlocked = true)
+                        print("🚫 [BLOCK] Unblock button tapped - isUserBlocked: \(isUserBlocked), isBlockedByUser: \(isBlockedByUser)")
+                        let receiverUid = contact.uid
+                        let uid = Constant.SenderIdMy
+                        
+                        // Only unblock if current user has blocked the other user (matching Android blockUnblock onClick)
+                        if isUserBlocked {
+                            // Unblock the other user (matching Android Webservice.unblockUser)
+                            print("🚫 [BLOCK] Unblocking user - UID: \(uid), Blocked UID: \(receiverUid)")
+                            ApiService.unblockUser(uid: uid, blockedUid: receiverUid) { [self] success, message in
+                                DispatchQueue.main.async {
+                                    if success {
+                                        isUserBlocked = false
+                                        showBlockCard = false
+                                        print("🚫 [BLOCK] ✅ User unblocked successfully")
+                                        // No toast shown (matching Android behavior)
+                                    } else {
+                                        print("🚫 [BLOCK] ❌ Failed to unblock user: \(message)")
+                                        Constant.showToast(message: "Failed to unblock user")
+                                    }
+                                }
+                            }
+                        } else {
+                            print("🚫 [BLOCK] ⚠️ Cannot unblock - current user has not blocked the other user")
+                        }
                     }) {
                         // Button content (matching Android LinearLayoutCompat with custome_ripple_circle2)
                         HStack(spacing: 5) { // android:layout_marginStart="5dp" for text
@@ -2070,45 +2267,112 @@ struct ChattingScreen: View {
                 }
             
             VStack(alignment: .trailing, spacing: 0) {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Search button
                     Button(action: {
                         withAnimation {
                             showSearch = true
                             showMenu = false
                         }
+                        // Focus search field (matching Android binding.searchEt.requestFocus())
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            isMessageFieldFocused = false
+                        }
                     }) {
-                        Text("Search")
-                            .font(.custom("Inter18pt-Medium", size: 17))
-                            .foregroundColor(Color("TextColor"))
+                        HStack {
+                            Text("Search")
+                                .font(.custom("Inter18pt-Medium", size: 17))
+                                .foregroundColor(Color("TextColor"))
+                            Spacer()
+                        }
+                        .padding(.leading, 15)
+                        .padding(.top, 12)
+                        .padding(.bottom, 12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(MenuItemRippleStyle())
                     
+                    // For visible button (View Profile)
                     Button(action: {
-                        // TODO: Navigate to profile
-                        showMenu = false
+                        withAnimation {
+                            showMenu = false
+                        }
+                        // Navigate to UserInfoScreen (matching Android userInfoScreen)
+                        // Use immediate navigation without delay for better UX
+                        navigateToUserInfo = true
                     }) {
-                        Text("For visible")
-                            .font(.custom("Inter18pt-Medium", size: 17))
-                            .foregroundColor(Color("TextColor"))
+                        HStack {
+                            Text("For visible")
+                                .font(.custom("Inter18pt-Medium", size: 17))
+                                .foregroundColor(Color("TextColor"))
+                            Spacer()
+                        }
+                        .padding(.leading, 15)
+                        .padding(.top, 12)
+                        .padding(.bottom, 12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(MenuItemRippleStyle())
                     
+                    // Clear All button
                     Button(action: {
-                        // TODO: Clear chat
-                        showMenu = false
+                        withAnimation {
+                            showMenu = false
+                        }
+                        // Show confirmation dialog (matching Android delete_popup_row)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            showClearChatDialog = true
+                        }
                     }) {
-                        Text("Clear Chat")
-                            .font(.custom("Inter18pt-Medium", size: 17))
-                            .foregroundColor(Color("TextColor"))
+                        HStack {
+                            Text("Clear All")
+                                .font(.custom("Inter18pt-Medium", size: 17))
+                                .foregroundColor(Color("TextColor"))
+                            Spacer()
+                        }
+                        .padding(.leading, 15)
+                        .padding(.top, 12)
+                        .padding(.bottom, 12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(MenuItemRippleStyle())
+                    
+                    // Block button (hidden if chatting with yourself - matching Android logic)
+                    if Constant.SenderIdMy != contact.uid {
+                        Button(action: {
+                            withAnimation {
+                                showMenu = false
+                            }
+                            // Handle block/unblock (matching Android blockUser onClick)
+                            handleBlockUserClick()
+                        }) {
+                            HStack {
+                                Text(isUserBlocked ? "Unblock" : "Block")
+                                    .font(.custom("Inter18pt-Medium", size: 17))
+                                    .foregroundColor(Color("TextColor"))
+                                Spacer()
+                            }
+                            .padding(.leading, 15)
+                            .padding(.top, 12)
+                            .padding(.bottom, 12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(MenuItemRippleStyle())
                     }
                 }
-                .padding(17)
             }
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color("BackgroundColor"))
+                    .shadow(color: Color.black.opacity(0.2), radius: 5, x: 0, y: 2)
             )
             .frame(width: 180)
             .padding(.top, 50)
-            .padding(.trailing, 5)
+            .padding(.trailing, 10)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
     }
@@ -2119,6 +2383,18 @@ struct ChattingScreen: View {
             isPressed = true
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            // If search is active, hide search and show name (matching Android onBackPressed - searchEt is focused)
+            if showSearch {
+                withAnimation {
+                    showSearch = false
+                    searchText = ""
+                    isSearching = false
+                    filteredMessages.removeAll()
+                }
+                isPressed = false
+                return
+            }
+            
             // If multi-select mode is active, exit it first (matching Android back button behavior)
             if isMultiSelectMode {
                 exitMultiSelectMode()
@@ -2215,6 +2491,92 @@ struct ChattingScreen: View {
                 }
             }
         }.resume()
+    }
+    
+    // MARK: - Handle Search Text Changed (matching Android TextWatcher for searchEt)
+    private func handleSearchTextChanged(_ newValue: String) {
+        let query = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if !query.isEmpty {
+            // Search messages (matching Android searchMessages)
+            isSearching = true
+            searchMessages(query: query)
+        } else {
+            // Reload all messages if search is cleared (matching Android fetchMessages)
+            isSearching = false
+            filteredMessages.removeAll()
+            let receiverRoom = getReceiverRoom()
+            fetchMessages(receiverRoom: receiverRoom) {
+                // Don't scroll when search is cleared (matching Android)
+            }
+        }
+    }
+    
+    // MARK: - Search Messages (matching Android searchMessages function)
+    private func searchMessages(query: String) {
+        let receiverRoom = getReceiverRoom()
+        let database = Database.database().reference()
+        let chatRef = database.child(Constant.CHAT).child(receiverRoom)
+        
+        print("🔍 [SEARCH] Searching for: '\(query)' in room: \(receiverRoom)")
+        
+        // Query all messages once (matching Android addListenerForSingleValueEvent)
+        chatRef.observeSingleEvent(of: .value) { snapshot in
+            var foundMessages: [ChatMessage] = []
+            
+            guard snapshot.exists() else {
+                print("🔍 [SEARCH] No messages found in room")
+                DispatchQueue.main.async {
+                    self.filteredMessages = []
+                }
+                return
+            }
+            
+            // Iterate through all messages
+            for child in snapshot.children {
+                guard let childSnapshot = child as? DataSnapshot else { continue }
+                let childKey = childSnapshot.key
+                
+                // Skip typing indicator node (matching Android)
+                if childKey == "typing" {
+                    print("🔍 [SEARCH] Skipping typing indicator node")
+                    continue
+                }
+                
+                // Skip invalid keys (matching Android)
+                if childKey.count <= 1 || childKey == ":" {
+                    print("🔍 [SEARCH] Skipping invalid key: \(childKey)")
+                    continue
+                }
+                
+                // Parse message from snapshot
+                guard let messageDict = childSnapshot.value as? [String: Any] else { continue }
+                
+                // Get message text
+                if let messageText = messageDict["message"] as? String,
+                   !messageText.isEmpty {
+                    // Check if message contains query (case-insensitive matching Android)
+                    if messageText.lowercased().contains(query.lowercased()) {
+                        // Convert to ChatMessage using existing parser
+                        if let chatMessage = self.parseMessageFromDict(messageDict, messageId: childKey) {
+                            foundMessages.append(chatMessage)
+                        }
+                    }
+                }
+            }
+            
+            // Update filtered messages on main thread
+            DispatchQueue.main.async {
+                // Sort by timestamp (newest first)
+                self.filteredMessages = foundMessages.sorted { $0.timestamp > $1.timestamp }
+                print("🔍 [SEARCH] Found \(self.filteredMessages.count) messages matching '\(query)'")
+            }
+        } withCancel: { error in
+            print("❌ [SEARCH] Error searching messages: \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                self.filteredMessages = []
+            }
+        }
     }
     
     // MARK: - Handle Emoji Search Text Changed (matching Android TextWatcher)
@@ -3194,22 +3556,87 @@ struct ChattingScreen: View {
         ApiService.checkIfBlocked(uid: uid, receiverId: receiverUid) { [self] isBlocked, message in
             DispatchQueue.main.async {
                 print("🚫 [BLOCK] Block status check result - isBlocked: \(isBlocked), message: \(message)")
+                // Only update state if API confirms block status, or if contact data says blocked
+                // This prevents API false negatives from overwriting correct state
                 if isBlocked {
                     showBlockCard = true
                     isUserBlocked = true
                     blockedUserName = contact.fullName
                     blockedUserSubtitle = "~ \(contact.fullName)"
-                    print("🚫 [BLOCK] ✅ Block card will be shown")
+                    print("🚫 [BLOCK] ✅ Block card will be shown (API confirmed)")
+                    // Re-check contact saved status when block status changes
+                    checkIfContactSaved()
+                } else if contact.block {
+                    // API returned false, but contact data says blocked - keep the blocked state
+                    // This handles cases where API check fails but user is actually blocked
+                    print("🚫 [BLOCK] ⚠️ API returned false, but contact data says blocked - keeping blocked state")
+                    print("🚫 [BLOCK] ✅ Block card will remain shown (from contact data)")
+                    // Re-check contact saved status when block status changes
+                    checkIfContactSaved()
                 } else {
+                    // API says not blocked and contact data also says not blocked - hide block card
                     showBlockCard = false
                     isUserBlocked = false
-                    print("🚫 [BLOCK] ❌ Block card will be hidden")
+                    print("🚫 [BLOCK] ❌ Block card will be hidden (not blocked)")
                 }
             }
         }
         
         // Check if current user is blocked by the other user (reverse check)
         checkIfBlockedByUser()
+    }
+    
+    // Check if contact is saved in phone contacts (matching Android phone2Contact check)
+    private func checkIfContactSaved() {
+        let store = CNContactStore()
+        let phoneNumber = contact.mobileNo
+        
+        // Normalize phone number (remove spaces, dashes, etc.)
+        let normalizedPhone = phoneNumber.replacingOccurrences(of: "[^0-9+]", with: "", options: .regularExpression)
+        
+        store.requestAccess(for: .contacts) { granted, error in
+            if granted {
+                // Run contact enumeration on background thread to avoid main thread warning
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let keys = [CNContactPhoneNumbersKey, CNContactGivenNameKey, CNContactFamilyNameKey] as [CNKeyDescriptor]
+                    let request = CNContactFetchRequest(keysToFetch: keys)
+                    
+                    do {
+                        var found = false
+                        try store.enumerateContacts(with: request) { contact, stop in
+                            for phone in contact.phoneNumbers {
+                                let contactPhone = phone.value.stringValue
+                                let normalizedContactPhone = contactPhone.replacingOccurrences(of: "[^0-9+]", with: "", options: .regularExpression)
+                                
+                                // Check if phone numbers match (normalized)
+                                if normalizedContactPhone == normalizedPhone || 
+                                   normalizedContactPhone.hasSuffix(normalizedPhone) ||
+                                   normalizedPhone.hasSuffix(normalizedContactPhone) {
+                                    found = true
+                                    stop.pointee = true
+                                    break
+                                }
+                            }
+                        }
+                        
+                        DispatchQueue.main.async {
+                            self.isContactSaved = found
+                            print("📇 [CONTACT] Contact saved check - phone: \(phoneNumber), isSaved: \(found)")
+                        }
+                    } catch {
+                        print("❌ [CONTACT] Error checking contact: \(error.localizedDescription)")
+                        DispatchQueue.main.async {
+                            self.isContactSaved = false
+                        }
+                    }
+                }
+            } else {
+                print("❌ [CONTACT] Contact access denied")
+                DispatchQueue.main.async {
+                    self.isContactSaved = false
+                }
+            }
+        }
     }
     
     private func checkIfBlockedByUser() {
@@ -3262,14 +3689,19 @@ struct ChattingScreen: View {
         ApiService.blockUser(uid: uid, blockedUid: receiverUid) { [self] success, message in
             DispatchQueue.main.async {
                 print("🚫 [BLOCK] Block API response - success: \(success), message: \(message)")
-                if success {
+                // Handle "already blocked" as success (matching Android behavior)
+                if success || message.lowercased().contains("already blocked") {
                     isUserBlocked = true
                     showBlockCard = true
                     blockedUserName = contact.fullName
                     blockedUserSubtitle = "~ \(contact.fullName)"
-                    print("🚫 [BLOCK] ✅ User blocked successfully")
+                    print("🚫 [BLOCK] ✅ User blocked successfully (or already blocked)")
                     print("🚫 [BLOCK] Updated state - isUserBlocked: \(isUserBlocked), showBlockCard: \(showBlockCard)")
-                    print("🚫 [BLOCK] Block card should now be visible")
+                    print("🚫 [BLOCK] Block container should now be visible (bottom container with Unblock)")
+                    // Re-check contact saved status when block status changes
+                    checkIfContactSaved()
+                    // Don't call checkBlockStatus() here as it may return false and overwrite our correct state
+                    // The state is already set correctly above
                     // Hide message input container (matching Android messageboxContainer.setVisibility(View.GONE))
                 } else {
                     // Show error if needed
@@ -3362,6 +3794,76 @@ struct ChattingScreen: View {
                             print("🚫 [BLOCK] ❌ Failed to block user: \(message)")
                         }
                     }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Menu Button Handlers
+    
+    /// Handle block user click from menu (matching Android blockUser onClick)
+    private func handleBlockUserClick() {
+        let receiverUid = contact.uid
+        let uid = Constant.SenderIdMy
+        
+        print("🚫 [MENU BLOCK] handleBlockUserClick() called")
+        print("🚫 [MENU BLOCK] UID: \(uid), Target UID: \(receiverUid)")
+        print("🚫 [MENU BLOCK] Current isUserBlocked state: \(isUserBlocked)")
+        
+        if isUserBlocked {
+            // User is blocked, unblock directly (matching Android unblockUser onClick)
+            print("🚫 [MENU BLOCK] User is blocked, unblocking...")
+            ApiService.unblockUser(uid: uid, blockedUid: receiverUid) { [self] success, message in
+                DispatchQueue.main.async {
+                    if success {
+                        isUserBlocked = false
+                        showBlockCard = false
+                        print("🚫 [MENU BLOCK] ✅ User unblocked successfully")
+                        // No toast shown (matching Android behavior)
+                    } else {
+                        print("🚫 [MENU BLOCK] ❌ Failed to unblock user: \(message)")
+                        Constant.showToast(message: "Failed to unblock user")
+                    }
+                }
+            }
+        } else {
+            // User is not blocked, show confirmation dialog (matching Android delete_ac_dialogue)
+            print("🚫 [MENU BLOCK] User is not blocked, showing confirmation dialog...")
+            showBlockUserDialog = true
+        }
+    }
+    
+    /// Clear chat functionality (matching Android clearChat onClick)
+    private func clearChat() {
+        let receiverUid = contact.uid
+        let uid = Constant.SenderIdMy
+        let receiverRoom = getReceiverRoom()
+        let senderRoom = getSenderRoom()
+        let database = Database.database().reference()
+        
+        print("🗑️ [CLEAR CHAT] Clearing chat for room: \(receiverRoom)")
+        
+        // Clear from Firebase (matching Android database.getReference().child(Constant.CHAT).child(receiverRoom).removeValue())
+        database.child(Constant.CHAT).child(receiverRoom).removeValue { error, _ in
+            if let error = error {
+                print("🗑️ [CLEAR CHAT] ❌ Error clearing Firebase: \(error.localizedDescription)")
+                Constant.showToast(message: "Failed to clear chat")
+            } else {
+                print("🗑️ [CLEAR CHAT] ✅ Successfully cleared Firebase data for room: \(receiverRoom)")
+                
+                // Clear local messages
+                DispatchQueue.main.async {
+                    self.messages.removeAll()
+                    self.updateEmptyState(isEmpty: true)
+                    print("🗑️ [CLEAR CHAT] ✅ Cleared local messages")
+                }
+                
+                // Call API to delete sender messages (matching Android Webservice.delete_sender_all_msg)
+                // Note: API endpoint may need to be implemented in ApiService
+                // For now, clearing Firebase is sufficient
+                DispatchQueue.main.async {
+                    print("🗑️ [CLEAR CHAT] ✅ Chat cleared successfully")
+                    // Toast removed - no message shown after clearing (matching user requirement)
                 }
             }
         }
@@ -5130,6 +5632,14 @@ struct ChattingScreen: View {
         let firstFileName = "\(modelId)_0.jpg"
         let localFileURL = getLocalImageURL(fileName: firstFileName)
         
+        // Create placeholder selectionBunch items so bunch view can render immediately
+        // These will be updated with actual URLs after upload
+        var placeholderSelectionBunch: [SelectionBunchModel] = []
+        for index in 0..<selectedAssets.count {
+            let fileName = "\(modelId)_\(index).jpg"
+            placeholderSelectionBunch.append(SelectionBunchModel(imgUrl: "", fileName: fileName))
+        }
+        
         // Create message with local file path (matching Android imageFile.toString())
         let newMessage = ChatMessage(
             id: modelId,
@@ -5166,7 +5676,7 @@ struct ChattingScreen: View {
             imageHeight: nil, // Will be updated after export
             aspectRatio: nil, // Will be updated after export
             selectionCount: "\(selectedAssets.count)",
-            selectionBunch: nil, // Will be updated after upload
+            selectionBunch: placeholderSelectionBunch.count >= 2 ? placeholderSelectionBunch : nil, // Show bunch view if 2+ images
             receiverLoader: 0 // Show progress bar (matching Android setLastItemVisible(true))
         )
         
@@ -5282,21 +5792,21 @@ struct ChattingScreen: View {
                     print("✅ [MULTI_IMAGE] Message updated with Firebase URLs: \(modelId)")
                     
                     // Upload to API and Firebase RTDB (matching Android UploadChatHelper)
-                    let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
-                    
-                    MessageUploadService.shared.uploadMessage(
+            let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
+            
+            MessageUploadService.shared.uploadMessage(
                         model: updatedMessage,
-                        filePath: nil,
-                        userFTokenKey: userFTokenKey,
-                        deviceType: "2"
-                    ) { success, errorMessage in
-                        if success {
-                            print("✅ [MULTI_IMAGE] Uploaded \(sortedResults.count) images for modelId=\(modelId)")
+                filePath: nil,
+                userFTokenKey: userFTokenKey,
+                deviceType: "2"
+            ) { success, errorMessage in
+                if success {
+                    print("✅ [MULTI_IMAGE] Uploaded \(sortedResults.count) images for modelId=\(modelId)")
                             // Check if message exists in Firebase and stop progress bar (matching Android)
                             self.checkMessageInFirebaseAndStopProgress(messageId: modelId, receiverUid: receiverUid)
-                        } else {
-                            print("❌ [MULTI_IMAGE] Upload error: \(errorMessage ?? "Unknown error")")
-                            Constant.showToast(message: "Failed to send images. Please try again.")
+                } else {
+                    print("❌ [MULTI_IMAGE] Upload error: \(errorMessage ?? "Unknown error")")
+                    Constant.showToast(message: "Failed to send images. Please try again.")
                             // Keep receiverLoader as 0 to show progress bar (message still pending)
                         }
                     }
@@ -6195,6 +6705,7 @@ struct DynamicImageView: View {
     let imageHeight: String?
     let aspectRatio: String?
     let backgroundColor: Color
+    let onTap: (() -> Void)? // Callback for single tap to open ShowImageScreen
     
     @State private var isDownloading: Bool = false
     @State private var downloadProgress: Double = 0.0
@@ -6504,6 +7015,10 @@ struct DynamicImageView: View {
                 }
             }
             .frame(width: imageSize.width, height: imageSize.height) // Dynamic size based on image dimensions
+            .onTapGesture {
+                // Single tap to open ShowImageScreen (matching Android openIndividualImage)
+                onTap?()
+            }
         }
         .onAppear {
             // Check if download is in progress from BackgroundDownloadManager
@@ -6578,6 +7093,7 @@ struct ReceiverDynamicImageView: View {
     let imageWidth: String?
     let imageHeight: String?
     let aspectRatio: String?
+    let onTap: (() -> Void)? // Callback for single tap to open ShowImageScreen
     
     @State private var isDownloading: Bool = false
     @State private var downloadProgress: Double = 0.0
@@ -6821,6 +7337,10 @@ struct ReceiverDynamicImageView: View {
                 }
             }
             .frame(width: imageSize.width, height: imageSize.height)
+            .onTapGesture {
+                // Single tap to open ShowImageScreen (matching Android openIndividualImage)
+                onTap?()
+            }
         }
         .onAppear {
             // Check if download is in progress from BackgroundDownloadManager
@@ -10238,6 +10758,8 @@ struct SenderImageBunchView: View {
     let selectionBunch: [SelectionBunchModel]
     let selectionCount: String
     let backgroundColor: Color
+    let onLongPress: (() -> Void)? // Callback for long press gesture
+    let onTap: (() -> Void)? // Callback for single tap gesture (to show full-screen preview)
     
     @State private var showDownloadButton: Bool = false
     @State private var isDownloading: Bool = false
@@ -10377,6 +10899,10 @@ struct SenderImageBunchView: View {
                         .foregroundColor(.white)
                 }
             }
+        }
+        .onTapGesture {
+            // Single tap to show full-screen preview (matching Android multiple_show_image_screen)
+            onTap?()
         }
         .onAppear {
             checkDownloadState()
@@ -10549,6 +11075,8 @@ struct SenderImageBunchView: View {
 struct ReceiverImageBunchView: View {
     let selectionBunch: [SelectionBunchModel]
     let selectionCount: String
+    let onLongPress: (() -> Void)? // Callback for long press gesture
+    let onTap: (() -> Void)? // Callback for single tap gesture (to show full-screen preview)
     
     @State private var showDownloadButton: Bool = false
     @State private var isDownloading: Bool = false
@@ -10688,6 +11216,10 @@ struct ReceiverImageBunchView: View {
                         .foregroundColor(.white)
                 }
             }
+        }
+        .onTapGesture {
+            // Single tap to show full-screen preview (matching Android multiple_show_image_screen)
+            onTap?()
         }
         .onAppear {
             checkDownloadState()
@@ -11355,6 +11887,8 @@ struct MessageBubbleView: View {
     let onReplyTap: ((ChatMessage) -> Void)?
     let onLongPress: ((ChatMessage, CGPoint) -> Void)?
     let onEmojiCardTap: ((ChatMessage) -> Void)?
+    let onBunchLongPress: (([SelectionBunchModel]) -> Void)? // Callback for bunch image long press
+    let onImageTap: ((SelectionBunchModel) -> Void)? // Callback for single image tap to open ShowImageScreen
     let isHighlighted: Bool
     let isMultiSelectMode: Bool
     let isSelected: Bool
@@ -11366,9 +11900,11 @@ struct MessageBubbleView: View {
     private let halfSwipeThreshold: CGFloat = 60
     @Environment(\.colorScheme) private var colorScheme
     
-    init(message: ChatMessage, onHalfSwipe: @escaping (ChatMessage) -> Void = { _ in }, onReplyTap: ((ChatMessage) -> Void)? = nil, onLongPress: ((ChatMessage, CGPoint) -> Void)? = nil, onEmojiCardTap: ((ChatMessage) -> Void)? = nil, isHighlighted: Bool = false, isMultiSelectMode: Bool = false, isSelected: Bool = false, onSelectionToggle: ((String) -> Void)? = nil) {
+    init(message: ChatMessage, onHalfSwipe: @escaping (ChatMessage) -> Void = { _ in }, onReplyTap: ((ChatMessage) -> Void)? = nil, onLongPress: ((ChatMessage, CGPoint) -> Void)? = nil, onEmojiCardTap: ((ChatMessage) -> Void)? = nil, onBunchLongPress: (([SelectionBunchModel]) -> Void)? = nil, onImageTap: ((SelectionBunchModel) -> Void)? = nil, isHighlighted: Bool = false, isMultiSelectMode: Bool = false, isSelected: Bool = false, onSelectionToggle: ((String) -> Void)? = nil) {
         self.message = message
         self.isSentByMe = message.uid == Constant.SenderIdMy
+        self.onBunchLongPress = onBunchLongPress
+        self.onImageTap = onImageTap
         self.onHalfSwipe = onHalfSwipe
         self.onReplyTap = onReplyTap
         self.onLongPress = onLongPress
@@ -11676,7 +12212,16 @@ struct MessageBubbleView: View {
                                 SenderImageBunchView(
                                     selectionBunch: selectionBunch,
                                     selectionCount: selectionCount,
-                                    backgroundColor: getSenderMessageBackgroundColor()
+                                    backgroundColor: getSenderMessageBackgroundColor(),
+                                    onLongPress: nil, // Let parent MessageBubbleView handle long press
+                                    onTap: {
+                                        // Single tap to show full-screen preview (matching Android multiple_show_image_screen)
+                                        print("📸 [BunchPreview] Tap detected on sender bunch with \(selectionBunch.count) images")
+                                        for (index, imageModel) in selectionBunch.enumerated() {
+                                            print("📸 [BunchPreview] Image \(index): fileName=\(imageModel.fileName), imgUrl=\(imageModel.imgUrl.isEmpty ? "empty" : imageModel.imgUrl)")
+                                        }
+                                        onBunchLongPress?(selectionBunch)
+                                    }
                                 )
                                 
                                 // Caption text if present (matching Android caption display)
@@ -11721,7 +12266,14 @@ struct MessageBubbleView: View {
                                     imageWidth: message.imageWidth,
                                     imageHeight: message.imageHeight,
                                     aspectRatio: message.aspectRatio,
-                                    backgroundColor: getSenderMessageBackgroundColor()
+                                    backgroundColor: getSenderMessageBackgroundColor(),
+                                    onTap: {
+                                        // Open ShowImageScreen for single image
+                                        onImageTap?(SelectionBunchModel(
+                                            imgUrl: message.document,
+                                            fileName: message.fileName ?? ""
+                                        ))
+                                    }
                                 )
                                 
                                 // Caption text if present (matching Android caption display)
@@ -12049,7 +12601,16 @@ struct MessageBubbleView: View {
                             VStack(alignment: .leading, spacing: 0) {
                                 ReceiverImageBunchView(
                                     selectionBunch: selectionBunch,
-                                    selectionCount: selectionCount
+                                    selectionCount: selectionCount,
+                                    onLongPress: nil, // Let parent MessageBubbleView handle long press
+                                    onTap: {
+                                        // Single tap to show full-screen preview (matching Android multiple_show_image_screen)
+                                        print("📸 [BunchPreview] Tap detected on receiver bunch with \(selectionBunch.count) images")
+                                        for (index, imageModel) in selectionBunch.enumerated() {
+                                            print("📸 [BunchPreview] Image \(index): fileName=\(imageModel.fileName), imgUrl=\(imageModel.imgUrl.isEmpty ? "empty" : imageModel.imgUrl)")
+                                        }
+                                        onBunchLongPress?(selectionBunch)
+                                    }
                                 )
                                 
                                 // Caption text if present (matching Android caption display)
@@ -12091,7 +12652,14 @@ struct MessageBubbleView: View {
                                     fileName: message.fileName,
                                     imageWidth: message.imageWidth,
                                     imageHeight: message.imageHeight,
-                                    aspectRatio: message.aspectRatio
+                                    aspectRatio: message.aspectRatio,
+                                    onTap: {
+                                        // Open ShowImageScreen for single image
+                                        onImageTap?(SelectionBunchModel(
+                                            imgUrl: message.document,
+                                            fileName: message.fileName ?? ""
+                                        ))
+                                    }
                                 )
                                 
                                 // Caption text if present (matching Android caption display)
@@ -16525,6 +17093,7 @@ struct MessageLongPressDialog: View {
     let onCopy: () -> Void
     let onDelete: () -> Void
     let onMultiSelect: () -> Void
+    let onImageTap: ((SelectionBunchModel) -> Void)? // Callback for single image tap to open ShowImageScreen
     
     @Environment(\.colorScheme) private var colorScheme
     
@@ -17245,7 +17814,14 @@ struct MessageLongPressDialog: View {
                                 imageWidth: message.imageWidth,
                                 imageHeight: message.imageHeight,
                                 aspectRatio: message.aspectRatio,
-                                backgroundColor: getSenderMessageBackgroundColor(colorScheme: colorScheme)
+                                backgroundColor: getSenderMessageBackgroundColor(colorScheme: colorScheme),
+                                onTap: {
+                                    // Open ShowImageScreen for single image
+                                    onImageTap?(SelectionBunchModel(
+                                        imgUrl: message.document,
+                                        fileName: message.fileName ?? ""
+                                    ))
+                                }
                             )
                             
                             // Caption text if present (matching Android caption display)
@@ -17279,14 +17855,21 @@ struct MessageLongPressDialog: View {
                     // Receiver image message (matching Android receiverImg design)
                     HStack {
                         // Container wrapping image and caption with same background as Constant.Text receiver messages
-                        VStack(alignment: .leading, spacing: 0) {
-                            ReceiverDynamicImageView(
-                                imageUrl: message.document,
-                                fileName: message.fileName,
-                                imageWidth: message.imageWidth,
-                                imageHeight: message.imageHeight,
-                                aspectRatio: message.aspectRatio
-                            )
+                            VStack(alignment: .leading, spacing: 0) {
+                                ReceiverDynamicImageView(
+                                    imageUrl: message.document,
+                                    fileName: message.fileName,
+                                    imageWidth: message.imageWidth,
+                                    imageHeight: message.imageHeight,
+                                    aspectRatio: message.aspectRatio,
+                                    onTap: {
+                                        // Open ShowImageScreen for single image
+                                        onImageTap?(SelectionBunchModel(
+                                            imgUrl: message.document,
+                                            fileName: message.fileName ?? ""
+                                        ))
+                                    }
+                                )
                             
                             // Caption text if present (matching Android caption display)
                             if let caption = message.caption, !caption.isEmpty {
@@ -18644,6 +19227,205 @@ struct EmojiReactionRow: View {
     }
 }
 
+// MARK: - Bunch Image Preview Dialog (for viewing selectionBunch images - matching Android multiple_show_image_screen)
+struct BunchImagePreviewDialog: View {
+    @Environment(\.dismiss) private var dismiss
+    let images: [SelectionBunchModel]
+    @Binding var currentIndex: Int
+    let onDismiss: () -> Void
+    
+    init(images: [SelectionBunchModel], currentIndex: Binding<Int>, onDismiss: @escaping () -> Void) {
+        print("📸 [BunchPreview] BunchImagePreviewDialog init called with \(images.count) images")
+        for (index, img) in images.enumerated() {
+            print("📸 [BunchPreview] Init image \(index): fileName=\(img.fileName), imgUrl=\(img.imgUrl.isEmpty ? "empty" : String(img.imgUrl.prefix(50)))")
+        }
+        self.images = images
+        self._currentIndex = currentIndex
+        self.onDismiss = onDismiss
+    }
+    
+    var body: some View {
+        ZStack {
+            // Full-screen background
+            Color.black
+                .ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // Top bar with back button and image count
+                HStack {
+                    // Back button
+                    Button(action: {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+                        onDismiss()
+                    }) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.white.opacity(0.2))
+                                .frame(width: 40, height: 40)
+                            
+                            Image("leftvector")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 25, height: 18)
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .padding(.leading, 16)
+                    
+                    Spacer()
+                    
+                    // Image count indicator
+                    Text("\(currentIndex + 1) / \(images.count)")
+                        .font(.custom("Inter18pt-Medium", size: 16))
+                        .foregroundColor(.white)
+                    
+                    Spacer()
+                    
+                    // Spacer to balance layout
+                    Spacer()
+                        .frame(width: 40)
+                }
+                .frame(height: 60)
+                .background(Color.black.opacity(0.3))
+                
+                // Image preview area (matching Android RecyclerView with MultipleImageAdapter)
+                GeometryReader { geometry in
+                    TabView(selection: $currentIndex) {
+                            ForEach(Array(images.enumerated()), id: \.offset) { index, imageModel in
+                                ZStack {
+                                    Color.black
+                                    
+                                    // Use CachedAsyncImage for better loading (matching Android MultipleImageAdapter)
+                                    Group {
+                                        if let imageURL = getImageURL(for: imageModel) {
+                                            CachedAsyncImage(
+                                                url: imageURL,
+                                                content: { image in
+                                                    print("✅ [BunchPreview] Image \(index) loaded successfully from: \(imageURL.absoluteString)")
+                                                    return image
+                                                        .resizable()
+                                                        .scaledToFit()
+                                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                                },
+                                                placeholder: {
+                                                    print("⏳ [BunchPreview] Image \(index) loading from: \(imageURL.absoluteString)")
+                                                    return ProgressView()
+                                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                                }
+                                            )
+                                        } else {
+                                            // Fallback if URL is invalid
+                                            VStack {
+                                                Image(systemName: "photo")
+                                                    .resizable()
+                                                    .scaledToFit()
+                                                    .frame(width: 100, height: 100)
+                                                    .foregroundColor(.white.opacity(0.5))
+                                                Text("Image not available")
+                                                    .foregroundColor(.white.opacity(0.7))
+                                                    .font(.caption)
+                                                Text("fileName: \(imageModel.fileName)")
+                                                    .foregroundColor(.white.opacity(0.5))
+                                                    .font(.caption2)
+                                                Text("imgUrl: \(imageModel.imgUrl.isEmpty ? "empty" : String(imageModel.imgUrl.prefix(50)))")
+                                                    .foregroundColor(.white.opacity(0.5))
+                                                    .font(.caption2)
+                                            }
+                                        }
+                                    }
+                                    .onAppear {
+                                        let imageURL = getImageURL(for: imageModel)
+                                        print("📸 [BunchPreview] Image \(index) - URL result: \(imageURL?.absoluteString ?? "nil")")
+                                        if imageURL == nil {
+                                            print("❌ [BunchPreview] Image \(index) - No valid URL found. fileName: '\(imageModel.fileName)', imgUrl: '\(imageModel.imgUrl)'")
+                                        }
+                                    }
+                                }
+                                .tag(index)
+                            }
+                        }
+                        .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+                        .onChange(of: currentIndex) { newIndex in
+                            // Update binding when user swipes (TabView handles the swipe automatically)
+                            print("📸 [BunchPreview] Swiped to image \(newIndex + 1) / \(images.count)")
+                        }
+                    }
+                }
+            }
+        .onAppear {
+            print("📸 [BunchPreview] ========== DIALOG APPEARED ==========")
+            print("📸 [BunchPreview] Total images: \(images.count)")
+            print("📸 [BunchPreview] Current index: \(currentIndex)")
+            
+            if images.isEmpty {
+                print("❌ [BunchPreview] ERROR: images array is EMPTY!")
+            } else {
+                for (index, imageModel) in images.enumerated() {
+                    print("📸 [BunchPreview] --- Image \(index) ---")
+                    print("📸 [BunchPreview]   fileName: '\(imageModel.fileName)'")
+                    print("📸 [BunchPreview]   imgUrl: '\(imageModel.imgUrl.isEmpty ? "EMPTY" : imageModel.imgUrl)'")
+                    print("📸 [BunchPreview]   imgUrl length: \(imageModel.imgUrl.count)")
+                    
+                    // Test URL resolution immediately
+                    let testURL = getImageURL(for: imageModel)
+                    print("📸 [BunchPreview]   Resolved URL: \(testURL?.absoluteString ?? "nil")")
+                }
+            }
+            print("📸 [BunchPreview] ======================================")
+        }
+    }
+    
+    private func getImageURL(for imageModel: SelectionBunchModel) -> URL? {
+        print("🔍 [BunchPreview] getImageURL called - fileName: '\(imageModel.fileName)', imgUrl: '\(imageModel.imgUrl.isEmpty ? "empty" : imageModel.imgUrl)'")
+        
+        // Check local file first (matching Android doesFileExist logic)
+        if !imageModel.fileName.isEmpty {
+            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let imagesDir = documentsPath.appendingPathComponent("Enclosure/Media/Images", isDirectory: true)
+            let localURL = imagesDir.appendingPathComponent(imageModel.fileName)
+            
+            print("📁 [BunchPreview] Checking local file at: \(localURL.path)")
+            
+            // Check if directory exists
+            var isDirectory: ObjCBool = false
+            let dirExists = FileManager.default.fileExists(atPath: imagesDir.path, isDirectory: &isDirectory)
+            print("📁 [BunchPreview] Images directory exists: \(dirExists), isDirectory: \(isDirectory.boolValue)")
+            
+            if FileManager.default.fileExists(atPath: localURL.path) {
+                print("✅ [BunchPreview] Local file FOUND: \(localURL.path)")
+                return localURL
+            } else {
+                print("❌ [BunchPreview] Local file NOT FOUND: \(localURL.path)")
+                // List files in directory for debugging
+                if let files = try? FileManager.default.contentsOfDirectory(atPath: imagesDir.path) {
+                    print("📁 [BunchPreview] Files in directory: \(files.prefix(10))")
+                }
+            }
+        } else {
+            print("⚠️ [BunchPreview] fileName is empty")
+        }
+        
+        // Fallback to online URL (matching Android network URL loading)
+        if !imageModel.imgUrl.isEmpty {
+            print("🌐 [BunchPreview] Checking network URL: \(imageModel.imgUrl)")
+            if let url = URL(string: imageModel.imgUrl) {
+                print("✅ [BunchPreview] Valid network URL created: \(url.absoluteString)")
+                return url
+            } else {
+                print("❌ [BunchPreview] Invalid network URL format: \(imageModel.imgUrl)")
+            }
+        } else {
+            print("⚠️ [BunchPreview] imgUrl is empty for fileName: \(imageModel.fileName)")
+        }
+        
+        print("❌ [BunchPreview] No valid URL found for image")
+        return nil
+    }
+}
+
 // MARK: - Typing Indicator Dots View (Fallback when Lottie is not available)
 struct TypingIndicatorDotsView: View {
     @State private var animationPhase: CGFloat = 0
@@ -18671,5 +19453,179 @@ struct TypingIndicatorDotsView: View {
                 dotOpacities[2] = 1.0
             }
         }
+    }
+}
+
+// MARK: - Clear Chat Dialog (matching Android delete_popup_row.xml)
+struct ClearChatDialog: View {
+    @Binding var isPresented: Bool
+    let onConfirm: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        ZStack {
+            // Semi-transparent background (matching Android setCanceledOnTouchOutside)
+            Color.black.opacity(0.3)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation {
+                        isPresented = false
+                    }
+                }
+            
+            // Dialog card (matching Android CardView: 268dp width, cardBackgroundColornew, 20dp corner radius)
+            VStack(spacing: 0) {
+                VStack(spacing: 0) {
+                    // Dismiss button (matching Android dismiss ImageView: 24dp x 24dp, crossbtn drawable)
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            withAnimation {
+                                isPresented = false
+                            }
+                        }) {
+                            Image("crossbtn")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 24, height: 24)
+                                .foregroundColor(Color("TextColor"))
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .padding(.top, 0)
+                    .padding(.trailing, 0)
+                    
+                    // Title text (matching Android TextView: "Delete All Messages ?", 17sp, font weight 500, center gravity)
+                    Text("Delete All Messages ?")
+                        .font(.custom("Inter18pt-Medium", size: 17))
+                        .fontWeight(.medium)
+                        .foregroundColor(Color("TextColor"))
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(18)
+                        .padding(.top, 14)
+                    
+                    // Buttons container (matching Android LinearLayout: horizontal, center gravity, 25dp marginTop)
+                    HStack(spacing: 25) {
+                        // Ok button (matching Android AppCompatButton: button_hover4 background, 33dp height, 15sp, white text)
+                        Button(action: {
+                            withAnimation {
+                                isPresented = false
+                            }
+                            onConfirm()
+                        }) {
+                            Text("Ok")
+                                .font(.custom("Inter18pt-Regular", size: 15))
+                                .foregroundColor(.white)
+                                .frame(height: 33)
+                                .padding(.horizontal, 20)
+                                .background(Color(hex: Constant.themeColor))
+                                .cornerRadius(8)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        
+                        // Cancel button (matching Android: visibility="gone" - hidden in layout)
+                        // Note: Android layout has Cancel button but it's set to gone, so we don't show it
+                    }
+                    .padding(.top, 25)
+                }
+                .padding(20) // Matching Android padding="20dp"
+            }
+            .frame(width: 268) // Matching Android layout_width="268dp"
+            .background(
+                RoundedRectangle(cornerRadius: 20) // Matching Android cardCornerRadius="20dp"
+                    .fill(Color("cardBackgroundColornew")) // Matching Android cardBackgroundColor="@color/cardBackgroundColornew"
+                    .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 5)
+            )
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isPresented)
+    }
+}
+
+// MARK: - Block User Dialog (matching Android delete_ac_dialogue.xml)
+struct BlockUserDialog: View {
+    @Binding var isPresented: Bool
+    let onConfirm: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        ZStack {
+            // Semi-transparent background (matching Android setCanceledOnTouchOutside)
+            Color.black.opacity(0.3)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation {
+                        isPresented = false
+                    }
+                }
+            
+            // Dialog card (matching Clear All dialog size: 268dp width, cardBackgroundColornew, 20dp corner radius, 20dp padding)
+            VStack(spacing: 0) {
+                // Inner content (matching Clear All dialog structure)
+                VStack(spacing: 0) {
+                    // Title text (matching Android TextView: layout_marginTop="20dp", layout_marginStart="10dp", layout_marginEnd="10dp")
+                    Text("Block this user.\nBlock it's message.")
+                        .font(.custom("Inter18pt-Regular", size: 17))
+                        .foregroundColor(Color("TextColor"))
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(25) // Matching Android lineHeight="25dp"
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 20) // Matching Android layout_marginTop="20dp"
+                        .padding(.horizontal, 10) // Matching Android layout_marginStart="10dp" and layout_marginEnd="10dp"
+                    
+                    // Buttons container (matching Android LinearLayout: layout_marginTop="20dp", layout_marginBottom="20dp")
+                    HStack(spacing: 0) {
+                        // Cancel button (matching Android AppCompatButton: layout_marginEnd="20dp", 36dp height, 15sp, black backgroundTint, white text)
+                        Button(action: {
+                            withAnimation {
+                                isPresented = false
+                            }
+                        }) {
+                            Text("Cancel")
+                                .font(.custom("Inter18pt-Medium", size: 15))
+                                .fontWeight(.medium)
+                                .foregroundColor(.white)
+                                .frame(height: 36) // Matching Android layout_height="36dp"
+                                .padding(.horizontal, 20)
+                                .background(Color.black) // Matching Android backgroundTint="@color/black"
+                                .cornerRadius(8)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .padding(.trailing, 20) // Matching Android layout_marginEnd="20dp"
+                        
+                        // Sure button (matching Android AppCompatButton: 36dp height, 15sp, red backgroundTint, white text)
+                        Button(action: {
+                            withAnimation {
+                                isPresented = false
+                            }
+                            onConfirm()
+                        }) {
+                            Text("Sure")
+                                .font(.custom("Inter18pt-Medium", size: 15))
+                                .fontWeight(.medium)
+                                .foregroundColor(.white)
+                                .frame(height: 36) // Matching Android layout_height="36dp"
+                                .padding(.horizontal, 20)
+                                .background(Color.red) // Matching Android backgroundTint="@color/red"
+                                .cornerRadius(8)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 20) // Matching Android layout_marginTop="20dp"
+                    .padding(.bottom, 20) // Matching Android layout_marginBottom="20dp"
+                }
+            }
+            .padding(20) // Matching Clear All dialog padding="20dp"
+            .frame(width: 268) // Matching Clear All dialog width="268dp"
+            .background(
+                RoundedRectangle(cornerRadius: 20) // Matching Android cardCornerRadius="20dp"
+                    .fill(Color("cardBackgroundColornew")) // Matching Android cardBackgroundColor="@color/cardBackgroundColornew"
+                    .shadow(color: Color.black.opacity(0.2), radius: 20, x: 0, y: 10) // Matching Android elevation="20dp"
+            )
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isPresented)
     }
 }

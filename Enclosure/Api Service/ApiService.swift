@@ -1340,7 +1340,9 @@ class ApiService {
                        let status = json["status"] as? String,
                        let message = json["message"] as? String {
                         print("🚫 [BLOCK API] Status: \(status), Message: \(message)")
-                        if status.lowercased() == "success" {
+                        // Treat "info" status with "already blocked" message as success (matching Android)
+                        if status.lowercased() == "success" || 
+                           (status.lowercased() == "info" && message.lowercased().contains("already blocked")) {
                             completion(true, message)
                         } else {
                             completion(false, message)

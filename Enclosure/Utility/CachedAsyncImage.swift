@@ -72,37 +72,70 @@ final class ImageLoader: ObservableObject {
 
     private func loadImage() {
         guard let url = currentURL else {
+            print("⚠️ [CachedAsyncImage] loadImage called but currentURL is nil")
             return
         }
+        
+        print("🖼️ [CachedAsyncImage] loadImage called for: \(url.absoluteString)")
+        print("🖼️ [CachedAsyncImage] isFileURL: \(url.isFileURL)")
 
         if let cached = LocalImageCache.shared.image(for: url) {
+            print("✅ [CachedAsyncImage] Found cached image for: \(url.absoluteString)")
             self.image = cached
             return
         }
 
         // Handle local file URLs (matching Android local file loading)
         if url.isFileURL {
+            print("📁 [CachedAsyncImage] Loading from local file: \(url.path)")
             // Load directly from file system
-            if let data = try? Data(contentsOf: url), let uiImage = UIImage(data: data) {
-                LocalImageCache.shared.save(image: uiImage, for: url)
-                DispatchQueue.main.async {
-                    if self.currentURL == url {
-                        self.image = uiImage
+            if let data = try? Data(contentsOf: url) {
+                print("📁 [CachedAsyncImage] File data loaded, size: \(data.count) bytes")
+                if let uiImage = UIImage(data: data) {
+                    print("✅ [CachedAsyncImage] UIImage created from local file, size: \(uiImage.size)")
+                    LocalImageCache.shared.save(image: uiImage, for: url)
+                    DispatchQueue.main.async {
+                        if self.currentURL == url {
+                            self.image = uiImage
+                            print("✅ [CachedAsyncImage] Image set successfully from local file")
+                        }
                     }
+                } else {
+                    print("❌ [CachedAsyncImage] Failed to create UIImage from local file data")
                 }
+            } else {
+                print("❌ [CachedAsyncImage] Failed to load data from local file: \(url.path)")
             }
             return
         }
 
         // Handle remote URLs
+        print("🌐 [CachedAsyncImage] Loading from network URL: \(url.absoluteString)")
         task?.cancel()
-        task = URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-            guard let self = self, let data = data, let uiImage = UIImage(data: data) else { return }
-            LocalImageCache.shared.save(image: uiImage, for: url)
-            DispatchQueue.main.async {
-                if self.currentURL == url {
-                    self.image = uiImage
+        task = URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
+            if let error = error {
+                print("❌ [CachedAsyncImage] Network error: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let self = self, let data = data else {
+                print("❌ [CachedAsyncImage] No data received from network")
+                return
+            }
+            
+            print("🌐 [CachedAsyncImage] Network data received, size: \(data.count) bytes")
+            
+            if let uiImage = UIImage(data: data) {
+                print("✅ [CachedAsyncImage] UIImage created from network data, size: \(uiImage.size)")
+                LocalImageCache.shared.save(image: uiImage, for: url)
+                DispatchQueue.main.async {
+                    if self.currentURL == url {
+                        self.image = uiImage
+                        print("✅ [CachedAsyncImage] Image set successfully from network")
+                    }
                 }
+            } else {
+                print("❌ [CachedAsyncImage] Failed to create UIImage from network data")
             }
         }
         task?.resume()

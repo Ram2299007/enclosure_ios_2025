@@ -15,6 +15,10 @@ struct chatView: View {
     // Navigation state for chatting screen
     @Binding var selectedChatForNavigation: UserActiveContactModel?
     
+    // Navigation state for UserInfoScreen
+    @State private var navigateToUserInfoScreen: Bool = false
+    @State private var selectedUserForInfo: (uid: String, name: String)?
+    
     // Firebase listener handle
     @State private var firebaseListenerHandle: DatabaseHandle?
 
@@ -95,6 +99,25 @@ struct chatView: View {
             // Remove Firebase listener when view disappears
             removeChattingSocketListener()
         }
+        .background(
+            // Hidden NavigationLink for UserInfoScreen
+            NavigationLink(
+                destination: Group {
+                    if let userInfo = selectedUserForInfo {
+                        UserInfoScreen(
+                            recUserId: userInfo.uid,
+                            recUserName: userInfo.name
+                        )
+                    } else {
+                        EmptyView()
+                    }
+                },
+                isActive: $navigateToUserInfoScreen
+            ) {
+                EmptyView()
+            }
+            .hidden()
+        )
     }
 
     private var chatListView: some View {
@@ -106,6 +129,11 @@ struct chatView: View {
                     selectedChatForDialog = chat
                     dialogPosition = position
                     showLongPressDialog = true
+                },
+                onProfileImageTap: { chat in
+                    // Navigate to UserInfoScreen when profile image is tapped
+                    selectedUserForInfo = (uid: chat.uid, name: chat.fullName)
+                    navigateToUserInfoScreen = true
                 }
             )
             .listRowInsets(EdgeInsets())
@@ -121,11 +149,13 @@ struct chatView: View {
         var chat: UserActiveContactModel
         @Binding var selectedChatForNavigation: UserActiveContactModel?
         var onLongPress: (UserActiveContactModel, CGPoint) -> Void
+        var onProfileImageTap: ((UserActiveContactModel) -> Void)? // Callback for profile image tap
         
         @State private var isPressed = false
         @State private var exactTouchLocation: CGPoint = .zero
         @GestureState private var isDetectingLongPress = false
         @State private var isLongPressing = false
+        @State private var profileImageTapped = false // Track if profile image was tapped
         
         var body: some View {
             GeometryReader { geometry in
@@ -135,6 +165,12 @@ struct chatView: View {
                     CardView(image: chat.photo)
                         .padding(.leading, 1) // marginStart="1dp" for FrameLayout
                         .padding(.trailing, 16) // marginEnd="16dp" for FrameLayout
+                        .onTapGesture {
+                            // Mark that profile image was tapped
+                            profileImageTapped = true
+                            // Open UserInfoScreen when profile image is tapped
+                            onProfileImageTap?(chat)
+                        }
 
                     // Vertical LinearLayout - layout_gravity="center_vertical"
                     VStack(alignment: .leading, spacing: 0) {
@@ -187,17 +223,18 @@ struct chatView: View {
                         }
                         .onEnded { _ in
                             isPressed = false
-                            // Single tap - only execute if not a long press
-                            if !isLongPressing {
+                            // Single tap - only execute if not a long press and profile image wasn't tapped
+                            if !isLongPressing && !profileImageTapped {
                                 print("Tapped: \(chat.fullName)") // Handle single tap
                                 // Navigate to chatting screen
                                 DispatchQueue.main.async {
                                     selectedChatForNavigation = chat
                                 }
                             }
-                            // Reset long press flag after a short delay
+                            // Reset flags after a short delay
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                 isLongPressing = false
+                                profileImageTapped = false
                             }
                         }
                 )
