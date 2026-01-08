@@ -10,6 +10,7 @@ import UIKit
 import Photos
 import PhotosUI
 import AVFoundation
+import FirebaseStorage
 
 struct GroupChattingScreen: View {
     @Environment(\.dismiss) private var dismiss
@@ -55,6 +56,13 @@ struct GroupChattingScreen: View {
     @State private var showGalleryPicker: Bool = false
     @State private var showCameraView: Bool = false
     @State private var wasGalleryPickerOpenBeforeCamera: Bool = false
+    @State private var showWhatsAppImagePicker: Bool = false
+    @State private var wasGalleryPickerOpenBeforeImagePicker: Bool = false
+    
+    // Multi-image preview dialog state
+    @State private var showMultiImagePreview: Bool = false
+    @State private var multiImagePreviewCaption: String = ""
+    @State private var multiImagePreviewAssets: [PHAsset] = [] // Store selected assets from WhatsAppLikeImagePicker
     
     // Local gallery (mirrors Android dataRecview)
     @State private var photoAssets: [PHAsset] = []
@@ -160,6 +168,36 @@ struct GroupChattingScreen: View {
         .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showCameraView) {
             GroupCameraGalleryView(group: group)
+        }
+        .fullScreenCover(isPresented: $showWhatsAppImagePicker, onDismiss: {
+            // Restore gallery picker when image picker is dismissed (matching CameraGalleryView behavior)
+            if wasGalleryPickerOpenBeforeImagePicker {
+                withAnimation {
+                    showGalleryPicker = true
+                }
+                wasGalleryPickerOpenBeforeImagePicker = false
+            }
+        }) {
+            WhatsAppLikeImagePicker(maxSelection: 30) { selectedAssets, caption in
+                handleImagePickerResult(selectedAssets: selectedAssets, caption: caption)
+            }
+        }
+        .fullScreenCover(isPresented: $showMultiImagePreview, onDismiss: {
+            // Reset caption when dialog is dismissed
+            multiImagePreviewCaption = ""
+        }) {
+            MultiImagePreviewDialog(
+                selectedAssetIds: $selectedAssetIds,
+                photoAssets: multiImagePreviewAssets.isEmpty ? photoAssets : multiImagePreviewAssets,
+                imageManager: imageManager,
+                caption: $multiImagePreviewCaption,
+                onSend: { caption in
+                    handleMultiImageSend(caption: caption)
+                },
+                onDismiss: {
+                    showMultiImagePreview = false
+                }
+            )
         }
         .onChange(of: showCameraView) { isPresented in
             // When camera view is dismissed, restore gallery picker if it was open before
@@ -1112,9 +1150,339 @@ struct GroupChattingScreen: View {
         }
     }
     
+    // MARK: - Photo Button Handler
     private func handlePhotoButtonClick() {
-        // TODO: Implement photo picker functionality
-        print("📸 Photo button clicked")
+        print("ImageUpload: === GALLERY BUTTON CLICKED (Main) ===")
+        
+        // Light haptic feedback (Android-style tap vibration)
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Hide keyboard and focus message box (matching Android hideKeyboardAndFocusMessageBox)
+        isMessageFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        
+        // Hide multi-select counter (matching Android binding.multiSelectSmallCounterText.setVisibility(View.GONE))
+        selectedAssetIds.removeAll()
+        selectedCount = 0
+        
+        // Save gallery picker state before opening image picker (don't hide it - will restore on back)
+        wasGalleryPickerOpenBeforeImagePicker = showGalleryPicker
+        
+        // Hide emoji picker if open
+        if showEmojiLayout {
+            withAnimation {
+                showEmojiLayout = false
+            }
+        }
+        
+        // Hide gallery picker if open (will restore when image picker closes)
+        if showGalleryPicker {
+            withAnimation {
+                showGalleryPicker = false
+            }
+        }
+        
+        // Launch WhatsApp-like image picker (matching Android WhatsAppLikeImagePicker)
+        print("ImageUpload: === LAUNCHING WhatsAppLikeImagePicker ===")
+        print("ImageUpload: PICK_IMAGE_REQUEST_CODE: PhotoPicker")
+        print("ImageUpload: Current selectedAssetIds size: \(selectedAssetIds.count)")
+        
+        DispatchQueue.main.async {
+            showWhatsAppImagePicker = true
+        }
+    }
+    
+    // MARK: - Handle Image Picker Result
+    private func handleImagePickerResult(selectedAssets: [PHAsset], caption: String) {
+        print("ImageUpload: === IMAGE PICKER RESULT RECEIVED ===")
+        print("ImageUpload: Selected assets count: \(selectedAssets.count)")
+        print("ImageUpload: Caption: '\(caption)'")
+        
+        guard !selectedAssets.isEmpty else { return }
+        
+        // Store selected assets for preview dialog
+        multiImagePreviewAssets = selectedAssets
+        
+        // Update selected assets
+        selectedAssetIds = Set(selectedAssets.map { $0.localIdentifier })
+        selectedCount = selectedAssets.count
+        
+        // Set caption from WhatsAppLikeImagePicker
+        multiImagePreviewCaption = caption
+        
+        // Show full-screen dialog for multi-image preview (matching Android setupMultiImagePreviewWithData)
+        showMultiImagePreview = true
+    }
+    
+    // MARK: - Handle Multi-Image Send (matching Android upload logic)
+    private func handleMultiImageSend(caption: String) {
+        print("DIALOGUE_DEBUG: === MULTI-IMAGE SEND ===")
+        print("DIALOGUE_DEBUG: Selected images count: \(selectedAssetIds.count)")
+        print("DIALOGUE_DEBUG: Caption: '\(caption)'")
+        
+        // Get selected assets from multiImagePreviewAssets or photoAssets
+        let selectedAssets = multiImagePreviewAssets.isEmpty 
+            ? photoAssets.filter { selectedAssetIds.contains($0.localIdentifier) }
+            : multiImagePreviewAssets.filter { selectedAssetIds.contains($0.localIdentifier) }
+        
+        guard !selectedAssets.isEmpty else {
+            print("DIALOGUE_DEBUG: No assets selected, returning")
+            return
+        }
+        
+        // Close the preview dialog
+        showMultiImagePreview = false
+        
+        // Hide gallery picker
+        withAnimation {
+            showGalleryPicker = false
+        }
+        
+        // Clear selected assets after sending
+        selectedAssetIds.removeAll()
+        selectedCount = 0
+        
+        let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        let groupId = group.groupId
+        let senderId = Constant.SenderIdMy
+        let userName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
+        let micPhoto = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
+        
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "hh:mm a"
+        let currentDateTimeString = timeFormatter.string(from: Date())
+        
+        let currentDateFormatter = DateFormatter()
+        currentDateFormatter.dateFormat = "yyyy-MM-dd"
+        let currentDateString = currentDateFormatter.string(from: Date())
+        
+        let timestamp = Date().timeIntervalSince1970
+        let modelId = UUID().uuidString
+        
+        // Capture reply context if present
+        let replyMsg = replyMessage
+        let replyType = replyDataType
+        
+        // Create placeholder selectionBunch items so bunch view can render immediately
+        var placeholderSelectionBunch: [SelectionBunchModel] = []
+        for index in 0..<selectedAssets.count {
+            let fileName = "\(modelId)_\(index).jpg"
+            placeholderSelectionBunch.append(SelectionBunchModel(imgUrl: "", fileName: fileName))
+        }
+        
+        // Create message with group information
+        let newMessage = ChatMessage(
+            id: modelId,
+            uid: senderId,
+            message: "",
+            time: currentDateTimeString,
+            document: "", // Will be updated after upload
+            dataType: Constant.img,
+            fileExtension: "jpg",
+            name: nil,
+            phone: nil,
+            micPhoto: micPhoto,
+            miceTiming: nil,
+            userName: userName,
+            receiverId: groupId, // Use groupId as receiverId for groups
+            replytextData: replyMsg.isEmpty ? nil : replyMsg,
+            replyKey: replyMsg.isEmpty ? nil : modelId,
+            replyType: replyType.isEmpty ? nil : replyType,
+            replyOldData: nil,
+            replyCrtPostion: nil,
+            forwaredKey: nil,
+            groupName: group.name, // Set group name
+            docSize: nil,
+            fileName: "\(modelId)_0.jpg",
+            thumbnail: nil,
+            fileNameThumbnail: nil,
+            caption: trimmedCaption,
+            notification: 1,
+            currentDate: currentDateString,
+            emojiModel: [EmojiModel(name: "", emoji: "")],
+            emojiCount: nil,
+            timestamp: timestamp,
+            imageWidth: nil, // Will be updated after export
+            imageHeight: nil, // Will be updated after export
+            aspectRatio: nil, // Will be updated after export
+            selectionCount: "\(selectedAssets.count)",
+            selectionBunch: placeholderSelectionBunch.count >= 2 ? placeholderSelectionBunch : nil, // Show bunch view if 2+ images
+            receiverLoader: 0 // Show progress bar
+        )
+        
+        // Upload images to Firebase Storage and send message
+        uploadGroupImagesAndSend(selectedAssets: selectedAssets, message: newMessage, modelId: modelId)
+    }
+    
+    // MARK: - Upload Group Images and Send
+    private func uploadGroupImagesAndSend(selectedAssets: [PHAsset], message: ChatMessage, modelId: String) {
+        let dispatchGroup = DispatchGroup()
+        let lockQueue = DispatchQueue(label: "com.enclosure.groupMultiImageUpload.lock")
+        
+        struct UploadedImageResult {
+            let index: Int
+            let downloadURL: String
+            let fileName: String
+            let width: Int
+            let height: Int
+        }
+        
+        var uploadResults: [UploadedImageResult] = []
+        var uploadErrors: [Error] = []
+        
+        // Upload all images
+        for (index, asset) in selectedAssets.enumerated() {
+            dispatchGroup.enter()
+            let remoteFileName = "\(modelId)_\(index).jpg"
+            
+            exportImageAsset(asset, fileName: remoteFileName) { exportResult in
+                switch exportResult {
+                case .failure(let error):
+                    lockQueue.sync { uploadErrors.append(error) }
+                    dispatchGroup.leave()
+                case .success(let export):
+                    // Upload to Firebase Storage using GROUPCHAT path
+                    self.uploadGroupImageFileToFirebase(data: export.data, remoteFileName: remoteFileName) { uploadResult in
+                        switch uploadResult {
+                        case .failure(let error):
+                            lockQueue.sync { uploadErrors.append(error) }
+                        case .success(let downloadURL):
+                            let result = UploadedImageResult(
+                                index: index,
+                                downloadURL: downloadURL,
+                                fileName: remoteFileName,
+                                width: export.width,
+                                height: export.height
+                            )
+                            lockQueue.sync { uploadResults.append(result) }
+                        }
+                        dispatchGroup.leave()
+                    }
+                }
+            }
+        }
+        
+        // After all uploads complete, update message and send to API
+        dispatchGroup.notify(queue: .main) {
+            if uploadResults.isEmpty {
+                print("❌ [GROUP_MULTI_IMAGE] Upload failed - no results")
+                Constant.showToast(message: "Unable to upload images. Please try again.")
+                return
+            }
+            
+            if !uploadErrors.isEmpty {
+                print("⚠️ [GROUP_MULTI_IMAGE] Some uploads failed: \(uploadErrors.count) errors")
+            }
+            
+            let sortedResults = uploadResults.sorted { $0.index < $1.index }
+            let selectionBunchModels = sortedResults.map { SelectionBunchModel(imgUrl: $0.downloadURL, fileName: $0.fileName) }
+            
+            guard let first = sortedResults.first else {
+                Constant.showToast(message: "Unable to prepare images. Please try again.")
+                return
+            }
+            
+            let aspectRatioValue: String
+            if first.height > 0 {
+                aspectRatioValue = String(format: "%.2f", Double(first.width) / Double(first.height))
+            } else {
+                aspectRatioValue = ""
+            }
+            
+            // Update message with actual URLs
+            var updatedMessage = message
+            updatedMessage.document = first.downloadURL
+            updatedMessage.imageWidth = "\(first.width)"
+            updatedMessage.imageHeight = "\(first.height)"
+            updatedMessage.aspectRatio = aspectRatioValue
+            updatedMessage.selectionBunch = selectionBunchModels.count >= 2 ? selectionBunchModels : nil
+            
+            // Upload message via API
+            let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
+            
+            MessageUploadService.shared.uploadMessage(
+                model: updatedMessage,
+                filePath: nil,
+                userFTokenKey: userFTokenKey,
+                deviceType: "2"
+            ) { success, errorMessage in
+                if success {
+                    print("✅ [GROUP_MULTI_IMAGE] Uploaded \(sortedResults.count) images for modelId=\(modelId)")
+                } else {
+                    print("❌ [GROUP_MULTI_IMAGE] Upload error: \(errorMessage ?? "Unknown error")")
+                    Constant.showToast(message: "Failed to send images. Please try again.")
+                }
+            }
+        }
+    }
+    
+    // MARK: - Export Image Asset
+    private func exportImageAsset(_ asset: PHAsset, fileName: String, completion: @escaping (Result<(data: Data, width: Int, height: Int), Error>) -> Void) {
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.isNetworkAccessAllowed = true
+        options.version = .current
+        
+        PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
+            guard let data = data else {
+                completion(.failure(NSError(domain: "ImageExport", code: -1, userInfo: [NSLocalizedDescriptionKey: "No image data"])))
+                return
+            }
+            
+            let image = UIImage(data: data)
+            let jpegData = image?.jpegData(compressionQuality: 0.85) ?? data
+            let width = image?.cgImage?.width ?? Int(asset.pixelWidth)
+            let height = image?.cgImage?.height ?? Int(asset.pixelHeight)
+            completion(.success((jpegData, width, height)))
+        }
+    }
+    
+    // MARK: - Upload Group Image to Firebase Storage
+    private func uploadGroupImageFileToFirebase(data: Data, remoteFileName: String, completion: @escaping (Result<String, Error>) -> Void) {
+        // Use GROUPCHAT constant and group.groupId for storage path
+        let storagePath = "\(Constant.GROUPCHAT)/\(group.groupId)/\(remoteFileName)"
+        let ref = Storage.storage().reference().child(storagePath)
+        let metadata = StorageMetadata()
+        metadata.contentType = "image/jpeg"
+        
+        var bgTask: UIBackgroundTaskIdentifier = .invalid
+        DispatchQueue.main.async {
+            bgTask = UIApplication.shared.beginBackgroundTask(withName: "UploadGroupImage") {
+                UIApplication.shared.endBackgroundTask(bgTask)
+                bgTask = .invalid
+            }
+        }
+        let endTask: () -> Void = {
+            if bgTask != .invalid {
+                UIApplication.shared.endBackgroundTask(bgTask)
+                bgTask = .invalid
+            }
+        }
+        
+        ref.putData(data, metadata: metadata) { _, error in
+            if let error = error {
+                endTask()
+                completion(.failure(error))
+                return
+            }
+            
+            ref.downloadURL { url, error in
+                endTask()
+                
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+                
+                guard let url = url else {
+                    completion(.failure(NSError(domain: "FirebaseStorage", code: -1, userInfo: [NSLocalizedDescriptionKey: "Download URL missing"])))
+                    return
+                }
+                
+                completion(.success(url.absoluteString))
+            }
+        }
     }
     
     private func handleVideoButtonClick() {
