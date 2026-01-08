@@ -30,6 +30,10 @@ struct groupMessageView: View {
     @Binding var groupDialogPosition: CGPoint
     @Binding var showGroupDialog: Bool
     
+    // Navigation state
+    @State private var selectedGroupForNavigation: GroupModel?
+    @State private var navigateToGroupChatting: Bool = false
+    
     // Computed property for background tint: appThemeColor in light mode, darker tint in dark mode
     private var backgroundTintColor: Color {
         if colorScheme == .light {
@@ -103,13 +107,29 @@ struct groupMessageView: View {
             )
             .animation(.spring(), value: dragOffset)
             .background(
-                NavigationLink(
-                    destination: NewGroupView(isPresented: $isNewGroupPresented),
-                    isActive: $isNewGroupPresented
-                ) {
-                    EmptyView()
+                Group {
+                    NavigationLink(
+                        destination: NewGroupView(isPresented: $isNewGroupPresented),
+                        isActive: $isNewGroupPresented
+                    ) {
+                        EmptyView()
+                    }
+                    .hidden()
+                    
+                    NavigationLink(
+                        destination: Group {
+                            if let selectedGroup = selectedGroupForNavigation {
+                                GroupChattingScreen(group: selectedGroup)
+                            } else {
+                                EmptyView()
+                            }
+                        },
+                        isActive: $navigateToGroupChatting
+                    ) {
+                        EmptyView()
+                    }
+                    .hidden()
                 }
-                .hidden()
             )
             .onAppear {
                 isTopHeaderVisible = false
@@ -189,6 +209,10 @@ struct groupMessageView: View {
                             ForEach(filteredGroups) { group in
                                 GroupRowView(
                                     group: group,
+                                    onTap: {
+                                        selectedGroupForNavigation = group
+                                        navigateToGroupChatting = true
+                                    },
                                     onLongPress: { group, position in
                                         selectedGroupForDialog = group
                                         groupDialogPosition = position

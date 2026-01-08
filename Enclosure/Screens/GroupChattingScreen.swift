@@ -1,0 +1,1135 @@
+//
+//  GroupChattingScreen.swift
+//  Enclosure
+//
+//  Created by Ram Lohar on 30/04/25.
+//
+
+import SwiftUI
+import UIKit
+import Photos
+import PhotosUI
+import AVFoundation
+
+struct GroupChattingScreen: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+    let group: GroupModel
+    
+    // Header state
+    @State private var showSearch: Bool = false
+    @State private var searchText: String = ""
+    @State private var showMenu: Bool = false
+    @State private var showMenu2: Bool = false
+    @State private var showMultiSelectHeader: Bool = false
+    @State private var selectedCount: Int = 0
+    
+    // Progress indicators
+    @State private var showNetworkLoader: Bool = false
+    @State private var showLoader: Bool = false
+    
+    // Message input state
+    @State private var messageText: String = ""
+    @FocusState private var isMessageFieldFocused: Bool
+    @State private var characterCount: Int = 0
+    @State private var showCharacterCount: Bool = false
+    @State private var maxMessageLength: Int = 1000
+    @State private var selectedAssetIds: Set<String> = [] // Track selected assets for badge
+    @State private var sendButtonScale: CGFloat = 1.0
+    
+    // Reply layout state
+    @State private var showReplyLayout: Bool = false
+    @State private var replyMessage: String = ""
+    @State private var replySenderName: String = ""
+    @State private var replyDataType: String = ""
+    @State private var replyImageUrl: String? = nil
+    @State private var replyContactName: String? = nil
+    @State private var replyFileExtension: String? = nil
+    @State private var replyMessageId: String? = nil
+    @State private var isReplyFromSender: Bool = false // Track if reply is from sender (for theme color)
+    
+    // Emoji layout state
+    @State private var showEmojiLayout: Bool = false
+    
+    // Gallery picker state
+    @State private var showGalleryPicker: Bool = false
+    @State private var showCameraView: Bool = false
+    @State private var wasGalleryPickerOpenBeforeCamera: Bool = false
+    
+    // Local gallery (mirrors Android dataRecview)
+    @State private var photoAssets: [PHAsset] = []
+    private let imageManager = PHCachingImageManager()
+    
+    // Date card state
+    @State private var showDateCard: Bool = false
+    @State private var dateText: String = "Today"
+    
+    // Valuable card state
+    @State private var showValuableCard: Bool = false
+    
+    // Messages state
+    @State private var messages: [String] = [] // Placeholder - will be replaced with actual message model
+    
+    var body: some View {
+        ZStack {
+            Color("BackgroundColor")
+                .ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // Main header (header1Cardview)
+                if !showMultiSelectHeader {
+                    header1
+                } else {
+                    header2
+                }
+                
+                // Network loader
+                if showNetworkLoader {
+                    HorizontalProgressBar()
+                        .frame(height: 2)
+                }
+                
+                // Main loader
+                if showLoader {
+                    HorizontalProgressBar()
+                        .frame(height: 4)
+                        .frame(maxWidth: .infinity)
+                }
+                
+                // Message list (positioned between header and input container)
+                ZStack(alignment: .top) {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(messages, id: \.self) { message in
+                                Text(message)
+                                    .padding()
+                            }
+                        }
+                    }
+                    .contentShape(Rectangle()) // Ensure entire area is tappable
+                    .allowsHitTesting(true) // Ensure ScrollView can receive touches
+                    
+                    // Multi-select small counter text overlay
+                    if showMultiSelectHeader && selectedCount > 0 {
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                Text("\(selectedCount)")
+                                    .font(.custom("Inter18pt-Bold", size: 12))
+                                    .foregroundColor(.white)
+                                    .frame(width: 24, height: 24)
+                                    .background(
+                                        Circle()
+                                            .fill(Color("buttonColorTheme"))
+                                    )
+                                    .padding(.trailing, 15)
+                                    .padding(.bottom, 60)
+                            }
+                        }
+                        .allowsHitTesting(true) // Allow counter to receive touches
+                    }
+                    
+                    // Date card overlay
+                    if showDateCard {
+                        dateCardView
+                            .zIndex(1000) // Ensure it's on top
+                            .padding(.top, 8)
+                            .allowsHitTesting(false) // Don't block touches to ScrollView
+                    }
+                }
+                
+                // Bottom input area
+                messageInputContainer
+            }
+            
+            // Valuable card (centered, initially hidden)
+            if showValuableCard {
+                valuableCardView
+            }
+            
+            // Menu dialogs
+            if showMenu {
+                menuDialog
+            }
+            
+            if showMenu2 {
+                menu2Dialog
+            }
+        }
+        .navigationBarHidden(true)
+        .fullScreenCover(isPresented: $showCameraView) {
+            GroupCameraGalleryView(group: group)
+        }
+        .onChange(of: showCameraView) { isPresented in
+            // When camera view is dismissed, restore gallery picker if it was open before
+            if !isPresented && wasGalleryPickerOpenBeforeCamera {
+                withAnimation {
+                    showGalleryPicker = true
+                }
+                wasGalleryPickerOpenBeforeCamera = false
+            }
+        }
+        .onAppear {
+            // Initialize any required state
+        }
+    }
+    
+    // MARK: - Header 1 (Main Header)
+    private var header1: some View {
+        VStack(spacing: 0) {
+            // Header card matching Android header1Cardview
+            HStack(spacing: 0) {
+                // Back button
+                Button(action: {
+                    dismiss()
+                }) {
+                    ZStack {
+                        Image("leftvector")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 25, height: 18)
+                            .foregroundColor(Color("TextColor"))
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 10)
+                .padding(.trailing, 8)
+                
+                // Search field (full width when active - matching Android binding.searchlyt.setVisibility(View.VISIBLE))
+                if showSearch {
+                    TextField("Search...", text: $searchText)
+                        .font(.custom("Inter18pt-Medium", size: 16))
+                        .foregroundColor(Color("TextColor"))
+                        .textFieldStyle(PlainTextFieldStyle())
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.trailing, 10)
+                } else {
+                    // Group section (hidden when search is active)
+                    HStack(spacing: 0) {
+                        // Group icon with border
+                        ZStack {
+                            Circle()
+                                .stroke(Color("blue"), lineWidth: 2)
+                                .frame(width: 44, height: 44)
+                            
+                            CachedAsyncImage(url: URL(string: group.iconURL)) { image in
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 40, height: 40)
+                                    .clipShape(Circle())
+                            } placeholder: {
+                                Image("inviteimg")
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 40, height: 40)
+                                    .clipShape(Circle())
+                            }
+                        }
+                        .padding(.leading, 5)
+                        .padding(.trailing, 16)
+                        
+                        // Name
+                        Text(group.name)
+                            .font(.custom("Inter18pt-Medium", size: 16))
+                            .foregroundColor(Color("TextColor"))
+                            .lineLimit(1)
+                    }
+                    
+                    Spacer()
+                    
+                    // Multi-select header elements (initially hidden)
+                    if showMultiSelectHeader {
+                        HStack(spacing: 8) {
+                            Text("\(selectedCount) selected")
+                                .font(.custom("Inter18pt-Bold", size: 14))
+                                .foregroundColor(Color("blue"))
+                            
+                            Image("forward_wrapped")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 24, height: 24)
+                                .padding(4)
+                                .background(
+                                    Circle()
+                                        .fill(Color.clear)
+                                )
+                        }
+                    }
+                    
+                    // Menu button (three dots) - hidden when search is active
+                    Button(action: {
+                        withAnimation {
+                            showMenu.toggle()
+                        }
+                    }) {
+                        VStack(spacing: 3) {
+                            Circle()
+                                .fill(Color("menuPointColor"))
+                                .frame(width: 4, height: 4)
+                            Circle()
+                                .fill(Color(hex: Constant.themeColor))
+                                .frame(width: 4, height: 4)
+                            Circle()
+                                .fill(Color("gray3"))
+                                .frame(width: 4, height: 4)
+                        }
+                        .frame(width: 40, height: 40)
+                        .background(
+                            Circle()
+                                .fill(Color("circlebtnhover").opacity(0.1))
+                        )
+                    }
+                    .padding(.trailing, 10)
+                }
+            }
+            .frame(height: 50)
+            .background(Color("BackgroundColor"))
+        }
+    }
+    
+    // MARK: - Header 2 (Multi-select Header)
+    private var header2: some View {
+        VStack(spacing: 0) {
+            // Header card matching Android header2Cardview
+            HStack(spacing: 0) {
+                // Cross button
+                Button(action: {
+                    showMultiSelectHeader = false
+                    selectedCount = 0
+                }) {
+                    ZStack {
+                        Image("crossimg")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 25, height: 18)
+                            .foregroundColor(Color("TextColor"))
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 20)
+                .padding(.trailing, 5)
+                
+                // Selected counter text
+                Text("Selected \(selectedCount)")
+                    .font(.custom("Inter18pt-Medium", size: 16))
+                    .foregroundColor(Color("TextColor"))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 21)
+                
+                Spacer()
+                
+                // Forward all button
+                HStack(spacing: 5) {
+                    Image("forward_wrapped")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 16, height: 16)
+                        .foregroundColor(Color("TextColor"))
+                    
+                    Text("forward")
+                        .font(.custom("Inter18pt-Regular", size: 10))
+                        .foregroundColor(Color("TextColor"))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(Color("dxForward"))
+                )
+                .padding(.trailing, 20)
+            }
+            .frame(height: 50)
+            .background(Color("edittextBg"))
+        }
+    }
+    
+    // MARK: - Message Input Container
+    private var messageInputContainer: some View {
+        // Outer vertical container (messageboxContainer) - orientation="vertical"
+        VStack(spacing: 0) {
+            // Inner horizontal container - padding="2dp"
+            HStack(alignment: .bottom, spacing: 0) {
+                // Vertical container with layout_weight="1" containing reply and edit layouts
+                VStack(spacing: 0) {
+                    // Reply layout (replylyout) - marginStart="2dp" marginTop="2dp" marginEnd="2dp"
+                    if showReplyLayout {
+                        replyLayoutView
+                            .padding(.top, 2) // Only add top margin, horizontal is already in replyLayoutView
+                    }
+                    
+                    // Main input layout (editLyt) - marginStart="2dp" marginEnd="2dp"
+                    VStack(spacing: 0) {
+                        HStack(alignment: .center, spacing: 0) {
+                            // Attach button (gallary) - marginStart="5dp"
+                            Button(action: {
+                                handleGalleryButtonClick()
+                            }) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color("chattingMessageBox"))
+                                        .frame(width: 40, height: 40)
+                                    
+                                    Image("attachsvg")
+                                        .renderingMode(.template)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 20, height: 20)
+                                        .foregroundColor(Color("chtbtncolor"))
+                                }
+                            }
+                            .padding(.leading, 5)
+                            
+                            // Message input field container - layout_weight="1"
+                            VStack(alignment: .leading, spacing: 0) {
+                                TextField("Message on Ec", text: $messageText, axis: .vertical)
+                                    .font(messageInputFont)
+                                    .foregroundColor(Color("black_white_cross"))
+                                    .lineLimit(4)
+                                    .frame(maxWidth: 180, alignment: .leading)
+                                    .padding(.leading, 0)
+                                    .padding(.trailing, 20)
+                                    .padding(.top, 5)
+                                    .padding(.bottom, 5)
+                                    .background(Color.clear)
+                                    .focused($isMessageFieldFocused)
+                                    .onChange(of: messageText) { newValue in
+                                        characterCount = newValue.count
+                                        showCharacterCount = characterCount > 0
+                                    }
+                            }
+                            .contentShape(Rectangle())
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            // Emoji button (emoji) - marginEnd="5dp"
+                            Button(action: {
+                                showEmojiLayout.toggle()
+                            }) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color("chattingMessageBox"))
+                                        .frame(width: 40, height: 40)
+                                    
+                                    EmojiIconView()
+                                        .frame(width: 20, height: 20)
+                                }
+                            }
+                            .padding(.trailing, 5)
+                        }
+                        .frame(height: 50) // Match send button height (50dp)
+                        .padding(.horizontal, 7) // Inner padding matching reply layout inner margin="7dp"
+                    }
+                    .padding(.horizontal, 2) // Outer margin matching reply layout marginStart/End="2dp" for width alignment
+                    .background(
+                        // When reply layout is visible: bottom corners only (to connect with reply layout)
+                        // When reply layout is hidden: all corners rounded (matching message_box_bg.xml)
+                        Group {
+                            if showReplyLayout {
+                                // Bottom corners only (matching Android when replylyout is visible)
+                                RoundedCorner(radius: 20, corners: [.bottomLeft, .bottomRight])
+                                    .fill(Color("message_box_bg"))
+                            } else {
+                                // All corners rounded (matching message_box_bg.xml with 20dp radius)
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(Color("message_box_bg"))
+                            }
+                        }
+                    )
+                    .zIndex(1) // Ensure TextField area has higher z-index than gallery picker
+                }
+                .frame(maxWidth: .infinity) // layout_weight="1"
+                .contentShape(Rectangle()) // Ensure clear hit testing boundary
+                
+                // Send button (sendGrpLyt) - layout_gravity="center_vertical|bottom"
+                ZStack(alignment: .topTrailing) {
+                    VStack(spacing: 0) {
+                        Button(action: {
+                            // Send message action
+                        }) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(hex: Constant.themeColor)) // theme color like Android
+                                    .frame(width: 50, height: 50)
+                                
+                                // Show mic icon when text is empty and no images selected, send icon when text is present or images selected
+                                if messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedAssetIds.isEmpty {
+                                    Image("mikesvg")
+                                        .renderingMode(.template)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 22, height: 22)
+                                        .foregroundColor(.white)
+                                        .padding(.top, 4)
+                                        .padding(.bottom, 8)
+                                } else {
+                                    // Send icon (keyboard double arrow right) - same as Android
+                                    Image("baseline_keyboard_double_arrow_right_24")
+                                        .renderingMode(.template)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 26, height: 26)
+                                        .foregroundColor(.white)
+                                        .padding(.top, 4)
+                                        .padding(.bottom, 8)
+                                }
+                            }
+                            .scaleEffect(sendButtonScale)
+                        }
+                    }
+                    
+                    // Small counter badge (Android multiSelectSmallCounterText)
+                    if selectedAssetIds.count > 0 {
+                        Text("\(selectedAssetIds.count)")
+                            .font(.custom("Inter18pt-Bold", size: 12))
+                            .foregroundColor(.white)
+                            .frame(width: 24, height: 24)
+                            .background(
+                                Circle()
+                                    .fill(Color(hex: Constant.themeColor)) // match Android counter tint
+                            )
+                            .offset(x: -13, y: -30) // lift badge above send button with extra right margin
+                    }
+                }
+                .padding(.horizontal, 5)
+            }
+            .padding(2) // Inner horizontal container padding="2dp"
+            .contentShape(Rectangle()) // Clear boundary for message input area to prevent gesture interference
+            .background(Color("edittextBg")) // Ensure solid background to prevent visual overlap
+            .clipped() // Clip the message input area to prevent overflow
+            
+            // Emoji picker layout (emojiLyt) - below horizontal container
+            if showEmojiLayout {
+                emojiLayoutView
+            }
+            
+            // Gallery picker layout (galleryRecentLyt) - below horizontal container
+            if showGalleryPicker {
+                galleryPickerView
+                    .onAppear {
+                        requestPhotosAndLoad()
+                    }
+                    .zIndex(0) // Lower z-index than TextField area
+            }
+        }
+        .clipped() // Clip the entire message input container
+    }
+    
+    // MARK: - Reply Layout
+    private var replyLayoutView: some View {
+        // Get color based on sender/receiver (matching Android HalfSwipeCallback logic)
+        let replyColor: Color = isReplyFromSender ? Color(hex: Constant.themeColor) : Color("black_white_cross")
+        
+        return ZStack(alignment: .topLeading) {
+            // Layer 1: Blue background layer (matching Android LinearLayout id="view")
+            // marginHorizontal="6dp" marginVertical="7dp" backgroundTint="@color/blue"
+            // This layer is larger (6dp margins) and creates the blue border effect
+            RoundedCorner(radius: 20, corners: [.topLeft, .topRight])
+                .fill(replyColor.opacity(0.2)) // Blue tint for sender, black_white_cross tint for receiver
+                .frame(height: 55) // height="55dp"
+                .padding(.horizontal, 6) // marginHorizontal="6dp" - creates larger blue layer
+                .padding(.vertical, 7) // marginVertical="7dp"
+            
+            // Layer 2: White foreground layer (matching Android second LinearLayout)
+            // margin="7dp" backgroundTint="@color/circlebtnhover"
+            // This layer is smaller (7dp margins) and sits on top of the blue layer
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    // Left side content - layout_weight="1"
+                    HStack(spacing: 0) {
+                        // Text content - marginStart="10dp"
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(replySenderName)
+                                .font(.custom("Inter18pt-Bold", size: 14)) // textFontWeight="1000" textSize="14sp"
+                                .foregroundColor(replyColor) // Theme color for sender, black_white_cross for receiver
+                            
+                            // Reply message with icon for certain data types (matching Android compoundDrawables)
+                            HStack(spacing: 5) {
+                                // Icon for specific data types (matching Android drawable icons)
+                                if replyDataType == Constant.img {
+                                    Image(systemName: "photo")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 16, height: 16)
+                                        .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0))
+                                } else if replyDataType == Constant.video {
+                                    Image(systemName: "video.fill")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 16, height: 16)
+                                        .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0))
+                                } else if replyDataType == Constant.voiceAudio {
+                                    Image(systemName: "mic.fill")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 16, height: 16)
+                                        .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0))
+                                } else if replyDataType == Constant.contact {
+                                    Image(systemName: "person.fill")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 16, height: 16)
+                                        .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0))
+                                }
+                                
+                                Text(replyMessage)
+                                    .font(.custom("Inter18pt-Regular", size: 14)) // textSize="14sp"
+                                    .foregroundColor(Color(red: 0x78/255.0, green: 0x78/255.0, blue: 0x7A/255.0)) // textColor="#78787A"
+                                    .lineLimit(1) // maxLines="1" singleLine="true"
+                            }
+                        }
+                        .padding(.leading, 10) // marginStart="10dp"
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading) // layout_weight="1"
+                    
+                    // Right side - cancel button
+                    Button(action: {
+                        showReplyLayout = false
+                    }) {
+                        Image("crosssvg")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 25, height: 25)
+                            .foregroundColor(replyColor)
+                    }
+                    .padding(.trailing, 15)
+                }
+                .frame(height: 55)
+            }
+            .background(
+                RoundedCorner(radius: 20, corners: [.topLeft, .topRight])
+                    .fill(Color("message_box_bg_3"))
+            )
+            .padding(.horizontal, 7) // margin="7dp" - creates smaller white layer on top
+            .padding(.vertical, 7) // margin="7dp"
+        }
+        .padding(.horizontal, 2) // marginStart="2dp" marginEnd="2dp"
+        .padding(.top, 2) // marginTop="2dp"
+        .background(
+            // Outer background (matching Android replylyout background)
+            RoundedCorner(radius: 20, corners: [.topLeft, .topRight])
+                .fill(Color("message_box_bg_3"))
+        )
+    }
+    
+    // MARK: - Emoji Layout
+    private var emojiLayoutView: some View {
+        VStack(spacing: 0) {
+            // Emoji search container (top)
+            HStack(spacing: 8) {
+                Button(action: {
+                    showEmojiLayout = false
+                }) {
+                    Image("leftvector")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 25, height: 18)
+                        .foregroundColor(Color("icontintGlobal"))
+                        .frame(width: 40, height: 40)
+                        .background(
+                            Circle()
+                                .fill(Color.clear)
+                        )
+                }
+                
+                TextField("Search emojis...", text: .constant(""))
+                    .font(.custom("Inter18pt-Regular", size: 14))
+                    .foregroundColor(Color("black_white_cross"))
+                    .textFieldStyle(PlainTextFieldStyle())
+                    .frame(height: 40)
+                    .padding(.horizontal, 12)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 50)
+            
+            // Emoji recycler view (placeholder)
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 40))], spacing: 10) {
+                    ForEach(0..<50) { _ in
+                        Text("😀")
+                            .font(.system(size: 30))
+                    }
+                }
+                .padding()
+            }
+            .frame(height: 250)
+        }
+        .background(Color("edittextBg"))
+    }
+    
+    // MARK: - Gallery Picker View
+    private var galleryPickerView: some View {
+        VStack(spacing: 0) {
+            // Gallery card view - height="300dp"
+            VStack(spacing: 0) {
+                // Gallery RecyclerView - wrapped in container to prevent gesture interference
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 80))], spacing: 2) {
+                        ForEach(photoAssets, id: \.localIdentifier) { asset in
+                            GalleryAssetThumbnail(
+                                asset: asset,
+                                imageManager: imageManager,
+                                isSelected: selectedAssetIds.contains(asset.localIdentifier)
+                            )
+                            .padding(.top, 10) // top margin for each item
+                            .overlay(alignment: .topTrailing) {
+                                if selectedAssetIds.contains(asset.localIdentifier) {
+                                    Image("multitick")
+                                        .resizable()
+                                        .frame(width: 20, height: 20)
+                                        .padding(10)
+                                }
+                            }
+                            .onTapGesture {
+                                toggleSelection(for: asset)
+                            }
+                        }
+                    }
+                    // Match Android dataRecview container insets with equal spacing on all sides
+                    .padding(.top, 10)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 10)
+                }
+                .frame(height: 250, alignment: .top) // Strict frame alignment
+                .clipped()
+                .contentShape(Rectangle())
+                .compositingGroup() // Create a compositing group to prevent visual overflow
+                
+                // Bottom view with action buttons
+                HStack(spacing: 0) {
+                    // Camera button
+                    Button(action: {
+                        handleCameraButtonClick()
+                    }) {
+                        VStack(spacing: 5) {
+                            Image("camera")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 24, height: 24)
+                                .foregroundColor(Color("chtbtncolor"))
+                            
+                            Text("Camera")
+                                .font(.custom("Inter18pt-Medium", size: 11))
+                                .foregroundColor(Color("chtbtncolor"))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(5) // outer inset like Android parent padding
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color("circlebtnhover")) // gallary_bgcontent.xml
+                        )
+                        .padding(5) // inner container spacing to mirror Android padding="5dp"
+                    }
+                    
+                    // Photo button
+                    Button(action: {
+                        handlePhotoButtonClick()
+                    }) {
+                        VStack(spacing: 5) {
+                            Image("gallery")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 24, height: 24)
+                                .foregroundColor(Color("chtbtncolor"))
+                            
+                            Text("Photo")
+                                .font(.custom("Inter18pt-Medium", size: 11))
+                                .foregroundColor(Color("chtbtncolor"))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color("circlebtnhover"))
+                        )
+                        .padding(5)
+                    }
+                    
+                    // Video button
+                    Button(action: {
+                        handleVideoButtonClick()
+                    }) {
+                        VStack(spacing: 5) {
+                            Image("videopng")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 24, height: 24)
+                                .foregroundColor(Color("chtbtncolor"))
+                            
+                            Text("Video")
+                                .font(.custom("Inter18pt-Medium", size: 11))
+                                .foregroundColor(Color("chtbtncolor"))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color("circlebtnhover"))
+                        )
+                        .padding(5)
+                    }
+                    
+                    // File button
+                    Button(action: {
+                        handleFileButtonClick()
+                    }) {
+                        VStack(spacing: 5) {
+                            Image("documentsvg")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 24, height: 24)
+                                .foregroundColor(Color("chtbtncolor"))
+                            
+                            Text("File")
+                                .font(.custom("Inter18pt-Medium", size: 11))
+                                .foregroundColor(Color("chtbtncolor"))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color("circlebtnhover"))
+                        )
+                        .padding(5)
+                    }
+                    
+                    // Contact button
+                    Button(action: {
+                        handleContactButtonClick()
+                    }) {
+                        VStack(spacing: 5) {
+                            Image("contact")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 24, height: 24)
+                                .foregroundColor(Color("chtbtncolor"))
+                            
+                            Text("Contact")
+                                .font(.custom("Inter18pt-Medium", size: 11))
+                                .foregroundColor(Color("chtbtncolor"))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color("circlebtnhover"))
+                        )
+                        .padding(5)
+                    }
+                }
+                .padding(.horizontal, 7)
+                .padding(.bottom, 10)
+            }
+            .frame(height: 300)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color("chattingMessageBox"))
+            )
+            .padding(2)
+            .clipped() // Ensure the entire container is clipped
+        }
+        .contentShape(Rectangle())
+        .allowsHitTesting(true)
+        .clipped() // Additional clipping at the outer level to prevent overflow
+    }
+    
+    // MARK: - Valuable Card
+    private var valuableCardView: some View {
+        VStack(spacing: 0) {
+            Text("Your Message Will Become More Valuable Here")
+                .font(.custom("Inter18pt-Regular", size: 12))
+                .foregroundColor(Color("TextColor"))
+                .multilineTextAlignment(.center)
+                .padding(7)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color("cardBackgroundColornew"))
+        )
+        .padding(.top, 10)
+    }
+    
+    // MARK: - Date Card
+    private var dateCardView: some View {
+        VStack(spacing: 0) {
+            Text(dateText)
+                .font(.custom("Inter18pt-Regular", size: 10))
+                .foregroundColor(Color("TextColor"))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color("cardBackgroundColornew"))
+        )
+        .padding(.top, 56)
+    }
+    
+    // MARK: - Menu Dialog
+    private var menuDialog: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Button(action: {
+                // Group Info action
+                showMenu = false
+            }) {
+                Text("Group Info")
+                    .font(.custom("Inter18pt-Medium", size: 16))
+                    .foregroundColor(Color("TextColor"))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.leading, 32)
+            .padding(.top, 10)
+            
+            Button(action: {
+                // Add Member action
+                showMenu = false
+            }) {
+                Text("Add Member")
+                    .font(.custom("Inter18pt-Medium", size: 16))
+                    .foregroundColor(Color("TextColor"))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.leading, 32)
+            .padding(.top, 5)
+            
+            Button(action: {
+                // Remove Member action
+                showMenu = false
+            }) {
+                Text("Remove Member")
+                    .font(.custom("Inter18pt-Medium", size: 16))
+                    .foregroundColor(Color("TextColor"))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.leading, 32)
+            .padding(.top, 5)
+            
+            Button(action: {
+                // Delete Group action
+                showMenu = false
+            }) {
+                Text("Delete Group")
+                    .font(.custom("Inter18pt-Medium", size: 16))
+                    .foregroundColor(Color("TextColor"))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.leading, 32)
+            .padding(.top, 5)
+        }
+        .frame(width: 267, height: 138)
+        .background(
+            Image("menurect")
+                .resizable()
+        )
+        .padding(.leading, 126)
+        .padding(.top, 50)
+        .padding(.trailing, 30)
+        .onTapGesture {
+            showMenu = false
+        }
+    }
+    
+    // MARK: - Menu 2 Dialog
+    private var menu2Dialog: some View {
+        VStack {
+            Button(action: {
+                showSearch.toggle()
+                showMenu2 = false
+            }) {
+                Text("Search")
+                    .font(.custom("Inter18pt-Medium", size: 17))
+                    .foregroundColor(Color("TextColor"))
+            }
+        }
+        .frame(width: 140, height: 45)
+        .background(
+            Image("menurect")
+                .resizable()
+        )
+        .padding(.trailing, 5)
+        .padding(.top, 60)
+        .onTapGesture {
+            showMenu2 = false
+        }
+    }
+    
+    // MARK: - Typography
+    private var messageInputFont: Font {
+        let pref = UserDefaults.standard.string(forKey: "Font_Size") ?? "medium"
+        let size: CGFloat
+        switch pref {
+        case "small":
+            size = 13
+        case "large":
+            size = 19
+        default:
+            size = 16
+        }
+        return .custom("Inter18pt-Regular", size: size)
+    }
+    
+    // MARK: - Handle Gallery Button Click (matching Android gallery button behavior)
+    private func handleGalleryButtonClick() {
+        print("🟢 [GALLERY_BUTTON] Gallery button clicked")
+        print("🟢 [GALLERY_BUTTON] isMessageFieldFocused: \(isMessageFieldFocused)")
+        print("🟢 [GALLERY_BUTTON] showGalleryPicker: \(showGalleryPicker)")
+        
+        // If keyboard is open (message field is focused), hide it first
+        if isMessageFieldFocused {
+            print("🟢 [GALLERY_BUTTON] Keyboard is open - hiding it first")
+            isMessageFieldFocused = false
+            // Hide keyboard and then show gallery picker after a short delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                print("🟢 [GALLERY_BUTTON] Showing gallery picker after keyboard hide")
+                withAnimation {
+                    self.showGalleryPicker = true
+                    self.showEmojiLayout = false
+                }
+            }
+        } else {
+            // If keyboard is not open, just toggle gallery picker
+            print("🟢 [GALLERY_BUTTON] Keyboard not open - toggling gallery picker")
+            withAnimation {
+                showGalleryPicker.toggle()
+                showEmojiLayout = false
+            }
+        }
+    }
+    
+    // MARK: - Request Photos and Load
+    private func requestPhotosAndLoad() {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        switch status {
+        case .authorized, .limited:
+            loadRecentPhotos()
+        case .notDetermined:
+            PHPhotoLibrary.requestAuthorization(for: .readWrite) { newStatus in
+                if newStatus == .authorized || newStatus == .limited {
+                    loadRecentPhotos()
+                }
+            }
+        default:
+            // Permissions denied; keep grid empty
+            break
+        }
+    }
+    
+    private func loadRecentPhotos(limit: Int = 120) {
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        options.fetchLimit = limit
+        options.includeAssetSourceTypes = [.typeUserLibrary, .typeCloudShared, .typeiTunesSynced]
+        let fetched = PHAsset.fetchAssets(with: .image, options: options)
+        
+        var assets: [PHAsset] = []
+        fetched.enumerateObjects { asset, _, _ in
+            assets.append(asset)
+        }
+        DispatchQueue.main.async {
+            self.photoAssets = assets
+        }
+    }
+    
+    private func toggleSelection(for asset: PHAsset) {
+        let id = asset.localIdentifier
+        if selectedAssetIds.contains(id) {
+            selectedAssetIds.remove(id)
+        } else {
+            // Match Android multi-select limit (30)
+            guard selectedAssetIds.count < 30 else { return }
+            selectedAssetIds.insert(id)
+        }
+        // Update selectedCount to match selectedAssetIds.count (matching Android binding.multiSelectSmallCounterText)
+        selectedCount = selectedAssetIds.count
+    }
+    
+    // MARK: - Camera Button Handler
+    private func handleCameraButtonClick() {
+        // Light haptic feedback (Android-style tap vibration)
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Hide keyboard and focus message box
+        isMessageFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        
+        // Save gallery picker state before opening camera
+        wasGalleryPickerOpenBeforeCamera = showGalleryPicker
+        
+        // Hide emoji picker if open
+        if showEmojiLayout {
+            withAnimation {
+                showEmojiLayout = false
+            }
+        }
+        
+        // Hide gallery picker if open (will restore when camera closes)
+        if showGalleryPicker {
+            withAnimation {
+                showGalleryPicker = false
+            }
+        }
+        
+        // Clear selected assets (hides multi-select counter)
+        selectedAssetIds.removeAll()
+        
+        // Send button will automatically show mic icon when messageText is empty
+        // and selectedAssetIds is empty (already handled in UI)
+        
+        // Request camera permission and show camera view
+        requestCameraPermission { granted in
+            if granted {
+                DispatchQueue.main.async {
+                    showCameraView = true
+                }
+            }
+        }
+    }
+    
+    // MARK: - Camera Permission
+    private func requestCameraPermission(completion: @escaping (Bool) -> Void = { _ in }) {
+        AVCaptureDevice.requestAccess(for: .video) { granted in
+            DispatchQueue.main.async {
+                if granted {
+                    print("Camera permission granted")
+                    completion(true)
+                } else {
+                    print("Camera permission denied")
+                    completion(false)
+                    // TODO: Show permission denied alert
+                }
+            }
+        }
+    }
+    
+    private func handlePhotoButtonClick() {
+        // TODO: Implement photo picker functionality
+        print("📸 Photo button clicked")
+    }
+    
+    private func handleVideoButtonClick() {
+        // TODO: Implement video picker functionality
+        print("🎥 Video button clicked")
+    }
+    
+    private func handleFileButtonClick() {
+        // TODO: Implement file picker functionality
+        print("📄 File button clicked")
+    }
+    
+    private func handleContactButtonClick() {
+        // TODO: Implement contact picker functionality
+        print("👤 Contact button clicked")
+    }
+}
+
