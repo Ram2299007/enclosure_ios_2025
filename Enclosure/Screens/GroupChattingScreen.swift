@@ -11,6 +11,7 @@ import Photos
 import PhotosUI
 import AVFoundation
 import FirebaseStorage
+import FirebaseDatabase
 
 struct GroupChattingScreen: View {
     @Environment(\.dismiss) private var dismiss
@@ -654,7 +655,7 @@ struct GroupChattingScreen: View {
                 ZStack(alignment: .topTrailing) {
                     VStack(spacing: 0) {
                         Button(action: {
-                            // Send message action
+                            handleSendButtonClick()
                         }) {
                             ZStack {
                                 Circle()
@@ -687,7 +688,7 @@ struct GroupChattingScreen: View {
                         }
                     }
                     
-                    // Small counter badge (Android multiSelectSmallCounterText)
+                    // Small counter badge (Android multiSelectSmallCounterText) - positioned relative to send button
                     if selectedAssetIds.count > 0 {
                         Text("\(selectedAssetIds.count)")
                             .font(.custom("Inter18pt-Bold", size: 12))
@@ -705,7 +706,7 @@ struct GroupChattingScreen: View {
             .padding(2) // Inner horizontal container padding="2dp"
             .contentShape(Rectangle()) // Clear boundary for message input area to prevent gesture interference
             .background(Color("edittextBg")) // Ensure solid background to prevent visual overlap
-            .clipped() // Clip the message input area to prevent overflow
+            // Note: Removed .clipped() to allow badge to be visible above send button
             
             // Emoji picker layout (emojiLyt) - below horizontal container
             if showEmojiLayout {
@@ -721,7 +722,7 @@ struct GroupChattingScreen: View {
                     .zIndex(0) // Lower z-index than TextField area
             }
         }
-        .clipped() // Clip the entire message input container
+        // Note: Removed .clipped() from outer VStack to allow badge to be visible above send button
     }
     
     // MARK: - Reply Layout
@@ -1920,6 +1921,252 @@ struct GroupChattingScreen: View {
         // Hide gallery picker
         withAnimation {
             showGalleryPicker = false
+        }
+    }
+    
+    // MARK: - Send Button Handler (matching Android sendGrp.setOnClickListener - line 1174)
+    private func handleSendButtonClick() {
+        print("DIALOGUE_DEBUG: === SEND BUTTON CLICKED ===")
+        print("DIALOGUE_DEBUG: Send button clicked for group chat!")
+        
+        // Check if multi-select mode is active (matching Android binding.multiSelectSmallCounterText.getText().toString())
+        if selectedAssetIds.count > 0 {
+            print("DIALOGUE_DEBUG: Send button clicked for multi-images!")
+            print("DIALOGUE_DEBUG: Selected images count: \(selectedAssetIds.count)")
+            
+            // Light haptic feedback (Android-style tap vibration)
+            let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.impactOccurred()
+            
+            // Show full-screen dialog for multi-image preview (matching Android setupMultiImagePreviewWithData)
+            showMultiImagePreview = true
+            return
+        }
+        
+        // Normal text message send (matching Android line 1247-1368)
+        let message = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !message.isEmpty else { return }
+        
+        // Capture values needed in the closure
+        let groupId = group.groupId
+        let groupName = group.name
+        let isReplyVisible = showReplyLayout
+        let replyMsg = replyMessage
+        let replyType = replyDataType
+        let replyMsgId = replyMessageId
+        
+        // Run in background thread (matching Android new Thread)
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                // Generate modelId (matching Android database.getReference().push().getKey())
+                let modelId = Database.database().reference().childByAutoId().key ?? UUID().uuidString
+                
+                // Get current time (matching Android SimpleDateFormat)
+                let dateFormatter = DateFormatter()
+                dateFormatter.dateFormat = "hh:mm a"
+                let currentDateTimeString = dateFormatter.string(from: Date())
+                
+                // Get current date (matching Android Constant.getCurrentDate())
+                let currentDateFormatter = DateFormatter()
+                currentDateFormatter.dateFormat = "dd MMM yyyy"
+                var currentDateString = currentDateFormatter.string(from: Date())
+                
+                // Ensure clean date without colon prefix (matching Android line 1260-1265)
+                if currentDateString.starts(with: ":") {
+                    currentDateString = String(currentDateString.dropFirst()).trimmingCharacters(in: .whitespaces)
+                    print("⚠️ Removed leading colon from date: \(currentDateString)")
+                }
+                print("Using clean currentDate: \(currentDateString)")
+                
+                // Get user info (matching Android Constant.getSF.getString)
+                let senderId = Constant.SenderIdMy
+                let userName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
+                let micPhoto = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
+                let createdBy = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+                
+                // Create emoji model array (matching Android - default empty emoji)
+                let emojiModels: [EmojiModel] = [EmojiModel(name: "", emoji: "")]
+                
+                // Reply logic (matching Android)
+                let replytextData: String?
+                let replyKey: String?
+                let replyTypeValue: String?
+                let replyOldData: String?
+                let replyCrtPostion: String?
+                
+                if isReplyVisible {
+                    replytextData = message
+                    replyKey = "ReplyKey"
+                    replyTypeValue = "Text"
+                    replyOldData = replyMsg
+                    replyCrtPostion = replyMsgId
+                } else {
+                    replytextData = nil
+                    replyKey = nil
+                    replyTypeValue = nil
+                    replyOldData = nil
+                    replyCrtPostion = nil
+                }
+                
+                // Create group message model (matching Android group_messageModel - line 1269)
+                let newMessage = GroupChatMessage(
+                    id: modelId,
+                    uid: senderId,
+                    message: message,
+                    time: currentDateTimeString,
+                    document: "",
+                    dataType: Constant.Text,
+                    fileExtension: nil,
+                    name: nil,
+                    phone: nil,
+                    miceTiming: nil,
+                    micPhoto: micPhoto,
+                    createdBy: createdBy,
+                    userName: userName,
+                    receiverUid: groupId, // groupId as receiverUid for groups
+                    docSize: nil,
+                    fileName: nil,
+                    thumbnail: nil,
+                    fileNameThumbnail: nil,
+                    caption: nil,
+                    currentDate: currentDateString,
+                    imageWidth: nil,
+                    imageHeight: nil,
+                    aspectRatio: nil,
+                    active: 0, // 0 = sending, 1 = sent
+                    selectionCount: "1",
+                    selectionBunch: nil
+                )
+                
+                // Store message in SQLite pending table before upload (matching Android insertPendingGroupMessage - line 1334)
+                // Note: DatabaseHelper uses ChatMessage, so we'll need to convert or update DatabaseHelper
+                // For now, we'll create a ChatMessage for database storage
+                let chatMessageForDB = ChatMessage(
+                    id: modelId,
+                    uid: senderId,
+                    message: message,
+                    time: currentDateTimeString,
+                    document: "",
+                    dataType: Constant.Text,
+                    fileExtension: nil,
+                    name: nil,
+                    phone: nil,
+                    micPhoto: micPhoto,
+                    miceTiming: nil,
+                    userName: userName,
+                    receiverId: groupId,
+                    replytextData: replytextData,
+                    replyKey: replyKey,
+                    replyType: replyTypeValue,
+                    replyOldData: replyOldData,
+                    replyCrtPostion: replyCrtPostion,
+                    forwaredKey: nil,
+                    groupName: groupName,
+                    docSize: nil,
+                    fileName: nil,
+                    thumbnail: nil,
+                    fileNameThumbnail: nil,
+                    caption: nil,
+                    notification: 1,
+                    currentDate: currentDateString,
+                    emojiModel: emojiModels,
+                    emojiCount: nil,
+                    timestamp: Date().timeIntervalSince1970,
+                    imageWidth: nil,
+                    imageHeight: nil,
+                    aspectRatio: nil,
+                    selectionCount: "1",
+                    selectionBunch: nil,
+                    receiverLoader: 0
+                )
+                DatabaseHelper.shared.insertPendingMessage(chatMessageForDB)
+                print("✅ [PendingMessages] Group text message stored in pending table: \(modelId)")
+                
+                // Upload message using MessageUploadService (matching Android UploadHelper.uploadContent - line 1349)
+                DispatchQueue.main.async {
+                    // Get user FCM token
+                    let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
+                    let deviceType = "2" // iOS device type
+                    
+                    // Use MessageUploadService.uploadGroupMessage (matching Android GroupMessageUploadService)
+                    // Use GroupChatMessage for upload (matching Android group_messageModel)
+                    MessageUploadService.shared.uploadGroupMessage(
+                        model: newMessage, // GroupChatMessage
+                        filePath: nil, // Text messages don't have files
+                        userFTokenKey: userFTokenKey,
+                        deviceType: deviceType
+                    ) { success, errorMessage in
+                        if success {
+                            print("✅ MessageUploadService: Group message uploaded successfully with ID: \(modelId)")
+                            
+                            // Check if message exists in Firebase and stop progress bar (matching Android)
+                            self.checkMessageInFirebaseAndStopProgress(messageId: modelId, groupId: groupId)
+                        } else {
+                            print("❌ MessageUploadService: Error uploading group message: \(errorMessage ?? "Unknown error")")
+                            // Keep receiverLoader as 0 to show progress bar (message still pending)
+                        }
+                    }
+                }
+                
+                // Update UI on main thread - Add message immediately with progress bar (matching Android)
+                DispatchQueue.main.async {
+                    // Clear message box and reply layout
+                    self.messageText = ""
+                    self.showReplyLayout = false
+                    self.replyMessage = ""
+                    self.replySenderName = ""
+                    self.replyDataType = ""
+                    self.isReplyFromSender = false
+                    self.replyImageUrl = nil
+                    self.replyContactName = nil
+                    self.replyFileExtension = nil
+                    self.replyMessageId = nil
+                    self.hideEmojiAndGalleryPickers()
+                }
+                
+            } catch {
+                print("SendGroupClickListener: Error: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    // Handle error if needed
+                }
+            }
+        }
+    }
+    
+    // MARK: - Check Message in Firebase and Stop Progress (matching Android)
+    private func checkMessageInFirebaseAndStopProgress(messageId: String, groupId: String) {
+        let senderId = Constant.SenderIdMy
+        let chatKey = (senderId + groupId).replacingOccurrences(of: ".", with: "_")
+            .replacingOccurrences(of: "#", with: "_")
+            .replacingOccurrences(of: "$", with: "_")
+            .replacingOccurrences(of: "[", with: "_")
+            .replacingOccurrences(of: "]", with: "_")
+        
+        let database = Database.database().reference()
+        let messageRef = database.child(Constant.GROUPCHAT).child(chatKey).child(messageId)
+        
+        // Observe once to check if message exists
+        messageRef.observeSingleEvent(of: .value, with: { snapshot in
+            if snapshot.exists() {
+                print("✅ Message exists in Firebase, upload successful: \(messageId)")
+                // Message successfully uploaded, receiverLoader will be updated by Firebase listener
+            } else {
+                print("⚠️ Message not found in Firebase yet: \(messageId)")
+            }
+        })
+    }
+    
+    // MARK: - Hide Emoji and Gallery Pickers (matching Android)
+    private func hideEmojiAndGalleryPickers() {
+        if showEmojiLayout {
+            withAnimation {
+                showEmojiLayout = false
+            }
+        }
+        if showGalleryPicker {
+            withAnimation {
+                showGalleryPicker = false
+            }
         }
     }
 }

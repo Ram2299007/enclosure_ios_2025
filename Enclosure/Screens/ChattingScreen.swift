@@ -1713,7 +1713,7 @@ struct ChattingScreen: View {
                         )
                     }
                     
-                    // Small counter badge (Android multiSelectSmallCounterText)
+                    // Small counter badge (Android multiSelectSmallCounterText) - positioned relative to send button
                     if selectedAssetIds.count > 0 {
                         Text("\(selectedAssetIds.count)")
                             .font(.custom("Inter18pt-Bold", size: 12))
@@ -1731,7 +1731,7 @@ struct ChattingScreen: View {
             .padding(2) // Inner horizontal container padding="2dp"
             .contentShape(Rectangle()) // Clear boundary for message input area to prevent gesture interference
             .background(Color("edittextBg")) // Ensure solid background to prevent visual overlap
-            .clipped() // Clip the message input area to prevent overflow
+            // Note: Removed .clipped() to allow badge to be visible above send button
             
             // Emoji picker layout (emojiLyt) - below horizontal container
             if showEmojiPicker {
@@ -1747,7 +1747,7 @@ struct ChattingScreen: View {
                     .zIndex(0) // Lower z-index than TextField area
             }
         }
-        .clipped() // Clip the entire message input container
+        // Note: Removed .clipped() from outer VStack to allow badge to be visible above send button
     }
     
     private var replyLayoutView: some View {
@@ -6613,6 +6613,247 @@ struct ChatMessage: Identifiable, Codable {
             receiverId: receiverId,
             timestamp: timestamp.timeIntervalSince1970
         )
+    }
+}
+
+// MARK: - Group Chat Message Model (matching Android group_messageModel.java)
+struct GroupChatMessage: Identifiable, Codable, Equatable {
+    // CodingKeys to map Swift property names to JSON keys (matching Android)
+    enum CodingKeys: String, CodingKey {
+        case id, uid, message, time, document, dataType
+        case fileExtension = "extension" // Map fileExtension to "extension" in JSON
+        case name, phone, micPhoto, miceTiming, createdBy, userName
+        case receiverUid, docSize, fileName, thumbnail, fileNameThumbnail, caption
+        case currentDate, imageWidth, imageHeight, aspectRatio, active, selectionCount, selectionBunch
+    }
+    
+    // Core message fields (matching Android group_messageModel)
+    var id: String // modelId
+    var uid: String // senderId
+    var message: String // message text
+    var time: String // formatted time "hh:mm a"
+    var document: String // document URL (image/video/document)
+    var dataType: String // Text, img, video, doc, contact, voiceAudio
+    var fileExtension: String? // extension
+    var name: String? // contact name (for contact type)
+    var phone: String? // contact phone (for contact type)
+    var miceTiming: String? // audio timing (for voice messages)
+    var micPhoto: String? // sender profile photo
+    var createdBy: String? // created by user ID
+    var userName: String? // sender user name
+    var receiverUid: String // receiverUid (groupId for groups)
+    
+    // File/document fields
+    var docSize: String?
+    var fileName: String?
+    var thumbnail: String?
+    var fileNameThumbnail: String?
+    var caption: String?
+    
+    // Date field
+    var currentDate: String?
+    
+    // Image dimensions
+    var imageWidth: String?
+    var imageHeight: String?
+    var aspectRatio: String?
+    
+    // Active state (0 = sending, 1 = sent) - matching Android active field
+    var active: Int // 0 = sending, 1 = sent
+    
+    // Selection bunch (for multi-image messages)
+    var selectionCount: String?
+    var selectionBunch: [SelectionBunchModel]?
+    
+    // Initializer with all parameters (matching Android constructor)
+    init(
+        id: String,
+        uid: String,
+        message: String,
+        time: String,
+        document: String = "",
+        dataType: String = "Text",
+        fileExtension: String? = nil,
+        name: String? = nil,
+        phone: String? = nil,
+        miceTiming: String? = nil,
+        micPhoto: String? = nil,
+        createdBy: String? = nil,
+        userName: String? = nil,
+        receiverUid: String,
+        docSize: String? = nil,
+        fileName: String? = nil,
+        thumbnail: String? = nil,
+        fileNameThumbnail: String? = nil,
+        caption: String? = nil,
+        currentDate: String? = nil,
+        imageWidth: String? = nil,
+        imageHeight: String? = nil,
+        aspectRatio: String? = nil,
+        active: Int = 0, // Default to sending state (0)
+        selectionCount: String? = nil,
+        selectionBunch: [SelectionBunchModel]? = nil
+    ) {
+        self.id = id
+        self.uid = uid
+        self.message = message
+        self.time = time
+        self.document = document
+        self.dataType = dataType
+        self.fileExtension = fileExtension
+        self.name = name
+        self.phone = phone
+        self.miceTiming = miceTiming
+        self.micPhoto = micPhoto
+        self.createdBy = createdBy
+        self.userName = userName
+        self.receiverUid = receiverUid
+        self.docSize = docSize
+        self.fileName = fileName
+        self.thumbnail = thumbnail
+        self.fileNameThumbnail = fileNameThumbnail
+        self.caption = caption
+        self.currentDate = currentDate
+        self.imageWidth = imageWidth
+        self.imageHeight = imageHeight
+        self.aspectRatio = aspectRatio
+        self.active = active
+        self.selectionCount = selectionCount
+        self.selectionBunch = selectionBunch
+    }
+    
+    // Convert to dictionary for Firebase (matching Android toMap() method)
+    func toDictionary() -> [String: Any] {
+        var map: [String: Any] = [:]
+        
+        map["uid"] = uid
+        map["message"] = message
+        map["time"] = time
+        map["document"] = document
+        map["dataType"] = dataType
+        map["extension"] = fileExtension ?? ""
+        map["name"] = name ?? ""
+        map["phone"] = phone ?? ""
+        map["micPhoto"] = micPhoto ?? ""
+        map["miceTiming"] = miceTiming ?? ""
+        map["createdBy"] = createdBy ?? ""
+        map["userName"] = userName ?? ""
+        map["modelId"] = id
+        map["receiverUid"] = receiverUid
+        map["docSize"] = docSize ?? ""
+        map["fileName"] = fileName ?? ""
+        map["thumbnail"] = thumbnail ?? ""
+        map["fileNameThumbnail"] = fileNameThumbnail ?? ""
+        map["caption"] = caption ?? ""
+        map["currentDate"] = currentDate ?? ""
+        map["imageWidth"] = imageWidth ?? ""
+        map["imageHeight"] = imageHeight ?? ""
+        map["aspectRatio"] = aspectRatio ?? ""
+        map["active"] = active
+        map["selectionCount"] = selectionCount ?? ""
+        
+        // Serialize selectionBunch as a list of maps for reliable Firebase storage
+        if let selectionBunch = selectionBunch, !selectionBunch.isEmpty {
+            var bunchList: [[String: Any]] = []
+            for item in selectionBunch {
+                bunchList.append([
+                    "imgUrl": item.imgUrl,
+                    "fileName": item.fileName
+                ])
+            }
+            map["selectionBunch"] = bunchList
+            print("SelectionBunch: toDictionary(): writing selectionBunch size=\(bunchList.count)")
+        } else {
+            map["selectionBunch"] = NSNull()
+            print("SelectionBunch: toDictionary(): selectionBunch is null/empty")
+        }
+        
+        print("SelectionCount: GroupChatMessage.toDictionary(): selectionCount=\(selectionCount ?? "nil")")
+        print("ImageDimensions: GroupChatMessage.toDictionary(): imageWidth=\(imageWidth ?? "nil"), imageHeight=\(imageHeight ?? "nil"), aspectRatio=\(aspectRatio ?? "nil")")
+        
+        return map
+    }
+    
+    // Equatable conformance (matching Android equals() method)
+    static func == (lhs: GroupChatMessage, rhs: GroupChatMessage) -> Bool {
+        return lhs.id == rhs.id &&
+            lhs.uid == rhs.uid &&
+            lhs.message == rhs.message &&
+            lhs.time == rhs.time &&
+            lhs.document == rhs.document &&
+            lhs.dataType == rhs.dataType &&
+            lhs.fileExtension == rhs.fileExtension &&
+            lhs.name == rhs.name &&
+            lhs.phone == rhs.phone &&
+            lhs.miceTiming == rhs.miceTiming &&
+            lhs.micPhoto == rhs.micPhoto &&
+            lhs.createdBy == rhs.createdBy &&
+            lhs.userName == rhs.userName &&
+            lhs.receiverUid == rhs.receiverUid &&
+            lhs.docSize == rhs.docSize &&
+            lhs.fileName == rhs.fileName &&
+            lhs.thumbnail == rhs.thumbnail &&
+            lhs.fileNameThumbnail == rhs.fileNameThumbnail &&
+            lhs.caption == rhs.caption &&
+            lhs.currentDate == rhs.currentDate &&
+            lhs.imageWidth == rhs.imageWidth &&
+            lhs.imageHeight == rhs.imageHeight &&
+            lhs.aspectRatio == rhs.aspectRatio &&
+            lhs.active == rhs.active &&
+            lhs.selectionCount == rhs.selectionCount &&
+            lhs.selectionBunch == rhs.selectionBunch
+    }
+    
+    // Hashable conformance (matching Android hashCode() method)
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(uid)
+        hasher.combine(message)
+        hasher.combine(time)
+        hasher.combine(document)
+        hasher.combine(dataType)
+        hasher.combine(fileExtension)
+        hasher.combine(name)
+        hasher.combine(phone)
+        hasher.combine(miceTiming)
+        hasher.combine(micPhoto)
+        hasher.combine(createdBy)
+        hasher.combine(userName)
+        hasher.combine(receiverUid)
+        hasher.combine(docSize)
+        hasher.combine(fileName)
+        hasher.combine(thumbnail)
+        hasher.combine(fileNameThumbnail)
+        hasher.combine(caption)
+        hasher.combine(currentDate)
+        hasher.combine(imageWidth)
+        hasher.combine(imageHeight)
+        hasher.combine(aspectRatio)
+        hasher.combine(active)
+        hasher.combine(selectionCount)
+        hasher.combine(selectionBunch)
+    }
+    
+    // Parse selectionBunch from Firebase snapshot (matching Android parseSelectionBunchFromSnapshot)
+    static func parseSelectionBunchFromSnapshot(_ snapshot: [String: Any], model: inout GroupChatMessage) {
+        if let selectionBunchData = snapshot["selectionBunch"] as? [[String: Any]] {
+            var selectionBunch: [SelectionBunchModel] = []
+            for bunchData in selectionBunchData {
+                if let imgUrl = bunchData["imgUrl"] as? String,
+                   let fileName = bunchData["fileName"] as? String {
+                    selectionBunch.append(SelectionBunchModel(imgUrl: imgUrl, fileName: fileName))
+                }
+            }
+            model.selectionBunch = selectionBunch
+            print("SelectionBunch: Parsed selectionBunch from Firebase: \(selectionBunch.count) items for messageId=\(model.id)")
+        } else {
+            print("SelectionBunch: No selectionBunch data found in Firebase for messageId=\(model.id)")
+            if model.selectionBunch == nil || model.selectionBunch?.isEmpty == true {
+                model.selectionBunch = []
+            } else {
+                print("SelectionBunch: Preserving existing selectionBunch with \(model.selectionBunch?.count ?? 0) items for pending upload")
+            }
+        }
     }
 }
 
