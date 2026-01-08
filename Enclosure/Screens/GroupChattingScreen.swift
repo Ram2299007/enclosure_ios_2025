@@ -58,11 +58,25 @@ struct GroupChattingScreen: View {
     @State private var wasGalleryPickerOpenBeforeCamera: Bool = false
     @State private var showWhatsAppImagePicker: Bool = false
     @State private var wasGalleryPickerOpenBeforeImagePicker: Bool = false
+    @State private var showWhatsAppVideoPicker: Bool = false
+    @State private var wasGalleryPickerOpenBeforeVideoPicker: Bool = false
+    @State private var showWhatsAppContactPicker: Bool = false
+    @State private var wasGalleryPickerOpenBeforeContactPicker: Bool = false
     
     // Multi-image preview dialog state
     @State private var showMultiImagePreview: Bool = false
     @State private var multiImagePreviewCaption: String = ""
     @State private var multiImagePreviewAssets: [PHAsset] = [] // Store selected assets from WhatsAppLikeImagePicker
+    
+    // Multi-video preview dialog state
+    @State private var showMultiVideoPreview: Bool = false
+    @State private var multiVideoPreviewCaption: String = ""
+    @State private var multiVideoPreviewAssets: [PHAsset] = [] // Store selected assets from WhatsAppLikeVideoPicker
+    
+    // Multi-contact preview dialog state
+    @State private var showMultiContactPreview: Bool = false
+    @State private var multiContactPreviewCaption: String = ""
+    @State private var multiContactPreviewContacts: [ContactPickerInfo] = [] // Store selected contacts from WhatsAppLikeContactPicker
     
     // Local gallery (mirrors Android dataRecview)
     @State private var photoAssets: [PHAsset] = []
@@ -182,6 +196,19 @@ struct GroupChattingScreen: View {
                 handleImagePickerResult(selectedAssets: selectedAssets, caption: caption)
             }
         }
+        .fullScreenCover(isPresented: $showWhatsAppVideoPicker, onDismiss: {
+            // Restore gallery picker when video picker is dismissed (matching CameraGalleryView behavior)
+            if wasGalleryPickerOpenBeforeVideoPicker {
+                withAnimation {
+                    showGalleryPicker = true
+                }
+                wasGalleryPickerOpenBeforeVideoPicker = false
+            }
+        }) {
+            GroupWhatsAppLikeVideoPicker(maxSelection: 5, group: group) { selectedAssets, caption in
+                handleVideoPickerResult(selectedAssets: selectedAssets, caption: caption)
+            }
+        }
         .fullScreenCover(isPresented: $showMultiImagePreview, onDismiss: {
             // Reset caption when dialog is dismissed
             multiImagePreviewCaption = ""
@@ -196,6 +223,53 @@ struct GroupChattingScreen: View {
                 },
                 onDismiss: {
                     showMultiImagePreview = false
+                }
+            )
+        }
+        .fullScreenCover(isPresented: $showWhatsAppContactPicker, onDismiss: {
+            // Restore gallery picker when contact picker is dismissed (matching CameraGalleryView behavior)
+            if wasGalleryPickerOpenBeforeContactPicker {
+                withAnimation {
+                    showGalleryPicker = true
+                }
+                wasGalleryPickerOpenBeforeContactPicker = false
+            }
+        }) {
+            WhatsAppLikeContactPicker(maxSelection: 50) { (contacts: [ContactPickerInfo], caption: String) in
+                handleContactPickerResult(contacts: contacts, caption: caption)
+            }
+        }
+        .fullScreenCover(isPresented: $showMultiVideoPreview, onDismiss: {
+            // Reset caption when dialog is dismissed
+            multiVideoPreviewCaption = ""
+        }) {
+            GroupMultiVideoPreviewDialog(
+                selectedAssetIds: $selectedAssetIds,
+                videoAssets: multiVideoPreviewAssets.isEmpty ? [] : multiVideoPreviewAssets,
+                imageManager: imageManager,
+                caption: $multiVideoPreviewCaption,
+                group: group,
+                onSend: { caption in
+                    handleMultiVideoSend(caption: caption)
+                },
+                onDismiss: {
+                    showMultiVideoPreview = false
+                }
+            )
+        }
+        .fullScreenCover(isPresented: $showMultiContactPreview, onDismiss: {
+            // Reset caption when dialog is dismissed
+            multiContactPreviewCaption = ""
+        }) {
+            GroupMultiContactPreviewDialog(
+                selectedContacts: multiContactPreviewContacts,
+                caption: $multiContactPreviewCaption,
+                group: group,
+                onSend: { caption in
+                    handleMultiContactSend(caption: caption)
+                },
+                onDismiss: {
+                    showMultiContactPreview = false
                 }
             )
         }
@@ -1485,9 +1559,80 @@ struct GroupChattingScreen: View {
         }
     }
     
+    // MARK: - Video Button Handler
     private func handleVideoButtonClick() {
-        // TODO: Implement video picker functionality
-        print("🎥 Video button clicked")
+        print("VideoUpload: === VIDEO BUTTON CLICKED (Main) ===")
+        
+        // Light haptic feedback (Android-style tap vibration)
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Hide keyboard and focus message box (matching Android hideKeyboardAndFocusMessageBox)
+        isMessageFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        
+        // Hide multi-select counter (matching Android binding.multiSelectSmallCounterText.setVisibility(View.GONE))
+        selectedAssetIds.removeAll()
+        selectedCount = 0
+        
+        // Save gallery picker state before opening video picker (don't hide it - will restore on back)
+        wasGalleryPickerOpenBeforeVideoPicker = showGalleryPicker
+        
+        // Hide emoji picker if open
+        if showEmojiLayout {
+            withAnimation {
+                showEmojiLayout = false
+            }
+        }
+        
+        // Hide gallery picker if open (will restore when video picker closes)
+        if showGalleryPicker {
+            withAnimation {
+                showGalleryPicker = false
+            }
+        }
+        
+        // Launch WhatsApp-like video picker (matching Android WhatsAppLikeVideoPicker)
+        print("VideoUpload: === LAUNCHING GroupWhatsAppLikeVideoPicker ===")
+        print("VideoUpload: PICK_VIDEO_REQUEST_CODE: VideoPicker")
+        print("VideoUpload: Current selectedAssetIds size: \(selectedAssetIds.count)")
+        
+        DispatchQueue.main.async {
+            showWhatsAppVideoPicker = true
+        }
+    }
+    
+    // MARK: - Handle Video Picker Result
+    private func handleVideoPickerResult(selectedAssets: [PHAsset], caption: String) {
+        print("VideoUpload: === VIDEO PICKER RESULT RECEIVED ===")
+        print("VideoUpload: Selected assets count: \(selectedAssets.count)")
+        print("VideoUpload: Caption: '\(caption)'")
+        
+        // Videos are uploaded directly from GroupMultiVideoPreviewDialog (matching Android flow)
+        // This callback is called after videos are sent, so we just need to clear selections
+        selectedAssetIds.removeAll()
+        selectedCount = 0
+        
+        // Store selected assets for preview dialog (if needed for future use)
+        multiVideoPreviewAssets = selectedAssets
+        multiVideoPreviewCaption = caption
+    }
+    
+    // MARK: - Handle Multi-Video Send (matching Android upload logic)
+    private func handleMultiVideoSend(caption: String) {
+        print("DIALOGUE_DEBUG: === MULTI-VIDEO SEND ===")
+        print("DIALOGUE_DEBUG: Selected videos count: \(selectedAssetIds.count)")
+        print("DIALOGUE_DEBUG: Caption: '\(caption)'")
+        
+        // Videos are uploaded directly from GroupMultiVideoPreviewDialog
+        // This function is called after videos are sent, so we just need to clear selections
+        selectedAssetIds.removeAll()
+        selectedCount = 0
+        
+        // Hide gallery picker
+        withAnimation {
+            showGalleryPicker = false
+        }
     }
     
     private func handleFileButtonClick() {
@@ -1495,9 +1640,101 @@ struct GroupChattingScreen: View {
         print("📄 File button clicked")
     }
     
+    // MARK: - Contact Button Handler
     private func handleContactButtonClick() {
-        // TODO: Implement contact picker functionality
-        print("👤 Contact button clicked")
+        print("ContactUpload: === CONTACT BUTTON CLICKED (Main) ===")
+        
+        // Light haptic feedback (Android-style tap vibration)
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Hide keyboard and focus message box (matching Android hideKeyboardAndFocusMessageBox)
+        isMessageFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        
+        // Hide multi-select counter (matching Android binding.multiSelectSmallCounterText.setVisibility(View.GONE))
+        selectedAssetIds.removeAll()
+        selectedCount = 0
+        
+        // Save gallery picker state before opening contact picker (don't hide it - will restore on back)
+        wasGalleryPickerOpenBeforeContactPicker = showGalleryPicker
+        
+        // Hide emoji picker if open
+        if showEmojiLayout {
+            withAnimation {
+                showEmojiLayout = false
+            }
+        }
+        
+        // Hide gallery picker if open (will restore when contact picker closes)
+        if showGalleryPicker {
+            withAnimation {
+                showGalleryPicker = false
+            }
+        }
+        
+        // Launch WhatsApp-like contact picker (matching Android WhatsAppLikeContactPicker)
+        print("ContactUpload: === LAUNCHING WhatsAppLikeContactPicker ===")
+        print("ContactUpload: PICK_CONTACT_REQUEST_CODE: ContactPicker")
+        
+        DispatchQueue.main.async {
+            showWhatsAppContactPicker = true
+        }
+    }
+    
+    // MARK: - Handle Contact Picker Result
+    private func handleContactPickerResult(contacts: [ContactPickerInfo], caption: String) {
+        print("ContactUpload: === CONTACT PICKER CALLBACK RECEIVED ===")
+        print("ContactUpload: Selected contacts count: \(contacts.count)")
+        print("ContactUpload: Contacts: \(contacts.map { $0.name })")
+        
+        // Guard: Don't proceed if no contacts selected
+        guard !contacts.isEmpty else {
+            print("ContactUpload: No contacts selected, skipping preview")
+            return
+        }
+        
+        // Store contacts and caption for preview dialog on main thread
+        DispatchQueue.main.async {
+            print("ContactUpload: Setting contacts on main thread, count: \(contacts.count)")
+            self.multiContactPreviewContacts = contacts
+            self.multiContactPreviewCaption = caption
+            
+            // Verify state was set correctly
+            print("ContactUpload: State after setting - contacts count: \(self.multiContactPreviewContacts.count)")
+            
+            // Show preview dialog after a delay to ensure picker is dismissed and state is committed
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                print("ContactUpload: After delay - contacts count: \(self.multiContactPreviewContacts.count)")
+                print("ContactUpload: Contacts: \(self.multiContactPreviewContacts.map { $0.name })")
+                
+                // Double-check contacts are available before showing
+                guard !self.multiContactPreviewContacts.isEmpty else {
+                    print("ContactUpload: ERROR - Contacts array is empty after delay, not showing preview")
+                    return
+                }
+                
+                print("ContactUpload: Showing preview dialog with \(self.multiContactPreviewContacts.count) contacts")
+                self.showMultiContactPreview = true
+            }
+        }
+    }
+    
+    // MARK: - Handle Multi-Contact Send (matching Android upload logic)
+    private func handleMultiContactSend(caption: String) {
+        print("ContactUpload: === MULTI-CONTACT SEND ===")
+        print("ContactUpload: Selected contacts count: \(multiContactPreviewContacts.count)")
+        print("ContactUpload: Caption: '\(caption)'")
+        
+        // Contacts are uploaded directly from GroupMultiContactPreviewDialog (matching Android flow)
+        // This callback is called after contacts are sent, so we just need to clear selections
+        multiContactPreviewContacts.removeAll()
+        multiContactPreviewCaption = ""
+        
+        // Hide gallery picker
+        withAnimation {
+            showGalleryPicker = false
+        }
     }
 }
 
