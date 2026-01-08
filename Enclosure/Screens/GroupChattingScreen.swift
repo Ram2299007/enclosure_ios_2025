@@ -62,6 +62,11 @@ struct GroupChattingScreen: View {
     @State private var wasGalleryPickerOpenBeforeVideoPicker: Bool = false
     @State private var showWhatsAppContactPicker: Bool = false
     @State private var wasGalleryPickerOpenBeforeContactPicker: Bool = false
+    @State private var showDocumentPicker: Bool = false
+    @State private var showUnifiedGalleryPicker: Bool = false
+    @State private var wasGalleryPickerOpenBeforeDocumentPicker: Bool = false
+    @State private var selectedDocuments: [URL] = []
+    @State private var showFilePickerActionSheet: Bool = false
     
     // Multi-image preview dialog state
     @State private var showMultiImagePreview: Bool = false
@@ -77,6 +82,11 @@ struct GroupChattingScreen: View {
     @State private var showMultiContactPreview: Bool = false
     @State private var multiContactPreviewCaption: String = ""
     @State private var multiContactPreviewContacts: [ContactPickerInfo] = [] // Store selected contacts from WhatsAppLikeContactPicker
+    
+    // Multi-document preview dialog state
+    @State private var showMultiDocumentPreview: Bool = false
+    @State private var multiDocumentPreviewCaption: String = ""
+    @State private var multiDocumentPreviewURLs: [URL] = [] // Store selected document URLs
     
     // Local gallery (mirrors Android dataRecview)
     @State private var photoAssets: [PHAsset] = []
@@ -273,6 +283,90 @@ struct GroupChattingScreen: View {
                 }
             )
         }
+        .sheet(isPresented: $showDocumentPicker, onDismiss: {
+            // Handle documents when picker is dismissed
+            // Use a small delay to ensure sheet is fully dismissed before showing preview
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                if !selectedDocuments.isEmpty {
+                    let documentsToShow = selectedDocuments // Copy before clearing
+                    handleDocumentPickerResult(selectedDocuments: documentsToShow)
+                    // Clear after handling to avoid re-processing
+                    selectedDocuments.removeAll()
+                }
+            }
+            // Restore gallery picker when document picker is dismissed (matching CameraGalleryView behavior)
+            if wasGalleryPickerOpenBeforeDocumentPicker {
+                withAnimation {
+                    showGalleryPicker = true
+                }
+                wasGalleryPickerOpenBeforeDocumentPicker = false
+            }
+        }) {
+            DocumentPicker(selectedDocuments: $selectedDocuments, allowsMultipleSelection: true)
+        }
+        .sheet(isPresented: $showUnifiedGalleryPicker, onDismiss: {
+            print("GalleryPicker: Sheet dismissed, selectedDocuments count: \(selectedDocuments.count)")
+            print("GalleryPicker: selectedDocuments: \(selectedDocuments.map { $0.lastPathComponent })")
+            // Note: Documents are handled via onDocumentsSelected callback, so we don't need to process here
+            // This onDismiss is just for cleanup
+            // Clear selectedDocuments after a delay to avoid conflicts
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                if !selectedDocuments.isEmpty {
+                    print("GalleryPicker: Clearing selectedDocuments in onDismiss")
+                    selectedDocuments.removeAll()
+                }
+            }
+            // Restore gallery picker when unified gallery picker is dismissed (matching CameraGalleryView behavior)
+            if wasGalleryPickerOpenBeforeDocumentPicker {
+                withAnimation {
+                    showGalleryPicker = true
+                }
+                wasGalleryPickerOpenBeforeDocumentPicker = false
+            }
+        }) {
+            GalleryPicker(
+                selectedDocuments: $selectedDocuments,
+                onDocumentsSelected: { documents in
+                    handleDocumentPickerResult(selectedDocuments: documents)
+                }
+            )
+        }
+        .fullScreenCover(isPresented: $showMultiDocumentPreview, onDismiss: {
+            // Reset caption when dialog is dismissed
+            multiDocumentPreviewCaption = ""
+        }) {
+            GroupMultiDocumentPreviewDialog(
+                selectedDocuments: multiDocumentPreviewURLs,
+                caption: $multiDocumentPreviewCaption,
+                group: group,
+                onSend: { caption in
+                    handleMultiDocumentSend(caption: caption)
+                },
+                onDismiss: {
+                    showMultiDocumentPreview = false
+                }
+            )
+        }
+        .overlay(
+            CustomActionSheet(
+                isPresented: $showFilePickerActionSheet,
+                title: "",
+                options: [
+                    ActionSheetOption("Select from Gallery") {
+                        // Open gallery picker (photos and videos)
+                        print("DocumentUpload: Action sheet - Select from Gallery chosen")
+                        showUnifiedGalleryPicker = true
+                        showFilePickerActionSheet = false
+                    },
+                    ActionSheetOption("Select from File") {
+                        // Open document picker
+                        print("DocumentUpload: Action sheet - Select from File chosen")
+                        showDocumentPicker = true
+                        showFilePickerActionSheet = false
+                    }
+                ]
+            )
+        )
         .onChange(of: showCameraView) { isPresented in
             // When camera view is dismissed, restore gallery picker if it was open before
             if !isPresented && wasGalleryPickerOpenBeforeCamera {
@@ -1635,9 +1729,101 @@ struct GroupChattingScreen: View {
         }
     }
     
+    // MARK: - File Button Handler
     private func handleFileButtonClick() {
-        // TODO: Implement file picker functionality
-        print("📄 File button clicked")
+        // Light haptic feedback (Android-style tap vibration)
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        // Hide keyboard and focus message box (matching Android hideKeyboardAndFocusMessageBox)
+        isMessageFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        
+        // Hide multi-select counter (matching Android binding.multiSelectSmallCounterText.setVisibility(View.GONE))
+        selectedAssetIds.removeAll()
+        selectedCount = 0
+        
+        // Save gallery picker state before opening file picker (don't hide it - will restore on back)
+        wasGalleryPickerOpenBeforeDocumentPicker = showGalleryPicker
+        
+        // Hide emoji picker if open
+        if showEmojiLayout {
+            withAnimation {
+                showEmojiLayout = false
+            }
+        }
+        
+        // Clear selected documents
+        selectedDocuments.removeAll()
+        
+        // Show action sheet to choose between Gallery and File (matching Telegram behavior)
+        print("DocumentUpload: === SHOWING FILE PICKER ACTION SHEET ===")
+        
+        DispatchQueue.main.async {
+            showFilePickerActionSheet = true
+        }
+    }
+    
+    // MARK: - Handle Document Picker Result
+    private func handleDocumentPickerResult(selectedDocuments: [URL]) {
+        print("DocumentUpload: === DOCUMENT PICKER RESULT RECEIVED ===")
+        print("DocumentUpload: Selected documents count: \(selectedDocuments.count)")
+        
+        guard !selectedDocuments.isEmpty else {
+            print("DocumentUpload: No documents selected, returning")
+            return
+        }
+        
+        // Prevent double processing if already showing preview
+        guard !showMultiDocumentPreview else {
+            print("DocumentUpload: Preview already showing, skipping duplicate call")
+            return
+        }
+        
+        print("DocumentUpload: Storing documents for preview: \(selectedDocuments.map { $0.lastPathComponent })")
+        
+        // CRITICAL: Set URLs and show dialog in separate updates to ensure state is processed
+        // First, set the URLs synchronously
+        multiDocumentPreviewURLs = selectedDocuments
+        multiDocumentPreviewCaption = ""
+        
+        print("DocumentUpload: Stored URLs count: \(multiDocumentPreviewURLs.count)")
+        print("DocumentUpload: URLs: \(multiDocumentPreviewURLs.map { $0.lastPathComponent })")
+        
+        // Use a longer delay to ensure SwiftUI has fully processed the state update
+        // SwiftUI batches state updates, so we need to wait for the first update to complete
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            print("DocumentUpload: Showing preview dialog, URLs count: \(self.multiDocumentPreviewURLs.count)")
+            print("DocumentUpload: URLs before showing: \(self.multiDocumentPreviewURLs.map { $0.lastPathComponent })")
+            
+            // Verify URLs are still set before showing
+            guard !self.multiDocumentPreviewURLs.isEmpty else {
+                print("DocumentUpload: ERROR - URLs are empty when trying to show dialog!")
+                return
+            }
+            
+            // Show full-screen dialog for multi-document preview (matching Android)
+            // At this point, multiDocumentPreviewURLs should be set and SwiftUI should have processed it
+            self.showMultiDocumentPreview = true
+            print("DocumentUpload: showMultiDocumentPreview set to: \(self.showMultiDocumentPreview)")
+        }
+    }
+    
+    // MARK: - Handle Multi-Document Send (matching Android upload logic)
+    private func handleMultiDocumentSend(caption: String) {
+        print("DocumentUpload: === MULTI-DOCUMENT SEND ===")
+        print("DocumentUpload: Selected documents count: \(multiDocumentPreviewURLs.count)")
+        print("DocumentUpload: Caption: '\(caption)'")
+        
+        // Documents are uploaded directly from GroupMultiDocumentPreviewDialog (matching Android flow)
+        // This callback is called after documents are sent, so we just need to clear selections
+        multiDocumentPreviewURLs.removeAll()
+        multiDocumentPreviewCaption = ""
+        
+        // Hide gallery picker
+        withAnimation {
+            showGalleryPicker = false
+        }
     }
     
     // MARK: - Contact Button Handler
