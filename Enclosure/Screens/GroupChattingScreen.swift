@@ -1440,8 +1440,9 @@ struct GroupChattingScreen: View {
             placeholderSelectionBunch.append(SelectionBunchModel(imgUrl: "", fileName: fileName))
         }
         
-        // Create message with group information
-        let newMessage = ChatMessage(
+        // Create message with group information using GroupChatMessage
+        let createdBy = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        let newMessage = GroupChatMessage(
             id: modelId,
             uid: senderId,
             message: "",
@@ -1451,33 +1452,23 @@ struct GroupChattingScreen: View {
             fileExtension: "jpg",
             name: nil,
             phone: nil,
-            micPhoto: micPhoto,
             miceTiming: nil,
+            micPhoto: micPhoto,
+            createdBy: createdBy,
             userName: userName,
-            receiverId: groupId, // Use groupId as receiverId for groups
-            replytextData: replyMsg.isEmpty ? nil : replyMsg,
-            replyKey: replyMsg.isEmpty ? nil : modelId,
-            replyType: replyType.isEmpty ? nil : replyType,
-            replyOldData: nil,
-            replyCrtPostion: nil,
-            forwaredKey: nil,
-            groupName: group.name, // Set group name
+            receiverUid: groupId, // Use groupId as receiverUid for groups
             docSize: nil,
             fileName: "\(modelId)_0.jpg",
             thumbnail: nil,
             fileNameThumbnail: nil,
             caption: trimmedCaption,
-            notification: 1,
             currentDate: currentDateString,
-            emojiModel: [EmojiModel(name: "", emoji: "")],
-            emojiCount: nil,
-            timestamp: timestamp,
             imageWidth: nil, // Will be updated after export
             imageHeight: nil, // Will be updated after export
             aspectRatio: nil, // Will be updated after export
+            active: 0, // 0 = sending, 1 = sent
             selectionCount: "\(selectedAssets.count)",
-            selectionBunch: placeholderSelectionBunch.count >= 2 ? placeholderSelectionBunch : nil, // Show bunch view if 2+ images
-            receiverLoader: 0 // Show progress bar
+            selectionBunch: placeholderSelectionBunch.count >= 2 ? placeholderSelectionBunch : nil // Show bunch view if 2+ images
         )
         
         // Upload images to Firebase Storage and send message
@@ -1485,7 +1476,7 @@ struct GroupChattingScreen: View {
     }
     
     // MARK: - Upload Group Images and Send
-    private func uploadGroupImagesAndSend(selectedAssets: [PHAsset], message: ChatMessage, modelId: String) {
+    private func uploadGroupImagesAndSend(selectedAssets: [PHAsset], message: GroupChatMessage, modelId: String) {
         let dispatchGroup = DispatchGroup()
         let lockQueue = DispatchQueue(label: "com.enclosure.groupMultiImageUpload.lock")
         
@@ -1567,17 +1558,61 @@ struct GroupChattingScreen: View {
             updatedMessage.aspectRatio = aspectRatioValue
             updatedMessage.selectionBunch = selectionBunchModels.count >= 2 ? selectionBunchModels : nil
             
-            // Upload message via API
+            // Convert GroupChatMessage to ChatMessage for database storage
+            let chatMessageForDB = ChatMessage(
+                id: updatedMessage.id,
+                uid: updatedMessage.uid,
+                message: updatedMessage.message,
+                time: updatedMessage.time,
+                document: updatedMessage.document,
+                dataType: updatedMessage.dataType,
+                fileExtension: updatedMessage.fileExtension,
+                name: updatedMessage.name,
+                phone: updatedMessage.phone,
+                micPhoto: updatedMessage.micPhoto,
+                miceTiming: updatedMessage.miceTiming,
+                userName: updatedMessage.userName,
+                receiverId: updatedMessage.receiverUid, // Use receiverUid as receiverId
+                replytextData: nil,
+                replyKey: nil,
+                replyType: nil,
+                replyOldData: nil,
+                replyCrtPostion: nil,
+                forwaredKey: nil,
+                groupName: group.name, // Set group name
+                docSize: updatedMessage.docSize,
+                fileName: updatedMessage.fileName,
+                thumbnail: updatedMessage.thumbnail,
+                fileNameThumbnail: updatedMessage.fileNameThumbnail,
+                caption: updatedMessage.caption,
+                notification: 1,
+                currentDate: updatedMessage.currentDate,
+                emojiModel: [EmojiModel(name: "", emoji: "")],
+                emojiCount: nil,
+                timestamp: Date().timeIntervalSince1970,
+                imageWidth: updatedMessage.imageWidth,
+                imageHeight: updatedMessage.imageHeight,
+                aspectRatio: updatedMessage.aspectRatio,
+                selectionCount: updatedMessage.selectionCount,
+                selectionBunch: updatedMessage.selectionBunch,
+                receiverLoader: 0
+            )
+            
+            // Store message in SQLite pending table before upload (matching Android insertPendingGroupMessage)
+            DatabaseHelper.shared.insertPendingMessage(chatMessageForDB)
+            print("✅ [PendingMessages] Group image message stored in pending table: \(modelId)")
+            
+            // Upload message via GROUP API (not individual chat API)
             let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
             
-            MessageUploadService.shared.uploadMessage(
+            MessageUploadService.shared.uploadGroupMessage(
                 model: updatedMessage,
                 filePath: nil,
                 userFTokenKey: userFTokenKey,
                 deviceType: "2"
             ) { success, errorMessage in
                 if success {
-                    print("✅ [GROUP_MULTI_IMAGE] Uploaded \(sortedResults.count) images for modelId=\(modelId)")
+                    print("✅ [GROUP_MULTI_IMAGE] Uploaded \(sortedResults.count) images for modelId=\(modelId) using GROUP API")
                 } else {
                     print("❌ [GROUP_MULTI_IMAGE] Upload error: \(errorMessage ?? "Unknown error")")
                     Constant.showToast(message: "Failed to send images. Please try again.")

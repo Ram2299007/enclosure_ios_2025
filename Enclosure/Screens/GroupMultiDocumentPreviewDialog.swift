@@ -399,10 +399,11 @@ struct GroupMultiDocumentPreviewDialog: View {
                 let documentModelId = UUID().uuidString
                 let documentCaption = (index == 0) ? trimmedCaption : ""
                 
-                print("GroupMultiDocumentPreviewDialog: Creating ChatMessage \(index + 1)/\(sortedResults.count) with caption: '\(documentCaption)'")
+                print("GroupMultiDocumentPreviewDialog: Creating GroupChatMessage \(index + 1)/\(sortedResults.count) with caption: '\(documentCaption)'")
                 
-                // Create message with group information
-                let newMessage = ChatMessage(
+                // Create message with group information using GroupChatMessage
+                let createdBy = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+                let newMessage = GroupChatMessage(
                     id: documentModelId,
                     uid: senderId,
                     message: documentCaption,
@@ -412,10 +413,42 @@ struct GroupMultiDocumentPreviewDialog: View {
                     fileExtension: result.fileExtension,
                     name: nil,
                     phone: nil,
-                    micPhoto: micPhoto,
                     miceTiming: nil,
+                    micPhoto: micPhoto,
+                    createdBy: createdBy,
                     userName: userName,
-                    receiverId: groupId, // Use groupId as receiverId for groups
+                    receiverUid: groupId, // Use groupId as receiverUid for groups
+                    docSize: "\(result.fileSize)",
+                    fileName: result.fileName,
+                    thumbnail: nil,
+                    fileNameThumbnail: nil,
+                    caption: documentCaption,
+                    currentDate: currentDateString,
+                    imageWidth: nil,
+                    imageHeight: nil,
+                    aspectRatio: nil,
+                    active: 0, // 0 = sending, 1 = sent
+                    selectionCount: "1",
+                    selectionBunch: nil
+                )
+                
+                print("GroupMultiDocumentPreviewDialog: GroupChatMessage created with caption: '\(newMessage.caption ?? "nil")'")
+                
+                // Convert GroupChatMessage to ChatMessage for database storage
+                let chatMessageForDB = ChatMessage(
+                    id: newMessage.id,
+                    uid: newMessage.uid,
+                    message: newMessage.message,
+                    time: newMessage.time,
+                    document: newMessage.document,
+                    dataType: newMessage.dataType,
+                    fileExtension: newMessage.fileExtension,
+                    name: newMessage.name,
+                    phone: newMessage.phone,
+                    micPhoto: newMessage.micPhoto,
+                    miceTiming: newMessage.miceTiming,
+                    userName: newMessage.userName,
+                    receiverId: newMessage.receiverUid, // Use receiverUid as receiverId
                     replytextData: nil,
                     replyKey: nil,
                     replyType: nil,
@@ -423,43 +456,42 @@ struct GroupMultiDocumentPreviewDialog: View {
                     replyCrtPostion: nil,
                     forwaredKey: nil,
                     groupName: group.name, // Set group name
-                    docSize: "\(result.fileSize)",
-                    fileName: result.fileName,
-                    thumbnail: nil,
-                    fileNameThumbnail: nil,
-                    caption: documentCaption,
+                    docSize: newMessage.docSize,
+                    fileName: newMessage.fileName,
+                    thumbnail: newMessage.thumbnail,
+                    fileNameThumbnail: newMessage.fileNameThumbnail,
+                    caption: newMessage.caption,
                     notification: 1,
-                    currentDate: currentDateString,
+                    currentDate: newMessage.currentDate,
                     emojiModel: [EmojiModel(name: "", emoji: "")],
                     emojiCount: nil,
                     timestamp: timestamp,
-                    imageWidth: nil,
-                    imageHeight: nil,
-                    aspectRatio: nil,
-                    selectionCount: "1",
-                    selectionBunch: nil,
+                    imageWidth: newMessage.imageWidth,
+                    imageHeight: newMessage.imageHeight,
+                    aspectRatio: newMessage.aspectRatio,
+                    selectionCount: newMessage.selectionCount,
+                    selectionBunch: newMessage.selectionBunch,
                     receiverLoader: 0
                 )
                 
-                print("GroupMultiDocumentPreviewDialog: ChatMessage created with caption: '\(newMessage.caption ?? "nil")'")
-                
                 // Store message in SQLite pending table before upload (matching Android insertPendingMessage)
-                DatabaseHelper.shared.insertPendingMessage(newMessage)
-                print("✅ [PendingMessages] Document message stored in pending table: \(documentModelId)")
+                DatabaseHelper.shared.insertPendingMessage(chatMessageForDB)
+                print("✅ [PendingMessages] Group document message stored in pending table: \(documentModelId)")
                 
                 // Add message to UI immediately with progress bar (matching Android messageList.add + itemAdd)
-                onMessageAdded?(newMessage)
+                onMessageAdded?(chatMessageForDB)
                 
                 let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
                 
-                MessageUploadService.shared.uploadMessage(
+                // Upload message via GROUP API (not individual chat API)
+                MessageUploadService.shared.uploadGroupMessage(
                     model: newMessage,
                     filePath: nil,
                     userFTokenKey: userFTokenKey,
                     deviceType: "2"
                 ) { success, errorMessage in
                     if success {
-                        print("✅ [GROUP_MULTI_DOCUMENT] Uploaded document \(index + 1)/\(sortedResults.count) for modelId=\(documentModelId)")
+                        print("✅ [GROUP_MULTI_DOCUMENT] Uploaded document \(index + 1)/\(sortedResults.count) for modelId=\(documentModelId) using GROUP API")
                         
                         // Check if message exists in Firebase and stop progress bar (matching Android)
                         self.checkMessageInFirebaseAndStopProgress(messageId: documentModelId, groupId: groupId)

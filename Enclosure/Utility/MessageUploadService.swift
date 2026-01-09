@@ -16,6 +16,7 @@ class MessageUploadService {
     static let shared = MessageUploadService()
     
     private let CREATE_INDIVIDUAL_CHATTING = Constant.baseURL + "create_individual_chatting"
+    private let CREATE_GROUP_CHATTING = Constant.baseURL + "create_group_chatting"
     private let storageReference = Storage.storage().reference().child(Constant.CHAT)
     
     private init() {}
@@ -176,6 +177,228 @@ class MessageUploadService {
             case .failure(let error):
                 print("❌ Network error: \(error.localizedDescription)")
                 completion(false, error.localizedDescription)
+            }
+        }
+    }
+    
+    // MARK: - Upload Group Message (matching Android GroupMessageUploadService)
+    func uploadGroupMessage(
+        model: GroupChatMessage,
+        filePath: String? = nil,
+        userFTokenKey: String,
+        deviceType: String = "2", // iOS device type
+        completion: @escaping (Bool, String?) -> Void
+    ) {
+        print("📤 MessageUploadService: Starting group upload for modelId=\(model.id)")
+        
+        // Check if selectionBunch has URLs (indicating pre-uploaded files)
+        let selectionBunchPreUploaded = model.selectionBunch != nil && !(model.selectionBunch?.isEmpty ?? true)
+        
+        if selectionBunchPreUploaded {
+            // Check if any selectionBunch item has a URL
+            var hasUrls = false
+            for bunch in model.selectionBunch ?? [] {
+                if !bunch.imgUrl.isEmpty {
+                    hasUrls = true
+                    print("📤 Found URL in selectionBunch: \(bunch.imgUrl)")
+                    break
+                }
+            }
+        }
+        
+        // Build multipart form data (matching Android GroupMessageUploadService MultipartBody.Builder)
+        AF.upload(
+            multipartFormData: { multipartFormData in
+                // Required fields (matching Android GroupMessageUploadService builder.addFormDataPart)
+                multipartFormData.append(Data(model.uid.utf8), withName: "uid")
+                multipartFormData.append(Data(model.receiverUid.utf8), withName: "group_id") // group_id instead of friend_id
+                multipartFormData.append(Data(model.message.utf8), withName: "message")
+                multipartFormData.append(Data((model.userName ?? "").utf8), withName: "user_name")
+                multipartFormData.append(Data("1".utf8), withName: "notification")
+                multipartFormData.append(Data(model.dataType.utf8), withName: "dataType")
+                multipartFormData.append(Data(model.id.utf8), withName: "model_id")
+                multipartFormData.append(Data(model.time.utf8), withName: "sent_time")
+                multipartFormData.append(Data((model.fileExtension ?? "").utf8), withName: "extension")
+                multipartFormData.append(Data((model.name ?? "").utf8), withName: "name")
+                multipartFormData.append(Data((model.phone ?? "").utf8), withName: "phone")
+                multipartFormData.append(Data((model.micPhoto ?? "").utf8), withName: "micPhoto")
+                multipartFormData.append(Data((model.miceTiming ?? "").utf8), withName: "miceTiming")
+                multipartFormData.append(Data((model.createdBy ?? "").utf8), withName: "created_by") // created_by for groups
+                multipartFormData.append(Data((model.caption ?? "").utf8), withName: "caption")
+                multipartFormData.append(Data((model.selectionCount ?? "1").utf8), withName: "selection_count")
+                multipartFormData.append(Data(userFTokenKey.utf8), withName: "fTokenKey")
+                
+                // Handle upload_docs (matching Android GroupMessageUploadService logic)
+                if model.dataType == Constant.Text || model.dataType == Constant.contact {
+                    multipartFormData.append(Data("".utf8), withName: "upload_docs")
+                } else if !model.document.isEmpty {
+                    // File exists in Firebase Storage, send the URL
+                    print("📤 File exists, sending Firebase URL for upload_docs: \(model.document)")
+                    multipartFormData.append(Data(model.document.utf8), withName: "upload_docs")
+                } else if let filePath = filePath, !filePath.isEmpty, !selectionBunchPreUploaded {
+                    // File does not exist, upload the local file
+                    let fileURL = URL(fileURLWithPath: filePath)
+                    if FileManager.default.fileExists(atPath: filePath) {
+                        let fileSize = (try? FileManager.default.attributesOfItem(atPath: filePath)[.size] as? Int64) ?? 0
+                        if fileSize <= 200 * 1024 * 1024 { // 200MB limit
+                            // Get mime type inline (avoiding closure capture issue)
+                            let fileExtension = (filePath as NSString).pathExtension.lowercased()
+                            let mimeType: String?
+                            switch fileExtension {
+                            case "jpg", "jpeg":
+                                mimeType = "image/jpeg"
+                            case "png":
+                                mimeType = "image/png"
+                            case "mp4":
+                                mimeType = "video/mp4"
+                            case "pdf":
+                                mimeType = "application/pdf"
+                            case "mp3":
+                                mimeType = "audio/mpeg"
+                            default:
+                                mimeType = nil
+                            }
+                            
+                            multipartFormData.append(
+                                fileURL,
+                                withName: "upload_docs",
+                                fileName: fileURL.lastPathComponent,
+                                mimeType: mimeType ?? "application/octet-stream"
+                            )
+                            print("📤 Uploading local file for upload_docs: \(filePath)")
+                        } else {
+                            print("❌ File exceeds 200MB: \(filePath)")
+                            multipartFormData.append(Data("".utf8), withName: "upload_docs")
+                        }
+                    } else {
+                        print("❌ File does not exist: \(filePath)")
+                        multipartFormData.append(Data("".utf8), withName: "upload_docs")
+                    }
+                } else {
+                    print("⚠️ No file to upload and no Firebase URL available")
+                    multipartFormData.append(Data("".utf8), withName: "upload_docs")
+                }
+                
+                // Add thumbnail if available (matching Android)
+                if let thumbnail = model.thumbnail, !thumbnail.isEmpty {
+                    multipartFormData.append(Data(thumbnail.utf8), withName: "thumbnail")
+                } else {
+                    multipartFormData.append(Data("".utf8), withName: "thumbnail")
+                }
+                
+                // Add fileNameThumbnail if available (matching Android)
+                if let fileNameThumbnail = model.fileNameThumbnail, !fileNameThumbnail.isEmpty {
+                    multipartFormData.append(Data(fileNameThumbnail.utf8), withName: "fileNameThumbnail")
+                } else {
+                    multipartFormData.append(Data("".utf8), withName: "fileNameThumbnail")
+                }
+            },
+            to: CREATE_GROUP_CHATTING,
+            method: .post
+        ).responseJSON { response in
+            switch response.result {
+            case .success(let value):
+                print("📩 Server response: \(value)")
+                
+                guard let json = value as? [String: Any] else {
+                    print("❌ Invalid JSON response")
+                    completion(false, "Invalid response format")
+                    return
+                }
+                
+                // Handle error_code as either Int or String (matching Android)
+                let errorCode: Int
+                if let errorCodeInt = json["error_code"] as? Int {
+                    errorCode = errorCodeInt
+                } else if let errorCodeString = json["error_code"] as? String,
+                          let errorCodeInt = Int(errorCodeString) {
+                    errorCode = errorCodeInt
+                } else {
+                    print("❌ Invalid error_code in response")
+                    completion(false, "Invalid response format")
+                    return
+                }
+                
+                if errorCode == 200 {
+                    // Success - update Firebase Realtime Database
+                    if let data = json["data"] as? [String: Any] {
+                        // Extract group_members from response (matching Android)
+                        let groupMembers = data["group_members"] as? [[String: Any]] ?? []
+                        
+                        print("✅ [GROUP_UPLOAD] API success for modelId=\(model.id)")
+                        print("✅ [GROUP_UPLOAD] Extracted group_members count: \(groupMembers.count)")
+                        
+                        self.updateGroupFirebaseDatabase(model: model) { success in
+                            if success {
+                                print("✅ [GROUP_UPLOAD] Firebase update successful for modelId=\(model.id)")
+                                
+                                // Call notification API after successful upload (matching Android end_notification_api_group)
+                                if !groupMembers.isEmpty {
+                                    print("📲 [GROUP_NOTIFICATION] Calling end_notification_api_group for modelId=\(model.id) with \(groupMembers.count) members")
+                                    self.sendGroupNotificationAPI(
+                                        model: model,
+                                        userFTokenKey: userFTokenKey,
+                                        deviceType: deviceType,
+                                        groupMembers: groupMembers
+                                    )
+                                } else {
+                                    print("⚠️ [GROUP_NOTIFICATION] Skipping notification API - group_members is empty for modelId=\(model.id)")
+                                }
+                                completion(true, nil)
+                            } else {
+                                print("❌ [GROUP_UPLOAD] Firebase update failed for modelId=\(model.id)")
+                                completion(false, "Firebase update failed")
+                            }
+                        }
+                    } else {
+                        print("⚠️ [GROUP_UPLOAD] API success but no data field in response for modelId=\(model.id)")
+                        completion(true, nil) // API success but no data
+                    }
+                } else if errorCode == 205 {
+                    let errorMessage = json["message"] as? String ?? "Unknown error"
+                    print("❌ Server error 205: \(errorMessage)")
+                    completion(false, errorMessage)
+                } else {
+                    let errorMessage = json["message"] as? String ?? "Unknown error"
+                    print("❌ Server error: \(errorMessage)")
+                    Constant.showToast(message: errorMessage)
+                    completion(false, errorMessage)
+                }
+                
+            case .failure(let error):
+                print("❌ Network error: \(error.localizedDescription)")
+                completion(false, error.localizedDescription)
+            }
+        }
+    }
+    
+    // MARK: - Update Firebase Realtime Database for Groups (matching Android GroupMessageUploadService.writeToRealtimeDatabase)
+    private func updateGroupFirebaseDatabase(model: GroupChatMessage, completion: @escaping (Bool) -> Void) {
+        let database = Database.database().reference()
+        
+        // Create chatKey (matching Android: senderId + groupId)
+        let chatKey = (model.uid + model.receiverUid).replacingOccurrences(of: ".", with: "_")
+            .replacingOccurrences(of: "#", with: "_")
+            .replacingOccurrences(of: "$", with: "_")
+            .replacingOccurrences(of: "[", with: "_")
+            .replacingOccurrences(of: "]", with: "_")
+        
+        print("🔥 FirebaseStructure: ChatKey=\(chatKey), ModelID=\(model.id), UID=\(model.uid), GroupID=\(model.receiverUid)")
+        
+        // Convert model to dictionary (matching Android group_messageModel.toMap())
+        var messageMap = model.toDictionary()
+        messageMap["timestamp"] = ServerValue.timestamp()
+        
+        // Update Firebase (matching Android databaseReference.child(chatKey).child(modelId).setValue)
+        let messagePath = "\(Constant.GROUPCHAT)/\(chatKey)/\(model.id)"
+        
+        database.child(Constant.GROUPCHAT).child(chatKey).child(model.id).setValue(messageMap) { error, _ in
+            if let error = error {
+                print("❌ Firebase sync failed: \(error.localizedDescription)")
+                completion(false)
+            } else {
+                print("✅ Firebase sync successful for group message")
+                completion(true)
             }
         }
     }
@@ -470,6 +693,181 @@ class MessageUploadService {
                 }
             }.resume()
         }
+    }
+    
+    // MARK: - Send Group Notification API (matching Android end_notification_api_group)
+    private func sendGroupNotificationAPI(
+        model: GroupChatMessage,
+        userFTokenKey: String,
+        deviceType: String,
+        groupMembers: [[String: Any]]
+    ) {
+        print("📲 [GROUP_NOTIFICATION] ===== START end_notification_api_group =====")
+        print("📲 [GROUP_NOTIFICATION] modelId: \(model.id)")
+        print("📲 [GROUP_NOTIFICATION] groupId: \(model.receiverUid)")
+        print("📲 [GROUP_NOTIFICATION] dataType: \(model.dataType)")
+        print("📲 [GROUP_NOTIFICATION] groupMembers count: \(groupMembers.count)")
+        
+        // Get user info
+        let myFcmToken = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
+        let profilePic = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
+        let userName = model.userName ?? ""
+        
+        // Determine notification message based on data type (matching Android)
+        let notificationMessage: String
+        switch model.dataType {
+        case Constant.Text:
+            notificationMessage = model.message
+        case Constant.img:
+            notificationMessage = "You have a new Image"
+        case Constant.contact:
+            notificationMessage = "You have a new Contact"
+        case Constant.voiceAudio:
+            notificationMessage = "You have a new Audio"
+        case Constant.video:
+            notificationMessage = "You have a new Video"
+        case Constant.doc:
+            notificationMessage = "You have a new File"
+        default:
+            notificationMessage = "You have a new Message"
+        }
+        
+        print("📲 [GROUP_NOTIFICATION] Preparing notification payload for modelId: \(model.id)")
+        print("📲 [GROUP_NOTIFICATION] Group ID: \(model.receiverUid), Members: \(groupMembers.count)")
+        
+        // Note: Android uses FCM token (senderTokenReplyPower) for all access token fields
+        // We don't need to retrieve Firebase OAuth access token here
+        if myFcmToken.isEmpty {
+            print("⚠️ [GROUP_NOTIFICATION] FCM token is empty - notification may fail")
+        } else {
+            print("✅ [GROUP_NOTIFICATION] Using FCM token for access token fields")
+        }
+        
+        // Truncate message to 100 words (matching Android truncateToWordss)
+        let truncatedMessage = self.truncateToWords(notificationMessage, maxWords: 100)
+        
+        // Build JSON request (matching Android end_notification_api_group parameters)
+        // Note: Android uses senderTokenReplyPower (FCM token) for all access token fields
+        var requestJson: [String: Any] = [:]
+        
+        // Access token fields (all set to FCM token, matching Android lines 104-107)
+        requestJson["accessToken"] = self.safeString(myFcmToken)
+        requestJson["accessTokenKey"] = self.safeString(myFcmToken)
+        requestJson["userFcmToken"] = self.safeString(myFcmToken)
+        requestJson["senderTokenReply"] = self.safeString(myFcmToken)
+        
+        // Notification fields (matching Android lines 108-117)
+        requestJson["title"] = self.safeString(userName)
+        requestJson["body"] = self.safeString(truncatedMessage)
+        requestJson["receiverKey"] = self.safeString(model.uid)
+        requestJson["user_name"] = self.safeString(userName)
+        requestJson["photo"] = self.safeString(profilePic)
+        requestJson["currentDateTimeString"] = self.safeString(model.time)
+        requestJson["deviceType"] = self.safeString(deviceType)
+        requestJson["bodyKey"] = Constant.chatting
+        requestJson["click_action"] = "OPEN_ACTIVITY_1"
+        requestJson["icon"] = "notification_icon"
+        
+        // Message fields (matching Android lines 118-144)
+        requestJson["uid"] = self.safeString(model.uid)
+        requestJson["message"] = self.safeString(truncatedMessage)
+        requestJson["time"] = self.safeString(model.time)
+        requestJson["document"] = self.safeString(model.document)
+        requestJson["dataType"] = self.safeString(model.dataType)
+        requestJson["extension"] = self.safeString(model.fileExtension ?? "")
+        requestJson["name"] = self.safeString(model.name ?? "")
+        requestJson["phone"] = self.safeString(model.phone ?? "")
+        requestJson["miceTiming"] = self.safeString(model.miceTiming ?? "")
+        requestJson["micPhoto"] = self.safeString(model.micPhoto ?? "")
+        requestJson["userName"] = self.safeString(userName)
+        requestJson["replytextData"] = ""
+        requestJson["replyKey"] = ""
+        requestJson["replyType"] = ""
+        requestJson["replyOldData"] = ""
+        requestJson["replyCrtPostion"] = ""
+        requestJson["modelId"] = self.safeString(model.id)
+        requestJson["receiverUid"] = self.safeString(model.receiverUid)
+        requestJson["forwaredKey"] = ""
+        requestJson["groupName"] = ""
+        requestJson["docSize"] = self.safeString(model.docSize ?? "")
+        requestJson["fileName"] = self.safeString(model.fileName ?? "")
+        requestJson["thumbnail"] = self.safeString(model.thumbnail ?? "")
+        requestJson["fileNameThumbnail"] = self.safeString(model.fileNameThumbnail ?? "")
+        requestJson["caption"] = self.safeString(model.caption ?? "")
+        requestJson["notification"] = 1
+        requestJson["currentDate"] = self.safeString(model.currentDate ?? "")
+        requestJson["senderTokenReplyPower"] = self.safeString(myFcmToken)
+        requestJson["group_members"] = groupMembers // Send as array (matching Android line 145)
+        requestJson["timestamp"] = Date().timeIntervalSince1970
+        requestJson["imageWidthDp"] = self.safeString(model.imageWidth ?? "") // Note: Android uses imageWidthDp
+        requestJson["imageHeightDp"] = self.safeString(model.imageHeight ?? "") // Note: Android uses imageHeightDp
+        requestJson["aspectRatio"] = self.safeString(model.aspectRatio ?? "")
+        requestJson["selectionCount"] = self.safeString(model.selectionCount ?? "1")
+        
+        // Convert selectionBunch to JSON array if available
+        if let selectionBunch = model.selectionBunch, !selectionBunch.isEmpty {
+            let selectionBunchArray = selectionBunch.map { bunch in
+                ["imgUrl": bunch.imgUrl, "fileName": bunch.fileName]
+            }
+            requestJson["selectionBunch"] = selectionBunchArray
+        } else {
+            requestJson["selectionBunch"] = []
+        }
+        
+        print("📲 [GROUP_NOTIFICATION] Request JSON for modelId: \(model.id)")
+        print("📲 [GROUP_NOTIFICATION] Group members count: \(groupMembers.count)")
+        print("📲 [GROUP_NOTIFICATION] Group members structure: \(groupMembers)")
+        print("📲 [GROUP_NOTIFICATION] Access token fields set to FCM token: \(myFcmToken.isEmpty ? "EMPTY" : "\(myFcmToken.prefix(20))...")")
+        
+        // Send POST request (matching Android NotificationApiHelper.handleGroupNotification)
+        let endpoint = Constant.baseURL + "EmojiController/end_notification_api_group"
+        
+        guard let url = URL(string: endpoint) else {
+            print("❌ [GROUP_NOTIFICATION] Invalid URL: \(endpoint) for modelId: \(model.id)")
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: requestJson)
+            print("📲 [GROUP_NOTIFICATION] Request body serialized successfully for modelId: \(model.id)")
+        } catch {
+            print("❌ [GROUP_NOTIFICATION] Failed to serialize JSON for modelId: \(model.id), error: \(error.localizedDescription)")
+            return
+        }
+        
+        print("📲 [GROUP_NOTIFICATION] Sending POST request to: \(endpoint) for modelId: \(model.id)")
+        print("📲 [GROUP_NOTIFICATION] Request URL: \(url.absoluteString)")
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("❌ [GROUP_NOTIFICATION] Network error for modelId: \(model.id), error: \(error.localizedDescription)")
+                return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                let statusCode = httpResponse.statusCode
+                let responseBody = data != nil ? String(data: data!, encoding: .utf8) ?? "" : ""
+                
+                if (200...299).contains(statusCode) {
+                    print("✅ [GROUP_NOTIFICATION] SUCCESS for modelId: \(model.id)")
+                    print("✅ [GROUP_NOTIFICATION] Status Code: \(statusCode)")
+                    print("✅ [GROUP_NOTIFICATION] Response Body: \(responseBody.isEmpty ? "(empty)" : responseBody)")
+                    print("✅ [GROUP_NOTIFICATION] ===== END end_notification_api_group (SUCCESS) =====")
+                } else {
+                    print("❌ [GROUP_NOTIFICATION] HTTP ERROR for modelId: \(model.id)")
+                    print("❌ [GROUP_NOTIFICATION] Status Code: \(statusCode)")
+                    print("❌ [GROUP_NOTIFICATION] Response Body: \(responseBody.isEmpty ? "(empty)" : responseBody)")
+                    print("❌ [GROUP_NOTIFICATION] ===== END end_notification_api_group (ERROR) =====")
+                }
+            } else {
+                print("❌ [GROUP_NOTIFICATION] Invalid HTTP response for modelId: \(model.id)")
+                print("❌ [GROUP_NOTIFICATION] ===== END end_notification_api_group (ERROR) =====")
+            }
+        }.resume()
     }
     
     // MARK: - Get Access Token (matching Android Accesstoken.getAccessToke())
