@@ -89,6 +89,15 @@ struct GroupChattingScreen: View {
     @State private var multiDocumentPreviewCaption: String = ""
     @State private var multiDocumentPreviewURLs: [URL] = [] // Store selected document URLs
     
+    // Voice recording state
+    @State private var showVoiceRecordingBottomSheet: Bool = false
+    @State private var audioRecorder: AVAudioRecorder?
+    @State private var recordingTimer: Timer?
+    @State private var recordingDuration: TimeInterval = 0
+    @State private var recordingProgress: Double = 0.0
+    @State private var audioFileURL: URL?
+    @State private var isRecording: Bool = false
+    
     // Local gallery (mirrors Android dataRecview)
     @State private var photoAssets: [PHAsset] = []
     private let imageManager = PHCachingImageManager()
@@ -345,6 +354,19 @@ struct GroupChattingScreen: View {
                 },
                 onDismiss: {
                     showMultiDocumentPreview = false
+                }
+            )
+        }
+        .sheet(isPresented: $showVoiceRecordingBottomSheet) {
+            VoiceRecordingBottomSheet(
+                recordingDuration: $recordingDuration,
+                recordingProgress: $recordingProgress,
+                isRecording: $isRecording,
+                onCancel: {
+                    cancelRecording()
+                },
+                onSend: {
+                    sendAndStopRecording()
                 }
             )
         }
@@ -686,6 +708,12 @@ struct GroupChattingScreen: View {
                             }
                             .scaleEffect(sendButtonScale)
                         }
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0.1)
+                                .onEnded { _ in
+                                    handleSendButtonLongPress()
+                                }
+                        )
                     }
                     
                     // Small counter badge (Android multiSelectSmallCounterText) - positioned relative to send button
@@ -2189,6 +2217,385 @@ struct GroupChattingScreen: View {
                 print("⚠️ Message not found in Firebase yet: \(messageId)")
             }
         })
+    }
+    
+    // MARK: - Handle Send Button Long Press (Voice Recording)
+    private func handleSendButtonLongPress() {
+        print("VoiceRecording: === SEND BUTTON LONG PRESS (GROUP) ===")
+        
+        // Check if multi-select is active (matching Android)
+        if selectedAssetIds.count > 0 {
+            print("VoiceRecording: Multi-select active, ignoring long press")
+            return
+        }
+        
+        // Hide keyboard (matching Android)
+        isMessageFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        
+        // Vibrate (matching Android Constant.Vibrator50)
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+        
+        // Animate send button (matching Android ObjectAnimator 1.3f -> 0.8f)
+        withAnimation(.easeInOut(duration: 0.2)) {
+            sendButtonScale = 1.3
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                self.sendButtonScale = 0.8
+            }
+        }
+        
+        // Show bottom sheet dialog
+        showVoiceRecordingBottomSheet = true
+        
+        // Start recording after a short delay to allow bottom sheet to appear
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.startRecording()
+        }
+    }
+    
+    // MARK: - Start Voice Recording
+    private func startRecording() {
+        print("VoiceRecording: === START RECORDING (GROUP) ===")
+        
+        // Request microphone permission
+        AVAudioSession.sharedInstance().requestRecordPermission { granted in
+            guard granted else {
+                DispatchQueue.main.async {
+                    Constant.showToast(message: "Microphone permission is required for voice recording")
+                    self.showVoiceRecordingBottomSheet = false
+                    self.resetSendButtonScale()
+                }
+                return
+            }
+            
+            DispatchQueue.main.async {
+                do {
+                    // Configure audio session
+                    let audioSession = AVAudioSession.sharedInstance()
+                    try audioSession.setCategory(.playAndRecord, mode: .default)
+                    try audioSession.setActive(true)
+                    
+                    // Create audio file URL (matching Android file path structure)
+                    let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                    let audiosDir = documentsPath.appendingPathComponent("Enclosure/Media/Audios", isDirectory: true)
+                    
+                    // Create directory if it doesn't exist
+                    try FileManager.default.createDirectory(at: audiosDir, withIntermediateDirectories: true, attributes: nil)
+                    
+                    // Generate filename with timestamp (matching Android format)
+                    let dateFormatter = DateFormatter()
+                    dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
+                    let timestamp = dateFormatter.string(from: Date())
+                    let fileName = "\(timestamp).m4a"
+                    let fileURL = audiosDir.appendingPathComponent(fileName)
+                    
+                    // Audio recorder settings (matching Android MediaRecorder settings)
+                    let settings: [String: Any] = [
+                        AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                        AVSampleRateKey: 44100,
+                        AVNumberOfChannelsKey: 1,
+                        AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+                    ]
+                    
+                    // Create audio recorder
+                    let recorder = try AVAudioRecorder(url: fileURL, settings: settings)
+                    recorder.record()
+                    
+                    self.audioRecorder = recorder
+                    self.audioFileURL = fileURL
+                    self.isRecording = true
+                    self.recordingDuration = 0
+                    self.recordingProgress = 100.0
+                    
+                    // Start timer to update duration and progress
+                    self.recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+                        // Update duration
+                        self.recordingDuration += 0.1
+                        
+                        // Update progress bar: progress decreases from 100 to 0 as time increases
+                        let elapsedSeconds = self.recordingDuration
+                        let maxSeconds: Double = 60.0
+                        let remainingSeconds = max(0, maxSeconds - elapsedSeconds)
+                        self.recordingProgress = max(0, min(100, (remainingSeconds / maxSeconds) * 100.0))
+                        
+                        // Auto-stop at 60 seconds (matching Android countDownTimer)
+                        if self.recordingDuration >= 60.0 {
+                            timer.invalidate()
+                            self.recordingDuration = 60.0 // Cap at exactly 60 seconds
+                            self.recordingProgress = 0.0 // Progress bar at 0% when time is up
+                            self.sendAndStopRecording()
+                            self.showVoiceRecordingBottomSheet = false
+                            self.resetSendButtonScale()
+                        }
+                    }
+                    
+                    print("VoiceRecording: Recording started, file: \(fileURL.path)")
+                } catch {
+                    print("VoiceRecording: Error starting recording: \(error.localizedDescription)")
+                    Constant.showToast(message: "Failed to start recording")
+                    self.showVoiceRecordingBottomSheet = false
+                    self.resetSendButtonScale()
+                }
+            }
+        }
+    }
+    
+    // MARK: - Cancel Recording
+    private func cancelRecording() {
+        print("VoiceRecording: === CANCEL RECORDING (GROUP) ===")
+        
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+        
+        audioRecorder?.stop()
+        audioRecorder = nil
+        
+        // Delete audio file (matching Android mFilePath.delete())
+        if let fileURL = audioFileURL {
+            try? FileManager.default.removeItem(at: fileURL)
+            print("VoiceRecording: Deleted audio file: \(fileURL.path)")
+        }
+        
+        audioFileURL = nil
+        isRecording = false
+        recordingDuration = 0
+        recordingProgress = 0.0
+        
+        // Reset audio session
+        try? AVAudioSession.sharedInstance().setActive(false)
+        
+        // Reset send button scale
+        resetSendButtonScale()
+        
+        showVoiceRecordingBottomSheet = false
+    }
+    
+    // MARK: - Send and Stop Recording
+    private func sendAndStopRecording() {
+        print("VoiceRecording: === SEND AND STOP RECORDING (GROUP) ===")
+        
+        guard let recorder = audioRecorder, let fileURL = audioFileURL else {
+            print("VoiceRecording: Recorder or file URL is nil")
+            cancelRecording()
+            return
+        }
+        
+        // Stop recording
+        recorder.stop()
+        audioRecorder = nil
+        
+        // Stop timer
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+        
+        isRecording = false
+        
+        // Verify audio file exists and has content
+        guard FileManager.default.fileExists(atPath: fileURL.path),
+              let fileAttributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+              let fileSize = fileAttributes[.size] as? Int64,
+              fileSize > 0 else {
+            print("VoiceRecording: Audio file not found or empty")
+            Constant.showToast(message: "Failed to record audio")
+            cancelRecording()
+            return
+        }
+        
+        print("VoiceRecording: Audio file exists, size: \(fileSize) bytes")
+        
+        // Get audio duration
+        let audioDuration = getAudioDuration(fileURL: fileURL)
+        print("VoiceRecording: Audio duration: \(audioDuration)")
+        
+        // Reset send button scale
+        resetSendButtonScale()
+        
+        // Hide bottom sheet
+        showVoiceRecordingBottomSheet = false
+        
+        // Upload audio file
+        uploadGroupAudioToFirebase(fileURL: fileURL, duration: audioDuration, fileName: fileURL.lastPathComponent)
+        
+        // Reset audio session
+        try? AVAudioSession.sharedInstance().setActive(false)
+    }
+    
+    // MARK: - Get Audio Duration
+    private func getAudioDuration(fileURL: URL) -> String {
+        do {
+            let audioPlayer = try AVAudioPlayer(contentsOf: fileURL)
+            let durationSeconds = Int(audioPlayer.duration)
+            let minutes = durationSeconds / 60
+            let seconds = durationSeconds % 60
+            return String(format: "%02d:%02d", minutes, seconds)
+        } catch {
+            print("VoiceRecording: Error getting audio duration: \(error.localizedDescription)")
+            return "00:00"
+        }
+    }
+    
+    // MARK: - Upload Group Audio to Firebase
+    private func uploadGroupAudioToFirebase(fileURL: URL, duration: String, fileName: String) {
+        print("VoiceRecording: === UPLOAD GROUP AUDIO TO FIREBASE ===")
+        print("VoiceRecording: File: \(fileURL.path), Duration: \(duration), FileName: \(fileName)")
+        
+        guard let audioData = try? Data(contentsOf: fileURL) else {
+            print("VoiceRecording: Failed to read audio file data")
+            Constant.showToast(message: "Failed to read audio file")
+            return
+        }
+        
+        let groupId = group.groupId
+        let senderId = Constant.SenderIdMy
+        let userName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
+        let micPhoto = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
+        let createdBy = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "hh:mm a"
+        let currentDateTimeString = timeFormatter.string(from: Date())
+        
+        let currentDateFormatter = DateFormatter()
+        currentDateFormatter.dateFormat = "yyyy-MM-dd"
+        let currentDateString = currentDateFormatter.string(from: Date())
+        
+        let timestamp = Date().timeIntervalSince1970
+        let modelId = UUID().uuidString
+        
+        // Upload to Firebase Storage using GROUPCHAT path
+        let storagePath = "\(Constant.GROUPCHAT)/\(groupId)/\(modelId).m4a"
+        let ref = Storage.storage().reference().child(storagePath)
+        let metadata = StorageMetadata()
+        metadata.contentType = "audio/m4a"
+        
+        ref.putData(audioData, metadata: metadata) { metadata, error in
+            if let error = error {
+                print("VoiceRecording: Upload error: \(error.localizedDescription)")
+                Constant.showToast(message: "Failed to upload audio")
+                return
+            }
+            
+            // Get download URL
+            ref.downloadURL { url, error in
+                if let error = error {
+                    print("VoiceRecording: Download URL error: \(error.localizedDescription)")
+                    Constant.showToast(message: "Failed to get download URL")
+                    return
+                }
+                
+                guard let downloadURL = url else {
+                    print("VoiceRecording: Download URL is nil")
+                    Constant.showToast(message: "Failed to get download URL")
+                    return
+                }
+                
+                print("VoiceRecording: Upload successful, URL: \(downloadURL.absoluteString)")
+                
+                // Create GroupChatMessage (matching Android group_messageModel with voiceAudio dataType)
+                let newMessage = GroupChatMessage(
+                    id: modelId,
+                    uid: senderId,
+                    message: "",
+                    time: currentDateTimeString,
+                    document: downloadURL.absoluteString,
+                    dataType: Constant.voiceAudio,
+                    fileExtension: "m4a", // iOS AAC format
+                    name: nil,
+                    phone: nil,
+                    miceTiming: duration, // Audio duration in format "MM:SS"
+                    micPhoto: micPhoto,
+                    createdBy: createdBy,
+                    userName: userName,
+                    receiverUid: groupId, // Use groupId as receiverUid for groups
+                    docSize: nil,
+                    fileName: fileName,
+                    thumbnail: nil,
+                    fileNameThumbnail: nil,
+                    caption: nil,
+                    currentDate: currentDateString,
+                    imageWidth: nil,
+                    imageHeight: nil,
+                    aspectRatio: nil,
+                    active: 0, // 0 = sending, 1 = sent
+                    selectionCount: "1",
+                    selectionBunch: nil
+                )
+                
+                // Convert GroupChatMessage to ChatMessage for database storage
+                let chatMessageForDB = ChatMessage(
+                    id: modelId,
+                    uid: senderId,
+                    message: "",
+                    time: currentDateTimeString,
+                    document: downloadURL.absoluteString,
+                    dataType: Constant.voiceAudio,
+                    fileExtension: "m4a",
+                    name: nil,
+                    phone: nil,
+                    micPhoto: micPhoto,
+                    miceTiming: duration,
+                    userName: userName,
+                    receiverId: groupId,
+                    replytextData: nil,
+                    replyKey: nil,
+                    replyType: nil,
+                    replyOldData: nil,
+                    replyCrtPostion: nil,
+                    forwaredKey: nil,
+                    groupName: group.name, // Set group name
+                    docSize: nil,
+                    fileName: fileName,
+                    thumbnail: nil,
+                    fileNameThumbnail: nil,
+                    caption: nil,
+                    notification: 1,
+                    currentDate: currentDateString,
+                    emojiModel: [EmojiModel(name: "", emoji: "")],
+                    emojiCount: nil,
+                    timestamp: timestamp,
+                    imageWidth: nil,
+                    imageHeight: nil,
+                    aspectRatio: nil,
+                    selectionCount: "1",
+                    selectionBunch: nil,
+                    receiverLoader: 0
+                )
+                
+                // Store message in SQLite pending table before upload (matching Android insertPendingGroupMessage)
+                DatabaseHelper.shared.insertPendingMessage(chatMessageForDB)
+                print("✅ [PendingMessages] Group voice audio message stored in pending table: \(modelId)")
+                
+                // Upload via MessageUploadService using GROUP API
+                let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
+                
+                MessageUploadService.shared.uploadGroupMessage(
+                    model: newMessage, // GroupChatMessage
+                    filePath: fileURL.path,
+                    userFTokenKey: userFTokenKey,
+                    deviceType: "2"
+                ) { success, errorMessage in
+                    if success {
+                        print("✅ [VOICE_RECORDING] Uploaded group audio for modelId=\(modelId)")
+                        // Check if message exists in Firebase and stop progress bar (matching Android)
+                        self.checkMessageInFirebaseAndStopProgress(messageId: modelId, groupId: groupId)
+                    } else {
+                        print("❌ [VOICE_RECORDING] Upload error: \(errorMessage ?? "Unknown error")")
+                        Constant.showToast(message: "Failed to send audio. Please try again.")
+                        // Keep receiverLoader as 0 to show progress bar (message still pending)
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Reset Send Button Scale
+    private func resetSendButtonScale() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            sendButtonScale = 1.0
+        }
     }
     
     // MARK: - Hide Emoji and Gallery Pickers (matching Android)
