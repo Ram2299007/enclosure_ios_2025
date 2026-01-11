@@ -609,6 +609,12 @@ struct ChattingScreen: View {
                     // Add message to list immediately with progress bar (matching Android messageList.add)
                     DispatchQueue.main.async {
                         if !self.messages.contains(where: { $0.id == message.id }) {
+                            print("🔍 [ProgressBar] 📤 ADDING DOCUMENT MESSAGE TO UI")
+                            print("🔍 [ProgressBar]   - Message ID: \(message.id.prefix(8))...")
+                            print("🔍 [ProgressBar]   - receiverLoader: \(message.receiverLoader)")
+                            if message.receiverLoader == 0 {
+                                print("🔍 [ProgressBar]   ⚠️ PROGRESS BAR WILL BE SHOWN (receiverLoader == 0)")
+                            }
                             self.messages.append(message)
                             self.isLastItemVisible = true
                             self.showScrollDownButton = false
@@ -676,6 +682,12 @@ struct ChattingScreen: View {
                     // Add message to list immediately with progress bar (matching Android messageList.add)
                     DispatchQueue.main.async {
                         if !self.messages.contains(where: { $0.id == message.id }) {
+                            print("🔍 [ProgressBar] 📤 ADDING CONTACT MESSAGE TO UI")
+                            print("🔍 [ProgressBar]   - Message ID: \(message.id.prefix(8))...")
+                            print("🔍 [ProgressBar]   - receiverLoader: \(message.receiverLoader)")
+                            if message.receiverLoader == 0 {
+                                print("🔍 [ProgressBar]   ⚠️ PROGRESS BAR WILL BE SHOWN (receiverLoader == 0)")
+                            }
                             self.messages.append(message)
                             self.isLastItemVisible = true
                             self.showScrollDownButton = false
@@ -2940,7 +2952,9 @@ struct ChattingScreen: View {
                                 if oldModel.receiverLoader != updatedModel.receiverLoader {
                                     print("📱 [onChildChanged] receiverLoader changed from \(oldModel.receiverLoader) to \(updatedModel.receiverLoader) for message: \(changedKey)")
                                     if updatedModel.receiverLoader == 1 {
-                                        print("✅ [ProgressBar] Progress bar hidden - message confirmed in Firebase")
+                                        print("✅ [ProgressBar] ✅ Progress bar HIDDEN - message confirmed in Firebase (receiverLoader: 0 → 1)")
+                                    } else if updatedModel.receiverLoader == 0 {
+                                        print("🔍 [ProgressBar] ⚠️ Progress bar SHOWN - message is pending (receiverLoader: \(oldModel.receiverLoader) → 0)")
                                     }
                                 }
                                 
@@ -3117,6 +3131,33 @@ struct ChattingScreen: View {
             print("✅ [PendingMessages] Removed pending message from SQLite (confirmed in Firebase): \(model.id)")
         }
         
+        // 🔍 FIX: If message is from current user and already in Firebase but has receiverLoader: 0,
+        // update it to 1 to stop progress bar (message is already confirmed in Firebase)
+        let isSentByMe = model.uid == Constant.SenderIdMy
+        if isSentByMe && model.receiverLoader == 0 {
+            print("🔍 [ProgressBar] ⚠️ FIXING: Message is in Firebase but has receiverLoader: 0")
+            print("🔍 [ProgressBar]   - Message ID: \(model.id.prefix(8))...")
+            print("🔍 [ProgressBar]   - Message is already in Firebase (confirmed)")
+            print("🔍 [ProgressBar]   - Updating receiverLoader from 0 → 1 to stop progress bar")
+            
+            // Update receiverLoader to 1 in Firebase to stop progress bar
+            let senderId = Constant.SenderIdMy
+            let receiverRoom = receiverUid + senderId
+            let database = Database.database().reference()
+            let receiverLoaderRef = database.child(Constant.CHAT).child(receiverRoom).child(model.id).child("receiverLoader")
+            receiverLoaderRef.setValue(1) { error, _ in
+                if let error = error {
+                    print("❌ [ProgressBar] Error updating receiverLoader in handleChildAdded: \(error.localizedDescription)")
+                } else {
+                    print("✅ [ProgressBar] ✅ Fixed receiverLoader: 0 → 1 for message: \(model.id.prefix(8))... (progress bar will stop)")
+                }
+            }
+            
+            // Update local model immediately to stop progress bar in UI
+            model.receiverLoader = 1
+            print("🔍 [ProgressBar] ✅ Updated local model receiverLoader to 1 (progress bar will stop immediately)")
+        }
+        
         // Check if message already exists in current list (matching Android duplicate check)
         // Android: checks if message exists in messageList, if not, adds it
         // We check here to prevent processing, but still allow updates in the main block below
@@ -3262,6 +3303,12 @@ struct ChattingScreen: View {
             let aspectRatio = dict["aspectRatio"] as? String
             let selectionCount = dict["selectionCount"] as? String
             let receiverLoader = dict["receiverLoader"] as? Int ?? 0
+            // 🔍 PROGRESS BAR LOG: Log receiverLoader value from Firebase
+            if receiverLoader == 0 {
+                print("🔍 [ProgressBar] ⚠️ Parsed receiverLoader: \(receiverLoader) from Firebase for message: \(messageId.prefix(8))... (WILL SHOW PROGRESS BAR)")
+            } else {
+                print("🔍 [ProgressBar] ✅ Parsed receiverLoader: \(receiverLoader) from Firebase for message: \(messageId.prefix(8))... (WILL HIDE PROGRESS BAR)")
+            }
             
             // Parse emojiModel array (matching Android ArrayList<emojiModel>)
             var emojiModels: [EmojiModel] = []
@@ -4224,6 +4271,12 @@ struct ChattingScreen: View {
                     // Check if message already exists in the list
                     if !self.messages.contains(where: { $0.id == pendingMessage.id }) {
                         print("📱 [loadPendingMessages] Adding pending message to UI: \(pendingMessage.id), dataType: \(pendingMessage.dataType), receiverLoader: \(pendingMessage.receiverLoader)")
+                        if pendingMessage.receiverLoader == 0 {
+                            print("🔍 [ProgressBar] ⚠️ LOADED PENDING MESSAGE - PROGRESS BAR WILL BE SHOWN")
+                            print("🔍 [ProgressBar]   - Message ID: \(pendingMessage.id.prefix(8))...")
+                            print("🔍 [ProgressBar]   - dataType: \(pendingMessage.dataType)")
+                            print("🔍 [ProgressBar]   - receiverLoader: \(pendingMessage.receiverLoader)")
+                        }
                         self.messages.append(pendingMessage)
                         addedCount += 1
                     } else {
@@ -4257,11 +4310,22 @@ struct ChattingScreen: View {
         let messageRef = database.child(Constant.CHAT).child(receiverRoom).child(messageId)
         
         print("🔍 [ProgressBar] Checking if message exists in Firebase: \(messageId)")
+        print("🔍 [ProgressBar]   - Path: \(messageRef)")
+        print("🔍 [ProgressBar]   - receiverUid: \(receiverUid)")
         
         // Check if message exists in Firebase (matching Android addListenerForSingleValueEvent)
         messageRef.observeSingleEvent(of: .value) { snapshot in
             if snapshot.exists() {
                 print("✅ [ProgressBar] Message confirmed in Firebase, stopping animation and updating receiverLoader")
+                print("🔍 [ProgressBar] ✅ Message found in Firebase - will stop progress bar")
+                
+                // Check current receiverLoader value in Firebase
+                if let messageData = snapshot.value as? [String: Any],
+                   let currentReceiverLoader = messageData["receiverLoader"] as? Int {
+                    print("🔍 [ProgressBar]   - Current receiverLoader in Firebase: \(currentReceiverLoader)")
+                } else {
+                    print("🔍 [ProgressBar]   - receiverLoader not found in Firebase (will be set to 1)")
+                }
                 
                 // Remove from pending table (matching Android removePendingMessage)
                 let removed = DatabaseHelper.shared.removePendingMessage(modelId: messageId, receiverUid: receiverUid)
@@ -4276,6 +4340,9 @@ struct ChattingScreen: View {
                 }
             } else {
                 print("⚠️ [ProgressBar] Message not found in Firebase yet, keeping animation")
+                print("🔍 [ProgressBar] ⚠️ PROGRESS BAR WILL CONTINUE RUNNING (message not in Firebase)")
+                print("🔍 [ProgressBar]   - Message ID: \(messageId.prefix(8))...")
+                print("🔍 [ProgressBar]   - receiverLoader will remain: 0")
                 // Keep receiverLoader as 0, animation continues
             }
         }
@@ -4308,9 +4375,18 @@ struct ChattingScreen: View {
                 DispatchQueue.main.async {
                     if let index = self.messages.firstIndex(where: { $0.id == messageId }) {
                         var updatedMessage = self.messages[index]
+                        let oldReceiverLoader = updatedMessage.receiverLoader
                         updatedMessage.receiverLoader = receiverLoader
                         self.messages[index] = updatedMessage
                         print("✅ [updateReceiverLoader] Local message updated - progress bar \(receiverLoader == 1 ? "hidden" : "shown")")
+                        print("🔍 [ProgressBar] 🔄 UPDATED receiverLoader: \(oldReceiverLoader) → \(receiverLoader) for message: \(messageId.prefix(8))...")
+                        if receiverLoader == 1 {
+                            print("🔍 [ProgressBar] ✅ PROGRESS BAR STOPPED (receiverLoader set to 1)")
+                        } else {
+                            print("🔍 [ProgressBar] ⚠️ PROGRESS BAR RUNNING (receiverLoader set to \(receiverLoader))")
+                        }
+                    } else {
+                        print("🔍 [ProgressBar] ⚠️ Message not found in local messages array: \(messageId.prefix(8))...")
                     }
                 }
             }
@@ -4970,6 +5046,15 @@ struct ChattingScreen: View {
                 DispatchQueue.main.async {
                     // Add message to list immediately with receiverLoader: 0 (pending/uploading)
                     // This shows the animated progress bar (matching Android messageList.add + itemAdd)
+                    print("🔍 [ProgressBar] 📤 ADDING MESSAGE TO UI with receiverLoader: \(newMessage.receiverLoader)")
+                    print("🔍 [ProgressBar]   - Message ID: \(newMessage.id.prefix(8))...")
+                    print("🔍 [ProgressBar]   - dataType: \(newMessage.dataType)")
+                    print("🔍 [ProgressBar]   - isSentByMe: \(newMessage.uid == Constant.SenderIdMy)")
+                    if newMessage.receiverLoader == 0 {
+                        print("🔍 [ProgressBar]   ⚠️ PROGRESS BAR WILL BE SHOWN (receiverLoader == 0)")
+                    } else {
+                        print("🔍 [ProgressBar]   ✅ PROGRESS BAR WILL BE HIDDEN (receiverLoader == \(newMessage.receiverLoader))")
+                    }
                     self.messages.append(newMessage)
                     
                     // Set last item visible to show progress (matching Android setLastItemVisible(true))
@@ -5709,6 +5794,12 @@ struct ChattingScreen: View {
         // Add to UI immediately (matching Android: messageList.add, itemAdd, setLastItemVisible, notifyItemInserted, scrollToPosition)
         DispatchQueue.main.async {
             if !self.messages.contains(where: { $0.id == modelId }) {
+                print("🔍 [ProgressBar] 📤 ADDING IMAGE MESSAGE TO UI")
+                print("🔍 [ProgressBar]   - Message ID: \(modelId.prefix(8))...")
+                print("🔍 [ProgressBar]   - receiverLoader: \(newMessage.receiverLoader)")
+                if newMessage.receiverLoader == 0 {
+                    print("🔍 [ProgressBar]   ⚠️ PROGRESS BAR WILL BE SHOWN (receiverLoader == 0)")
+                }
                 self.messages.append(newMessage)
                 self.isLastItemVisible = true // Show progress for pending message (matching Android setLastItemVisible(true))
                 self.showScrollDownButton = false // Hide down button (matching Android downCardview.setVisibility(View.GONE))
@@ -6357,6 +6448,12 @@ struct ChattingScreen: View {
                 
                 // Add to UI immediately with progress bar (matching Android messageList.add + itemAdd)
                 DispatchQueue.main.async {
+                    print("🔍 [ProgressBar] 📤 ADDING VOICE MESSAGE TO UI")
+                    print("🔍 [ProgressBar]   - Message ID: \(modelId.prefix(8))...")
+                    print("🔍 [ProgressBar]   - receiverLoader: \(newMessage.receiverLoader)")
+                    if newMessage.receiverLoader == 0 {
+                        print("🔍 [ProgressBar]   ⚠️ PROGRESS BAR WILL BE SHOWN (receiverLoader == 0)")
+                    }
                     self.messages.append(newMessage)
                     self.isLastItemVisible = true
                     self.showScrollDownButton = false
@@ -13607,6 +13704,20 @@ struct MessageBubbleView: View {
         
         // Check if this is a pending message (receiverLoader == 0) for sender messages
         let isPendingMessage = isSentByMe && message.receiverLoader == 0
+        
+        // 🔍 PROGRESS BAR LOG: Log why progress bar is shown/hidden
+        if isSentByMe {
+            print("🔍 [ProgressBar] Message ID: \(message.id.prefix(8))...")
+            print("🔍 [ProgressBar]   - isSentByMe: \(isSentByMe)")
+            print("🔍 [ProgressBar]   - receiverLoader: \(message.receiverLoader)")
+            print("🔍 [ProgressBar]   - isPendingMessage: \(isPendingMessage)")
+            print("🔍 [ProgressBar]   - dataType: \(message.dataType)")
+            if isPendingMessage {
+                print("🔍 [ProgressBar] ✅ SHOWING PROGRESS BAR (receiverLoader == 0, message is pending)")
+            } else {
+                print("🔍 [ProgressBar] ❌ HIDING PROGRESS BAR (receiverLoader == \(message.receiverLoader), message is sent)")
+            }
+        }
         
         if isPendingMessage {
             // Show animated horizontal progress bar for pending messages (matching Android viewnew LinearProgressIndicator)

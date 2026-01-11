@@ -622,10 +622,10 @@ class MessageUploadService {
         getAccessToken { [weak self] accessToken in
             guard let self = self else { return }
             
-            // Use access token if available, otherwise use placeholder
+            // Use access token if available, otherwise use empty string
             // Note: For production, implement proper OAuth2 JWT signing with RSA private key
             // You may need to add SwiftJWT or similar library, or use a backend endpoint
-            let finalAccessToken = accessToken ?? "NA"
+            let finalAccessToken = accessToken ?? ""
             
             if accessToken == nil || accessToken!.isEmpty {
                 print("⚠️ Access token not available for modelId: \(model.id) - using placeholder")
@@ -1234,7 +1234,7 @@ class MessageUploadService {
     // MARK: - Helper: Safe String (matching Android safeString)
     private func safeString(_ value: String?) -> String {
         guard let value = value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return "NA"
+            return ""
         }
         return value
     }
