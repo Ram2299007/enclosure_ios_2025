@@ -109,8 +109,18 @@ struct GroupChattingScreen: View {
     // Valuable card state
     @State private var showValuableCard: Bool = false
     
-    // Messages state
-    @State private var messages: [String] = [] // Placeholder - will be replaced with actual message model
+    // Messages state (matching Android groupMessageList)
+    @State private var messages: [GroupChatMessage] = []
+    @State private var isLoading: Bool = false
+    @State private var initialLoadDone: Bool = false
+    @State private var lastKey: String? = nil // For pagination (matching Android lastKey)
+    @State private var uniqueDates: Set<String> = [] // Track unique dates for date headers
+    @State private var initiallyLoadedMessageIds: Set<String> = [] // Prevent duplicates from listener
+    @State private var firebaseListenerHandle: DatabaseHandle? = nil // Firebase listener handle
+    @State private var hasMoreMessages: Bool = true // Track if there are more messages to load
+    @State private var selectedMessageIds: Set<String> = [] // Track selected messages for multi-select
+    @State private var messageReceiverLoaders: [String: Int] = [:] // Store receiverLoader for each message (from Firebase)
+    private let PAGE_SIZE: Int = 10 // Matching Android PAGE_SIZE
     
     var body: some View {
         ZStack {
@@ -140,16 +150,76 @@ struct GroupChattingScreen: View {
                 
                 // Message list (positioned between header and input container)
                 ZStack(alignment: .top) {
+                    ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 0) {
-                            ForEach(messages, id: \.self) { message in
-                                Text(message)
-                                    .padding()
+                                // Load more indicator at top (matching Android)
+                                if hasMoreMessages && !messages.isEmpty {
+                                    ProgressView()
+                                        .frame(height: 40)
+                                        .onAppear {
+                                            loadMore()
+                                        }
+                                }
+                                
+                                // Messages list (matching Android RecyclerView)
+                                ForEach(Array(messages.enumerated()), id: \.element.id) { index, groupMessage in
+                                    // Convert GroupChatMessage to ChatMessage for MessageBubbleView
+                                    let chatMessage = convertGroupMessageToChatMessage(groupMessage)
+                                    
+                                    // Only display Constant.Text datatype for now (as requested)
+                                    if chatMessage.dataType == Constant.Text {
+                                        MessageBubbleView(
+                                            message: chatMessage,
+                                            onHalfSwipe: { swipedMessage in
+                                                // Handle multi-select mode first (matching Android)
+                                                if showMultiSelectHeader {
+                                                    toggleMessageSelection(messageId: swipedMessage.id)
+                                                    return
+                                                }
+                                                handleHalfSwipeReply(swipedMessage)
+                                            },
+                                            onReplyTap: { message in
+                                                // Handle multi-select mode first (matching Android)
+                                                if showMultiSelectHeader {
+                                                    toggleMessageSelection(messageId: message.id)
+                                                    return
+                                                }
+                                                handleReplyTap(message: message)
+                                            },
+                                            onLongPress: { message, position in
+                                                // Handle multi-select mode first (matching Android)
+                                                if showMultiSelectHeader {
+                                                    toggleMessageSelection(messageId: message.id)
+                                                    return
+                                                }
+                                                handleLongPress(message: message, position: position)
+                                            },
+                                            isHighlighted: false,
+                                            isMultiSelectMode: showMultiSelectHeader,
+                                            isSelected: selectedMessageIds.contains(chatMessage.id),
+                                            onSelectionToggle: { messageId in
+                                                toggleMessageSelection(messageId: messageId)
+                                            }
+                                        )
+                                        .id(chatMessage.id)
+                                    }
                             }
                         }
                     }
                     .contentShape(Rectangle()) // Ensure entire area is tappable
                     .allowsHitTesting(true) // Ensure ScrollView can receive touches
+                        .onChange(of: messages.count) { _ in
+                            // Scroll to bottom when new messages are added (matching Android)
+                            if !messages.isEmpty, let lastMessageId = messages.last?.id {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    withAnimation {
+                                        proxy.scrollTo(lastMessageId, anchor: .bottom)
+                                    }
+                                }
+                            }
+                        }
+                    }
                     
                     // Multi-select small counter text overlay
                     if showMultiSelectHeader && selectedCount > 0 {
@@ -400,7 +470,18 @@ struct GroupChattingScreen: View {
             }
         }
         .onAppear {
-            // Initialize any required state
+            // Load pending messages from SQLite first (matching Android loadPendingMessages on onResume)
+            loadPendingGroupMessages()
+            
+            // Fetch messages on appear (matching Android onCreate)
+            let senderRoom = getSenderRoom()
+            fetchMessages(senderRoom: senderRoom) {
+                print("✅ Group messages fetched successfully")
+            }
+        }
+        .onDisappear {
+            // Remove Firebase listeners when leaving screen
+            removeFirebaseListeners()
         }
     }
     
@@ -2101,8 +2182,7 @@ struct GroupChattingScreen: View {
                     selectionBunch: nil
                 )
                 
-                // Store message in SQLite pending table before upload (matching Android insertPendingGroupMessage - line 1334)
-                // Note: DatabaseHelper uses ChatMessage, so we'll need to convert or update DatabaseHelper
+                    // Note: DatabaseHelper uses ChatMessage, so we'll need to convert or update DatabaseHelper
                 // For now, we'll create a ChatMessage for database storage
                 let chatMessageForDB = ChatMessage(
                     id: modelId,
@@ -2142,8 +2222,45 @@ struct GroupChattingScreen: View {
                     selectionBunch: nil,
                     receiverLoader: 0
                 )
-                DatabaseHelper.shared.insertPendingMessage(chatMessageForDB)
-                print("✅ [PendingMessages] Group text message stored in pending table: \(modelId)")
+                // Store message in SQLite group pending table before upload (matching Android insertPendingGroupMessage)
+                DatabaseHelper.shared.insertPendingGroupMessage(chatMessageForDB, groupId: groupId)
+                print("✅ [PendingMessages] Group text message stored in group pending table: \(modelId)")
+                
+                // Add message to UI immediately with receiverLoader: 0 (pending/uploading)
+                // This shows the animated progress bar (matching Android messageList.add + itemAdd)
+                DispatchQueue.main.async {
+                    // Convert ChatMessage to GroupChatMessage for UI
+                    let groupMessage = GroupChatMessage(
+                        id: modelId,
+                        uid: senderId,
+                        message: message,
+                        time: currentDateTimeString,
+                        document: "",
+                        dataType: Constant.Text,
+                        fileExtension: nil,
+                        name: nil,
+                        phone: nil,
+                        miceTiming: nil,
+                        micPhoto: micPhoto,
+                        createdBy: createdBy,
+                        userName: userName,
+                        receiverUid: groupId,
+                        docSize: nil,
+                        fileName: nil,
+                        thumbnail: nil,
+                        fileNameThumbnail: nil,
+                        caption: nil,
+                        currentDate: currentDateString,
+                        imageWidth: nil,
+                        imageHeight: nil,
+                        aspectRatio: nil,
+                        active: 0, // 0 = sending, 1 = sent
+                        selectionCount: "1",
+                        selectionBunch: nil
+                    )
+                    self.messages.append(groupMessage)
+                    self.messageReceiverLoaders[modelId] = 0 // Show progress bar
+                }
                 
                 // Upload message using MessageUploadService (matching Android UploadHelper.uploadContent - line 1349)
                 DispatchQueue.main.async {
@@ -2208,13 +2325,32 @@ struct GroupChattingScreen: View {
         let database = Database.database().reference()
         let messageRef = database.child(Constant.GROUPCHAT).child(chatKey).child(messageId)
         
-        // Observe once to check if message exists
+        // Observe once to check if message exists (matching Android addListenerForSingleValueEvent)
         messageRef.observeSingleEvent(of: .value, with: { snapshot in
             if snapshot.exists() {
-                print("✅ Message exists in Firebase, upload successful: \(messageId)")
-                // Message successfully uploaded, receiverLoader will be updated by Firebase listener
+                print("✅ [ProgressBar] Message exists in Firebase, upload successful: \(messageId)")
+                
+                // Stop progress bar immediately when message is confirmed in Firebase (no delay)
+                // Update receiverLoader to 1 to stop progress bar (matching Android setIndeterminate(false))
+                let receiverLoaderRef = database.child(Constant.GROUPCHAT).child(chatKey).child(messageId).child("receiverLoader")
+                receiverLoaderRef.setValue(1) { error, _ in
+                    if let error = error {
+                        print("❌ [ProgressBar] Error updating receiverLoader: \(error.localizedDescription)")
+                    } else {
+                        print("✅ [ProgressBar] receiverLoader updated to 1 for message: \(messageId)")
+                        // Update local state immediately to stop progress bar
+                        DispatchQueue.main.async {
+                            self.messageReceiverLoaders[messageId] = 1
+                        }
+                        
+                        // Also update receiverLoader in ChattingScreen if message exists there
+                        // This ensures progress bar stops in ChattingScreen when group message is confirmed
+                        self.updateReceiverLoaderInChattingScreenIfNeeded(messageId: messageId, receiverLoader: 1)
+                    }
+                }
             } else {
-                print("⚠️ Message not found in Firebase yet: \(messageId)")
+                print("⚠️ [ProgressBar] Message not found in Firebase yet: \(messageId)")
+                // Keep receiverLoader as 0, animation continues
             }
         })
     }
@@ -2608,6 +2744,568 @@ struct GroupChattingScreen: View {
         if showGalleryPicker {
             withAnimation {
                 showGalleryPicker = false
+            }
+        }
+    }
+    
+    // MARK: - Helper function to get sender room (matching Android)
+    private func getSenderRoom() -> String {
+        let senderId = Constant.SenderIdMy
+        let groupId = group.groupId
+        // Create chat key by combining senderId and groupId, replacing special characters
+        let chatKey = (senderId + groupId).replacingOccurrences(of: ".", with: "_")
+            .replacingOccurrences(of: "#", with: "_")
+            .replacingOccurrences(of: "$", with: "_")
+            .replacingOccurrences(of: "[", with: "_")
+            .replacingOccurrences(of: "]", with: "_")
+        return chatKey
+    }
+    
+    // MARK: - Convert GroupChatMessage to ChatMessage (for MessageBubbleView)
+    private func convertGroupMessageToChatMessage(_ groupMessage: GroupChatMessage) -> ChatMessage {
+        return ChatMessage(
+            id: groupMessage.id,
+            uid: groupMessage.uid,
+            message: groupMessage.message,
+            time: groupMessage.time,
+            document: groupMessage.document,
+            dataType: groupMessage.dataType,
+            fileExtension: groupMessage.fileExtension,
+            name: groupMessage.name,
+            phone: groupMessage.phone,
+            micPhoto: groupMessage.micPhoto,
+            miceTiming: groupMessage.miceTiming,
+            userName: groupMessage.userName,
+            receiverId: groupMessage.receiverUid,
+            replytextData: nil, // Group messages don't have reply fields in GroupChatMessage
+            replyKey: nil,
+            replyType: nil,
+            replyOldData: nil,
+            replyCrtPostion: nil,
+            forwaredKey: nil,
+            groupName: group.name,
+            docSize: groupMessage.docSize,
+            fileName: groupMessage.fileName,
+            thumbnail: groupMessage.thumbnail,
+            fileNameThumbnail: groupMessage.fileNameThumbnail,
+            caption: groupMessage.caption,
+            notification: 1,
+            currentDate: groupMessage.currentDate,
+            emojiModel: [EmojiModel(name: "", emoji: "")],
+            emojiCount: nil,
+            timestamp: Date().timeIntervalSince1970, // Will be updated from Firebase if available
+            imageWidth: groupMessage.imageWidth,
+            imageHeight: groupMessage.imageHeight,
+            aspectRatio: groupMessage.aspectRatio,
+            selectionCount: groupMessage.selectionCount,
+            selectionBunch: groupMessage.selectionBunch,
+            receiverLoader: {
+                // Use receiverLoader from Firebase if available, otherwise derive from active
+                // receiverLoader: 0 = sending (show progress), 1 = sent (hide progress)
+                // This matches Android adapter logic: model.getReceiverLoader() == 0 shows progress
+                if let receiverLoader = messageReceiverLoaders[groupMessage.id] {
+                    return receiverLoader
+                }
+                // Fallback: use active field (active: 0 = sending, 1 = sent)
+                return groupMessage.active == 1 ? 1 : 0
+            }()
+        )
+    }
+    
+    // MARK: - Fetch Messages (matching Android fetchMessages)
+    private func fetchMessages(senderRoom: String, listener: (() -> Void)? = nil) {
+        // Check if already loading (matching Android isLoading check)
+        if isLoading {
+            print("📱 [fetchMessages] Already loading, skipping fetch.")
+            listener?()
+            return
+        }
+        
+        // If we already have messages (cached data), don't show loader (matching Android)
+        if !messages.isEmpty {
+            print("📱 [fetchMessages] Group messages already available, skipping network fetch")
+            listener?()
+            return
+        }
+        
+        isLoading = true
+        print("📱 [fetchMessages] Fetching messages for room: \(senderRoom)")
+        
+        // Show progress bar if we have no messages (matching Android)
+        if messages.isEmpty {
+            showLoader = true
+        }
+        
+        let database = Database.database().reference()
+        let chatPath = "\(Constant.GROUPCHAT)/\(senderRoom)"
+        
+        // Query last 10 messages ordered by key (matching Android orderByKey().limitToLast(10))
+        let query = database.child(chatPath)
+            .queryOrderedByKey()
+            .queryLimited(toLast: 10)
+        
+        // Use ChildEventListener for real-time updates (matching Android addChildEventListener)
+        let handle = database.child(chatPath)
+            .queryOrderedByKey()
+            .observe(.childAdded) { snapshot in
+                self.handleChildAdded(snapshot: snapshot, senderRoom: senderRoom)
+            }
+        
+        // Also observe child changed events (matching Android onChildChanged)
+        database.child(chatPath).observe(.childChanged) { snapshot in
+            self.handleChildChanged(snapshot: snapshot)
+        }
+        
+        // Store listener handles for cleanup
+        firebaseListenerHandle = handle
+        
+        // Also observe once for initial load (matching Android)
+        query.observeSingleEvent(of: .value) { snapshot in
+            if snapshot.childrenCount == 0 {
+                // No messages found
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    self.showLoader = false
+                    self.initialLoadDone = true
+                    listener?()
+                }
+            } else {
+                // Set lastKey to the oldest (first) key for pagination (matching Android)
+                if let children = snapshot.children.allObjects as? [DataSnapshot], !children.isEmpty {
+                    // Find the smallest (oldest) key
+                    let keys = children.map { $0.key }
+                    if let oldestKey = keys.min() {
+                        DispatchQueue.main.async {
+                            self.lastKey = oldestKey
+                            print("📱 [fetchMessages] Set lastKey to: \(oldestKey)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Handle Child Added (matching Android onChildAdded)
+    private func handleChildAdded(snapshot: DataSnapshot, senderRoom: String) {
+        guard let messageDict = snapshot.value as? [String: Any] else {
+            print("❌ [handleChildAdded] Invalid message data")
+            return
+        }
+        
+        do {
+            // Parse GroupChatMessage from Firebase snapshot
+            let messageId = snapshot.key
+            var groupMessage = try parseGroupMessageFromDict(messageDict, messageId: messageId)
+            
+            // Remove message from group pending table if it exists in Firebase (matching Android removePendingGroupMessage)
+            DatabaseHelper.shared.removePendingGroupMessage(modelId: messageId, groupId: group.groupId)
+            
+            // Check if message already exists
+            if let existingIndex = messages.firstIndex(where: { $0.id == messageId }) {
+                // Update existing message (matching Android)
+                DispatchQueue.main.async {
+                    self.messages[existingIndex] = groupMessage
+                    print("📱 [handleChildAdded] Updated existing message with ID: \(messageId)")
+                }
+            } else {
+                // Add new message (matching Android)
+                // Format date with unique date logic (matching Android uniqueDates.add)
+                let uniqDate = groupMessage.currentDate ?? ""
+                let formattedDate = uniqueDates.insert(uniqDate).inserted ? uniqDate : ":\(uniqDate)"
+                groupMessage.currentDate = formattedDate
+                
+                DispatchQueue.main.async {
+                    self.messages.append(groupMessage)
+                    self.showLoader = false
+                    self.isLoading = false
+                    self.initialLoadDone = true
+                    
+                    // Update lastKey if this is the oldest message (for pagination)
+                    if self.lastKey == nil || messageId < self.lastKey! {
+                        self.lastKey = messageId
+                    }
+                    
+                    // Scroll to bottom (matching Android scrollToPosition)
+                    // This will be handled by ScrollViewReader onChange
+                    print("📱 [handleChildAdded] Added new message with ID: \(messageId)")
+                }
+            }
+        } catch {
+            print("❌ [handleChildAdded] Error parsing message: \(error.localizedDescription)")
+        }
+    }
+    
+    // MARK: - Handle Child Changed (matching Android onChildChanged)
+    private func handleChildChanged(snapshot: DataSnapshot) {
+        guard let messageDict = snapshot.value as? [String: Any] else {
+            return
+        }
+        
+        let messageId = snapshot.key
+        
+        // Update receiverLoader if it changed (matching Android adapter update)
+        // This ensures progress bar stops when receiverLoader is updated in Firebase
+        if let receiverLoader = messageDict["receiverLoader"] as? Int {
+            DispatchQueue.main.async {
+                self.messageReceiverLoaders[messageId] = receiverLoader
+                print("📱 [handleChildChanged] Updated receiverLoader to \(receiverLoader) for message: \(messageId)")
+                
+                // Also check if this message exists in ChattingScreen and update it there
+                // This ensures progress bar stops in ChattingScreen if message is shown there
+                self.updateReceiverLoaderInChattingScreenIfNeeded(messageId: messageId, receiverLoader: receiverLoader)
+            }
+        }
+        
+        do {
+            let updatedMessage = try parseGroupMessageFromDict(messageDict, messageId: messageId)
+            
+            // Find and update message (matching Android)
+            if let index = messages.firstIndex(where: { $0.id == messageId }) {
+                DispatchQueue.main.async {
+                    self.messages[index] = updatedMessage
+                    print("📱 [handleChildChanged] Updated message with ID: \(messageId)")
+                }
+            }
+        } catch {
+            print("❌ [handleChildChanged] Error parsing message: \(error.localizedDescription)")
+        }
+    }
+    
+    // MARK: - Update ReceiverLoader in ChattingScreen if message exists there
+    // This ensures progress bar stops in ChattingScreen when group message is confirmed in Firebase
+    // Note: This is a safety check - normally group messages and individual messages are in different Firebase paths
+    // But we update receiverLoader in CHAT path if message exists there to ensure progress bar stops
+    private func updateReceiverLoaderInChattingScreenIfNeeded(messageId: String, receiverLoader: Int) {
+        // Only update if receiverLoader is being set to 1 (message confirmed)
+        guard receiverLoader == 1 else { return }
+        
+        let database = Database.database().reference()
+        let chatPath = Constant.CHAT
+        let chatRef = database.child(chatPath)
+        
+        // Check if message exists in any chat room and update receiverLoader
+        // This ensures progress bar stops in ChattingScreen if the same message is shown there
+        chatRef.queryOrderedByKey().observeSingleEvent(of: .value) { snapshot in
+            guard let rooms = snapshot.value as? [String: [String: Any]] else { return }
+            
+            for (roomKey, messages) in rooms {
+                if messages[messageId] != nil {
+                    // Message found in individual chat - update receiverLoader to stop progress bar
+                    let receiverLoaderRef = database.child(chatPath).child(roomKey).child(messageId).child("receiverLoader")
+                    receiverLoaderRef.setValue(1) { error, _ in
+                        if let error = error {
+                            print("⚠️ [GroupChattingScreen] Error updating receiverLoader in ChattingScreen: \(error.localizedDescription)")
+                        } else {
+                            print("✅ [GroupChattingScreen] Updated receiverLoader to 1 in ChattingScreen for message: \(messageId) (progress bar stopped)")
+                        }
+                    }
+                    break // Found and updated, no need to continue
+                }
+            }
+        }
+    }
+    
+    // MARK: - Parse Group Message from Dictionary
+    private func parseGroupMessageFromDict(_ dict: [String: Any], messageId: String) throws -> GroupChatMessage {
+        // Parse GroupChatMessage from Firebase dictionary (matching Android snapshot.getValue)
+        let uid = dict["uid"] as? String ?? ""
+        let message = dict["message"] as? String ?? ""
+        let time = dict["time"] as? String ?? ""
+        let document = dict["document"] as? String ?? ""
+        let dataType = dict["dataType"] as? String ?? Constant.Text
+        let fileExtension = dict["extension"] as? String
+        let name = dict["name"] as? String
+        let phone = dict["phone"] as? String
+        let miceTiming = dict["miceTiming"] as? String
+        let micPhoto = dict["micPhoto"] as? String
+        let createdBy = dict["createdBy"] as? String
+        let userName = dict["userName"] as? String
+        let receiverUid = dict["receiverUid"] as? String ?? ""
+        let docSize = dict["docSize"] as? String
+        let fileName = dict["fileName"] as? String
+        let thumbnail = dict["thumbnail"] as? String
+        let fileNameThumbnail = dict["fileNameThumbnail"] as? String
+        let caption = dict["caption"] as? String
+        let currentDate = dict["currentDate"] as? String
+        let imageWidth = dict["imageWidth"] as? String
+        let imageHeight = dict["imageHeight"] as? String
+        let aspectRatio = dict["aspectRatio"] as? String
+        let active = dict["active"] as? Int ?? 0
+        let receiverLoader = dict["receiverLoader"] as? Int ?? 1 // Parse receiverLoader from Firebase (default to 1 = sent if not present)
+        let selectionCount = dict["selectionCount"] as? String
+        let selectionBunch: [SelectionBunchModel]? = {
+            if let bunchArray = dict["selectionBunch"] as? [[String: Any]] {
+                return bunchArray.compactMap { bunchDict in
+                    guard let imgUrl = bunchDict["imgUrl"] as? String,
+                          let fileName = bunchDict["fileName"] as? String else {
+                        return nil
+                    }
+                    return SelectionBunchModel(imgUrl: imgUrl, fileName: fileName)
+                }
+            }
+            return nil
+        }()
+        
+        // Store receiverLoader separately (matching Android model.getReceiverLoader())
+        DispatchQueue.main.async {
+            self.messageReceiverLoaders[messageId] = receiverLoader
+        }
+        
+        return GroupChatMessage(
+            id: messageId,
+            uid: uid,
+            message: message,
+            time: time,
+            document: document,
+            dataType: dataType,
+            fileExtension: fileExtension,
+            name: name,
+            phone: phone,
+            miceTiming: miceTiming,
+            micPhoto: micPhoto,
+            createdBy: createdBy,
+            userName: userName,
+            receiverUid: receiverUid,
+            docSize: docSize,
+            fileName: fileName,
+            thumbnail: thumbnail,
+            fileNameThumbnail: fileNameThumbnail,
+            caption: caption,
+            currentDate: currentDate,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+            aspectRatio: aspectRatio,
+            active: active,
+            selectionCount: selectionCount,
+            selectionBunch: selectionBunch
+        )
+    }
+    
+    // MARK: - Load More (matching Android loadMore)
+    private func loadMore() {
+        if isLoading {
+            print("📱 [loadMore] Already loading, skipping loadMore")
+            return
+        }
+        
+        // If we already have messages, don't show loader for loadMore (matching Android)
+        if !messages.isEmpty && lastKey == nil {
+            print("📱 [loadMore] Group messages already available, skipping loadMore")
+            return
+        }
+        
+        isLoading = true
+        
+        let senderRoom = getSenderRoom()
+        let database = Database.database().reference()
+        let chatPath = "\(Constant.GROUPCHAT)/\(senderRoom)"
+        
+        // Query older messages (matching Android orderByKey().limitToLast(PAGE_SIZE))
+        // For key-based pagination, we need to get a larger set and filter
+        var query: DatabaseQuery = database.child(chatPath)
+            .queryOrderedByKey()
+            .queryLimited(toLast: UInt(PAGE_SIZE * 3)) // Get more to account for filtering
+        
+        if let lastKey = lastKey {
+            // Use queryEnding to get messages before lastKey (matching Android endBefore)
+            // For orderByKey, we must use queryEnding(atValue:) without childKey parameter
+            query = query.queryEnding(atValue: lastKey)
+        }
+        
+        query.observeSingleEvent(of: .value) { snapshot in
+            var fetchedNewMessages: [GroupChatMessage] = []
+            var newLastKey: String? = nil
+            
+            guard let children = snapshot.children.allObjects as? [DataSnapshot] else {
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    self.hasMoreMessages = false
+                }
+                return
+            }
+            
+            for child in children {
+                let snapshotKey = child.key
+                guard let messageDict = child.value as? [String: Any] else { continue }
+                
+                // Filter: only add messages before lastKey (matching Android endBefore)
+                if let lastKey = self.lastKey, snapshotKey >= lastKey {
+                    continue
+                }
+                
+                do {
+                    let model = try self.parseGroupMessageFromDict(messageDict, messageId: snapshotKey)
+                    
+                    // Avoid duplicate messages (matching Android)
+                    let exists = self.messages.contains { $0.id == model.id }
+                    if !exists {
+                        // Format date with colon prefix for loaded older messages (matching Android)
+                        let uniqDate = model.currentDate ?? ""
+                        var formattedModel = model
+                        formattedModel.currentDate = ":\(uniqDate)"
+                        fetchedNewMessages.append(formattedModel)
+                    }
+                    
+                    // Track the smallest (oldest) key for next pagination (matching Android)
+                    if newLastKey == nil || snapshotKey < newLastKey! {
+                        newLastKey = snapshotKey
+                    }
+                } catch {
+                    print("❌ [loadMore] Error parsing message: \(error.localizedDescription)")
+                }
+            }
+            
+            // Update messages list (matching Android combinedList)
+            if !fetchedNewMessages.isEmpty {
+                DispatchQueue.main.async {
+                    // Add newly fetched (older) messages at the top, then existing messages
+                    self.messages = fetchedNewMessages + self.messages
+                    self.lastKey = newLastKey
+                    self.isLoading = false
+                    print("📱 [loadMore] Loaded \(fetchedNewMessages.count) older messages")
+                }
+            } else {
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    self.hasMoreMessages = false
+                    print("📱 [loadMore] No more messages to load")
+                }
+            }
+        }
+    }
+    
+    // MARK: - Remove Firebase Listeners
+    private func removeFirebaseListeners() {
+        if let handle = firebaseListenerHandle {
+            let database = Database.database().reference()
+            let senderRoom = getSenderRoom()
+            let chatPath = "\(Constant.GROUPCHAT)/\(senderRoom)"
+            database.child(chatPath).removeObserver(withHandle: handle)
+            firebaseListenerHandle = nil
+        }
+    }
+    
+    // MARK: - Handle Half Swipe Reply
+    private func handleHalfSwipeReply(_ message: ChatMessage) {
+        // Set reply layout state (matching Android)
+        showReplyLayout = true
+        replyMessage = message.message
+        replySenderName = message.userName ?? ""
+        replyDataType = message.dataType
+        replyImageUrl = message.document.isEmpty ? nil : message.document
+        replyContactName = message.name
+        replyFileExtension = message.fileExtension
+        replyMessageId = message.id
+        isReplyFromSender = message.uid == Constant.SenderIdMy
+    }
+    
+    // MARK: - Handle Reply Tap
+    private func handleReplyTap(message: ChatMessage) {
+        // Scroll to replied message (matching Android)
+        // Implementation will be added later
+        print("📱 [handleReplyTap] Reply tapped for message: \(message.id)")
+    }
+    
+    // MARK: - Handle Long Press
+    private func handleLongPress(message: ChatMessage, position: CGPoint) {
+        // Show context menu (matching Android)
+        // Implementation will be added later
+        print("📱 [handleLongPress] Long press on message: \(message.id)")
+    }
+    
+    // MARK: - Toggle Message Selection
+    private func toggleMessageSelection(messageId: String) {
+        if selectedMessageIds.contains(messageId) {
+            selectedMessageIds.remove(messageId)
+        } else {
+            selectedMessageIds.insert(messageId)
+        }
+        selectedCount = selectedMessageIds.count
+        
+        // Show/hide multi-select header (matching Android)
+        if selectedCount > 0 {
+            showMultiSelectHeader = true
+        } else {
+            showMultiSelectHeader = false
+        }
+    }
+    
+    // MARK: - Load Pending Group Messages (matching Android loadPendingMessages on onResume)
+    private func loadPendingGroupMessages() {
+        let groupId = group.groupId
+        print("📱 [loadPendingGroupMessages] Loading pending group messages for group: \(groupId)")
+        
+        DatabaseHelper.shared.getPendingGroupMessages(groupId: groupId) { pendingMessages in
+            guard !pendingMessages.isEmpty else {
+                print("📱 [loadPendingGroupMessages] No pending group messages found in SQLite")
+                return
+            }
+            
+            print("📱 [loadPendingGroupMessages] Found \(pendingMessages.count) pending group messages in SQLite")
+            for (index, msg) in pendingMessages.enumerated() {
+                print("📱 [loadPendingGroupMessages]   [\(index + 1)] modelId: \(msg.id), dataType: \(msg.dataType), receiverLoader: \(msg.receiverLoader)")
+            }
+            
+            DispatchQueue.main.async {
+                var addedCount = 0
+                var skippedCount = 0
+                
+                for pendingMessage in pendingMessages {
+                    // Check if message already exists in current list (matching Android duplicate check)
+                    let exists = self.messages.contains { $0.id == pendingMessage.id }
+                    
+                    if !exists {
+                        // Convert ChatMessage to GroupChatMessage for UI
+                        let groupMessage = GroupChatMessage(
+                            id: pendingMessage.id,
+                            uid: pendingMessage.uid,
+                            message: pendingMessage.message,
+                            time: pendingMessage.time,
+                            document: pendingMessage.document,
+                            dataType: pendingMessage.dataType,
+                            fileExtension: pendingMessage.fileExtension,
+                            name: pendingMessage.name,
+                            phone: pendingMessage.phone,
+                            miceTiming: pendingMessage.miceTiming,
+                            micPhoto: pendingMessage.micPhoto,
+                            createdBy: nil,
+                            userName: pendingMessage.userName,
+                            receiverUid: pendingMessage.receiverId,
+                            docSize: pendingMessage.docSize,
+                            fileName: pendingMessage.fileName,
+                            thumbnail: pendingMessage.thumbnail,
+                            fileNameThumbnail: pendingMessage.fileNameThumbnail,
+                            caption: pendingMessage.caption,
+                            currentDate: pendingMessage.currentDate,
+                            imageWidth: pendingMessage.imageWidth,
+                            imageHeight: pendingMessage.imageHeight,
+                            aspectRatio: pendingMessage.aspectRatio,
+                            active: 0, // Pending messages are still sending
+                            selectionCount: pendingMessage.selectionCount,
+                            selectionBunch: pendingMessage.selectionBunch
+                        )
+                        
+                        self.messages.append(groupMessage)
+                        self.messageReceiverLoaders[pendingMessage.id] = 0 // Show progress bar
+                        addedCount += 1
+                        print("📱 [loadPendingGroupMessages] Adding pending message to UI: \(pendingMessage.id), dataType: \(pendingMessage.dataType), receiverLoader: \(pendingMessage.receiverLoader)")
+                    } else {
+                        print("📱 [loadPendingGroupMessages] Pending message already in list (skipping): \(pendingMessage.id)")
+                        skippedCount += 1
+                    }
+                }
+                
+                if addedCount > 0 {
+                    // Sort messages by timestamp (matching Android)
+                    self.messages.sort { msg1, msg2 in
+                        // Use timestamp if available, otherwise use currentDate
+                        return true // Keep insertion order for now
+                    }
+                    
+                    print("📱 [loadPendingGroupMessages] ✅ Added \(addedCount) pending group messages to UI (skipped \(skippedCount) duplicates)")
+                } else {
+                    print("📱 [loadPendingGroupMessages] ⚠️ No new pending group messages added (all \(skippedCount) were duplicates)")
+                }
             }
         }
     }

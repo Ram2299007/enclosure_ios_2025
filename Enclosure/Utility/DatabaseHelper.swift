@@ -16,6 +16,7 @@ final class DatabaseHelper {
     private let queue = DispatchQueue(label: "com.enclosure.databaseHelperQueue")
     
     private let TABLE_NAME_PENDING = "pending_messages"
+    private let TABLE_NAME_GROUP_PENDING = "group_pending_messages"
     
     // SQLITE_TRANSIENT constant (matching ChatCacheManager and CallCacheManager)
     private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -26,6 +27,7 @@ final class DatabaseHelper {
         print("📁 [DatabaseHelper] Database file path: \(databaseURL.path)")
         openDatabase()
         createPendingTableIfNeeded()
+        createGroupPendingTableIfNeeded()
     }
     
     /// Get the database file path (for external viewing)
@@ -109,6 +111,59 @@ final class DatabaseHelper {
             print("⚠️ [DatabaseHelper] Failed to create pending_messages table: \(String(cString: sqlite3_errmsg(db)))")
         } else {
             print("✅ [DatabaseHelper] pending_messages table created/verified")
+        }
+    }
+    
+    private func createGroupPendingTableIfNeeded() {
+        guard let db = db else { return }
+        
+        // Create group_pending_messages table (matching Android TABLE_NAME_GROUP_PENDING)
+        let createTableSQL = """
+        CREATE TABLE IF NOT EXISTS \(TABLE_NAME_GROUP_PENDING) (
+            uid TEXT,
+            message TEXT,
+            time TEXT,
+            document TEXT,
+            dataType TEXT,
+            extension TEXT,
+            name TEXT,
+            phone TEXT,
+            micPhoto TEXT,
+            miceTiming TEXT,
+            userName TEXT,
+            replytextData TEXT,
+            replyKey TEXT,
+            replyType TEXT,
+            replyOldData TEXT,
+            replyCrtPostion TEXT,
+            modelId TEXT,
+            grpIdKey TEXT,
+            forwaredKey TEXT,
+            groupName TEXT,
+            docSize TEXT,
+            fileName TEXT,
+            thumbnail TEXT,
+            fileNameThumbnail TEXT,
+            caption TEXT,
+            notification INTEGER,
+            currentDate TEXT,
+            emojiCount TEXT,
+            timestamp REAL,
+            imageWidth TEXT,
+            imageHeight TEXT,
+            aspectRatio TEXT,
+            selectionCount TEXT,
+            emojiModel TEXT,
+            selectionBunch TEXT,
+            uploadStatus INTEGER DEFAULT 0,
+            PRIMARY KEY (modelId, grpIdKey)
+        );
+        """
+        
+        if sqlite3_exec(db, createTableSQL, nil, nil, nil) != SQLITE_OK {
+            print("⚠️ [DatabaseHelper] Failed to create group_pending_messages table: \(String(cString: sqlite3_errmsg(db)))")
+        } else {
+            print("✅ [DatabaseHelper] group_pending_messages table created/verified")
         }
     }
     
@@ -557,6 +612,233 @@ final class DatabaseHelper {
         } catch {
             return nil
         }
+    }
+    
+    // MARK: - Group Pending Messages Operations (matching Android insertPendingGroupMessage)
+    
+    /// Insert pending group message (matching Android insertPendingGroupMessage)
+    func insertPendingGroupMessage(_ message: ChatMessage, groupId: String) {
+        queue.async {
+            guard let db = self.db else { return }
+            
+            let insertSQL = """
+            INSERT OR REPLACE INTO \(self.TABLE_NAME_GROUP_PENDING)
+            (uid, message, time, document, dataType, extension, name, phone, micPhoto, miceTiming,
+             userName, replytextData, replyKey, replyType, replyOldData, replyCrtPostion,
+             modelId, grpIdKey, forwaredKey, groupName, docSize, fileName, thumbnail,
+             fileNameThumbnail, caption, notification, currentDate, emojiCount, timestamp,
+             imageWidth, imageHeight, aspectRatio, selectionCount, emojiModel, selectionBunch, uploadStatus)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);
+            """
+            
+            var statement: OpaquePointer?
+            
+            if sqlite3_prepare_v2(db, insertSQL, -1, &statement, nil) == SQLITE_OK {
+                self.bindGroupMessage(message: message, groupId: groupId, to: statement)
+                
+                if sqlite3_step(statement) == SQLITE_DONE {
+                    print("✅ [DatabaseHelper] Pending group message inserted: \(message.id)")
+                } else {
+                    print("⚠️ [DatabaseHelper] Failed to insert pending group message: \(String(cString: sqlite3_errmsg(db)))")
+                }
+                
+                sqlite3_finalize(statement)
+            } else {
+                print("⚠️ [DatabaseHelper] Failed to prepare insert group message statement: \(String(cString: sqlite3_errmsg(db)))")
+            }
+        }
+    }
+    
+    /// Bind group message to SQL statement (matching Android ContentValues)
+    private func bindGroupMessage(message: ChatMessage, groupId: String, to statement: OpaquePointer?) {
+        guard let statement = statement else { return }
+        
+        sqlite3_bind_text(statement, 1, message.uid, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 2, message.message, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 3, message.time, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 4, message.document, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 5, message.dataType, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 6, message.fileExtension ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 7, message.name ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 8, message.phone ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 9, message.micPhoto ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 10, message.miceTiming ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 11, message.userName ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 12, message.replytextData ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 13, message.replyKey ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 14, message.replyType ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 15, message.replyOldData ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 16, message.replyCrtPostion ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 17, message.id, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 18, groupId, -1, SQLITE_TRANSIENT) // grpIdKey
+        sqlite3_bind_text(statement, 19, message.forwaredKey ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 20, message.groupName ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 21, message.docSize ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 22, message.fileName ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 23, message.thumbnail ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 24, message.fileNameThumbnail ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 25, message.caption ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_int64(statement, 26, Int64(message.notification))
+        sqlite3_bind_text(statement, 27, message.currentDate ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 28, message.emojiCount ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_double(statement, 29, message.timestamp)
+        sqlite3_bind_text(statement, 30, message.imageWidth ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 31, message.imageHeight ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 32, message.aspectRatio ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 33, message.selectionCount ?? "", -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 34, serializeEmojiModel(message.emojiModel), -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 35, serializeSelectionBunch(message.selectionBunch), -1, SQLITE_TRANSIENT)
+    }
+    
+    /// Remove pending group message (matching Android removePendingGroupMessage)
+    func removePendingGroupMessage(modelId: String, groupId: String) -> Bool {
+        var result = false
+        let semaphore = DispatchSemaphore(value: 0)
+        
+        queue.async {
+            guard let db = self.db else {
+                semaphore.signal()
+                return
+            }
+            
+            let deleteSQL = "DELETE FROM \(self.TABLE_NAME_GROUP_PENDING) WHERE modelId = ? AND grpIdKey = ?;"
+            var statement: OpaquePointer?
+            
+            if sqlite3_prepare_v2(db, deleteSQL, -1, &statement, nil) == SQLITE_OK {
+                sqlite3_bind_text(statement, 1, modelId, -1, self.SQLITE_TRANSIENT)
+                sqlite3_bind_text(statement, 2, groupId, -1, self.SQLITE_TRANSIENT)
+                
+                if sqlite3_step(statement) == SQLITE_DONE {
+                    result = true
+                    print("✅ [DatabaseHelper] Pending group message removed: \(modelId)")
+                } else {
+                    print("⚠️ [DatabaseHelper] Failed to remove pending group message: \(String(cString: sqlite3_errmsg(db)))")
+                }
+                
+                sqlite3_finalize(statement)
+            }
+            
+            semaphore.signal()
+        }
+        
+        semaphore.wait()
+        return result
+    }
+    
+    /// Get pending group messages (matching Android getPendingGroupMessages)
+    func getPendingGroupMessages(groupId: String, completion: @escaping ([ChatMessage]) -> Void) {
+        queue.async {
+            guard let db = self.db else {
+                DispatchQueue.main.async {
+                    completion([])
+                }
+                return
+            }
+            
+            var messages: [ChatMessage] = []
+            let query = "SELECT * FROM \(self.TABLE_NAME_GROUP_PENDING) WHERE grpIdKey = ? AND uploadStatus IN (0, 1) ORDER BY timestamp ASC;"
+            var statement: OpaquePointer?
+            
+            if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+                sqlite3_bind_text(statement, 1, groupId, -1, self.SQLITE_TRANSIENT)
+                
+                while sqlite3_step(statement) == SQLITE_ROW {
+                    if let message = self.parseGroupMessageFromRow(statement) {
+                        messages.append(message)
+                    }
+                }
+                
+                sqlite3_finalize(statement)
+            }
+            
+            DispatchQueue.main.async {
+                completion(messages)
+            }
+        }
+    }
+    
+    /// Parse group message from SQL row
+    private func parseGroupMessageFromRow(_ statement: OpaquePointer?) -> ChatMessage? {
+        guard let statement = statement else { return nil }
+        
+        // Parse all fields from group_pending_messages table (matching Android column order)
+        let uid = String(cString: sqlite3_column_text(statement, 0))
+        let message = String(cString: sqlite3_column_text(statement, 1))
+        let time = String(cString: sqlite3_column_text(statement, 2))
+        let document = String(cString: sqlite3_column_text(statement, 3))
+        let dataType = String(cString: sqlite3_column_text(statement, 4))
+        let fileExtension = String(cString: sqlite3_column_text(statement, 5))
+        let name = String(cString: sqlite3_column_text(statement, 6))
+        let phone = String(cString: sqlite3_column_text(statement, 7))
+        let micPhoto = String(cString: sqlite3_column_text(statement, 8))
+        let miceTiming = String(cString: sqlite3_column_text(statement, 9))
+        let userName = String(cString: sqlite3_column_text(statement, 10))
+        let replytextData = String(cString: sqlite3_column_text(statement, 11))
+        let replyKey = String(cString: sqlite3_column_text(statement, 12))
+        let replyType = String(cString: sqlite3_column_text(statement, 13))
+        let replyOldData = String(cString: sqlite3_column_text(statement, 14))
+        let replyCrtPostion = String(cString: sqlite3_column_text(statement, 15))
+        let id = String(cString: sqlite3_column_text(statement, 16)) // modelId
+        let groupId = String(cString: sqlite3_column_text(statement, 17)) // grpIdKey
+        let forwaredKey = String(cString: sqlite3_column_text(statement, 18))
+        let groupName = String(cString: sqlite3_column_text(statement, 19))
+        let docSize = String(cString: sqlite3_column_text(statement, 20))
+        let fileName = String(cString: sqlite3_column_text(statement, 21))
+        let thumbnail = String(cString: sqlite3_column_text(statement, 22))
+        let fileNameThumbnail = String(cString: sqlite3_column_text(statement, 23))
+        let caption = String(cString: sqlite3_column_text(statement, 24))
+        let notification = Int(sqlite3_column_int64(statement, 25))
+        let currentDate = String(cString: sqlite3_column_text(statement, 26))
+        let emojiCount = String(cString: sqlite3_column_text(statement, 27))
+        let timestamp = sqlite3_column_double(statement, 28)
+        let imageWidth = String(cString: sqlite3_column_text(statement, 29))
+        let imageHeight = String(cString: sqlite3_column_text(statement, 30))
+        let aspectRatio = String(cString: sqlite3_column_text(statement, 31))
+        let selectionCount = String(cString: sqlite3_column_text(statement, 32))
+        let emojiModelJson = String(cString: sqlite3_column_text(statement, 33))
+        let selectionBunchJson = String(cString: sqlite3_column_text(statement, 34))
+        
+        let emojiModel = deserializeEmojiModel(emojiModelJson)
+        let selectionBunch = deserializeSelectionBunch(selectionBunchJson)
+        
+        return ChatMessage(
+            id: id,
+            uid: uid,
+            message: message,
+            time: time,
+            document: document,
+            dataType: dataType,
+            fileExtension: fileExtension.isEmpty ? nil : fileExtension,
+            name: name.isEmpty ? nil : name,
+            phone: phone.isEmpty ? nil : phone,
+            micPhoto: micPhoto.isEmpty ? nil : micPhoto,
+            miceTiming: miceTiming.isEmpty ? nil : miceTiming,
+            userName: userName.isEmpty ? nil : userName,
+            receiverId: groupId,
+            replytextData: replytextData.isEmpty ? nil : replytextData,
+            replyKey: replyKey.isEmpty ? nil : replyKey,
+            replyType: replyType.isEmpty ? nil : replyType,
+            replyOldData: replyOldData.isEmpty ? nil : replyOldData,
+            replyCrtPostion: replyCrtPostion.isEmpty ? nil : replyCrtPostion,
+            forwaredKey: forwaredKey.isEmpty ? nil : forwaredKey,
+            groupName: groupName.isEmpty ? nil : groupName,
+            docSize: docSize.isEmpty ? nil : docSize,
+            fileName: fileName.isEmpty ? nil : fileName,
+            thumbnail: thumbnail.isEmpty ? nil : thumbnail,
+            fileNameThumbnail: fileNameThumbnail.isEmpty ? nil : fileNameThumbnail,
+            caption: caption.isEmpty ? nil : caption,
+            notification: notification,
+            currentDate: currentDate.isEmpty ? nil : currentDate,
+            emojiModel: emojiModel,
+            emojiCount: emojiCount.isEmpty ? nil : emojiCount,
+            timestamp: timestamp,
+            imageWidth: imageWidth.isEmpty ? nil : imageWidth,
+            imageHeight: imageHeight.isEmpty ? nil : imageHeight,
+            aspectRatio: aspectRatio.isEmpty ? nil : aspectRatio,
+            selectionCount: selectionCount.isEmpty ? nil : selectionCount,
+            selectionBunch: selectionBunch,
+            receiverLoader: 0 // Pending messages always have receiverLoader: 0
+        )
     }
 }
 
