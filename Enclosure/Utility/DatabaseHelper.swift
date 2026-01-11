@@ -16,6 +16,7 @@ final class DatabaseHelper {
     private let queue = DispatchQueue(label: "com.enclosure.databaseHelperQueue")
     
     private let TABLE_NAME_PENDING = "pending_messages"
+    private let TABLE_NAME_GROUP_PENDING = "group_pending_messages"
     
     // SQLITE_TRANSIENT constant (matching ChatCacheManager and CallCacheManager)
     private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -26,6 +27,7 @@ final class DatabaseHelper {
         print("📁 [DatabaseHelper] Database file path: \(databaseURL.path)")
         openDatabase()
         createPendingTableIfNeeded()
+        createGroupPendingTableIfNeeded()
     }
     
     /// Get the database file path (for external viewing)
@@ -556,6 +558,171 @@ final class DatabaseHelper {
             return try JSONDecoder().decode([SelectionBunchModel].self, from: data)
         } catch {
             return nil
+        }
+    }
+    
+    // MARK: - Group Pending Messages Operations
+    
+    private func createGroupPendingTableIfNeeded() {
+        guard let db = db else { return }
+        
+        let createTableSQL = """
+        CREATE TABLE IF NOT EXISTS \(TABLE_NAME_GROUP_PENDING) (
+            uid TEXT,
+            message TEXT,
+            time TEXT,
+            document TEXT,
+            dataType TEXT,
+            extension TEXT,
+            name TEXT,
+            phone TEXT,
+            micPhoto TEXT,
+            miceTiming TEXT,
+            userName TEXT,
+            replytextData TEXT,
+            replyKey TEXT,
+            replyType TEXT,
+            replyOldData TEXT,
+            replyCrtPostion TEXT,
+            modelId TEXT,
+            receiverId TEXT,
+            forwaredKey TEXT,
+            groupName TEXT,
+            docSize TEXT,
+            fileName TEXT,
+            thumbnail TEXT,
+            fileNameThumbnail TEXT,
+            caption TEXT,
+            notification INTEGER,
+            currentDate TEXT,
+            emojiCount TEXT,
+            timestamp REAL,
+            imageWidth TEXT,
+            imageHeight TEXT,
+            aspectRatio TEXT,
+            selectionCount TEXT,
+            emojiModel TEXT,
+            selectionBunch TEXT,
+            receiverLoader INTEGER DEFAULT 0,
+            grpIdKey TEXT,
+            PRIMARY KEY (modelId, grpIdKey)
+        );
+        """
+        
+        if sqlite3_exec(db, createTableSQL, nil, nil, nil) != SQLITE_OK {
+            print("⚠️ [DatabaseHelper] Failed to create group_pending_messages table: \(String(cString: sqlite3_errmsg(db)))")
+        } else {
+            print("✅ [DatabaseHelper] group_pending_messages table created/verified")
+        }
+    }
+    
+    /// Insert pending group message (matching Android insertPendingGroupMessage)
+    func insertPendingGroupMessage(_ message: ChatMessage, groupId: String) {
+        queue.async {
+            guard let db = self.db else { return }
+            
+            let insertSQL = """
+            INSERT OR REPLACE INTO \(self.TABLE_NAME_GROUP_PENDING)
+            (uid, message, time, document, dataType, extension, name, phone, micPhoto, miceTiming,
+             userName, replytextData, replyKey, replyType, replyOldData, replyCrtPostion,
+             modelId, receiverId, forwaredKey, groupName, docSize, fileName, thumbnail,
+             fileNameThumbnail, caption, notification, currentDate, emojiCount, timestamp,
+             imageWidth, imageHeight, aspectRatio, selectionCount, emojiModel, selectionBunch, receiverLoader, grpIdKey)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """
+            
+            var statement: OpaquePointer?
+            
+            if sqlite3_prepare_v2(db, insertSQL, -1, &statement, nil) == SQLITE_OK {
+                // Bind all message fields (35 parameters)
+                self.bindMessage(message: message, to: statement)
+                
+                // Bind additional group-specific fields
+                // receiverLoader (index 36, after bindMessage's 35 parameters)
+                sqlite3_bind_int(statement, 36, Int32(message.receiverLoader))
+                // grpIdKey (index 37)
+                sqlite3_bind_text(statement, 37, groupId, -1, self.SQLITE_TRANSIENT)
+                
+                if sqlite3_step(statement) == SQLITE_DONE {
+                    print("✅ [DatabaseHelper] Pending group message inserted: \(message.id)")
+                } else {
+                    print("⚠️ [DatabaseHelper] Failed to insert pending group message: \(String(cString: sqlite3_errmsg(db)))")
+                }
+                
+                sqlite3_finalize(statement)
+            } else {
+                print("⚠️ [DatabaseHelper] Failed to prepare insert statement: \(String(cString: sqlite3_errmsg(db)))")
+            }
+        }
+    }
+    
+    /// Remove pending group message (matching Android removePendingGroupMessage)
+    func removePendingGroupMessage(modelId: String, groupId: String) -> Bool {
+        var result = false
+        let semaphore = DispatchSemaphore(value: 0)
+        
+        queue.async {
+            guard let db = self.db else {
+                semaphore.signal()
+                return
+            }
+            
+            let deleteSQL = "DELETE FROM \(self.TABLE_NAME_GROUP_PENDING) WHERE modelId = ? AND grpIdKey = ?;"
+            var statement: OpaquePointer?
+            
+            if sqlite3_prepare_v2(db, deleteSQL, -1, &statement, nil) == SQLITE_OK {
+                sqlite3_bind_text(statement, 1, modelId, -1, self.SQLITE_TRANSIENT)
+                sqlite3_bind_text(statement, 2, groupId, -1, self.SQLITE_TRANSIENT)
+                
+                if sqlite3_step(statement) == SQLITE_DONE {
+                    result = true
+                    print("✅ [DatabaseHelper] Pending group message removed: \(modelId)")
+                } else {
+                    print("⚠️ [DatabaseHelper] Failed to remove pending group message: \(String(cString: sqlite3_errmsg(db)))")
+                }
+                
+                sqlite3_finalize(statement)
+            }
+            
+            semaphore.signal()
+        }
+        
+        semaphore.wait()
+        return result
+    }
+    
+    /// Get pending group messages for a group (matching Android getPendingGroupMessages)
+    func getPendingGroupMessages(groupId: String, completion: @escaping ([ChatMessage]) -> Void) {
+        queue.async {
+            guard let db = self.db else {
+                DispatchQueue.main.async {
+                    completion([])
+                }
+                return
+            }
+            
+            var messages: [ChatMessage] = []
+            let query = "SELECT * FROM \(self.TABLE_NAME_GROUP_PENDING) WHERE grpIdKey = ? ORDER BY timestamp ASC;"
+            var statement: OpaquePointer?
+            
+            if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+                sqlite3_bind_text(statement, 1, groupId, -1, self.SQLITE_TRANSIENT)
+                
+                while sqlite3_step(statement) == SQLITE_ROW {
+                    if var message = self.messageFromStatement(statement) {
+                        // Read receiverLoader from column 35 (group pending table has 2 extra columns: receiverLoader at 35, grpIdKey at 36)
+                        let receiverLoader = Int(sqlite3_column_int(statement, 35))
+                        message.receiverLoader = receiverLoader
+                        messages.append(message)
+                    }
+                }
+                
+                sqlite3_finalize(statement)
+            }
+            
+            DispatchQueue.main.async {
+                completion(messages)
+            }
         }
     }
 }
