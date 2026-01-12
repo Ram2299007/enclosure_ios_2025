@@ -113,6 +113,13 @@ struct GroupChattingScreen: View {
     @State private var messageReceiverLoaders: [String: Int] = [:] // Store receiverLoader for each message (from Firebase)
     private let PAGE_SIZE: Int = 10 // Matching Android PAGE_SIZE
     
+    // Image preview state (matching ChattingScreen)
+    @State private var bunchPreviewImages: [SelectionBunchModel] = []
+    @State private var bunchPreviewCurrentIndex: Int = 0
+    @State private var navigateToMultipleImageScreen: Bool = false
+    @State private var navigateToShowImageScreen: Bool = false
+    @State private var selectedImageForShow: SelectionBunchModel?
+    
     var body: some View {
         ZStack {
             Color("BackgroundColor")
@@ -154,73 +161,67 @@ struct GroupChattingScreen: View {
                                         }
                                 }
                                 
-                                // Show valuable card when messages list is empty (matching ChattingScreen)
-                                if messages.isEmpty && initialLoadDone {
-                                    // Valuable card view (matching Android valuable CardView) - centered on screen
-                                    VStack {
-                                        Spacer()
-                                        
-                                        VStack(spacing: 0) {
-                                            Text("Your Message Will Become More Valuable Here")
-                                                .font(.custom("Inter18pt-Regular", size: 12))
-                                                .foregroundColor(Color("TextColor"))
-                                                .multilineTextAlignment(.center)
-                                                .padding(7)
-                                        }
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .fill(Color("cardBackgroundColornew"))
-                                        )
-                                        .padding(.horizontal, 16)
-                                        
-                                        Spacer()
-                                    }
-                                    .frame(width: geometry.size.width)
-                                    .frame(minHeight: geometry.size.height)
-                                }
-                                
                                 // Messages list (matching Android RecyclerView)
                                 ForEach(Array(messages.enumerated()), id: \.element.id) { index, groupMessage in
                                     // Convert GroupChatMessage to ChatMessage for MessageBubbleView
                                     let chatMessage = convertGroupMessageToChatMessage(groupMessage)
                                     
-                                    // Only display Constant.Text datatype for now (as requested)
-                                    if chatMessage.dataType == Constant.Text {
-                                        MessageBubbleView(
-                                            message: chatMessage,
-                                            onHalfSwipe: { swipedMessage in
-                                                // Handle multi-select mode first (matching Android)
-                                                if showMultiSelectHeader {
-                                                    toggleMessageSelection(messageId: swipedMessage.id)
-                                                    return
-                                                }
-                                                handleHalfSwipeReply(swipedMessage)
-                                            },
-                                            onReplyTap: { message in
-                                                // Handle multi-select mode first (matching Android)
-                                                if showMultiSelectHeader {
-                                                    toggleMessageSelection(messageId: message.id)
-                                                    return
-                                                }
-                                                handleReplyTap(message: message)
-                                            },
-                                            onLongPress: { message, position in
-                                                // Handle multi-select mode first (matching Android)
-                                                if showMultiSelectHeader {
-                                                    toggleMessageSelection(messageId: message.id)
-                                                    return
-                                                }
-                                                handleLongPress(message: message, position: position)
-                                            },
-                                            isHighlighted: false,
-                                            isMultiSelectMode: showMultiSelectHeader,
-                                            isSelected: selectedMessageIds.contains(chatMessage.id),
-                                            onSelectionToggle: { messageId in
-                                                toggleMessageSelection(messageId: messageId)
+                                    // Display all message types (Text, img, video, etc.) - matching ChattingScreen
+                                    MessageBubbleView(
+                                        message: chatMessage,
+                                        onHalfSwipe: { swipedMessage in
+                                            // Handle multi-select mode first (matching Android)
+                                            if showMultiSelectHeader {
+                                                toggleMessageSelection(messageId: swipedMessage.id)
+                                                return
                                             }
-                                        )
-                                        .id(chatMessage.id)
-                                    }
+                                            handleHalfSwipeReply(swipedMessage)
+                                        },
+                                        onReplyTap: { message in
+                                            // Handle multi-select mode first (matching Android)
+                                            if showMultiSelectHeader {
+                                                toggleMessageSelection(messageId: message.id)
+                                                return
+                                            }
+                                            handleReplyTap(message: message)
+                                        },
+                                        onLongPress: { message, position in
+                                            // Handle multi-select mode first (matching Android)
+                                            if showMultiSelectHeader {
+                                                toggleMessageSelection(messageId: message.id)
+                                                return
+                                            }
+                                            handleLongPress(message: message, position: position)
+                                        },
+                                        onBunchLongPress: { selectionBunch in
+                                            // Show preview dialog for bunch images (matching ChattingScreen)
+                                            print("📸 [BunchPreview] onBunchLongPress (single tap) called with \(selectionBunch.count) images")
+                                            for (index, img) in selectionBunch.enumerated() {
+                                                print("📸 [BunchPreview] Setting image \(index): fileName=\(img.fileName), imgUrl=\(img.imgUrl.isEmpty ? "empty" : String(img.imgUrl.prefix(50)))")
+                                            }
+                                            
+                                            // Set images first, then navigate to full screen (matching Android Activity navigation)
+                                            bunchPreviewImages = selectionBunch
+                                            bunchPreviewCurrentIndex = 0
+                                            print("📸 [BunchPreview] State updated: bunchPreviewImages.count = \(bunchPreviewImages.count)")
+                                            
+                                            // Navigate to full screen (matching Android startActivity)
+                                            navigateToMultipleImageScreen = true
+                                            print("📸 [BunchPreview] After setting navigateToMultipleImageScreen: bunchPreviewImages.count = \(bunchPreviewImages.count)")
+                                        },
+                                        onImageTap: { imageModel in
+                                            // Open ShowImageScreen for single image (matching ChattingScreen)
+                                            selectedImageForShow = imageModel
+                                            navigateToShowImageScreen = true
+                                        },
+                                        isHighlighted: false,
+                                        isMultiSelectMode: showMultiSelectHeader,
+                                        isSelected: selectedMessageIds.contains(chatMessage.id),
+                                        onSelectionToggle: { messageId in
+                                            toggleMessageSelection(messageId: messageId)
+                                        }
+                                    )
+                                    .id(chatMessage.id)
                             }
                             }
                         }
@@ -267,15 +268,21 @@ struct GroupChattingScreen: View {
                             .padding(.top, 8)
                             .allowsHitTesting(false) // Don't block touches to ScrollView
                     }
+                    
+                    // Valuable card overlay (centered when messages are empty)
+                    if messages.isEmpty && initialLoadDone {
+                        VStack {
+                            Spacer()
+                            valuableCardView
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .allowsHitTesting(false) // Don't block touches to ScrollView
+                    }
                 }
                 
                 // Bottom input area
                 messageInputContainer
-            }
-            
-            // Valuable card (centered, initially hidden)
-            if showValuableCard {
-                valuableCardView
             }
             
             // Menu dialogs
@@ -464,6 +471,38 @@ struct GroupChattingScreen: View {
                     }
                 ]
             )
+        )
+        .background(
+            // Hidden NavigationLink for programmatic navigation (matching Android Activity navigation)
+            NavigationLink(
+                destination: MultipleImageScreen(
+                    images: bunchPreviewImages,
+                    currentIndex: bunchPreviewCurrentIndex
+                ),
+                isActive: $navigateToMultipleImageScreen
+            ) {
+                EmptyView()
+            }
+            .hidden()
+        )
+        .background(
+            // Hidden NavigationLink for ShowImageScreen (single image view)
+            NavigationLink(
+                destination: Group {
+                    if let selectedImage = selectedImageForShow {
+                        ShowImageScreen(
+                            imageModel: selectedImage,
+                            viewHolderTypeKey: nil // Group chat, so no sender/receiver distinction needed
+                        )
+                    } else {
+                        EmptyView()
+                    }
+                },
+                isActive: $navigateToShowImageScreen
+            ) {
+                EmptyView()
+            }
+            .hidden()
         )
         .onChange(of: showCameraView) { isPresented in
             // When camera view is dismissed, restore gallery picker if it was open before
@@ -1163,15 +1202,16 @@ struct GroupChattingScreen: View {
         VStack(spacing: 0) {
             Text("Your Message Will Become More Valuable Here")
                 .font(.custom("Inter18pt-Regular", size: 12))
-                .foregroundColor(Color("TextColor"))
+                .foregroundColor(Color("black_white_cross"))
                 .multilineTextAlignment(.center)
                 .padding(7)
         }
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color("cardBackgroundColornew"))
+                .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 4)
         )
-        .padding(.top, 10)
+        .padding(.horizontal, 16)
     }
     
     // MARK: - Date Card
@@ -1610,6 +1650,9 @@ struct GroupChattingScreen: View {
                     lockQueue.sync { uploadErrors.append(error) }
                     dispatchGroup.leave()
                 case .success(let export):
+                    // Save image to local storage (matching Android Enclosure/Media/Images)
+                    self.saveImageToLocalStorage(data: export.data, fileName: remoteFileName)
+                    
                     // Upload to Firebase Storage using GROUPCHAT path
                     self.uploadGroupImageFileToFirebase(data: export.data, remoteFileName: remoteFileName) { uploadResult in
                         switch uploadResult {
@@ -1726,6 +1769,38 @@ struct GroupChattingScreen: View {
                     Constant.showToast(message: "Failed to send images. Please try again.")
                 }
             }
+        }
+    }
+    
+    // MARK: - Local Storage Functions (matching ChattingScreen)
+    
+    /// Get local images directory path (matching Android Enclosure/Media/Images)
+    private func getLocalImagesDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let imagesDir = documentsPath.appendingPathComponent("Enclosure/Media/Images", isDirectory: true)
+        try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true, attributes: nil)
+        return imagesDir
+    }
+    
+    /// Save image to local storage (matching Android file saving logic)
+    private func saveImageToLocalStorage(data: Data, fileName: String) {
+        let imagesDir = getLocalImagesDirectory()
+        let fileURL = imagesDir.appendingPathComponent(fileName)
+        
+        // Check if file already exists (matching Android doesFileExist check)
+        guard !FileManager.default.fileExists(atPath: fileURL.path) else {
+            print("📱 [LOCAL_STORAGE] Image already exists locally: \(fileName)")
+            return
+        }
+        
+        do {
+            try data.write(to: fileURL, options: .atomic)
+            print("📱 [LOCAL_STORAGE] ✅ Saved image to local storage")
+            print("📱 [LOCAL_STORAGE] File: \(fileName)")
+            print("📱 [LOCAL_STORAGE] File Path: \(fileURL.path)")
+            print("📱 [LOCAL_STORAGE] Size: \(data.count) bytes (\(String(format: "%.2f", Double(data.count) / 1024.0)) KB)")
+        } catch {
+            print("❌ [LOCAL_STORAGE] Error saving image to local storage: \(error.localizedDescription)")
         }
     }
     
@@ -2610,15 +2685,80 @@ struct GroupChattingScreen: View {
         let receiverLoader = dict["receiverLoader"] as? Int ?? 1 // Parse receiverLoader from Firebase (default to 1 = sent if not present)
         let selectionCount = dict["selectionCount"] as? String
         let selectionBunch: [SelectionBunchModel]? = {
+            // First try to parse from selectionBunch array (preferred format)
             if let bunchArray = dict["selectionBunch"] as? [[String: Any]] {
-                return bunchArray.compactMap { bunchDict in
+                let parsed: [SelectionBunchModel] = bunchArray.compactMap { (bunchDict: [String: Any]) -> SelectionBunchModel? in
                     guard let imgUrl = bunchDict["imgUrl"] as? String,
                           let fileName = bunchDict["fileName"] as? String else {
                         return nil
                     }
                     return SelectionBunchModel(imgUrl: imgUrl, fileName: fileName)
                 }
+                if !parsed.isEmpty {
+                    return parsed
+                }
             }
+            
+            // If selectionBunch array is not available, parse from individual img fields (img1, img2, img3, etc.)
+            // This matches the Firebase structure where images are stored as separate fields
+            // Firebase structure: document = main/first image, img1 = first image (may be same as document), img2 = second image, etc.
+            if let count = selectionCount, let selectionCountInt = Int(count), selectionCountInt > 0 {
+                var bunch: [SelectionBunchModel] = []
+                
+                // Parse img1, img2, img3, etc. fields
+                // Note: img1 might be the same as document or a separate field
+                for i in 1...selectionCountInt {
+                    let imgKey = "img\(i)"
+                    var imgUrl: String? = nil
+                    var imgFileName: String? = nil
+                    
+                    // Try to get from img1, img2, img3, etc. fields first
+                    if let url = dict[imgKey] as? String, !url.isEmpty {
+                        imgUrl = url
+                        // Extract fileName from imgUrl or construct from pattern
+                        if let baseFileName = fileName {
+                            // Replace _0 with _i-1 pattern (e.g., modelId_0.jpg -> modelId_1.jpg for img2)
+                            // For img1 (i=1), use _0, for img2 (i=2), use _1, etc.
+                            imgFileName = baseFileName.replacingOccurrences(of: "_0.", with: "_\(i-1).")
+                        } else {
+                            imgFileName = "image_\(i-1).jpg"
+                        }
+                    } else if i == 1 && !document.isEmpty {
+                        // For first image (img1), fallback to document field if img1 is not available
+                        imgUrl = document
+                        imgFileName = fileName ?? "image_0.jpg"
+                    }
+                    
+                    if let url = imgUrl, let name = imgFileName {
+                        bunch.append(SelectionBunchModel(imgUrl: url, fileName: name))
+                    }
+                }
+                
+                // If we have multiple images (selectionCount >= 2), return the bunch
+                if bunch.count >= 2 {
+                    return bunch
+                } else if bunch.count == 1 && selectionCountInt == 1 {
+                    // Single image: return it for single image display
+                    return bunch
+                } else if bunch.count == 1 && selectionCountInt > 1 {
+                    // Partial data: we have selectionCount > 1 but only one image (others might be uploading)
+                    return bunch
+                }
+            }
+            
+            // Fallback: if we have document field and it's an image message, create single image bunch
+            // This handles the case where selectionCount might be missing or "1"
+            if dataType == Constant.img && !document.isEmpty, let fileName = fileName {
+                // Check if selectionCount exists and is > 1, if so, we might need to wait for more images
+                if let count = selectionCount, let countInt = Int(count), countInt > 1 {
+                    // Multiple images expected but only document available - return single image for now
+                    return [SelectionBunchModel(imgUrl: document, fileName: fileName)]
+                } else {
+                    // Single image message
+                    return [SelectionBunchModel(imgUrl: document, fileName: fileName)]
+                }
+            }
+            
             return nil
         }()
         
