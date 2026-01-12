@@ -53,6 +53,16 @@ struct GroupChattingScreen: View {
     // Emoji layout state
     @State private var showEmojiLayout: Bool = false
     
+    // Emoji picker state (matching ChattingScreen)
+    @State private var emojis: [EmojiData] = []
+    @State private var filteredEmojis: [EmojiData] = []
+    @State private var isLoadingEmojis: Bool = false
+    @State private var emojiSearchText: String = ""
+    @State private var showEmojiLeftArrow: Bool = false
+    @State private var isEmojiLayoutHorizontal: Bool = false
+    @State private var isSyncingEmojiText: Bool = false
+    @FocusState private var isEmojiSearchFieldFocused: Bool
+    
     // Gallery picker state
     @State private var showGalleryPicker: Bool = false
     @State private var showCameraView: Bool = false
@@ -759,13 +769,28 @@ struct GroupChattingScreen: View {
                                         characterCount = newValue.count
                                         showCharacterCount = characterCount > 0
                                     }
+                                    .onTapGesture {
+                                        print("🔵 [MESSAGE_BOX_TAP] TextField tapped")
+                                        handleMessageBoxTap()
+                                    }
+                                    .simultaneousGesture(
+                                        TapGesture()
+                                            .onEnded {
+                                                print("🔵 [MESSAGE_BOX_TAP] Simultaneous tap gesture detected")
+                                                handleMessageBoxTap()
+                                            }
+                                    )
                             }
                             .contentShape(Rectangle())
+                            .onTapGesture {
+                                print("🔵 [MESSAGE_BOX_TAP] VStack container tapped")
+                                handleMessageBoxTap()
+                            }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             
                             // Emoji button (emoji) - marginEnd="5dp"
                             Button(action: {
-                                showEmojiLayout.toggle()
+                                handleEmojiButtonClick()
                             }) {
                                 ZStack {
                                     Circle()
@@ -974,50 +999,247 @@ struct GroupChattingScreen: View {
         )
     }
     
-    // MARK: - Emoji Layout
+    // MARK: - Emoji Layout (matching ChattingScreen)
     private var emojiLayoutView: some View {
         VStack(spacing: 0) {
-            // Emoji search container (top)
-            HStack(spacing: 8) {
-                Button(action: {
-                    showEmojiLayout = false
-                }) {
-                    Image("leftvector")
-                        .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 25, height: 18)
-                        .foregroundColor(Color("icontintGlobal"))
-                        .frame(width: 40, height: 40)
-                        .background(
+            // Emoji Search Container - Top (50dp height, always visible, matching emojiSearchContainerTop)
+            // android:layout_marginHorizontal="8dp"
+            HStack(spacing: 0) {
+                // Left arrow (shown when search is focused, matching emojiLeftArrow)
+                // android:layout_width="40dp" android:layout_height="40dp"
+                if showEmojiLeftArrow {
+                    Button(action: {
+                        // Hide keyboard and change back to vertical/grid layout
+                        print("🟡 [EMOJI_PICKER] Back arrow clicked - hiding keyboard and switching to grid")
+                        withAnimation {
+                            isEmojiSearchFieldFocused = false
+                            showEmojiLeftArrow = false
+                            isEmojiLayoutHorizontal = false
+                        }
+                    }) {
+                        ZStack {
                             Circle()
-                                .fill(Color.clear)
-                        )
+                                .fill(Color("circlebtnhover").opacity(0.1))
+                                .frame(width: 40, height: 40)
+                            
+                            Image("leftvector")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 25, height: 18)
+                                .foregroundColor(Color("TextColor"))
+                        }
+                    }
+                    // No extra padding - arrow is at container edge
                 }
                 
-                TextField("Search emojis...", text: .constant(""))
-                    .font(.custom("Inter18pt-Regular", size: 14))
-                    .foregroundColor(Color("black_white_cross"))
-                    .textFieldStyle(PlainTextFieldStyle())
-                    .frame(height: 40)
-                    .padding(.horizontal, 12)
-            }
-            .padding(.horizontal, 8)
-            .frame(height: 50)
-            
-            // Emoji recycler view (placeholder)
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 40))], spacing: 10) {
-                    ForEach(0..<50) { _ in
-                        Text("😀")
-                            .font(.system(size: 30))
+                // Top search box (matching emojiSearchBox, layout_weight="1")
+                // android:layout_marginStart="8dp" android:layout_marginEnd="8dp"
+                // android:paddingStart="12dp" android:paddingEnd="12dp"
+                ZStack(alignment: .leading) {
+                    if emojiSearchText.isEmpty {
+                        Text("Search emojis...")
+                            .font(.custom("Inter18pt-Regular", size: 14))
+                            .foregroundColor(Color("chtbtncolor"))
+                            .padding(.leading, showEmojiLeftArrow ? 8 + 12 : 12) // marginStart(8dp) + paddingStart(12dp)
+                            .padding(.trailing, 8 + 12) // marginEnd(8dp) + paddingEnd(12dp)
                     }
+                    TextField("", text: $emojiSearchText)
+                        .font(.custom("Inter18pt-Regular", size: 14))
+                        .foregroundColor(Color("black_white_cross"))
+                        .padding(.leading, 12) // android:paddingStart="12dp"
+                        .padding(.trailing, 12) // android:paddingEnd="12dp"
+                        .frame(height: 40) // android:layout_height="40dp"
+                        .padding(.leading, showEmojiLeftArrow ? 8 : 0) // android:layout_marginStart="8dp" (only when arrow visible)
+                        .padding(.trailing, 8) // android:layout_marginEnd="8dp"
+                        .focused($isEmojiSearchFieldFocused)
+                        .onChange(of: emojiSearchText) { newValue in
+                            handleEmojiSearchTextChanged(newValue)
+                        }
+                        .onTapGesture {
+                            // When tapped, immediately show arrow and change to horizontal layout
+                            print("🟡 [EMOJI_PICKER] Search field tapped - showing horizontal layout and keyboard")
+                            // Immediately switch to horizontal layout
+                            showEmojiLeftArrow = true
+                            isEmojiLayoutHorizontal = true
+                            
+                            // Request focus and open keyboard
+                            DispatchQueue.main.async {
+                                self.isEmojiSearchFieldFocused = true
+                            }
+                        }
                 }
-                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading) // layout_weight="1"
             }
-            .frame(height: 250)
+            .frame(height: 50) // android:layout_height="50dp"
+            .padding(.horizontal, 8) // android:layout_marginHorizontal="8dp"
+            
+            // Emoji RecyclerView - height="250dp"
+            if isLoadingEmojis {
+                ProgressView()
+                    .frame(height: 250)
+            } else {
+                if isEmojiLayoutHorizontal {
+                    // Horizontal layout (when searching) - single row, no vertical spacing
+                    GeometryReader { geometry in
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(alignment: .center, spacing: 8) {
+                                ForEach(filteredEmojis, id: \.codePoint) { emoji in
+                                    Button(action: {
+                                        // Insert emoji into message text
+                                        messageText += emoji.character
+                                    }) {
+                                        Text(emoji.character)
+                                            .font(.system(size: 30))
+                                            .frame(width: 40, height: 40)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 8)
+                            .frame(height: 40) // Exact height to match emoji row
+                        }
+                        .frame(height: 40) // Exact height to match emoji row
+                    }
+                    .frame(height: 40) // Exact height to match emoji row
+                } else {
+                    // Vertical/Grid layout (default)
+                    ScrollView(.vertical, showsIndicators: false) {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 40))], spacing: 8) {
+                            ForEach(filteredEmojis, id: \.codePoint) { emoji in
+                                Button(action: {
+                                    // Insert emoji into message text
+                                    messageText += emoji.character
+                                }) {
+                                    Text(emoji.character)
+                                        .font(.system(size: 30))
+                                        .frame(width: 40, height: 40)
+                                }
+                            }
+                        }
+                        .padding(8)
+                    }
+                    .frame(height: 250)
+                }
+            }
         }
         .background(Color("edittextBg"))
+        .onAppear {
+            // Fetch emojis when layout appears (matching ChattingScreen)
+            fetchEmojis()
+        }
+        .onChange(of: isEmojiSearchFieldFocused) { hasFocus in
+            if hasFocus {
+                // Show left arrow and change to horizontal layout when search gets focus
+                print("🟡 [EMOJI_PICKER] Search field focused - showing horizontal layout")
+                // Immediately switch to horizontal layout (no animation delay)
+                showEmojiLeftArrow = true
+                isEmojiLayoutHorizontal = true
+            } else {
+                // Hide left arrow and change back to vertical/grid layout when search loses focus
+                print("🟡 [EMOJI_PICKER] Search field lost focus - showing grid layout")
+                withAnimation {
+                    showEmojiLeftArrow = false
+                    isEmojiLayoutHorizontal = false
+                }
+            }
+        }
+    }
+    
+    // MARK: - Fetch Emojis from API (matching ChattingScreen fetchEmojis)
+    private func fetchEmojis() {
+        // Skip if already loading or already loaded
+        guard !isLoadingEmojis else { return }
+        guard emojis.isEmpty else { return }
+        
+        isLoadingEmojis = true
+        
+        // API endpoint: emojiController/fetch_emoji_data
+        let urlString = "\(Constant.baseURL)emojiController/fetch_emoji_data"
+        guard let url = URL(string: urlString) else {
+            isLoadingEmojis = false
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                self.isLoadingEmojis = false
+                
+                if let error = error {
+                    print("❌ [fetchEmojis] Error: \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let data = data else {
+                    print("❌ [fetchEmojis] No data received")
+                    return
+                }
+                
+                do {
+                    if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let dataArray = json["data"] as? [[String: Any]] {
+                        
+                        var fetchedEmojis: [EmojiData] = []
+                        for item in dataArray {
+                            if let slug = item["slug"] as? String,
+                               let character = item["character"] as? String,
+                               let unicodeName = item["unicode_name"] as? String,
+                               let codePoint = item["code_point"] as? String,
+                               let group = item["group"] as? String,
+                               let subGroup = item["sub_group"] as? String {
+                                fetchedEmojis.append(EmojiData(
+                                    slug: slug,
+                                    character: character,
+                                    unicodeName: unicodeName,
+                                    codePoint: codePoint,
+                                    group: group,
+                                    subGroup: subGroup
+                                ))
+                            }
+                        }
+                        
+                        self.emojis = fetchedEmojis
+                        self.filteredEmojis = fetchedEmojis // Initialize filtered list
+                        print("✅ [fetchEmojis] Loaded \(fetchedEmojis.count) emojis")
+                    }
+                } catch {
+                    print("❌ [fetchEmojis] JSON parsing error: \(error.localizedDescription)")
+                }
+            }
+        }.resume()
+    }
+    
+    // MARK: - Handle Emoji Search Text Changed (matching ChattingScreen handleEmojiSearchTextChanged)
+    private func handleEmojiSearchTextChanged(_ newValue: String) {
+        // Sync text between top and bottom search boxes (prevent infinite loop)
+        if !isSyncingEmojiText {
+            isSyncingEmojiText = true
+            // Text is already synced via @State binding, just filter
+            filterEmojis(newValue)
+            isSyncingEmojiText = false
+        }
+    }
+    
+    // MARK: - Filter Emojis (matching ChattingScreen filterEmojis)
+    private func filterEmojis(_ searchText: String) {
+        let trimmedText = searchText.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if trimmedText.isEmpty {
+            // Show all emojis when search is empty
+            filteredEmojis = emojis
+        } else {
+            // Filter emojis by slug, character, unicodeName, group, or subGroup
+            filteredEmojis = emojis.filter { emoji in
+                emoji.slug.lowercased().contains(trimmedText) ||
+                emoji.character.lowercased().contains(trimmedText) ||
+                emoji.unicodeName.lowercased().contains(trimmedText) ||
+                emoji.group.lowercased().contains(trimmedText) ||
+                emoji.subGroup.lowercased().contains(trimmedText)
+            }
+        }
     }
     
     // MARK: - Gallery Picker View
@@ -1335,6 +1557,91 @@ struct GroupChattingScreen: View {
             size = 16
         }
         return .custom("Inter18pt-Regular", size: size)
+    }
+    
+    // MARK: - Handle Message Box Tap (matching ChattingScreen handleMessageBoxTap)
+    private func handleMessageBoxTap() {
+        print("🔵 [MESSAGE_BOX_TAP] handleMessageBoxTap() called")
+        print("🔵 [MESSAGE_BOX_TAP] showGalleryPicker: \(showGalleryPicker)")
+        print("🔵 [MESSAGE_BOX_TAP] showEmojiLayout: \(showEmojiLayout)")
+        print("🔵 [MESSAGE_BOX_TAP] isMessageFieldFocused: \(isMessageFieldFocused)")
+        
+        // If gallery picker is visible, hide it and show keyboard
+        if showGalleryPicker {
+            print("🔵 [MESSAGE_BOX_TAP] Gallery picker is visible - hiding it")
+            withAnimation {
+                showGalleryPicker = false
+            }
+            print("🔵 [MESSAGE_BOX_TAP] Gallery picker hidden, scheduling keyboard show")
+            // Request focus and show keyboard after animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                print("🔵 [MESSAGE_BOX_TAP] Setting focus to show keyboard")
+                self.isMessageFieldFocused = true
+                print("🔵 [MESSAGE_BOX_TAP] Focus set: \(self.isMessageFieldFocused)")
+            }
+            return
+        }
+        
+        // If emoji picker is visible, hide it and reset emoji search state
+        if showEmojiLayout {
+            print("🔵 [MESSAGE_BOX_TAP] Emoji picker is visible - hiding it")
+            withAnimation {
+                showEmojiLayout = false
+                // Reset emoji search state
+                emojiSearchText = ""
+                showEmojiLeftArrow = false
+                isEmojiLayoutHorizontal = false
+                isEmojiSearchFieldFocused = false
+            }
+            print("🔵 [MESSAGE_BOX_TAP] Emoji picker hidden, scheduling keyboard show")
+            // Request focus and show keyboard after animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                print("🔵 [MESSAGE_BOX_TAP] Setting focus to show keyboard")
+                self.isMessageFieldFocused = true
+                print("🔵 [MESSAGE_BOX_TAP] Focus set: \(self.isMessageFieldFocused)")
+            }
+            return
+        }
+        
+        // If no picker is visible, just request focus
+        print("🔵 [MESSAGE_BOX_TAP] No picker visible - just requesting focus")
+        isMessageFieldFocused = true
+        print("🔵 [MESSAGE_BOX_TAP] Focus set: \(isMessageFieldFocused)")
+    }
+    
+    // MARK: - Handle Emoji Button Click (matching ChattingScreen handleEmojiButtonClick)
+    private func handleEmojiButtonClick() {
+        print("🟡 [EMOJI_BUTTON] Emoji button clicked")
+        print("🟡 [EMOJI_BUTTON] isMessageFieldFocused: \(isMessageFieldFocused)")
+        print("🟡 [EMOJI_BUTTON] showEmojiLayout: \(showEmojiLayout)")
+        
+        // If keyboard is open (message field is focused), hide it first
+        if isMessageFieldFocused {
+            print("🟡 [EMOJI_BUTTON] Keyboard is open - hiding it first")
+            isMessageFieldFocused = false
+            // Hide keyboard and then show emoji picker after a short delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                print("🟡 [EMOJI_BUTTON] Showing emoji picker after keyboard hide")
+                withAnimation {
+                    self.showEmojiLayout = true
+                    self.showGalleryPicker = false
+                }
+                // Fetch emojis when picker is shown
+                self.fetchEmojis()
+            }
+        } else {
+            // If keyboard is not open, just toggle emoji picker
+            print("🟡 [EMOJI_BUTTON] Keyboard not open - toggling emoji picker")
+            let willShowEmojiLayout = !showEmojiLayout
+            withAnimation {
+                showEmojiLayout.toggle()
+                showGalleryPicker = false
+            }
+            // Fetch emojis when picker is shown
+            if willShowEmojiLayout {
+                fetchEmojis()
+            }
+        }
     }
     
     // MARK: - Handle Gallery Button Click (matching Android gallery button behavior)
