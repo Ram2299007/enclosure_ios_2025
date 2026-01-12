@@ -139,6 +139,12 @@ struct GroupChattingScreen: View {
                         .frame(height: 2)
                 }
                 
+                // Network loader
+                if showNetworkLoader {
+                    HorizontalProgressBar()
+                        .frame(height: 2)
+                }
+                
                 // Main loader
                 if showLoader {
                     HorizontalProgressBar()
@@ -146,12 +152,11 @@ struct GroupChattingScreen: View {
                         .frame(maxWidth: .infinity)
                 }
                 
-                // Message list (positioned between header and input container)
+                // Message list (positioned above message input container, matching ChattingScreen)
                 ZStack(alignment: .top) {
                     ScrollViewReader { proxy in
-                    ScrollView {
-                        GeometryReader { geometry in
-                        LazyVStack(spacing: 0) {
+                        ScrollView {
+                            LazyVStack(spacing: 0) {
                                 // Load more indicator at top (matching Android)
                                 if hasMoreMessages && !messages.isEmpty {
                                     ProgressView()
@@ -222,23 +227,22 @@ struct GroupChattingScreen: View {
                                         }
                                     )
                                     .id(chatMessage.id)
-                            }
+                                }
                             }
                         }
-                    }
-                    .contentShape(Rectangle()) // Ensure entire area is tappable
-                    .allowsHitTesting(true) // Ensure ScrollView can receive touches
-                    .onChange(of: messages.count) { _ in
-                        // Scroll to bottom when new messages are added (matching Android)
-                        if !messages.isEmpty, let lastMessageId = messages.last?.id {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                withAnimation {
-                                    proxy.scrollTo(lastMessageId, anchor: .bottom)
+                        .contentShape(Rectangle()) // Ensure entire area is tappable
+                        .allowsHitTesting(true) // Ensure ScrollView can receive touches
+                        .onChange(of: messages.count) { _ in
+                            // Scroll to bottom when new messages are added (matching Android)
+                            if !messages.isEmpty, let lastMessageId = messages.last?.id {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    withAnimation {
+                                        proxy.scrollTo(lastMessageId, anchor: .bottom)
+                                    }
                                 }
                             }
                         }
                     }
-                }
                     
                     // Multi-select small counter text overlay
                     if showMultiSelectHeader && selectedCount > 0 {
@@ -281,7 +285,7 @@ struct GroupChattingScreen: View {
                     }
                 }
                 
-                // Bottom input area
+                // Bottom input area (matching ChattingScreen layout)
                 messageInputContainer
             }
             

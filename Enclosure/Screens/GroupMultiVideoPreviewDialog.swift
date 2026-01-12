@@ -514,6 +514,9 @@ struct GroupMultiVideoPreviewDialog: View {
                                     lockQueue.sync { uploadErrors.append(error) }
                                     dispatchGroup.leave()
                                 case .success(let videoData):
+                                    // Save video to local storage (matching Android Enclosure/Media/Videos)
+                                    self.saveVideoToLocalStorage(data: videoData, fileName: videoFileName)
+                                    
                                     self.uploadVideoFileToFirebase(data: videoData, remoteFileName: videoFileName) { videoUploadResult in
                                         switch videoUploadResult {
                                         case .failure(let error):
@@ -792,6 +795,38 @@ struct GroupMultiVideoPreviewDialog: View {
                 
                 completion(.success(url.absoluteString))
             }
+        }
+    }
+    
+    // MARK: - Local Storage Functions (matching ChattingScreen)
+    
+    /// Get local videos directory path (matching Android Enclosure/Media/Videos)
+    private func getLocalVideosDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let videosDir = documentsPath.appendingPathComponent("Enclosure/Media/Videos", isDirectory: true)
+        try? FileManager.default.createDirectory(at: videosDir, withIntermediateDirectories: true, attributes: nil)
+        return videosDir
+    }
+    
+    /// Save video to local storage (matching Android file saving logic)
+    private func saveVideoToLocalStorage(data: Data, fileName: String) {
+        let videosDir = getLocalVideosDirectory()
+        let fileURL = videosDir.appendingPathComponent(fileName)
+        
+        // Check if file already exists (matching Android doesFileExist check)
+        guard !FileManager.default.fileExists(atPath: fileURL.path) else {
+            print("📱 [LOCAL_STORAGE] Video already exists locally: \(fileName)")
+            return
+        }
+        
+        do {
+            try data.write(to: fileURL, options: .atomic)
+            print("📱 [LOCAL_STORAGE] ✅ Saved video to local storage")
+            print("📱 [LOCAL_STORAGE] File: \(fileName)")
+            print("📱 [LOCAL_STORAGE] File Path: \(fileURL.path)")
+            print("📱 [LOCAL_STORAGE] Size: \(data.count) bytes (\(String(format: "%.2f", Double(data.count) / 1024.0 / 1024.0)) MB)")
+        } catch {
+            print("❌ [LOCAL_STORAGE] Error saving video to local storage: \(error.localizedDescription)")
         }
     }
     
