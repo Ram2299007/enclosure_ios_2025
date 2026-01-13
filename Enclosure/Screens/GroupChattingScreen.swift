@@ -139,6 +139,18 @@ struct GroupChattingScreen: View {
     @State private var audioFileURL: URL?
     @State private var isRecording: Bool = false
     
+    // Long press dialog state (matching ChattingScreen)
+    @State private var showLongPressDialog: Bool = false
+    @State private var longPressedMessage: ChatMessage? = nil
+    @State private var longPressPosition: CGPoint = .zero
+    
+    // Scroll down button state (matching ChattingScreen)
+    @State private var scrollViewProxy: ScrollViewProxy? = nil // Hold proxy for manual scrolls (down arrow)
+    @State private var showScrollDownButton: Bool = false // Show when user is away from bottom
+    @State private var isLastItemVisible: Bool = false // Track if last message is visible (matching Android)
+    @State private var downArrowCount: Int = 0
+    @State private var showDownArrowCount: Bool = false
+    
     var body: some View {
         ZStack {
             Color("BackgroundColor")
@@ -237,7 +249,7 @@ struct GroupChattingScreen: View {
                                             // Open ShowImageScreen for single image (matching ChattingScreen)
                                             selectedImageForShow = imageModel
                                             navigateToShowImageScreen = true
-                                        },
+                                            },
                                             isHighlighted: false,
                                             isMultiSelectMode: showMultiSelectHeader,
                                             isSelected: selectedMessageIds.contains(chatMessage.id),
@@ -246,11 +258,29 @@ struct GroupChattingScreen: View {
                                             }
                                         )
                                         .id(chatMessage.id)
+                                        .onAppear {
+                                            // Track last item visibility (matching ChattingScreen)
+                                            if index == messages.count - 1 {
+                                                handleLastItemVisibility(id: chatMessage.id, index: index, isAppearing: true)
+                                            }
+                                        }
+                                        .onDisappear {
+                                            // Track last item visibility (matching ChattingScreen)
+                                            if index == messages.count - 1 {
+                                                handleLastItemVisibility(id: chatMessage.id, index: index, isAppearing: false)
+                                            }
+                                        }
                             }
                         }
                     }
                     .contentShape(Rectangle()) // Ensure entire area is tappable
                     .allowsHitTesting(true) // Ensure ScrollView can receive touches
+                    .onAppear {
+                        scrollViewProxy = proxy
+                    }
+                    .onDisappear {
+                        scrollViewProxy = nil
+                    }
                     .onChange(of: messages.count) { _ in
                         // Scroll to bottom when new messages are added (matching Android)
                         if !messages.isEmpty, let lastMessageId = messages.last?.id {
@@ -258,10 +288,27 @@ struct GroupChattingScreen: View {
                                 withAnimation {
                                     proxy.scrollTo(lastMessageId, anchor: .bottom)
                                 }
+                                // Hide scroll down button when scrolling to bottom
+                                self.showScrollDownButton = false
+                                self.isLastItemVisible = true
+                                self.downArrowCount = 0
+                                self.showDownArrowCount = false
                             }
                         }
                     }
                 }
+                    
+                    // Scroll down button overlay (matching ChattingScreen)
+                    if showScrollDownButton {
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                scrollDownButton
+                            }
+                        }
+                        .allowsHitTesting(true) // Allow button to receive touches
+                    }
                     
                     // Multi-select small counter text overlay
                     if showMultiSelectHeader && selectedCount > 0 {
@@ -302,6 +349,23 @@ struct GroupChattingScreen: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .allowsHitTesting(false) // Don't block touches to ScrollView
                     }
+                }
+                
+                // Long press dialog overlay - full screen (matching ChattingScreen)
+                if showLongPressDialog, let message = longPressedMessage {
+                    GroupMessageLongPressDialog(
+                        message: message,
+                        isSentByMe: message.uid == Constant.SenderIdMy,
+                        position: longPressPosition,
+                        group: group,
+                        isPresented: $showLongPressDialog,
+                        onCopy: {
+                            handleCopyMessage(message: message)
+                        },
+                        onDelete: {
+                            handleDeleteMessage(message: message)
+                        }
+                    )
                 }
                 
                 // Bottom input area (matching ChattingScreen layout)
@@ -1044,7 +1108,7 @@ struct GroupChattingScreen: View {
                             showEmojiLeftArrow = false
                             isEmojiLayoutHorizontal = false
                         }
-                    }) {
+                }) {
                         ZStack {
                             Circle()
                                 .fill(Color("circlebtnhover").opacity(0.1))
@@ -1121,8 +1185,8 @@ struct GroupChattingScreen: View {
                             .font(.system(size: 30))
                                             .frame(width: 40, height: 40)
                                     }
-                                }
-                            }
+                    }
+                }
                             .padding(.horizontal, 8)
                             .frame(height: 40) // Exact height to match emoji row
                         }
@@ -2674,6 +2738,9 @@ struct GroupChattingScreen: View {
                     )
                     self.messages.append(groupMessage)
                     self.messageReceiverLoaders[modelId] = 0 // Show progress bar
+                    // Hide scroll down button when sending message (matching ChattingScreen)
+                    self.showScrollDownButton = false
+                    self.isLastItemVisible = true
                 }
                 
                 // Upload message using MessageUploadService (matching Android UploadHelper.uploadContent - line 1349)
@@ -2890,7 +2957,7 @@ struct GroupChattingScreen: View {
                         self.isLoading = false
                         self.initialLoadDone = true
                         listener?()
-                    }
+            }
                     return
                 }
                 
@@ -3055,6 +3122,12 @@ struct GroupChattingScreen: View {
                     if self.lastKey == nil || messageId < self.lastKey! {
                         self.lastKey = messageId
                     }
+                    
+                    // Hide scroll down button when new message arrives (matching ChattingScreen)
+                    self.showScrollDownButton = false
+                    self.isLastItemVisible = true
+                    self.downArrowCount = 0
+                    self.showDownArrowCount = false
                     
                     // Scroll to bottom (matching Android scrollToPosition)
                     // This will be handled by ScrollViewReader onChange
@@ -3365,9 +3438,160 @@ struct GroupChattingScreen: View {
     
     // MARK: - Handle Long Press
     private func handleLongPress(message: ChatMessage, position: CGPoint) {
-        // Show context menu (matching Android)
-        // Implementation will be added later
-        print("📱 [handleLongPress] Long press on message: \(message.id)")
+        print("📱 [handleLongPress] Long press on message: \(message.id), position: \(position)")
+        longPressedMessage = message
+        longPressPosition = position
+        showLongPressDialog = true
+    }
+    
+    // MARK: - Handle Copy Message
+    private func handleCopyMessage(message: ChatMessage) {
+        print("📱 [handleCopyMessage] Copying message: \(message.id)")
+        
+        // Copy message text to clipboard (matching Android ClipboardManager)
+        let textToCopy: String
+        if message.dataType == Constant.Text {
+            textToCopy = message.message
+        } else if message.dataType == Constant.contact, let name = message.name, let phone = message.phone {
+            textToCopy = "\(name)\n\(phone)"
+        } else {
+            // For other types, copy a placeholder or empty string
+            textToCopy = message.message
+        }
+        
+        UIPasteboard.general.string = textToCopy
+        Constant.showToast(message: "Message copied")
+        
+        // Close dialog
+        showLongPressDialog = false
+        longPressedMessage = nil
+    }
+    
+    // MARK: - Handle Delete Message
+    private func handleDeleteMessage(message: ChatMessage) {
+        print("📱 [handleDeleteMessage] Deleting message: \(message.id)")
+        
+        let groupId = group.groupId
+        let senderId = Constant.SenderIdMy
+        let senderRoom = getSenderRoom()
+        let messageId = message.id
+        
+        // Step 1: Remove from Firebase GROUPCHAT (matching Android)
+        let database = Database.database().reference()
+        let messageRef = database.child(Constant.GROUPCHAT).child(senderRoom).child(messageId)
+        
+        messageRef.removeValue { error, _ in
+            if let error = error {
+                print("❌ [handleDeleteMessage] Error removing from Firebase: \(error.localizedDescription)")
+                Constant.showToast(message: "Failed to delete message")
+                return
+            }
+            
+            print("✅ [handleDeleteMessage] Removed from Firebase GROUPCHAT")
+            
+            // Step 2: Get group members and call delete API for each (matching Android deleteDataForAllMembers)
+            self.getGroupMembersAndDelete(groupId: groupId, messageId: messageId, senderId: senderId)
+            
+            // Step 3: Remove from local messages array
+            DispatchQueue.main.async {
+                if let index = self.messages.firstIndex(where: { $0.id == messageId }) {
+                    self.messages.remove(at: index)
+                }
+                
+                // Remove from pending table if exists
+                DatabaseHelper.shared.removePendingGroupMessage(modelId: messageId, groupId: groupId)
+                
+                // Close dialog
+                self.showLongPressDialog = false
+                self.longPressedMessage = nil
+            }
+        }
+    }
+    
+    // MARK: - Get Group Members and Delete (matching Android deleteDataForAllMembers)
+    private func getGroupMembersAndDelete(groupId: String, messageId: String, senderId: String) {
+        // Call get_group_members API (matching Android Webservice.get_group_members_for_adapter)
+        let urlString = "\(Constant.baseURL)groupController/get_group_members"
+        guard let url = URL(string: urlString) else {
+            print("❌ [getGroupMembersAndDelete] Invalid URL")
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let requestBody: [String: Any] = [
+            "groupId": groupId
+        ]
+        
+        request.httpBody = try? JSONSerialization.data(withJSONObject: requestBody)
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("❌ [getGroupMembersAndDelete] Error fetching group members: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let data = data else {
+                print("❌ [getGroupMembersAndDelete] No data received")
+                return
+            }
+            
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let dataArray = json["data"] as? [[String: Any]] {
+                    
+                    var memberUids: [String] = []
+                    for memberDict in dataArray {
+                        if let uid = memberDict["uid"] as? String, !uid.isEmpty {
+                            memberUids.append(uid)
+                        }
+                    }
+                    
+                    print("✅ [getGroupMembersAndDelete] Found \(memberUids.count) group members")
+                    
+                    // Call delete API for each member (matching Android delete_chatingindivisual)
+                    for (index, memberUid) in memberUids.enumerated() {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.1) {
+                            self.deleteMessageForMember(messageId: messageId, senderId: senderId, memberUid: memberUid)
+                        }
+                    }
+                }
+            } catch {
+                print("❌ [getGroupMembersAndDelete] JSON parsing error: \(error.localizedDescription)")
+            }
+        }.resume()
+    }
+    
+    // MARK: - Delete Message for Member (matching Android Webservice.delete_chatingindivisual)
+    private func deleteMessageForMember(messageId: String, senderId: String, memberUid: String) {
+        let urlString = "\(Constant.baseURL)chatController/delete_chatingindivisual"
+        guard let url = URL(string: urlString) else {
+            print("❌ [deleteMessageForMember] Invalid URL")
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let requestBody: [String: Any] = [
+            "modelId": messageId,
+            "uid": senderId,
+            "receiverUid": memberUid
+        ]
+        
+        request.httpBody = try? JSONSerialization.data(withJSONObject: requestBody)
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("❌ [deleteMessageForMember] Error deleting for member \(memberUid): \(error.localizedDescription)")
+                return
+            }
+            
+            print("✅ [deleteMessageForMember] Delete API called for member: \(memberUid)")
+        }.resume()
     }
     
     // MARK: - Toggle Message Selection
@@ -3441,6 +3665,9 @@ struct GroupChattingScreen: View {
                         
                         self.messages.append(groupMessage)
                         self.messageReceiverLoaders[pendingMessage.id] = 0 // Show progress bar
+                        // Hide scroll down button when loading pending messages (matching ChattingScreen)
+                        self.showScrollDownButton = false
+                        self.isLastItemVisible = true
                         addedCount += 1
                         print("📱 [loadPendingGroupMessages] Adding pending message to UI: \(pendingMessage.id), dataType: \(pendingMessage.dataType), receiverLoader: \(pendingMessage.receiverLoader)")
                     } else {
@@ -3823,6 +4050,9 @@ struct GroupChattingScreen: View {
                 DispatchQueue.main.async {
                     self.messages.append(newMessage)
                     self.messageReceiverLoaders[modelId] = 0 // Show progress bar
+                    // Hide scroll down button when sending voice message (matching ChattingScreen)
+                    self.showScrollDownButton = false
+                    self.isLastItemVisible = true
                 }
                 
                 // Upload via MessageUploadService using GROUP API
@@ -3854,5 +4084,207 @@ struct GroupChattingScreen: View {
             sendButtonScale = 1.0
         }
     }
+    
+    // MARK: - Scroll Down Button (matching ChattingScreen)
+    private var scrollDownButton: some View {
+        Button(action: {
+            print("📜 [SCROLL] Scroll down button tapped - messages.count: \(messages.count)")
+            
+            // Light haptic feedback (Android-style tap vibration)
+            let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.impactOccurred()
+            
+            // Scroll to the last message if available
+            scrollToBottom(animated: true)
+        }) {
+            ZStack {
+                // Background matching modern_play_button_bg
+                Circle()
+                    .fill(Color("BackgroundColor"))
+                    .frame(width: 35, height: 35)
+                    .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+                
+                VStack(spacing: 0) {
+                    // Down arrow image - 24dp x 24dp, original colors (no tint)
+                    Image("down_arrow")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 24, height: 24)
+                        .foregroundColor(Color(hex: Constant.themeColor)) // apply theme tint
+                    
+                    // Count text - hidden by default (visibility="gone")
+                    if showDownArrowCount {
+                        Text("\(downArrowCount)")
+                            .font(.custom("Inter18pt-Bold", size: 12))
+                            .foregroundColor(Color("blue"))
+                    }
+                }
+                .padding(5) // 5dp padding
+            }
+        }
+        .padding(.trailing, 15) // marginEnd="20dp" to match Android spacing request
+        .padding(.bottom, 45) // marginBottom="45dp"
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+    
+    // MARK: - Handle Last Item Visibility (matching ChattingScreen)
+    private func handleLastItemVisibility(id: String, index: Int, isAppearing: Bool) {
+        // Check if this is the last message (matching Android lastVisiblePosition >= totalItems - 1)
+        let isLastMessage = index == messages.count - 1
+        
+        if isLastMessage {
+            // Update isLastItemVisible flag (matching Android)
+            isLastItemVisible = isAppearing
+            
+            // Update down button visibility (matching Android)
+            // Hide when last item is visible, show when not visible
+            showScrollDownButton = !isLastItemVisible
+            
+            // Reset down arrow count when last item becomes visible
+            if isAppearing {
+                downArrowCount = 0
+                showDownArrowCount = false
+            }
+        } else if !isAppearing && index < messages.count - 1 {
+            // If a message above the last one disappears, increment count
+            // This tracks how many messages are below the visible area
+            if !isLastItemVisible {
+                downArrowCount += 1
+                showDownArrowCount = true
+            }
+        }
+    }
+    
+    // MARK: - Scroll To Bottom (matching ChattingScreen)
+    private func scrollToBottom(animated: Bool) {
+        guard let lastId = messages.last?.id, let proxy = scrollViewProxy else {
+            return
+        }
+        
+        if animated {
+            withAnimation {
+                proxy.scrollTo(lastId, anchor: .bottom)
+            }
+        } else {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            CATransaction.setAnimationDuration(0)
+            proxy.scrollTo(lastId, anchor: .bottom)
+            CATransaction.commit()
+        }
+        
+        // Reset down arrow count after scrolling
+        downArrowCount = 0
+        showDownArrowCount = false
+    }
 }
 
+// MARK: - Group Message Long Press Dialog (matching Android sender_long_press_group_dialogue.xml)
+struct GroupMessageLongPressDialog: View {
+    let message: ChatMessage
+    let isSentByMe: Bool
+    let position: CGPoint
+    let group: GroupModel
+    @Binding var isPresented: Bool
+    let onCopy: () -> Void
+    let onDelete: () -> Void
+    
+    @Environment(\.colorScheme) private var colorScheme
+    
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                // Semi-transparent background (matching Android blur background)
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation {
+                            isPresented = false
+                        }
+                    }
+                
+                // Dialog card (matching Android CardView: 220dp width, wrap_content height, 10dp corner radius, 5dp elevation)
+                VStack(spacing: 0) {
+                    // Delete option (matching Android deletelyt)
+                    Button(action: {
+                        onDelete()
+                    }) {
+                        HStack(spacing: 0) {
+                            Text("Delete")
+                                .font(.custom("Inter18pt-Bold", size: 16))
+                                .foregroundColor(Color("TextColor"))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.leading, 15)
+                            
+                            Image("baseline_delete_forever_24")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 26.05, height: 24)
+                                .foregroundColor(Color("gray3"))
+                                .padding(.leading, 3)
+                        }
+                        .frame(height: 44) // Approximate height for text + padding
+                        .padding(.top, 10)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    // Divider (matching Android View with invisible visibility)
+                    // Note: Android has a divider but it's invisible, so we skip it
+                    
+                    // Copy option (matching Android copy - only visible for text messages)
+                    if message.dataType == Constant.Text {
+                        Button(action: {
+                            onCopy()
+                        }) {
+                            HStack(spacing: 0) {
+                                Text("Copy message")
+                                    .font(.custom("Inter18pt-Bold", size: 16))
+                                    .foregroundColor(Color("TextColor"))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.leading, 15)
+                                
+                                Image("copy_svg")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 23, height: 23)
+                                    .foregroundColor(Color("gray3"))
+                                    .padding(.leading, 5)
+                            }
+                            .frame(height: 44) // Approximate height for text + padding
+                            .padding(.top, 10)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+                .frame(width: 220) // android:layout_width="220dp"
+                .background(
+                    RoundedRectangle(cornerRadius: 10) // app:cardCornerRadius="10dp"
+                        .fill(Color("cardBackgroundColornew")) // style="@style/cardBackgroundColor"
+                        .shadow(color: Color.black.opacity(0.2), radius: 5, x: 0, y: 2) // app:cardElevation="5dp"
+                )
+                .padding(.trailing, isSentByMe ? 16 : 0) // android:layout_marginEnd="16dp" (for sender)
+                .padding(.top, 2) // android:layout_marginTop="2dp"
+                .padding(.bottom, 20) // android:layout_marginBottom="20dp"
+                .position(
+                    x: isSentByMe ? geometry.size.width - 16 - 110 : 110, // Position from right edge for sender, from left for receiver
+                    y: adjustedOffsetY(in: geometry)
+                )
+            }
+        }
+        .ignoresSafeArea(edges: .all)
+    }
+    
+    // Calculate adjusted offset Y (matching Android positioning logic)
+    private func adjustedOffsetY(in geometry: GeometryProxy) -> CGFloat {
+        let cardHeight: CGFloat = message.dataType == Constant.Text ? 88 : 44 // Approximate height (Delete + Copy or just Delete)
+        let padding: CGFloat = 20
+        let frame = geometry.frame(in: .global)
+        let localY = position.y - frame.minY
+        let centeredY = localY - (cardHeight / 2) // Center card at touch point
+        let maxY = geometry.size.height - cardHeight - padding
+        return min(max(centeredY, padding), maxY)
+    }
+}
