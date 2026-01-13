@@ -130,6 +130,15 @@ struct GroupChattingScreen: View {
     @State private var navigateToShowImageScreen: Bool = false
     @State private var selectedImageForShow: SelectionBunchModel?
     
+    // Voice recording state (matching ChattingScreen)
+    @State private var showVoiceRecordingBottomSheet: Bool = false
+    @State private var audioRecorder: AVAudioRecorder?
+    @State private var recordingTimer: Timer?
+    @State private var recordingDuration: TimeInterval = 0
+    @State private var recordingProgress: Double = 0.0
+    @State private var audioFileURL: URL?
+    @State private var isRecording: Bool = false
+    
     var body: some View {
         ZStack {
             Color("BackgroundColor")
@@ -165,8 +174,8 @@ struct GroupChattingScreen: View {
                 // Message list (positioned above message input container, matching ChattingScreen)
                 ZStack(alignment: .top) {
                     ScrollViewReader { proxy in
-                        ScrollView {
-                            LazyVStack(spacing: 0) {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
                                 // Load more indicator at top (matching Android)
                                 if hasMoreMessages && !messages.isEmpty {
                                     ProgressView()
@@ -182,32 +191,32 @@ struct GroupChattingScreen: View {
                                     let chatMessage = convertGroupMessageToChatMessage(groupMessage)
                                     
                                     // Display all message types (Text, img, video, etc.) - matching ChattingScreen
-                                    MessageBubbleView(
-                                        message: chatMessage,
-                                        onHalfSwipe: { swipedMessage in
-                                            // Handle multi-select mode first (matching Android)
-                                            if showMultiSelectHeader {
-                                                toggleMessageSelection(messageId: swipedMessage.id)
-                                                return
-                                            }
-                                            handleHalfSwipeReply(swipedMessage)
-                                        },
-                                        onReplyTap: { message in
-                                            // Handle multi-select mode first (matching Android)
-                                            if showMultiSelectHeader {
-                                                toggleMessageSelection(messageId: message.id)
-                                                return
-                                            }
-                                            handleReplyTap(message: message)
-                                        },
-                                        onLongPress: { message, position in
-                                            // Handle multi-select mode first (matching Android)
-                                            if showMultiSelectHeader {
-                                                toggleMessageSelection(messageId: message.id)
-                                                return
-                                            }
-                                            handleLongPress(message: message, position: position)
-                                        },
+                                        MessageBubbleView(
+                                            message: chatMessage,
+                                            onHalfSwipe: { swipedMessage in
+                                                // Handle multi-select mode first (matching Android)
+                                                if showMultiSelectHeader {
+                                                    toggleMessageSelection(messageId: swipedMessage.id)
+                                                    return
+                                                }
+                                                handleHalfSwipeReply(swipedMessage)
+                                            },
+                                            onReplyTap: { message in
+                                                // Handle multi-select mode first (matching Android)
+                                                if showMultiSelectHeader {
+                                                    toggleMessageSelection(messageId: message.id)
+                                                       return
+                                                }
+                                                handleReplyTap(message: message)
+                                            },
+                                            onLongPress: { message, position in
+                                                // Handle multi-select mode first (matching Android)
+                                                if showMultiSelectHeader {
+                                                    toggleMessageSelection(messageId: message.id)
+                                                    return
+                                                }
+                                                handleLongPress(message: message, position: position)
+                                            },
                                         onBunchLongPress: { selectionBunch in
                                             // Show preview dialog for bunch images (matching ChattingScreen)
                                             print("📸 [BunchPreview] onBunchLongPress (single tap) called with \(selectionBunch.count) images")
@@ -229,30 +238,30 @@ struct GroupChattingScreen: View {
                                             selectedImageForShow = imageModel
                                             navigateToShowImageScreen = true
                                         },
-                                        isHighlighted: false,
-                                        isMultiSelectMode: showMultiSelectHeader,
-                                        isSelected: selectedMessageIds.contains(chatMessage.id),
-                                        onSelectionToggle: { messageId in
-                                            toggleMessageSelection(messageId: messageId)
-                                        }
-                                    )
-                                    .id(chatMessage.id)
-                                }
+                                            isHighlighted: false,
+                                            isMultiSelectMode: showMultiSelectHeader,
+                                            isSelected: selectedMessageIds.contains(chatMessage.id),
+                                            onSelectionToggle: { messageId in
+                                                toggleMessageSelection(messageId: messageId)
+                                            }
+                                        )
+                                        .id(chatMessage.id)
                             }
                         }
-                        .contentShape(Rectangle()) // Ensure entire area is tappable
-                        .allowsHitTesting(true) // Ensure ScrollView can receive touches
-                        .onChange(of: messages.count) { _ in
-                            // Scroll to bottom when new messages are added (matching Android)
-                            if !messages.isEmpty, let lastMessageId = messages.last?.id {
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                    withAnimation {
-                                        proxy.scrollTo(lastMessageId, anchor: .bottom)
-                                    }
+                    }
+                    .contentShape(Rectangle()) // Ensure entire area is tappable
+                    .allowsHitTesting(true) // Ensure ScrollView can receive touches
+                    .onChange(of: messages.count) { _ in
+                        // Scroll to bottom when new messages are added (matching Android)
+                        if !messages.isEmpty, let lastMessageId = messages.last?.id {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                withAnimation {
+                                    proxy.scrollTo(lastMessageId, anchor: .bottom)
                                 }
                             }
                         }
                     }
+                }
                     
                     // Multi-select small counter text overlay
                     if showMultiSelectHeader && selectedCount > 0 {
@@ -518,6 +527,19 @@ struct GroupChattingScreen: View {
             }
             .hidden()
         )
+        .sheet(isPresented: $showVoiceRecordingBottomSheet) {
+            VoiceRecordingBottomSheet(
+                recordingDuration: $recordingDuration,
+                recordingProgress: $recordingProgress,
+                isRecording: $isRecording,
+                onCancel: {
+                    cancelRecording()
+                },
+                onSend: {
+                    sendAndStopRecording()
+                }
+            )
+        }
         .onChange(of: showCameraView) { isPresented in
             // When camera view is dismissed, restore gallery picker if it was open before
             if !isPresented && wasGalleryPickerOpenBeforeCamera {
@@ -862,6 +884,12 @@ struct GroupChattingScreen: View {
                             }
                             .scaleEffect(sendButtonScale)
                         }
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0.1)
+                                .onEnded { _ in
+                                    handleSendButtonLongPress()
+                                }
+                        )
                     }
                     
                     // Small counter badge (Android multiSelectSmallCounterText) - positioned relative to send button
@@ -1008,7 +1036,7 @@ struct GroupChattingScreen: View {
                 // Left arrow (shown when search is focused, matching emojiLeftArrow)
                 // android:layout_width="40dp" android:layout_height="40dp"
                 if showEmojiLeftArrow {
-                    Button(action: {
+                Button(action: {
                         // Hide keyboard and change back to vertical/grid layout
                         print("🟡 [EMOJI_PICKER] Back arrow clicked - hiding keyboard and switching to grid")
                         withAnimation {
@@ -1022,11 +1050,11 @@ struct GroupChattingScreen: View {
                                 .fill(Color("circlebtnhover").opacity(0.1))
                                 .frame(width: 40, height: 40)
                             
-                            Image("leftvector")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 25, height: 18)
+                    Image("leftvector")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 25, height: 18)
                                 .foregroundColor(Color("TextColor"))
                         }
                     }
@@ -1045,8 +1073,8 @@ struct GroupChattingScreen: View {
                             .padding(.trailing, 8 + 12) // marginEnd(8dp) + paddingEnd(12dp)
                     }
                     TextField("", text: $emojiSearchText)
-                        .font(.custom("Inter18pt-Regular", size: 14))
-                        .foregroundColor(Color("black_white_cross"))
+                    .font(.custom("Inter18pt-Regular", size: 14))
+                    .foregroundColor(Color("black_white_cross"))
                         .padding(.leading, 12) // android:paddingStart="12dp"
                         .padding(.trailing, 12) // android:paddingEnd="12dp"
                         .frame(height: 40) // android:layout_height="40dp"
@@ -1090,7 +1118,7 @@ struct GroupChattingScreen: View {
                                         messageText += emoji.character
                                     }) {
                                         Text(emoji.character)
-                                            .font(.system(size: 30))
+                            .font(.system(size: 30))
                                             .frame(width: 40, height: 40)
                                     }
                                 }
@@ -1117,8 +1145,8 @@ struct GroupChattingScreen: View {
                             }
                         }
                         .padding(8)
-                    }
-                    .frame(height: 250)
+            }
+            .frame(height: 250)
                 }
             }
         }
@@ -2820,7 +2848,7 @@ struct GroupChattingScreen: View {
         )
     }
     
-    // MARK: - Fetch Messages (matching Android fetchMessages)
+    // MARK: - Fetch Messages (matching Android fetchMessages and ChattingScreen)
     private func fetchMessages(senderRoom: String, listener: (() -> Void)? = nil) {
         // Check if already loading (matching Android isLoading check)
         if isLoading {
@@ -2839,18 +2867,146 @@ struct GroupChattingScreen: View {
         isLoading = true
         print("📱 [fetchMessages] Fetching messages for room: \(senderRoom)")
         
+        if !initialLoadDone {
+            // 🔹 Phase 1: Load last 10 messages immediately (matching ChattingScreen Phase 1)
+            print("📱 [fetchMessages] Phase 1: Initial load (last 10 messages by key).")
+        
         let database = Database.database().reference()
         let chatPath = "\(Constant.GROUPCHAT)/\(senderRoom)"
         
         // Query last 10 messages ordered by key (matching Android orderByKey().limitToLast(10))
-        let query = database.child(chatPath)
+            let limitedQuery = database.child(chatPath)
             .queryOrderedByKey()
             .queryLimited(toLast: 10)
+        
+            limitedQuery.observeSingleEvent(of: .value) { snapshot in
+                print("📱 [fetchMessages] Fetched initial data: \(snapshot.childrenCount) messages.")
+                
+                var tempList: [GroupChatMessage] = []
+                
+                guard let children = snapshot.children.allObjects as? [DataSnapshot] else {
+                    print("⚠️ [fetchMessages] No children found")
+                    DispatchQueue.main.async {
+                        self.isLoading = false
+                        self.initialLoadDone = true
+                        listener?()
+                    }
+                    return
+                }
+                
+                for child in children {
+                    let childKey = child.key
+                    
+                    // Skip invalid keys (matching Android)
+                    if childKey.count <= 1 || childKey == ":" {
+                        print("📱 [fetchMessages] Skipping invalid key: \(childKey)")
+                        continue
+                    }
+                    
+                    do {
+                        // Parse message from Firebase snapshot
+                        if let messageDict = child.value as? [String: Any] {
+                            let model = try self.parseGroupMessageFromDict(messageDict, messageId: childKey)
+                            // Add all message types (Text, Image, Video, Document, Contact, VoiceAudio)
+                            tempList.append(model)
+                        }
+                    } catch {
+                        print("❌ [fetchMessages] Error parsing message for key: \(childKey), error: \(error.localizedDescription)")
+                        continue
+                    }
+                }
+                
+                // Sort by key (matching Android - keys are chronological)
+                tempList.sort { $0.id < $1.id }
+                
+                // Store message IDs from initial load to prevent duplicates when listener attaches
+                let initialMessageIds = Set(tempList.map { $0.id })
+                
+                // Get oldest key from initial load (for pagination)
+                let oldestKey = tempList.first?.id
+                
+                // 🔹 Directly update messages array immediately (matching ChattingScreen)
+                DispatchQueue.main.async {
+                    print("📱 [fetchMessages] Updating messages array with \(tempList.count) messages")
+                    self.messages = tempList
+                    
+                    // Store initially loaded message IDs to prevent duplicates
+                    self.initiallyLoadedMessageIds = initialMessageIds
+                    
+                    // Set lastKey for pagination (oldest message key)
+                    if let oldestKey = oldestKey {
+                        self.lastKey = oldestKey
+                        print("📱 [fetchMessages] Set lastKey to: \(oldestKey)")
+                    }
+                    
+                    // Update unique dates
+                    for message in tempList {
+                        if let date = message.currentDate {
+                            self.uniqueDates.insert(date)
+                        }
+                    }
+                    
+                    self.isLoading = false
+                    self.initialLoadDone = true
+                    
+                    // 🔁 Attach continuous listener after a delay (matching ChattingScreen)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.attachFullListener(senderRoom: senderRoom)
+                    }
+                    
+                    listener?()
+                }
+            } withCancel: { error in
+                self.isLoading = false
+                        DispatchQueue.main.async {
+                    self.initialLoadDone = true
+                }
+                print("❌ [fetchMessages] Error fetching initial messages: \(error.localizedDescription)")
+                
+                // Don't show toast for network errors to avoid spam (matching Android)
+                let nsError = error as NSError
+                let isNetworkError = nsError.domain == NSURLErrorDomain && 
+                                    (nsError.code == NSURLErrorNotConnectedToInternet || 
+                                     nsError.code == NSURLErrorNetworkConnectionLost ||
+                                     nsError.code == NSURLErrorTimedOut)
+                
+                if !isNetworkError {
+                    DispatchQueue.main.async {
+                        Constant.showToast(message: "Error loading messages: \(error.localizedDescription)")
+                    }
+                }
+                listener?()
+            }
+        } else {
+            // Already loaded once, just make sure full listener is attached (matching ChattingScreen)
+            print("📱 [fetchMessages] Phase 2: Full listener already attached.")
+            attachFullListener(senderRoom: senderRoom)
+            listener?()
+        }
+    }
+    
+    // MARK: - Attach Full Listener for Real-time Updates (matching ChattingScreen)
+    private func attachFullListener(senderRoom: String) {
+        // Prevent duplicate listeners (matching ChattingScreen)
+        if firebaseListenerHandle != nil {
+            print("📱 [attachFullListener] Listener already attached, skipping")
+            return
+        }
+        
+        let database = Database.database().reference()
+        let chatPath = "\(Constant.GROUPCHAT)/\(senderRoom)"
+        
+        print("📱 [attachFullListener] Attaching real-time listener for room: \(senderRoom)")
         
         // Use ChildEventListener for real-time updates (matching Android addChildEventListener)
         let handle = database.child(chatPath)
             .queryOrderedByKey()
             .observe(.childAdded) { snapshot in
+                // Skip messages that were already loaded in initial fetch (matching ChattingScreen)
+                if self.initiallyLoadedMessageIds.contains(snapshot.key) {
+                    print("📱 [attachFullListener] Skipping duplicate message from initial load: \(snapshot.key)")
+                    return
+                }
                 self.handleChildAdded(snapshot: snapshot, senderRoom: senderRoom)
             }
         
@@ -2861,30 +3017,6 @@ struct GroupChattingScreen: View {
         
         // Store listener handles for cleanup
         firebaseListenerHandle = handle
-        
-        // Also observe once for initial load (matching Android)
-        query.observeSingleEvent(of: .value) { snapshot in
-            if snapshot.childrenCount == 0 {
-                // No messages found
-                DispatchQueue.main.async {
-                    self.isLoading = false
-                    self.initialLoadDone = true
-                    listener?()
-                }
-            } else {
-                // Set lastKey to the oldest (first) key for pagination (matching Android)
-                if let children = snapshot.children.allObjects as? [DataSnapshot], !children.isEmpty {
-                    // Find the smallest (oldest) key
-                    let keys = children.map { $0.key }
-                    if let oldestKey = keys.min() {
-                        DispatchQueue.main.async {
-                            self.lastKey = oldestKey
-                            print("📱 [fetchMessages] Set lastKey to: \(oldestKey)")
-                        }
-                    }
-                }
-            }
-        }
     }
     
     // MARK: - Handle Child Added (matching Android onChildAdded)
@@ -2918,8 +3050,6 @@ struct GroupChattingScreen: View {
                 
                 DispatchQueue.main.async {
                     self.messages.append(groupMessage)
-                    self.isLoading = false
-                    self.initialLoadDone = true
                     
                     // Update lastKey if this is the oldest message (for pagination)
                     if self.lastKey == nil || messageId < self.lastKey! {
@@ -3331,6 +3461,397 @@ struct GroupChattingScreen: View {
                     print("📱 [loadPendingGroupMessages] ⚠️ No new pending group messages added (all \(skippedCount) were duplicates)")
                 }
             }
+        }
+    }
+    
+    // MARK: - Voice Recording Functions (matching ChattingScreen)
+    
+    /// Handle long press on send button (matching Android onLongClickListener)
+    private func handleSendButtonLongPress() {
+        print("VoiceRecording: === SEND BUTTON LONG PRESS ===")
+        
+        // Check if multi-select is active (matching Android)
+        if selectedAssetIds.count > 0 {
+            print("VoiceRecording: Multi-select active, ignoring long press")
+            return
+        }
+        
+        // Hide keyboard (matching Android)
+        isMessageFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        
+        // Vibrate (matching Android Constant.Vibrator50)
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+        
+        // Animate send button (matching Android ObjectAnimator 1.3f -> 0.8f)
+        withAnimation(.easeInOut(duration: 0.2)) {
+            sendButtonScale = 1.3
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                self.sendButtonScale = 0.8
+            }
+        }
+        
+        // Show bottom sheet dialog
+        showVoiceRecordingBottomSheet = true
+        
+        // Start recording after a short delay to allow bottom sheet to appear
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.startRecording()
+        }
+    }
+    
+    /// Start voice recording (matching Android startRecording)
+    private func startRecording() {
+        print("VoiceRecording: === START RECORDING ===")
+        
+        // Request microphone permission
+        AVAudioSession.sharedInstance().requestRecordPermission { granted in
+            guard granted else {
+                DispatchQueue.main.async {
+                    Constant.showToast(message: "Microphone permission is required for voice recording")
+                    self.showVoiceRecordingBottomSheet = false
+                    self.resetSendButtonScale()
+                }
+                return
+            }
+            
+            DispatchQueue.main.async {
+                do {
+                    // Configure audio session
+                    let audioSession = AVAudioSession.sharedInstance()
+                    try audioSession.setCategory(.playAndRecord, mode: .default)
+                    try audioSession.setActive(true)
+                    
+                    // Create audio file URL (matching Android file path structure)
+                    let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                    let audiosDir = documentsPath.appendingPathComponent("Enclosure/Media/Audios", isDirectory: true)
+                    
+                    // Create directory if it doesn't exist
+                    try FileManager.default.createDirectory(at: audiosDir, withIntermediateDirectories: true, attributes: nil)
+                    
+                    // Generate filename with timestamp (matching Android format)
+                    let dateFormatter = DateFormatter()
+                    dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
+                    let timestamp = dateFormatter.string(from: Date())
+                    // Note: iOS saves AAC as .m4a, but Android uses .mp3 extension
+                    // We'll use .m4a (correct format) and backend should handle it
+                    let fileName = "\(timestamp).m4a"
+                    let fileURL = audiosDir.appendingPathComponent(fileName)
+                    
+                    self.audioFileURL = fileURL
+                    
+                    // Configure audio recorder settings (matching Android: MPEG_4, AAC)
+                    let settings: [String: Any] = [
+                        AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                        AVSampleRateKey: 44100,
+                        AVNumberOfChannelsKey: 1,
+                        AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+                    ]
+                    
+                    // Create recorder
+                    self.audioRecorder = try AVAudioRecorder(url: fileURL, settings: settings)
+                    self.audioRecorder?.prepareToRecord()
+                    self.audioRecorder?.record()
+                    
+                    self.isRecording = true
+                    self.recordingDuration = 0
+                    // Progress bar starts at 100% (full) and decreases to 0% as time runs out (matching Android CountDownTimer)
+                    self.recordingProgress = 100.0
+                    
+                    // Start timer for countdown (60 seconds max, matching Android)
+                    self.recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+                        // Update duration
+                        self.recordingDuration += 0.1
+                        
+                        // Update progress bar: progress decreases from 100 to 0 as time increases (matching Android CountDownTimer)
+                        let elapsedSeconds = self.recordingDuration
+                        let maxSeconds: Double = 60.0
+                        let remainingSeconds = max(0, maxSeconds - elapsedSeconds)
+                        self.recordingProgress = max(0, min(100, (remainingSeconds / maxSeconds) * 100.0))
+                        
+                        // Auto-stop at 60 seconds (matching Android countDownTimer)
+                        if self.recordingDuration >= 60.0 {
+                            timer.invalidate()
+                            self.recordingDuration = 60.0 // Cap at exactly 60 seconds
+                            self.recordingProgress = 0.0 // Progress bar at 0% when time is up
+                            self.sendAndStopRecording()
+                            self.showVoiceRecordingBottomSheet = false
+                            self.resetSendButtonScale()
+                        }
+                    }
+                    
+                    print("VoiceRecording: Recording started, file: \(fileURL.path)")
+                } catch {
+                    print("VoiceRecording: Error starting recording: \(error.localizedDescription)")
+                    Constant.showToast(message: "Failed to start recording")
+                    self.showVoiceRecordingBottomSheet = false
+                    self.resetSendButtonScale()
+                }
+            }
+        }
+    }
+    
+    /// Cancel recording (matching Android cancelRecording)
+    private func cancelRecording() {
+        print("VoiceRecording: === CANCEL RECORDING ===")
+        
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+        
+        audioRecorder?.stop()
+        audioRecorder = nil
+        
+        // Delete audio file (matching Android mFilePath.delete())
+        if let fileURL = audioFileURL {
+            try? FileManager.default.removeItem(at: fileURL)
+            print("VoiceRecording: Deleted audio file: \(fileURL.path)")
+        }
+        
+        audioFileURL = nil
+        isRecording = false
+        recordingDuration = 0
+        recordingProgress = 0.0
+        
+        // Reset audio session
+        try? AVAudioSession.sharedInstance().setActive(false)
+        
+        // Reset send button scale (matching Android ObjectAnimator 1f, 1f, 1f)
+        resetSendButtonScale()
+        
+        showVoiceRecordingBottomSheet = false
+    }
+    
+    /// Send and stop recording (matching Android sendAndStopRecording)
+    private func sendAndStopRecording() {
+        print("VoiceRecording: === SEND AND STOP RECORDING ===")
+        
+        guard let recorder = audioRecorder, let fileURL = audioFileURL else {
+            print("VoiceRecording: Recorder or file URL is nil")
+            cancelRecording()
+            return
+        }
+        
+        // Stop recording
+        recorder.stop()
+        audioRecorder = nil
+        
+        // Stop timer
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+        
+        isRecording = false
+        
+        // Verify audio file exists and has content
+        guard FileManager.default.fileExists(atPath: fileURL.path),
+              let fileAttributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+              let fileSize = fileAttributes[.size] as? Int64,
+              fileSize > 0 else {
+            print("VoiceRecording: Audio file not found or empty")
+            Constant.showToast(message: "Failed to record audio")
+            cancelRecording()
+            return
+        }
+        
+        print("VoiceRecording: Audio file exists, size: \(fileSize) bytes")
+        
+        // Get audio duration
+        let audioDuration = getAudioDuration(fileURL: fileURL)
+        print("VoiceRecording: Audio duration: \(audioDuration)")
+        
+        // Reset send button scale (matching Android ObjectAnimator 1f, 1f, 1f)
+        resetSendButtonScale()
+        
+        // Hide bottom sheet
+        showVoiceRecordingBottomSheet = false
+        
+        // Upload audio file
+        uploadGroupAudioToFirebase(fileURL: fileURL, duration: audioDuration, fileName: fileURL.lastPathComponent)
+        
+        // Reset audio session
+        try? AVAudioSession.sharedInstance().setActive(false)
+    }
+    
+    /// Get audio duration (matching Android getAudioDuration)
+    private func getAudioDuration(fileURL: URL) -> String {
+        do {
+            let audioPlayer = try AVAudioPlayer(contentsOf: fileURL)
+            let durationSeconds = Int(audioPlayer.duration)
+            let minutes = durationSeconds / 60
+            let seconds = durationSeconds % 60
+            return String(format: "%02d:%02d", minutes, seconds)
+        } catch {
+            print("VoiceRecording: Error getting audio duration: \(error.localizedDescription)")
+            return "00:00"
+        }
+    }
+    
+    /// Upload audio to Firebase Storage and send message (matching Android upload logic, adapted for groups)
+    private func uploadGroupAudioToFirebase(fileURL: URL, duration: String, fileName: String) {
+        print("VoiceRecording: === UPLOAD GROUP AUDIO TO FIREBASE ===")
+        print("VoiceRecording: File: \(fileURL.path), Duration: \(duration), FileName: \(fileName)")
+        
+        guard let audioData = try? Data(contentsOf: fileURL) else {
+            print("VoiceRecording: Failed to read audio file data")
+            Constant.showToast(message: "Failed to read audio file")
+            return
+        }
+        
+        let groupId = group.groupId
+        let senderId = Constant.SenderIdMy
+        let userName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
+        let micPhoto = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
+        let createdBy = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "hh:mm a"
+        let currentDateTimeString = timeFormatter.string(from: Date())
+        
+        let currentDateFormatter = DateFormatter()
+        currentDateFormatter.dateFormat = "yyyy-MM-dd"
+        let currentDateString = currentDateFormatter.string(from: Date())
+        
+        let timestamp = Date().timeIntervalSince1970
+        let modelId = UUID().uuidString
+        
+        // Upload to Firebase Storage using GROUPCHAT path
+        let storagePath = "\(Constant.GROUPCHAT)/\(groupId)/\(modelId).m4a"
+        let ref = Storage.storage().reference().child(storagePath)
+        let metadata = StorageMetadata()
+        metadata.contentType = "audio/m4a"
+        
+        ref.putData(audioData, metadata: metadata) { metadata, error in
+            if let error = error {
+                print("VoiceRecording: Upload error: \(error.localizedDescription)")
+                Constant.showToast(message: "Failed to upload audio")
+                return
+            }
+            
+            // Get download URL
+            ref.downloadURL { url, error in
+                if let error = error {
+                    print("VoiceRecording: Download URL error: \(error.localizedDescription)")
+                    Constant.showToast(message: "Failed to get download URL")
+                    return
+                }
+                
+                guard let downloadURL = url else {
+                    print("VoiceRecording: Download URL is nil")
+                    Constant.showToast(message: "Failed to get download URL")
+                    return
+                }
+                
+                print("VoiceRecording: Upload successful, URL: \(downloadURL.absoluteString)")
+                
+                // Create GroupChatMessage (matching Android group_messageModel with voiceAudio dataType)
+                let newMessage = GroupChatMessage(
+                    id: modelId,
+                    uid: senderId,
+                    message: "",
+                    time: currentDateTimeString,
+                    document: downloadURL.absoluteString,
+                    dataType: Constant.voiceAudio,
+                    fileExtension: "m4a", // iOS AAC format (Android uses .mp3 but same AAC codec)
+                    name: nil,
+                    phone: nil,
+                    miceTiming: duration, // Audio duration in format "MM:SS"
+                    micPhoto: micPhoto,
+                    createdBy: createdBy,
+                    userName: userName,
+                    receiverUid: groupId, // Use groupId as receiverUid for groups
+                    docSize: nil,
+                    fileName: fileName,
+                    thumbnail: nil,
+                    fileNameThumbnail: nil,
+                    caption: nil,
+                    currentDate: currentDateString,
+                    imageWidth: nil,
+                    imageHeight: nil,
+                    aspectRatio: nil,
+                    active: 0, // 0 = sending, 1 = sent
+                    selectionCount: "1",
+                    selectionBunch: nil
+                )
+                
+                // Convert GroupChatMessage to ChatMessage for database storage
+                let chatMessageForDB = ChatMessage(
+                    id: modelId,
+                    uid: senderId,
+                    message: "",
+                    time: currentDateTimeString,
+                    document: downloadURL.absoluteString,
+                    dataType: Constant.voiceAudio,
+                    fileExtension: "m4a",
+                    name: nil,
+                    phone: nil,
+                    micPhoto: micPhoto,
+                    miceTiming: duration,
+                    userName: userName,
+                    receiverId: groupId,
+                    replytextData: nil,
+                    replyKey: nil,
+                    replyType: nil,
+                    replyOldData: nil,
+                    replyCrtPostion: nil,
+                    forwaredKey: nil,
+                    groupName: group.name,
+                    docSize: nil,
+                    fileName: fileName,
+                    thumbnail: nil,
+                    fileNameThumbnail: nil,
+                    caption: nil,
+                    notification: 1,
+                    currentDate: currentDateString,
+                    emojiModel: [EmojiModel(name: "", emoji: "")],
+                    emojiCount: nil,
+                    timestamp: timestamp,
+                    imageWidth: nil,
+                    imageHeight: nil,
+                    aspectRatio: nil,
+                    selectionCount: "1",
+                    selectionBunch: nil,
+                    receiverLoader: 0
+                )
+                
+                // Store message in SQLite group pending table before upload (matching Android insertPendingGroupMessage)
+                DatabaseHelper.shared.insertPendingGroupMessage(chatMessageForDB, groupId: groupId)
+                print("✅ [PendingMessages] Group voice audio message stored in group pending table: \(modelId)")
+                
+                // Add to UI immediately with progress bar (matching Android messageList.add + itemAdd)
+                DispatchQueue.main.async {
+                    self.messages.append(newMessage)
+                    self.messageReceiverLoaders[modelId] = 0 // Show progress bar
+                }
+                
+                // Upload via MessageUploadService using GROUP API
+                let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
+                
+                MessageUploadService.shared.uploadGroupMessage(
+                    model: newMessage,
+                    filePath: fileURL.path,
+                    userFTokenKey: userFTokenKey,
+                    deviceType: "2"
+                ) { success, errorMessage in
+                    if success {
+                        print("✅ [VOICE_RECORDING] Uploaded group audio for modelId=\(modelId)")
+                        // Check if message exists in Firebase and stop progress bar (matching Android)
+                        self.checkMessageInFirebaseAndStopProgress(messageId: modelId, groupId: groupId)
+                    } else {
+                        print("❌ [VOICE_RECORDING] Upload error: \(errorMessage ?? "Unknown error")")
+                        Constant.showToast(message: "Failed to send audio. Please try again.")
+                        // Keep receiverLoader as 0 to show progress bar (message still pending)
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Reset send button scale animation (matching Android ObjectAnimator 1f, 1f, 1f)
+    private func resetSendButtonScale() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            sendButtonScale = 1.0
         }
     }
 }
