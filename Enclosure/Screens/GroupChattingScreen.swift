@@ -268,8 +268,8 @@ struct GroupChattingScreen: View {
                                             // Track last item visibility (matching ChattingScreen)
                                             if index == messages.count - 1 {
                                                 handleLastItemVisibility(id: chatMessage.id, index: index, isAppearing: false)
-                                            }
-                                        }
+                                    }
+                            }
                             }
                         }
                     }
@@ -294,9 +294,9 @@ struct GroupChattingScreen: View {
                                 self.downArrowCount = 0
                                 self.showDownArrowCount = false
                             }
+                            }
                         }
                     }
-                }
                     
                     // Scroll down button overlay (matching ChattingScreen)
                     if showScrollDownButton {
@@ -308,7 +308,7 @@ struct GroupChattingScreen: View {
                             }
                         }
                         .allowsHitTesting(true) // Allow button to receive touches
-                    }
+                }
                     
                     // Multi-select small counter text overlay
                     if showMultiSelectHeader && selectedCount > 0 {
@@ -351,23 +351,6 @@ struct GroupChattingScreen: View {
                     }
                 }
                 
-                // Long press dialog overlay - full screen (matching ChattingScreen)
-                if showLongPressDialog, let message = longPressedMessage {
-                    GroupMessageLongPressDialog(
-                        message: message,
-                        isSentByMe: message.uid == Constant.SenderIdMy,
-                        position: longPressPosition,
-                        group: group,
-                        isPresented: $showLongPressDialog,
-                        onCopy: {
-                            handleCopyMessage(message: message)
-                        },
-                        onDelete: {
-                            handleDeleteMessage(message: message)
-                        }
-                    )
-                }
-                
                 // Bottom input area (matching ChattingScreen layout)
                 messageInputContainer
             }
@@ -382,6 +365,31 @@ struct GroupChattingScreen: View {
             }
         }
         .navigationBarHidden(true)
+        .overlay(
+            // Long press dialog overlay - full screen alert with blur (matching ChattingScreen)
+            Group {
+                if showLongPressDialog, let message = longPressedMessage {
+                    GroupMessageLongPressDialog(
+                        message: message,
+                        isSentByMe: message.uid == Constant.SenderIdMy,
+                        position: longPressPosition,
+                        group: group,
+                        isPresented: $showLongPressDialog,
+                        onCopy: {
+                            handleCopyMessage(message: message)
+                        },
+                        onDelete: {
+                            handleDeleteMessage(message: message)
+                        },
+                        onImageTap: { imageModel in
+                            // Open ShowImageScreen for single image (matching ChattingScreen)
+                            selectedImageForShow = imageModel
+                            navigateToShowImageScreen = true
+                        }
+                    )
+                }
+            }
+        )
         .fullScreenCover(isPresented: $showCameraView) {
             GroupCameraGalleryView(group: group)
         }
@@ -4180,7 +4188,7 @@ struct GroupChattingScreen: View {
     }
 }
 
-// MARK: - Group Message Long Press Dialog (matching Android sender_long_press_group_dialogue.xml)
+// MARK: - Group Message Long Press Dialog (matching MessageLongPressDialog exactly, adapted for group messages)
 struct GroupMessageLongPressDialog: View {
     let message: ChatMessage
     let isSentByMe: Bool
@@ -4189,102 +4197,1782 @@ struct GroupMessageLongPressDialog: View {
     @Binding var isPresented: Bool
     let onCopy: () -> Void
     let onDelete: () -> Void
+    let onImageTap: ((SelectionBunchModel) -> Void)? // Callback for single image tap to open ShowImageScreen
     
     @Environment(\.colorScheme) private var colorScheme
     
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                // Semi-transparent background (matching Android blur background)
-                Color.black.opacity(0.3)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation {
-                            isPresented = false
-                        }
-                    }
-                
-                // Dialog card (matching Android CardView: 220dp width, wrap_content height, 10dp corner radius, 5dp elevation)
-                VStack(spacing: 0) {
-                    // Delete option (matching Android deletelyt)
-                    Button(action: {
-                        onDelete()
-                    }) {
-                        HStack(spacing: 0) {
-                            Text("Delete")
-                                .font(.custom("Inter18pt-Bold", size: 16))
-                                .foregroundColor(Color("TextColor"))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.leading, 15)
-                            
-                            Image("baseline_delete_forever_24")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 26.05, height: 24)
-                                .foregroundColor(Color("gray3"))
-                                .padding(.leading, 3)
-                        }
-                        .frame(height: 44) // Approximate height for text + padding
-                        .padding(.top, 10)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    
-                    // Divider (matching Android View with invisible visibility)
-                    // Note: Android has a divider but it's invisible, so we skip it
-                    
-                    // Copy option (matching Android copy - only visible for text messages)
-                    if message.dataType == Constant.Text {
-                        Button(action: {
-                            onCopy()
-                        }) {
-                            HStack(spacing: 0) {
-                                Text("Copy message")
-                                    .font(.custom("Inter18pt-Bold", size: 16))
-                                    .foregroundColor(Color("TextColor"))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.leading, 15)
-                                
-                                Image("copy_svg")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 23, height: 23)
-                                    .foregroundColor(Color("gray3"))
-                                    .padding(.leading, 5)
-                            }
-                            .frame(height: 44) // Approximate height for text + padding
-                            .padding(.top, 10)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-                .frame(width: 220) // android:layout_width="220dp"
-                .background(
-                    RoundedRectangle(cornerRadius: 10) // app:cardCornerRadius="10dp"
-                        .fill(Color("cardBackgroundColornew")) // style="@style/cardBackgroundColor"
-                        .shadow(color: Color.black.opacity(0.2), radius: 5, x: 0, y: 2) // app:cardElevation="5dp"
-                )
-                .padding(.trailing, isSentByMe ? 16 : 0) // android:layout_marginEnd="16dp" (for sender)
-                .padding(.top, 2) // android:layout_marginTop="2dp"
-                .padding(.bottom, 20) // android:layout_marginBottom="20dp"
-                .position(
-                    x: isSentByMe ? geometry.size.width - 16 - 110 : 110, // Position from right edge for sender, from left for receiver
-                    y: adjustedOffsetY(in: geometry)
-                )
-            }
+    // Emoji reactions state
+    @State private var availableEmojis: [EmojiData] = [] // Emojis from API
+    @State private var currentEmojiModels: [EmojiModel] = [] // Current reactions from Firebase
+    @State private var displayEmojis: [DisplayEmoji] = [] // Combined static + Firebase emojis for display
+    @State private var isLoadingEmojis: Bool = false
+    @State private var showEmojiPicker: Bool = false
+    @State private var emojiListenerHandle: DatabaseHandle?
+    
+    // Animation state for Android-style unfold animation
+    @State private var rotationAngle: Double = 0.0
+    @State private var scaleValue: CGFloat = 0.0
+    @State private var opacityValue: Double = 0.0
+    @State private var isDismissing: Bool = false // Track if we're currently dismissing
+    
+    // Helper function for smooth dismissal
+    private func dismissDialog() {
+        guard !isDismissing else { return } // Prevent multiple taps
+        isDismissing = true
+        // Smooth dismissal animation - reverse the unfold with spring animation for smoother feel
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            rotationAngle = 45.0
+            scaleValue = 0.0
+            opacityValue = 0.0
         }
-        .ignoresSafeArea(edges: .all)
+        // Dismiss after animation completes
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            isPresented = false
+            isDismissing = false
+        }
     }
     
-    // Calculate adjusted offset Y (matching Android positioning logic)
+    // Static emojis list (matching Android get_emojiChatadapter)
+    private let staticEmojis: [DisplayEmoji] = [
+        DisplayEmoji(slug: "e0-6-thumbs-up", character: "👍", unicodeName: "E0.6 thumbs up", codePoint: "1F44D"),
+        DisplayEmoji(slug: "e0-6-red-heart", character: "❤️", unicodeName: "E0.6 red heart", codePoint: "2764 FE0F"),
+        DisplayEmoji(slug: "e0-6-face-with-tears-of-joy", character: "😂", unicodeName: "E0.6 face with tears of joy", codePoint: "1F602"),
+        DisplayEmoji(slug: "e0-6-face-with-open-mouth", character: "😮", unicodeName: "E0.6 face with open mouth", codePoint: "1F62E"),
+        DisplayEmoji(slug: "e0-6-smiling-face-with-tear", character: "🥲", unicodeName: "E0.6 smiling face with tear", codePoint: "1F972"),
+        DisplayEmoji(slug: "e0-6-folded-hands", character: "🙏", unicodeName: "E0.6 folded hands", codePoint: "1F64F"),
+        DisplayEmoji(slug: "e0-6-face-blowing-a-kiss", character: "😘", unicodeName: "E0.6 face blowing a kiss", codePoint: "1F618"),
+        DisplayEmoji(slug: "e0-6-smiling-face-with-hearts", character: "🥰", unicodeName: "E0.6 smiling face with hearts", codePoint: "1F970"),
+        DisplayEmoji(slug: "e0-6-maple-leaf", character: "🍁", unicodeName: "E0.6 maple leaf", codePoint: "1F341"),
+        DisplayEmoji(slug: "e0-6-artist-palette", character: "🎨", unicodeName: "E0.6 artist palette", codePoint: "1F3A8"),
+        DisplayEmoji(slug: "e0-6-long-drum", character: "🪘", unicodeName: "E0.6 long drum", codePoint: "1FA98"),
+        DisplayEmoji(slug: "e0-6-pear", character: "🍐", unicodeName: "E0.6 pear", codePoint: "1F350")
+    ]
+    
+    // Display emoji model for combining static and Firebase emojis
+    struct DisplayEmoji: Identifiable, Hashable {
+        let id: String
+        let slug: String
+        let character: String
+        let unicodeName: String
+        let codePoint: String
+        var isFromFirebase: Bool = false // Track if emoji came from Firebase
+        
+        init(slug: String, character: String, unicodeName: String, codePoint: String, isFromFirebase: Bool = false) {
+            // Ensure unique ID: if slug is empty, use character; if character is also empty, use unique identifier
+            if slug.isEmpty {
+                if character.isEmpty {
+                    self.id = "empty-emoji-placeholder"
+                } else {
+                    self.id = character
+                }
+            } else {
+                if character.isEmpty {
+                    self.id = "\(slug)-empty-placeholder"
+                } else {
+                    self.id = slug
+                }
+            }
+            self.slug = slug
+            self.character = character
+            self.unicodeName = unicodeName
+            self.codePoint = codePoint
+            self.isFromFirebase = isFromFirebase
+        }
+    }
+    
+    // Get sender room for group messages (matching GroupChattingScreen.getSenderRoom)
+    private func getSenderRoom() -> String {
+        let senderId = Constant.SenderIdMy
+        let groupId = group.groupId
+        // Create chat key by combining senderId and groupId, replacing special characters
+        let chatKey = (senderId + groupId).replacingOccurrences(of: ".", with: "_")
+            .replacingOccurrences(of: "#", with: "_")
+            .replacingOccurrences(of: "$", with: "_")
+            .replacingOccurrences(of: "[", with: "_")
+            .replacingOccurrences(of: "]", with: "_")
+        return chatKey
+    }
+    
+    // Computed properties for text message preview
+    private var messageContent: String {
+        message.message
+    }
+    
+    private var textContentType: String {
+        detectTextContentType(messageContent)
+    }
+    
+    private var emojiFontSize: CGFloat {
+        if textContentType == "only_emoji" {
+            let emojiCount = countEmojis(messageContent)
+            if emojiCount == 1 {
+                return 80 // 80sp for single emoji, no background
+            } else if emojiCount == 2 {
+                return 45 // 45sp for 2 emojis, no background
+            } else if emojiCount == 3 {
+                return 35 // 35sp for 3 emojis, no background
+            } else {
+                return 15 // 15sp for 4+ emojis, with background
+            }
+        } else {
+            return 15 // Default size for text messages
+        }
+    }
+    
+    private var shouldShowBackground: Bool {
+        if textContentType == "only_emoji" {
+            let emojiCount = countEmojis(messageContent)
+            // No background for 1-3 emojis, background for 4+ emojis
+            return emojiCount >= 4
+        } else {
+            return true
+        }
+    }
+    
+    // Check if main message should be hidden (matching MessageBubbleView shouldHideMainMessage logic)
+    private var shouldHideMainMessage: Bool {
+        if let replyKey = message.replyKey, replyKey == "ReplyKey",
+           let replyType = message.replyType, replyType == Constant.Text {
+            return true
+        }
+        return false
+    }
+    
+    // Reply layout view - matching MessageBubbleView replyLayoutView
+    @ViewBuilder
+    private var replyLayoutPreviewView: some View {
+        // Reply layout (matching Android replylyoutGlobal) - show if replyKey == "ReplyKey"
+        if let replyKey = message.replyKey, replyKey == "ReplyKey" {
+            HStack {
+                if isSentByMe {
+                    Spacer(minLength: 0)
+                }
+                
+                // Reply container (matching Android replylyoutGlobal)
+                ReplyView(message: message, isSentByMe: isSentByMe) {
+                    // No reply action for group messages
+                }
+                
+                if !isSentByMe {
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.bottom, 4) // Add spacing between reply and main message
+        }
+    }
+    
+    var body: some View {
+        ZStack {
+            // Blurred background overlay - covers entire screen and is tappable everywhere
+            Color.black.opacity(opacityValue * 0.3)
+                .background(.ultraThinMaterial)
+                .contentShape(Rectangle()) // Make entire area tappable
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea(edges: .all)
+                .zIndex(0) // Background layer
+                .simultaneousGesture(
+                    // Use simultaneous gesture so background can receive taps even when dialog is visible
+                    TapGesture()
+                        .onEnded { _ in
+                            dismissDialog()
+                        }
+                )
+            
+            GeometryReader { geometry in
+                
+                // Dialog content positioned at exact touch location
+                // Match reference file: use HStack with Spacers for X positioning, offset only for Y
+                HStack(spacing: 0) {
+                    // For sender (end gravity): add spacer at start to push content to right
+                    // For receiver (start gravity): no spacer - content aligns to left
+                    if isSentByMe {
+                        Spacer()
+                    }
+                    
+                    VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+                        ScrollView {
+                            VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+                                // Emoji reactions card (matching Android emojiCard)
+                                emojiReactionsView
+                            
+                                // Message preview section (matching Android MainSenderBox/MainReceiverBox)
+                                // Use exact same styling as MessageBubbleView for text messages
+                                if message.dataType == Constant.Text {
+                                    // Match MessageBubbleView structure: HStack with Spacer for end gravity
+                                    HStack(spacing: 0) {
+                                        if isSentByMe {
+                                            Spacer() // Push to end (right side gravity)
+                                        }
+                                        textMessagePreviewView
+                                            .padding(.trailing, isSentByMe ? 16 : 0) // Match emoji and action buttons spacing
+                                            .padding(.leading, isSentByMe ? 0 : 0)
+                                            .padding(.top, 2) // Add spacing between emoji card and message preview
+                                        if !isSentByMe {
+                                            Spacer(minLength: 0) // Keep on left for receiver
+                                        }
+                                    }
+                                } else if message.dataType == Constant.img && !message.document.isEmpty {
+                                    // Image message preview - matching MessageBubbleView exact styling
+                                    imageMessagePreviewView
+                                } else if message.dataType == Constant.video && !message.document.isEmpty {
+                                    // Video message preview - matching MessageBubbleView exact styling
+                                    videoMessagePreviewView
+                                } else if message.dataType == Constant.doc {
+                                    // Document message preview - matching MessageBubbleView exact styling
+                                    documentMessagePreviewView
+                                } else if message.dataType == Constant.contact {
+                                    // Contact message preview - matching MessageBubbleView exact styling
+                                    contactMessagePreviewView
+                                } else if message.dataType == Constant.voiceAudio {
+                                    // Voice audio message preview - matching MessageBubbleView exact styling
+                                    voiceAudioMessagePreviewView
+                                } else {
+                                    // For other non-text messages, show simplified preview
+                                    VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+                                        if let replyKey = message.replyKey, replyKey == "ReplyKey" {
+                                            ReplyView(message: message, isSentByMe: isSentByMe) {
+                                                // No reply action for group messages
+                                            }
+                                            .padding(.horizontal, 12)
+                                        } else {
+                                            Text(getMessagePreviewText())
+                                                .font(.custom("Inter18pt-Regular", size: 13))
+                                                .foregroundColor(isSentByMe ? Color(hex: "#e7ebf4") : Color("TextColor"))
+                                                .padding(.horizontal, 12)
+                                                .padding(.top, 5)
+                                                .padding(.bottom, 6)
+                                        }
+                                    }
+                                    .frame(maxWidth: 220)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 20)
+                                            .fill(isSentByMe ? getSenderMessageBackgroundColor(colorScheme: colorScheme) : getReceiverMessageBackgroundColor())
+                                    )
+                                    .padding(.trailing, isSentByMe ? 16 : 0)
+                                    .padding(.leading, isSentByMe ? 0 : 0)
+                                    .padding(.top, 2)
+                                }
+                            
+                                // Action buttons card (matching Android cardview exactly)
+                                // CardView: width=220dp, cornerRadius=20dp, elevation=5dp, marginEnd=16dp, marginTop=2dp, marginBottom=20dp
+                                VStack(spacing: 0) {
+                                    // Copy button (matching Android copy)
+                                    // Only show for Text datatype messages
+                                    if message.dataType == Constant.Text {
+                                        Button(action: {
+                                            // Haptic feedback (matching Android Constant.Vibrator)
+                                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                            onCopy()
+                                        }) {
+                                            HStack(spacing: 0) {
+                                                // TextView: weight=1, marginStart=15dp, lineHeight=24dp
+                                                Text("Copy")
+                                                    .font(.custom("Inter18pt-Regular", size: 16))
+                                                    .fontWeight(.bold)
+                                                    .foregroundColor(Color("TextColor"))
+                                                    .lineSpacing(0) // lineHeight="24dp"
+                                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                                    .padding(.leading, 15)
+                                                
+                                                // ImageView container: weight=4, size=23x23dp (matching Android exactly)
+                                                HStack {
+                                                    Spacer()
+                                                    Image("copy_svg")
+                                                        .renderingMode(.template)
+                                                        .resizable()
+                                                        .scaledToFit()
+                                                        .frame(width: 23, height: 23) // Exact Android size: 23dp x 23dp
+                                                        .foregroundColor(Color("gray3")) // app:tint="@color/gray3"
+                                                        .padding(.trailing, 15) // Right edge margin to match Android layout
+                                                }
+                                                .frame(maxWidth: .infinity)
+                                            }
+                                            .frame(minHeight: 36) // Reduced height for tighter spacing
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.top, 6) // Reduced vertical padding
+                                        }
+                                        .buttonStyle(PlainButtonStyle())
+                                    }
+                                    
+                                    // Divider: height=1dp, marginTop=6dp, invisible (reduced spacing)
+                                    Rectangle()
+                                        .fill(Color("gray2"))
+                                        .frame(height: 1)
+                                        .padding(.top, 6)
+                                        .opacity(0) // invisible
+                                    
+                                    // Delete button (matching Android deletelyt)
+                                    // paddingTop=10dp, marginStart=15dp, icon size=26.05x24dp, marginStart=3dp
+                                    Button(action: {
+                                        // Haptic feedback (matching Android Constant.Vibrator)
+                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                        onDelete()
+                                    }) {
+                                        HStack(spacing: 0) {
+                                            // TextView: weight=1, marginStart=15dp, lineHeight=24dp
+                                            Text("Delete")
+                                                .font(.custom("Inter18pt-Regular", size: 16))
+                                                .fontWeight(.bold)
+                                                .foregroundColor(Color("TextColor"))
+                                                .lineLimit(1)
+                                                .lineSpacing(0) // lineHeight="24dp"
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .padding(.leading, 15)
+                                            
+                                            // ImageView container: weight=4, size=26.05x24dp (matching Android exactly)
+                                            HStack {
+                                                Spacer()
+                                                Image("baseline_delete_forever_24")
+                                                    .renderingMode(.template)
+                                                    .resizable()
+                                                    .scaledToFit()
+                                                    .frame(width: 26.05, height: 24) // Exact Android size: 26.05dp x 24dp
+                                                    .foregroundColor(Color("gray3")) // app:tint="@color/gray3"
+                                                    .padding(.trailing, 15) // Right edge margin to match Android layout
+                                            }
+                                            .frame(maxWidth: .infinity)
+                                        }
+                                        .frame(minHeight: 36) // Reduced height for tighter spacing
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.top, 6) // Reduced vertical padding
+                                    }
+                                    .buttonStyle(DialogButtonStyle())
+                                    
+                                    // Divider: height=0.5dp, marginTop=6dp, invisible (reduced spacing)
+                                    Rectangle()
+                                        .fill(Color("gray2"))
+                                        .frame(height: 0.5)
+                                        .padding(.top, 6)
+                                        .opacity(0) // invisible
+                                }
+                                .frame(width: 220) // layout_width="220dp"
+                                .background(
+                                    RoundedRectangle(cornerRadius: 20) // cardCornerRadius="20dp"
+                                        .fill(Color("cardBackgroundColornew")) // style="@style/cardBackgroundColor"
+                                        .shadow(color: Color.black.opacity(0.2), radius: 5, x: 0, y: 2) // cardElevation="5dp"
+                                )
+                                .padding(.trailing, isSentByMe ? 16 : 0) // layout_marginEnd="16dp"
+                                .padding(.leading, isSentByMe ? 0 : 0)
+                                .padding(.top, 5) // 3rd container top margin: 5px
+                                .padding(.bottom, 20) // layout_marginBottom="20dp"
+                            }
+                        }
+                        .frame(width: 310)
+                        .frame(maxHeight: geometry.size.height * 0.8)
+                        .allowsHitTesting(true) // Allow touches on ScrollView content
+                        // Android unfold animation: rotate and scale with correct anchor points
+                        // Apply animation to content VStack so anchor is relative to 310-width content, not full-width container
+                        // Both sender and receiver animate from top-left
+                        .rotationEffect(.degrees(rotationAngle), anchor: .topLeading)
+                        .scaleEffect(scaleValue, anchor: .topLeading)
+                        .opacity(opacityValue)
+                    }
+                    
+                    // For receiver (start gravity): add spacer at end
+                    // For sender (end gravity): no spacer - content aligns to right
+                    if !isSentByMe {
+                        Spacer()
+                    }
+                }
+                .frame(maxWidth: .infinity) // Ensure HStack takes full width
+                .offset(x: 0, y: adjustedOffsetY(in: geometry)) // Only offset Y, X is handled by HStack padding (matching reference file)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity) // Ensure GeometryReader fills entire ZStack
+            .zIndex(1) // Dialog content on top of blur
+            .background(Color.clear.contentShape(Rectangle()).allowsHitTesting(false)) // Don't block touches in empty areas
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea(edges: .all)
+        .onAppear {
+            // Set initial state (no animation) - start from folded position
+            // Both sender and receiver animate from top-left, so both start at 45°
+            rotationAngle = 45.0
+            scaleValue = 0.0
+            opacityValue = 0.0
+            
+            // Small delay to ensure initial state is set, then animate
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                // Android unfold animation: 400ms duration, simultaneous rotate and scale
+                // Both sender and receiver: rotate from 45° to 0°, scale from 0 to 1, pivot at top-left
+                withAnimation(.easeOut(duration: 0.4)) {
+                    rotationAngle = 0.0 // End rotation (0 degrees)
+                    scaleValue = 1.0 // End scale (full size)
+                    opacityValue = 1.0 // Fade in
+                }
+            }
+        }
+        .onChange(of: isPresented) { newValue in
+            if !newValue && !isDismissing {
+                // Animate dialog dismissal - reverse the unfold animation with spring for smoother feel
+                // Only animate if not already dismissing (prevents double animation)
+                isDismissing = true
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    rotationAngle = 45.0 // Both return to 45° (top-left animation)
+                    scaleValue = 0.0 // Start scale
+                    opacityValue = 0.0 // Fade out
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    isDismissing = false
+                }
+            } else if newValue {
+                // Reset dismissing flag when presenting
+                isDismissing = false
+                // Reset to initial state when presenting (before animation)
+                // Both sender and receiver start at 45° for top-left animation
+                rotationAngle = 45.0
+                scaleValue = 0.0
+                opacityValue = 0.0
+                
+                // Small delay then animate
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                    withAnimation(.easeOut(duration: 0.4)) {
+                        rotationAngle = 0.0
+                        scaleValue = 1.0
+                        opacityValue = 1.0
+                    }
+                }
+            }
+        }
+    }
+    
+    // Calculate adjusted offset Y - position dialog at exact touch location
     private func adjustedOffsetY(in geometry: GeometryProxy) -> CGFloat {
-        let cardHeight: CGFloat = message.dataType == Constant.Text ? 88 : 44 // Approximate height (Delete + Copy or just Delete)
+        // Estimate message preview height (similar to contactCardHeight in ChatLongPressDialog)
+        // This is approximate - actual height may vary based on message type
+        let messagePreviewHeight: CGFloat = 100 // Approximate height for message preview
+        let emojiCardHeight: CGFloat = 60 // Emoji reactions card height
+        let actionButtonsHeight: CGFloat = 100 // Action buttons card height (Delete + Copy or just Delete)
+        let dialogHeight = emojiCardHeight + messagePreviewHeight + actionButtonsHeight
         let padding: CGFloat = 20
+        
+        // Check if position is valid (not zero)
+        guard position.y > 0 else {
+            // If position is invalid, center dialog vertically
+            let centeredY = (geometry.size.height - dialogHeight) / 2
+            print("🟣 [GroupMessageLongPressDialog] Invalid position, centering dialog at Y: \(centeredY)")
+            return max(centeredY, padding)
+        }
+        
         let frame = geometry.frame(in: .global)
+        // position is now the exact touch location in global coordinates
+        // Convert to local coordinates within the dialog's parent view
         let localY = position.y - frame.minY
-        let centeredY = localY - (cardHeight / 2) // Center card at touch point
-        let maxY = geometry.size.height - cardHeight - padding
-        return min(max(centeredY, padding), maxY)
+        
+        // Position dialog so the touch location is near the center of the emoji card
+        // This provides a better UX - the dialog appears centered around where the user touched
+        let emojiCardCenterOffset = emojiCardHeight / 2
+        let dialogTopY = localY - emojiCardCenterOffset
+        
+        // Ensure dialog stays within screen bounds
+        let maxY = geometry.size.height - dialogHeight - padding
+        let minY = padding
+        
+        print("🟣 [GroupMessageLongPressDialog] Positioning - Touch Y: \(position.y), Local Y: \(localY), Dialog Top Y: \(dialogTopY), isSentByMe: \(isSentByMe)")
+        return min(max(dialogTopY, minY), maxY)
+    }
+    
+    // MARK: - Message Preview Views
+    
+    // Text message preview view - matching MessageBubbleView exact styling
+    @ViewBuilder
+    private var textMessagePreviewView: some View {
+        VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+            // Show reply layout if present (matching MessageBubbleView structure)
+            replyLayoutPreviewView
+            
+            // Main message content - hide if this is a reply message with text replyType
+            if !shouldHideMainMessage {
+                // Check if message contains a URL
+                if let url = messageContent.extractURL(), url.isValidURL() {
+                    // Show rich link preview
+                    HStack {
+                        if isSentByMe {
+                            Spacer(minLength: 0)
+                            SenderRichLinkView(
+                                url: url,
+                                backgroundColor: getSenderMessageBackgroundColor(colorScheme: colorScheme),
+                                linkTitle: message.linkTitle,
+                                linkDescription: message.linkDescription,
+                                linkImageUrl: message.linkImageUrl,
+                                favIconUrl: message.favIconUrl
+                            )
+                        } else {
+                            ReceiverRichLinkView(
+                                url: url,
+                                linkTitle: message.linkTitle,
+                                linkDescription: message.linkDescription,
+                                linkImageUrl: message.linkImageUrl,
+                                favIconUrl: message.favIconUrl
+                            )
+                            Spacer(minLength: 0)
+                        }
+                    }
+                    .frame(maxWidth: 250)
+                } else {
+                    // Regular text message (no URL)
+                    Group {
+                        if textContentType == "only_emoji" {
+                            if shouldShowBackground {
+                                if isSentByMe {
+                                    Text(messageContent)
+                                        .font(.custom("Inter18pt-Regular", size: emojiFontSize))
+                                        .fontWeight(.light)
+                                        .foregroundColor(Color(hex: "#e7ebf4"))
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 20)
+                                                .fill(getSenderMessageBackgroundColor(colorScheme: colorScheme))
+                                        )
+                                } else {
+                                    Text(messageContent)
+                                        .font(.custom("Inter18pt-Regular", size: emojiFontSize))
+                                        .fontWeight(.light)
+                                        .foregroundColor(Color("TextColor"))
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                        .background(getReceiverGlassBackground(cornerRadius: 12))
+                                }
+                            } else {
+                                Text(messageContent)
+                                    .font(.custom("Inter18pt-Regular", size: emojiFontSize))
+                                    .fontWeight(.light)
+                                    .foregroundColor(isSentByMe ? Color(hex: "#e7ebf4") : Color("TextColor"))
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        } else {
+                            if isSentByMe {
+                                Text(messageContent)
+                                    .font(.custom("Inter18pt-Regular", size: 13))
+                                    .fontWeight(.light)
+                                    .foregroundColor(Color(hex: "#e7ebf4"))
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .padding(.horizontal, 12)
+                                    .padding(.top, 5)
+                                    .padding(.bottom, 6)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 20)
+                                            .fill(getSenderMessageBackgroundColor(colorScheme: colorScheme))
+                                    )
+                            } else {
+                                Text(messageContent)
+                                    .font(.custom("Inter18pt-Regular", size: 13))
+                                    .fontWeight(.regular)
+                                    .foregroundColor(Color("TextColor"))
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .padding(.horizontal, 12)
+                                    .padding(.top, 5)
+                                    .padding(.bottom, 6)
+                                    .background(getReceiverGlassBackground(cornerRadius: 12))
+                            }
+                        }
+                    }
+                    .frame(maxWidth: 250, alignment: isSentByMe ? .trailing : .leading)
+                }
+            }
+            
+            // Time row with progress indicator
+            timeRowPreviewView
+        }
+    }
+    
+    // Time row preview view
+    @ViewBuilder
+    private var timeRowPreviewView: some View {
+        HStack(spacing: 6) {
+            if isSentByMe {
+                progressIndicatorPreviewView(isSender: true)
+                Text(message.time)
+                    .font(.custom("Inter18pt-Regular", size: 10))
+                    .foregroundColor(Color("gray3"))
+            } else {
+                Text(message.time)
+                    .font(.custom("Inter18pt-Regular", size: 10))
+                    .foregroundColor(Color("gray3"))
+                progressIndicatorPreviewView(isSender: false)
+            }
+        }
+        .padding(.top, 5)
+        .padding(.bottom, 7)
+        .frame(maxWidth: .infinity, alignment: isSentByMe ? .trailing : .leading)
+    }
+    
+    // Progress indicator preview view
+    @ViewBuilder
+    private func progressIndicatorPreviewView(isSender: Bool) -> some View {
+        let themeColor = Color(hex: Constant.themeColor)
+        let indicatorColor = isSender ? themeColor : Color("line")
+        let trackColor = isSender ? themeColor : Color("line")
+        let cornerRadius: CGFloat = isSender ? 20 : 10
+        
+        return ZStack(alignment: .leading) {
+            Capsule()
+                .fill(trackColor)
+                .frame(width: 20, height: 1)
+            Capsule()
+                .fill(indicatorColor)
+                .frame(width: 20, height: 1)
+        }
+        .frame(width: 20, height: 1)
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+    }
+    
+    // Image message preview view
+    @ViewBuilder
+    private var imageMessagePreviewView: some View {
+        VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+            replyLayoutPreviewView
+            
+            if !shouldHideMainMessage {
+                if isSentByMe {
+                    HStack {
+                        Spacer(minLength: 0)
+                        VStack(alignment: .trailing, spacing: 0) {
+                            DynamicImageView(
+                                imageUrl: message.document,
+                                fileName: message.fileName,
+                                imageWidth: message.imageWidth,
+                                imageHeight: message.imageHeight,
+                                aspectRatio: message.aspectRatio,
+                                backgroundColor: getSenderMessageBackgroundColor(colorScheme: colorScheme),
+                                onTap: {
+                                    onImageTap?(SelectionBunchModel(
+                                        imgUrl: message.document,
+                                        fileName: message.fileName ?? ""
+                                    ))
+                                }
+                            )
+                            
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color(hex: "#e7ebf4"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .frame(width: calculateImageSize(imageWidth: message.imageWidth, imageHeight: message.imageHeight, aspectRatio: message.aspectRatio).width)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(getSenderMessageBackgroundColor(colorScheme: colorScheme))
+                        )
+                    }
+                    .frame(maxWidth: 250)
+                } else {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ReceiverDynamicImageView(
+                                imageUrl: message.document,
+                                fileName: message.fileName,
+                                imageWidth: message.imageWidth,
+                                imageHeight: message.imageHeight,
+                                aspectRatio: message.aspectRatio,
+                                onTap: {
+                                    onImageTap?(SelectionBunchModel(
+                                        imgUrl: message.document,
+                                        fileName: message.fileName ?? ""
+                                    ))
+                                }
+                            )
+                            
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color("TextColor"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .frame(width: calculateImageSize(imageWidth: message.imageWidth, imageHeight: message.imageHeight, aspectRatio: message.aspectRatio).width)
+                        .background(getReceiverGlassBackground(cornerRadius: 12))
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: 250)
+                }
+            }
+        }
+        .padding(.horizontal, isSentByMe ? 16 : 12)
+        .padding(.top, 2)
+    }
+    
+    // Video message preview view - matching MessageBubbleView exact styling
+    @ViewBuilder
+    private var videoMessagePreviewView: some View {
+        VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+            // Show reply layout if present (matching MessageBubbleView structure)
+            replyLayoutPreviewView
+            
+            // Main video content - hide if this is a reply message
+            if !shouldHideMainMessage {
+                if isSentByMe {
+                    // Sender video message (matching Android sendervideoLyt design)
+                    HStack {
+                        Spacer(minLength: 0) // Push content to end
+                        
+                        // Container wrapping video and caption with same background as Constant.Text sender messages
+                        VStack(alignment: .trailing, spacing: 0) {
+                            SenderVideoView(
+                                videoUrl: message.document,
+                                thumbnailUrl: message.thumbnail,
+                                fileName: message.fileName,
+                                imageWidth: message.imageWidth,
+                                imageHeight: message.imageHeight,
+                                aspectRatio: message.aspectRatio,
+                                backgroundColor: getSenderMessageBackgroundColor(colorScheme: colorScheme)
+                            )
+                            
+                            // Caption text if present (matching Android caption display)
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color(hex: "#e7ebf4"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .frame(width: calculateImageSize(imageWidth: message.imageWidth, imageHeight: message.imageHeight, aspectRatio: message.aspectRatio).width) // Container width matches video width exactly
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(getSenderMessageBackgroundColor(colorScheme: colorScheme))
+                        )
+                    }
+                    .frame(maxWidth: 250)
+                } else {
+                    // Receiver video message (matching Android receivervideoLyt design)
+                    HStack {
+                        // Container wrapping video and caption with same background as Constant.Text receiver messages
+                        VStack(alignment: .leading, spacing: 0) {
+                            ReceiverVideoView(
+                                videoUrl: message.document,
+                                thumbnailUrl: message.thumbnail,
+                                fileName: message.fileName,
+                                imageWidth: message.imageWidth,
+                                imageHeight: message.imageHeight,
+                                aspectRatio: message.aspectRatio
+                            )
+                            
+                            // Caption text if present (matching Android caption display)
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color("TextColor"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .frame(width: calculateImageSize(imageWidth: message.imageWidth, imageHeight: message.imageHeight, aspectRatio: message.aspectRatio).width) // Container width matches video width exactly
+                        .background(
+                            getReceiverGlassBackground(cornerRadius: 12)
+                        )
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: 250)
+                }
+            }
+        }
+        .padding(.horizontal, isSentByMe ? 16 : 12)
+        .padding(.top, 2)
+    }
+    
+    // Document message preview view - matching MessageBubbleView exact styling
+    @ViewBuilder
+    private var documentMessagePreviewView: some View {
+        VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+            // Show reply layout if present (matching MessageBubbleView structure)
+            replyLayoutPreviewView
+            
+            // Main document content - hide if this is a reply message
+            if !shouldHideMainMessage {
+                if isSentByMe {
+                    // Sender document message (matching Android docLyt design)
+                    HStack {
+                        Spacer(minLength: 0) // Push content to end
+                        
+                        // Container wrapping document and caption with same background as Constant.Text sender messages
+                        VStack(alignment: .trailing, spacing: 0) {
+                            SenderDocumentView(
+                                documentUrl: message.document.isEmpty ? (message.fileName ?? "") : message.document,
+                                fileName: message.fileName ?? message.message,
+                                docSize: message.docSize,
+                                fileExtension: message.fileExtension,
+                                backgroundColor: getSenderMessageBackgroundColor(colorScheme: colorScheme),
+                                micPhoto: message.micPhoto
+                            )
+                            
+                            // Caption text if present (matching Android caption display)
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color(hex: "#e7ebf4"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(getSenderMessageBackgroundColor(colorScheme: colorScheme))
+                        )
+                    }
+                    .frame(maxWidth: 250)
+                } else {
+                    // Receiver document message (matching Android docLyt design)
+                    HStack {
+                        // Container wrapping document and caption with same background as Constant.Text receiver messages
+                        VStack(alignment: .leading, spacing: 0) {
+                            ReceiverDocumentView(
+                                documentUrl: message.document.isEmpty ? (message.fileName ?? "") : message.document,
+                                fileName: message.fileName ?? message.message,
+                                docSize: message.docSize,
+                                fileExtension: message.fileExtension,
+                                micPhoto: message.micPhoto
+                            )
+                            
+                            // Caption text if present (matching Android caption display)
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color("TextColor"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .background(
+                            getReceiverGlassBackground(cornerRadius: 20) // Changed to 20dp to match Android
+                        )
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: 250)
+                }
+            }
+        }
+        .padding(.horizontal, isSentByMe ? 16 : 12)
+        .padding(.top, 2)
+    }
+    
+    // Contact message preview view - matching MessageBubbleView exact styling
+    @ViewBuilder
+    private var contactMessagePreviewView: some View {
+        VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+            // Show reply layout if present (matching MessageBubbleView structure)
+            replyLayoutPreviewView
+            
+            // Main contact content - hide if this is a reply message
+            if !shouldHideMainMessage {
+                if isSentByMe {
+                    // Sender contact message (matching Android contactContainer design)
+                    HStack {
+                        Spacer(minLength: 0) // Push content to end
+                        
+                        // Container wrapping contact and caption with same background as Constant.Text sender messages
+                        VStack(alignment: .trailing, spacing: 0) {
+                            SenderContactView(
+                                contactName: message.name ?? "",
+                                contactPhone: message.phone ?? "",
+                                backgroundColor: getSenderMessageBackgroundColor(colorScheme: colorScheme),
+                                contactDocumentUrl: message.document.isEmpty ? nil : message.document
+                            )
+                            
+                            // Caption text if present (matching Android caption display)
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color(hex: "#e7ebf4"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(getSenderMessageBackgroundColor(colorScheme: colorScheme))
+                        )
+                    }
+                    .frame(maxWidth: 250)
+                } else {
+                    // Receiver contact message (matching Android contactContainer design)
+                    HStack {
+                        // Container wrapping contact and caption with same background as Constant.Text receiver messages
+                        VStack(alignment: .leading, spacing: 0) {
+                            ReceiverContactView(
+                                contactName: message.name ?? "",
+                                contactPhone: message.phone ?? "",
+                                contactDocumentUrl: message.document.isEmpty ? nil : message.document
+                            )
+                            
+                            // Caption text if present (matching Android caption display)
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color("TextColor"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .background(
+                            getReceiverGlassBackground(cornerRadius: 20) // Android: contactContainer should match message container corner radius
+                        )
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: 250)
+                }
+            }
+        }
+        .padding(.horizontal, isSentByMe ? 16 : 12)
+        .padding(.top, 2)
+    }
+    
+    // Voice audio message preview view - matching MessageBubbleView exact styling
+    @ViewBuilder
+    private var voiceAudioMessagePreviewView: some View {
+        VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
+            // Show reply layout if present (matching MessageBubbleView structure)
+            replyLayoutPreviewView
+            
+            // Main voice audio content - hide if this is a reply message
+            if !shouldHideMainMessage {
+                if isSentByMe {
+                    // Sender voice audio message (matching Android miceContainer design)
+                    HStack {
+                        Spacer(minLength: 0) // Push content to end
+                        
+                        // Container wrapping voice audio and caption with same background as Constant.Text sender messages
+                        VStack(alignment: .trailing, spacing: 0) {
+                            SenderVoiceAudioView(
+                                audioUrl: message.document,
+                                audioTiming: message.miceTiming ?? "00:00",
+                                micPhoto: message.micPhoto,
+                                backgroundColor: getSenderMessageBackgroundColor(colorScheme: colorScheme)
+                            )
+                            
+                            // Caption text if present (matching Android caption display)
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color(hex: "#e7ebf4"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(getSenderMessageBackgroundColor(colorScheme: colorScheme))
+                        )
+                    }
+                    .frame(maxWidth: 250)
+                } else {
+                    // Receiver voice audio message (matching Android miceContainer design)
+                    HStack {
+                        // Container wrapping voice audio and caption with same background as Constant.Text receiver messages
+                        VStack(alignment: .leading, spacing: 0) {
+                            ReceiverVoiceAudioView(
+                                audioUrl: message.document,
+                                audioTiming: message.miceTiming ?? "00:00",
+                                micPhoto: message.micPhoto
+                            )
+                            
+                            // Caption text if present (matching Android caption display)
+                            if let caption = message.caption, !caption.isEmpty {
+                                HStack {
+                                    Text(caption)
+                                        .font(.custom("Inter18pt-Regular", size: 15))
+                                        .fontWeight(.regular)
+                                        .foregroundColor(Color("TextColor"))
+                                        .lineSpacing(7)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
+                            }
+                        }
+                        .background(
+                            getReceiverGlassBackground(cornerRadius: 20)
+                        )
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: 250)
+                }
+            }
+        }
+        .padding(.horizontal, isSentByMe ? 16 : 12)
+        .padding(.top, 2)
+    }
+    
+    // MARK: - Emoji Reactions View
+    
+    private var emojiReactionsView: some View {
+        ZStack(alignment: .center) {
+            HStack(spacing: 0) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(displayEmojis.isEmpty ? staticEmojis : displayEmojis) { displayEmoji in
+                            if !displayEmoji.character.isEmpty {
+                                emojiReactionButton(displayEmoji: displayEmoji)
+                            }
+                        }
+                    }
+                }
+                .padding(.trailing, 15)
+                Spacer()
+            }
+            .padding(5)
+            
+            HStack {
+                Spacer()
+                rightGradientBars
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    showEmojiPicker = true
+                    fetchAvailableEmojis()
+                }) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(Color("gray3"))
+                        .frame(width: 40, height: 40)
+                }
+                .padding(.trailing, 5)
+            }
+            
+            HStack {
+                leftGradientBars
+                Spacer()
+            }
+        }
+        .frame(width: 305)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color("cardBackgroundColornew"))
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .padding(.trailing, isSentByMe ? 16 : 0)
+        .padding(.leading, isSentByMe ? 0 : 0)
+        .padding(.top, 2)
+        .padding(.bottom, 2)
+        .onAppear {
+            displayEmojis = staticEmojis
+            setupEmojiListener()
+            fetchAvailableEmojis()
+        }
+        .onDisappear {
+            removeEmojiListener()
+        }
+        .sheet(isPresented: $showEmojiPicker) {
+            emojiPickerSheet
+        }
+    }
+    
+    @ViewBuilder
+    private var leftGradientBars: some View {
+        // Empty for now (matching ChattingScreen)
+    }
+    
+    @ViewBuilder
+    private var rightGradientBars: some View {
+        // Empty for now (matching ChattingScreen)
+    }
+    
+    @ViewBuilder
+    private func gradientBar(alpha: Double) -> some View {
+        Rectangle()
+            .fill(Color("cardBackgroundColornew"))
+            .opacity(alpha)
+            .frame(width: 4, height: 40)
+    }
+    
+    @ViewBuilder
+    private func emojiReactionButton(displayEmoji: DisplayEmoji) -> some View {
+        let currentUserId = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        let userReaction = currentEmojiModels.first { $0.name == currentUserId && $0.emoji == displayEmoji.character }
+        let isUserReaction = userReaction != nil
+        
+        let containerSize: CGFloat = displayEmoji.unicodeName.isEmpty ? 25 : 40
+        let textSize: CGFloat = 25
+        
+        Button(action: {
+            handleEmojiTap(displayEmoji: displayEmoji)
+        }) {
+            Text(displayEmoji.character)
+                .font(.system(size: textSize))
+                .frame(width: containerSize, height: nil)
+                .frame(minHeight: containerSize)
+                .background(
+                    Circle()
+                        .fill(isUserReaction ? Color(hex: "#00A3E9").opacity(0.3) : Color.clear)
+                )
+        }
+        .padding(.horizontal, 2)
+    }
+    
+    // MARK: - Helper Functions
+    
+    private func getSenderMessageBackgroundColor(colorScheme: ColorScheme) -> Color {
+        guard colorScheme == .dark else {
+            return Color(hex: "#011224")
+        }
+        
+        let themeColor = Constant.themeColor
+        let colorKey = themeColor.lowercased()
+        
+        switch colorKey {
+        case "#ff0080": return Color(hex: "#4D0026")
+        case "#00a3e9": return Color(hex: "#01253B")
+        case "#7adf2a": return Color(hex: "#25430D")
+        case "#ec0001": return Color(hex: "#470000")
+        case "#16f3ff": return Color(hex: "#05495D")
+        case "#ff8a00": return Color(hex: "#663700")
+        case "#7f7f7f": return Color(hex: "#2B3137")
+        case "#d9b845": return Color(hex: "#413815")
+        case "#346667": return Color(hex: "#1F3D3E")
+        case "#9846d9": return Color(hex: "#2d1541")
+        case "#a81010": return Color(hex: "#430706")
+        default: return Color(hex: "#01253B")
+        }
+    }
+    
+    private func getReceiverMessageBackgroundColor() -> Color {
+        return Color("cardBackgroundColornew")
+    }
+    
+    @ViewBuilder
+    private func getReceiverGlassBackground(cornerRadius: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: cornerRadius)
+            .fill(
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        getReceiverGlassBgStart(),
+                        getReceiverGlassBgCenter(),
+                        getReceiverGlassBgEnd()
+                    ]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(getReceiverGlassBorder(), lineWidth: 0.5)
+            )
+    }
+    
+    private func getReceiverGlassBgStart() -> Color {
+        Color("cardBackgroundColornew").opacity(0.9)
+    }
+    
+    private func getReceiverGlassBgCenter() -> Color {
+        Color("cardBackgroundColornew").opacity(0.7)
+    }
+    
+    private func getReceiverGlassBgEnd() -> Color {
+        Color("cardBackgroundColornew").opacity(0.9)
+    }
+    
+    private func getReceiverGlassBorder() -> Color {
+        Color.gray.opacity(0.2)
+    }
+    
+    private func calculateImageSize(imageWidth: String?, imageHeight: String?, aspectRatio: String?) -> CGSize {
+        var imageWidthPx: CGFloat = 300
+        var imageHeightPx: CGFloat = 300
+        var aspectRatioValue: CGFloat = 1.0
+        
+        if let widthStr = imageWidth, !widthStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let width = Float(widthStr) {
+                imageWidthPx = CGFloat(width)
+            }
+        }
+        
+        if let heightStr = imageHeight, !heightStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let height = Float(heightStr) {
+                imageHeightPx = CGFloat(height)
+            }
+        }
+        
+        if let ratioStr = aspectRatio, !ratioStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let ratio = Float(ratioStr), ratio > 0 {
+                aspectRatioValue = CGFloat(ratio)
+            } else {
+                if imageHeightPx > 0 {
+                    aspectRatioValue = imageWidthPx / imageHeightPx
+                }
+            }
+        } else {
+            if imageHeightPx > 0 {
+                aspectRatioValue = imageWidthPx / imageHeightPx
+            }
+        }
+        
+        let MAX_WIDTH_PT: CGFloat = 210
+        let MAX_HEIGHT_PT: CGFloat = 250
+        let scale = UIScreen.main.scale
+        var maxWidthPx = MAX_WIDTH_PT * scale
+        var maxHeightPx = MAX_HEIGHT_PT * scale
+        
+        maxWidthPx = min(maxWidthPx, 600)
+        maxHeightPx = min(maxHeightPx, 600)
+        
+        var finalWidthPx: CGFloat = 0
+        var finalHeightPx: CGFloat = 0
+        
+        let orientation = UIDevice.current.orientation
+        let isLandscape = orientation.isLandscape || (UIScreen.main.bounds.width > UIScreen.main.bounds.height)
+        
+        if isLandscape {
+            finalWidthPx = maxWidthPx
+            finalHeightPx = maxWidthPx / aspectRatioValue
+            if finalHeightPx > maxHeightPx {
+                finalHeightPx = maxHeightPx
+                finalWidthPx = maxHeightPx * aspectRatioValue
+            }
+        } else {
+            finalHeightPx = maxHeightPx
+            finalWidthPx = maxHeightPx * aspectRatioValue
+            if finalWidthPx > maxWidthPx {
+                finalWidthPx = maxWidthPx
+                finalHeightPx = maxWidthPx / aspectRatioValue
+            }
+        }
+        
+        finalWidthPx = min(finalWidthPx, maxWidthPx)
+        finalHeightPx = min(finalHeightPx, maxHeightPx)
+        
+        let finalWidthPt = finalWidthPx / scale
+        let finalHeightPt = finalHeightPx / scale
+        
+        return CGSize(width: finalWidthPt, height: finalHeightPt)
+    }
+    
+    private func getMessagePreviewText() -> String {
+        switch message.dataType {
+        case Constant.img:
+            return "📷 Image"
+        case Constant.video:
+            return "🎥 Video"
+        case Constant.voiceAudio:
+            return "🎤 Audio"
+        case Constant.doc:
+            return "📄 Document"
+        case Constant.contact:
+            return "📇 Contact"
+        default:
+            return message.message
+        }
+    }
+    
+    private func detectTextContentType(_ text: String) -> String {
+        let emojiPattern = "^[\\p{Emoji}\\s]+$"
+        let emojiRegex = try? NSRegularExpression(pattern: emojiPattern, options: [])
+        let range = NSRange(location: 0, length: text.utf16.count)
+        
+        if let regex = emojiRegex, regex.firstMatch(in: text, options: [], range: range) != nil {
+            return "only_emoji"
+        } else if text.rangeOfCharacter(from: CharacterSet(charactersIn: "😀😁😂😃😄😅😆😇😈😉😊😋😌😍😎😏😐😑😒😓😔😕😖😗😘😙😚😛😜😝😞😟😠😡😢😣😤😥😦😧😨😩😪😫😬😭😮😯😰😱😲😳😴😵😶😷😸😹😺😻😼😽😾😿🙀🙁🙂🙃🙄🙅🙆🙇🙈🙉🙊🙋🙌🙍🙎🙏")) != nil {
+            return "text_and_emoji"
+        } else {
+            return "only_text"
+        }
+    }
+    
+    private func countEmojis(_ content: String) -> Int {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return 0
+        }
+        
+        var emojiCount = 0
+        var currentIndex = trimmed.startIndex
+        
+        while currentIndex < trimmed.endIndex {
+            let char = trimmed[currentIndex]
+            
+            if char.isWhitespace || char.isNewline {
+                currentIndex = trimmed.index(after: currentIndex)
+                continue
+            }
+            
+            if char.isEmoji {
+                emojiCount += 1
+                var nextIndex = trimmed.index(after: currentIndex)
+                
+                while nextIndex < trimmed.endIndex {
+                    let nextChar = trimmed[nextIndex]
+                    let scalar = nextChar.unicodeScalars.first
+                    if let scalar = scalar {
+                        let codePoint = scalar.value
+                        if codePoint == 0xFE0F || codePoint == 0xFE00 || (codePoint >= 0xFE01 && codePoint <= 0xFE0F) || codePoint == 0x200D || codePoint == 0x20E3 {
+                            nextIndex = trimmed.index(after: nextIndex)
+                            continue
+                        }
+                    }
+                    
+                    if nextChar.isEmoji {
+                        let nextScalar = nextChar.unicodeScalars.first
+                        if let nextScalar = nextScalar {
+                            let nextCodePoint = nextScalar.value
+                            if (nextCodePoint >= 0x1F1E6 && nextCodePoint <= 0x1F1FF) || nextCodePoint == 0x200D {
+                                nextIndex = trimmed.index(after: nextIndex)
+                                continue
+                            }
+                        }
+                    }
+                    break
+                }
+                currentIndex = nextIndex
+            } else {
+                currentIndex = trimmed.index(after: currentIndex)
+            }
+        }
+        
+        return emojiCount
+    }
+    
+    // MARK: - Emoji Functions
+    
+    private func setupEmojiListener() {
+        let currentUserId = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        let groupId = group.groupId
+        let senderRoom = getSenderRoom()
+        let messageId = message.id
+        
+        let database = Database.database().reference()
+        let emojiPath = "\(Constant.GROUPCHAT)/\(senderRoom)/\(messageId)/emojiModel"
+        
+        displayEmojis = staticEmojis
+        
+        if let emojiModels = message.emojiModel {
+            currentEmojiModels = emojiModels.filter { !$0.name.isEmpty && !$0.emoji.isEmpty }
+        }
+        
+        emojiListenerHandle = database.child(emojiPath).observe(.value) { snapshot in
+            var emojiModels: [EmojiModel] = []
+            var emojiHashSet = Set<String>()
+            
+            for emoji in self.staticEmojis {
+                emojiHashSet.insert(emoji.character)
+            }
+            
+            if let emojiArray = snapshot.value as? [[String: Any]] {
+                for emojiDict in emojiArray {
+                    let emoji = emojiDict["emoji"] as? String ?? ""
+                    let name = emojiDict["name"] as? String ?? ""
+                    
+                    if !emoji.isEmpty && !name.isEmpty {
+                        emojiModels.append(EmojiModel(name: name, emoji: emoji))
+                        
+                        if !emojiHashSet.contains(emoji) {
+                            emojiHashSet.insert(emoji)
+                        }
+                    }
+                }
+            }
+            
+            DispatchQueue.main.async {
+                self.currentEmojiModels = emojiModels
+                self.updateDisplayEmojis()
+            }
+        }
+    }
+    
+    private func updateDisplayEmojis() {
+        var combinedEmojis = staticEmojis
+        var emojiHashSet = Set<String>()
+        
+        for emoji in staticEmojis {
+            emojiHashSet.insert(emoji.character)
+        }
+        
+        for emojiModel in currentEmojiModels {
+            let emoji = emojiModel.emoji
+            let name = emojiModel.name
+            
+            if !emoji.isEmpty && !name.isEmpty && !emojiHashSet.contains(emoji) {
+                let firebaseEmoji = DisplayEmoji(
+                    slug: "",
+                    character: emoji,
+                    unicodeName: name,
+                    codePoint: "",
+                    isFromFirebase: true
+                )
+                combinedEmojis.append(firebaseEmoji)
+                emojiHashSet.insert(emoji)
+            }
+        }
+        
+        if let lastEmoji = combinedEmojis.last, !lastEmoji.character.isEmpty {
+            let emptyEmoji = DisplayEmoji(
+                slug: "e0-6-red-heart",
+                character: "",
+                unicodeName: "",
+                codePoint: "2764 FE0F"
+            )
+            combinedEmojis.append(emptyEmoji)
+        }
+        
+        displayEmojis = combinedEmojis
+    }
+    
+    private func removeEmojiListener() {
+        if let handle = emojiListenerHandle {
+            let database = Database.database().reference()
+            let senderRoom = getSenderRoom()
+            let messageId = message.id
+            let emojiPath = "\(Constant.GROUPCHAT)/\(senderRoom)/\(messageId)/emojiModel"
+            database.child(emojiPath).removeObserver(withHandle: handle)
+            emojiListenerHandle = nil
+        }
+    }
+    
+    private func fetchAvailableEmojis() {
+        guard !isLoadingEmojis else { return }
+        guard availableEmojis.isEmpty else { return }
+        
+        isLoadingEmojis = true
+        let urlString = "\(Constant.baseURL)emojiController/fetch_emoji_data"
+        guard let url = URL(string: urlString) else {
+            isLoadingEmojis = false
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                self.isLoadingEmojis = false
+                
+                if let error = error {
+                    print("❌ [fetchAvailableEmojis] Error: \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let data = data else { return }
+                
+                do {
+                    if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let dataArray = json["data"] as? [[String: Any]] {
+                        var fetchedEmojis: [EmojiData] = []
+                        for item in dataArray {
+                            if let slug = item["slug"] as? String,
+                               let character = item["character"] as? String,
+                               let unicodeName = item["unicode_name"] as? String,
+                               let codePoint = item["code_point"] as? String,
+                               let group = item["group"] as? String,
+                               let subGroup = item["sub_group"] as? String {
+                                fetchedEmojis.append(EmojiData(
+                                    slug: slug,
+                                    character: character,
+                                    unicodeName: unicodeName,
+                                    codePoint: codePoint,
+                                    group: group,
+                                    subGroup: subGroup
+                                ))
+                            }
+                        }
+                        self.availableEmojis = fetchedEmojis
+                    }
+                } catch {
+                    print("❌ [fetchAvailableEmojis] JSON parsing error: \(error.localizedDescription)")
+                }
+            }
+        }.resume()
+    }
+    
+    private func handleEmojiTap(displayEmoji: DisplayEmoji) {
+        guard !displayEmoji.character.isEmpty else { return }
+        
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        
+        let currentUserId = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        let userReaction = currentEmojiModels.first { $0.name == currentUserId && $0.emoji == displayEmoji.character }
+        
+        isPresented = false
+        
+        if let _ = userReaction {
+            removeEmoji(emojiCharacter: displayEmoji.character)
+        } else {
+            addEmoji(emojiCharacter: displayEmoji.character)
+        }
+    }
+    
+    private func addEmoji(emojiCharacter: String) {
+        let currentUserId = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        let groupId = group.groupId
+        let senderRoom = getSenderRoom()
+        let messageId = message.id
+        
+        let database = Database.database().reference()
+        let emojiPath = "\(Constant.GROUPCHAT)/\(senderRoom)/\(messageId)/emojiModel"
+        
+        database.child(emojiPath).observeSingleEvent(of: .value) { snapshot in
+            var emojiMap: [String: EmojiModel] = [:]
+            var isUpdated = false
+            
+            if snapshot.exists(), let emojiArray = snapshot.value as? [[String: Any]] {
+                for emojiDict in emojiArray {
+                    let name = emojiDict["name"] as? String ?? ""
+                    let emoji = emojiDict["emoji"] as? String ?? ""
+                    if !name.isEmpty {
+                        if name == currentUserId {
+                            emojiMap[name] = EmojiModel(name: name, emoji: emojiCharacter)
+                            isUpdated = true
+                        } else {
+                            emojiMap[name] = EmojiModel(name: name, emoji: emoji)
+                        }
+                    }
+                }
+            }
+            
+            if !isUpdated {
+                emojiMap[currentUserId] = EmojiModel(name: currentUserId, emoji: emojiCharacter)
+            }
+            
+            let emojiList = Array(emojiMap.values)
+            let emojiCountStr = String(emojiList.count)
+            
+            database.child(emojiPath).setValue(emojiList.map { ["name": $0.name, "emoji": $0.emoji] })
+            database.child("\(Constant.GROUPCHAT)/\(senderRoom)/\(messageId)/emojiCount").setValue(emojiCountStr)
+        }
+    }
+    
+    private func addEmojiFromPicker(emojiCharacter: String) {
+        let currentUserId = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !currentUserId.isEmpty else { return }
+        
+        let groupId = group.groupId
+        let senderRoom = getSenderRoom()
+        let messageId = message.id
+        
+        let database = Database.database().reference()
+        let emojiPath = "\(Constant.GROUPCHAT)/\(senderRoom)/\(messageId)/emojiModel"
+        
+        database.child(emojiPath).observeSingleEvent(of: .value) { snapshot in
+            var emojiMap: [String: EmojiModel] = [:]
+            var isUpdated = false
+            let newEmoji = emojiCharacter
+            
+            if snapshot.exists(), let emojiArray = snapshot.value as? [[String: Any]] {
+                for emojiDict in emojiArray {
+                    let name = emojiDict["name"] as? String ?? ""
+                    let emoji = emojiDict["emoji"] as? String ?? ""
+                    if !name.isEmpty {
+                        if name == currentUserId {
+                            emojiMap[name] = EmojiModel(name: name, emoji: newEmoji)
+                            isUpdated = true
+                        } else {
+                            emojiMap[name] = EmojiModel(name: name, emoji: emoji)
+                        }
+                    }
+                }
+            }
+            
+            if !isUpdated {
+                emojiMap[currentUserId] = EmojiModel(name: currentUserId, emoji: newEmoji)
+            }
+            
+            if !emojiMap.isEmpty {
+                let emojiList = Array(emojiMap.values)
+                let emojiCountStr = String(emojiList.count)
+                
+                database.child(emojiPath).setValue(emojiList.map { ["name": $0.name, "emoji": $0.emoji] }) { error, _ in
+                    if error == nil {
+                        database.child("\(Constant.GROUPCHAT)/\(senderRoom)/\(messageId)/emojiCount").setValue(emojiCountStr)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func removeEmoji(emojiCharacter: String) {
+        let currentUserId = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        let groupId = group.groupId
+        let senderRoom = getSenderRoom()
+        let messageId = message.id
+        
+        let database = Database.database().reference()
+        let emojiPath = "\(Constant.GROUPCHAT)/\(senderRoom)/\(messageId)/emojiModel"
+        
+        database.child(emojiPath).observeSingleEvent(of: .value) { snapshot in
+            var emojiList: [EmojiModel] = []
+            let emojiKey = currentUserId + "_" + emojiCharacter
+            
+            if snapshot.exists(), let emojiArray = snapshot.value as? [[String: Any]] {
+                for emojiDict in emojiArray {
+                    let name = emojiDict["name"] as? String ?? ""
+                    let emoji = emojiDict["emoji"] as? String ?? ""
+                    let existingKey = name + "_" + emoji
+                    if existingKey != emojiKey {
+                        emojiList.append(EmojiModel(name: name, emoji: emoji))
+                    }
+                }
+            }
+            
+            let emojiCountStr = emojiList.isEmpty ? "" : String(emojiList.count)
+            
+            if emojiList.isEmpty {
+                let emptyList: [[String: String]] = [["name": "", "emoji": ""]]
+                database.child(emojiPath).setValue(emptyList)
+            } else {
+                database.child(emojiPath).setValue(emojiList.map { ["name": $0.name, "emoji": $0.emoji] })
+            }
+            
+            database.child("\(Constant.GROUPCHAT)/\(senderRoom)/\(messageId)/emojiCount").setValue(emojiCountStr)
+        }
+    }
+    
+    @ViewBuilder
+    private var emojiPickerSheet: some View {
+        NavigationView {
+            ZStack {
+                if isLoadingEmojis {
+                    VStack {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text("Loading emojis...")
+                            .font(.custom("Inter18pt-Regular", size: 14))
+                            .foregroundColor(Color("gray3"))
+                            .padding(.top, 10)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 40), spacing: 8)], spacing: 8) {
+                            ForEach(availableEmojis, id: \.slug) { emojiData in
+                                Button(action: {
+                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                    addEmojiFromPicker(emojiCharacter: emojiData.character)
+                                    showEmojiPicker = false
+                                    isPresented = false
+                                }) {
+                                    Text(emojiData.character)
+                                        .font(.system(size: 30))
+                                        .frame(width: 40, height: 40)
+                                }
+                            }
+                        }
+                        .padding(8)
+                    }
+                }
+            }
+            .navigationTitle("Add Emoji")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        showEmojiPicker = false
+                    }
+                }
+            }
+        }
     }
 }
