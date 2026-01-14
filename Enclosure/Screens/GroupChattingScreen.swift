@@ -1993,11 +1993,17 @@ struct GroupChattingScreen: View {
         let replyType = replyDataType
         
         // Create placeholder selectionBunch items so bunch view can render immediately
+        // These will be updated with actual URLs after upload
         var placeholderSelectionBunch: [SelectionBunchModel] = []
         for index in 0..<selectedAssets.count {
             let fileName = "\(modelId)_\(index).jpg"
-            placeholderSelectionBunch.append(SelectionBunchModel(imgUrl: "", fileName: fileName))
+            let localFileURL = getLocalImageURL(fileName: fileName)
+            placeholderSelectionBunch.append(SelectionBunchModel(imgUrl: localFileURL.path, fileName: fileName))
         }
+        
+        // Create message with local file path (matching ChattingScreen - shows preview immediately)
+        let firstFileName = "\(modelId)_0.jpg"
+        let localFileURL = getLocalImageURL(fileName: firstFileName)
         
         // Create message with group information using GroupChatMessage
         let createdBy = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
@@ -2006,7 +2012,7 @@ struct GroupChattingScreen: View {
             uid: senderId,
             message: "",
             time: currentDateTimeString,
-            document: "", // Will be updated after upload
+            document: localFileURL.path, // Local file path (matching ChattingScreen - shows preview immediately)
             dataType: Constant.img,
             fileExtension: "jpg",
             name: nil,
@@ -2017,7 +2023,7 @@ struct GroupChattingScreen: View {
             userName: userName,
             receiverUid: groupId, // Use groupId as receiverUid for groups
             docSize: nil,
-            fileName: "\(modelId)_0.jpg",
+            fileName: firstFileName,
             thumbnail: nil,
             fileNameThumbnail: nil,
             caption: trimmedCaption,
@@ -2030,7 +2036,64 @@ struct GroupChattingScreen: View {
             selectionBunch: placeholderSelectionBunch.count >= 2 ? placeholderSelectionBunch : nil // Show bunch view if 2+ images
         )
         
-        // Upload images to Firebase Storage and send message
+        // Store message in SQLite pending table before upload (matching Android insertPendingGroupMessage)
+        let chatMessageForDB = ChatMessage(
+            id: modelId,
+            uid: senderId,
+            message: "",
+            time: currentDateTimeString,
+            document: localFileURL.path, // Local file path
+            dataType: Constant.img,
+            fileExtension: "jpg",
+            name: nil,
+            phone: nil,
+            micPhoto: micPhoto,
+            miceTiming: nil,
+            userName: userName,
+            receiverId: groupId,
+            replytextData: nil,
+            replyKey: nil,
+            replyType: nil,
+            replyOldData: nil,
+            replyCrtPostion: nil,
+            forwaredKey: nil,
+            groupName: group.name,
+            docSize: nil,
+            fileName: firstFileName,
+            thumbnail: nil,
+            fileNameThumbnail: nil,
+            caption: trimmedCaption,
+            notification: 1,
+            currentDate: currentDateString,
+            emojiModel: [EmojiModel(name: "", emoji: "")],
+            emojiCount: nil,
+            timestamp: timestamp,
+            imageWidth: nil,
+            imageHeight: nil,
+            aspectRatio: nil,
+            selectionCount: "\(selectedAssets.count)",
+            selectionBunch: placeholderSelectionBunch.count >= 2 ? placeholderSelectionBunch : nil,
+            receiverLoader: 0 // Show progress bar
+        )
+        DatabaseHelper.shared.insertPendingGroupMessage(chatMessageForDB, groupId: groupId)
+        print("✅ [PendingMessages] Group image message stored in group pending table: \(modelId)")
+        
+        // Add to UI immediately (matching ChattingScreen: messageList.add, itemAdd, setLastItemVisible, notifyItemInserted, scrollToPosition)
+        DispatchQueue.main.async {
+            if !self.messages.contains(where: { $0.id == modelId }) {
+                print("🔍 [ProgressBar] 📤 ADDING GROUP IMAGE MESSAGE TO UI")
+                print("🔍 [ProgressBar]   - Message ID: \(modelId.prefix(8))...")
+                print("🔍 [ProgressBar]   - receiverLoader: 0 (will show progress bar)")
+                print("🔍 [ProgressBar]   - document: \(localFileURL.path)")
+                self.messages.append(newMessage)
+                self.messageReceiverLoaders[modelId] = 0 // Show progress bar
+                self.isLastItemVisible = true // Show progress for pending message (matching Android setLastItemVisible(true))
+                self.showScrollDownButton = false // Hide down button (matching Android downCardview.setVisibility(View.GONE))
+                print("✅ [GROUP_MULTI_IMAGE] Message added to UI immediately: \(modelId)")
+            }
+        }
+        
+        // Upload images to Firebase Storage and send message (in background)
         uploadGroupImagesAndSend(selectedAssets: selectedAssets, message: newMessage, modelId: modelId)
     }
     
@@ -2120,6 +2183,14 @@ struct GroupChattingScreen: View {
             updatedMessage.aspectRatio = aspectRatioValue
             updatedMessage.selectionBunch = selectionBunchModels.count >= 2 ? selectionBunchModels : nil
             
+            // Update message in UI with actual URLs (matching ChattingScreen)
+            if let index = self.messages.firstIndex(where: { $0.id == modelId }) {
+                print("🔍 [ProgressBar] 📤 UPDATING GROUP IMAGE MESSAGE IN UI")
+                print("🔍 [ProgressBar]   - Message ID: \(modelId.prefix(8))...")
+                print("🔍 [ProgressBar]   - Updated document: \(first.downloadURL)")
+                self.messages[index] = updatedMessage
+            }
+            
             // Convert GroupChatMessage to ChatMessage for database storage
             let chatMessageForDB = ChatMessage(
                 id: updatedMessage.id,
@@ -2175,9 +2246,12 @@ struct GroupChattingScreen: View {
             ) { success, errorMessage in
                 if success {
                     print("✅ [GROUP_MULTI_IMAGE] Uploaded \(sortedResults.count) images for modelId=\(modelId) using GROUP API")
+                    // Check if message exists in Firebase and stop progress bar (matching ChattingScreen)
+                    self.checkMessageInFirebaseAndStopProgress(messageId: modelId, groupId: self.group.groupId)
                 } else {
                     print("❌ [GROUP_MULTI_IMAGE] Upload error: \(errorMessage ?? "Unknown error")")
                     Constant.showToast(message: "Failed to send images. Please try again.")
+                    // Keep receiverLoader as 0 to show progress bar (message still pending)
                 }
             }
         }
@@ -2191,6 +2265,12 @@ struct GroupChattingScreen: View {
         let imagesDir = documentsPath.appendingPathComponent("Enclosure/Media/Images", isDirectory: true)
         try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true, attributes: nil)
         return imagesDir
+    }
+    
+    /// Get local image file URL (matching Android exactPath2 + "/" + fileName)
+    private func getLocalImageURL(fileName: String) -> URL {
+        let imagesDir = getLocalImagesDirectory()
+        return imagesDir.appendingPathComponent(fileName)
     }
     
     /// Save image to local storage (matching Android file saving logic)
