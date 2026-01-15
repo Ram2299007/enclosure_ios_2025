@@ -25,9 +25,10 @@ struct GroupChattingScreen: View {
     @State private var showMenu2: Bool = false
     @State private var showMultiSelectHeader: Bool = false
     @State private var selectedCount: Int = 0
+    @State private var showClearChatDialog: Bool = false
+    @State private var navigateToGroupInfo: Bool = false
     
     // Progress indicators
-    @State private var showNetworkLoader: Bool = false
     @State private var showLoader: Bool = false
     
     // Message input state
@@ -112,6 +113,8 @@ struct GroupChattingScreen: View {
     
     // Messages state (matching Android groupMessageList)
     @State private var messages: [GroupChatMessage] = []
+    @State private var filteredMessages: [GroupChatMessage] = [] // Filtered messages for search
+    @State private var isSearching: Bool = false // Track if currently searching
     @State private var isLoading: Bool = false
     @State private var initialLoadDone: Bool = false
     @State private var lastKey: String? = nil // For pagination (matching Android lastKey)
@@ -164,18 +167,6 @@ struct GroupChattingScreen: View {
                     header2
                 }
                 
-                // Network loader
-                if showNetworkLoader {
-                    HorizontalProgressBar()
-                        .frame(height: 2)
-                }
-                
-                // Network loader
-                if showNetworkLoader {
-                    HorizontalProgressBar()
-                        .frame(height: 2)
-                }
-                
                 // Main loader
                 if showLoader {
                     HorizontalProgressBar()
@@ -184,172 +175,7 @@ struct GroupChattingScreen: View {
                 }
                 
                 // Message list (positioned above message input container, matching ChattingScreen)
-                ZStack(alignment: .top) {
-                    ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                                // Load more indicator at top (matching Android)
-                                if hasMoreMessages && !messages.isEmpty {
-                                    ProgressView()
-                                        .frame(height: 40)
-                                        .onAppear {
-                                            loadMore()
-                                        }
-                                }
-                                
-                                // Messages list (matching Android RecyclerView)
-                                ForEach(Array(messages.enumerated()), id: \.element.id) { index, groupMessage in
-                                    // Convert GroupChatMessage to ChatMessage for MessageBubbleView
-                                    let chatMessage = convertGroupMessageToChatMessage(groupMessage)
-                                    
-                                    // Display all message types (Text, img, video, etc.) - matching ChattingScreen
-                                        MessageBubbleView(
-                                            message: chatMessage,
-                                            onHalfSwipe: { swipedMessage in
-                                                // Handle multi-select mode first (matching Android)
-                                                if showMultiSelectHeader {
-                                                    toggleMessageSelection(messageId: swipedMessage.id)
-                                                    return
-                                                }
-                                                handleHalfSwipeReply(swipedMessage)
-                                            },
-                                            onReplyTap: { message in
-                                                // Handle multi-select mode first (matching Android)
-                                                if showMultiSelectHeader {
-                                                    toggleMessageSelection(messageId: message.id)
-                                                       return
-                                                }
-                                                handleReplyTap(message: message)
-                                            },
-                                            onLongPress: { message, position in
-                                                // Handle multi-select mode first (matching Android)
-                                                if showMultiSelectHeader {
-                                                    toggleMessageSelection(messageId: message.id)
-                                                    return
-                                                }
-                                                handleLongPress(message: message, position: position)
-                                            },
-                                        onBunchLongPress: { selectionBunch in
-                                            // Show preview dialog for bunch images (matching ChattingScreen)
-                                            print("📸 [BunchPreview] onBunchLongPress (single tap) called with \(selectionBunch.count) images")
-                                            for (index, img) in selectionBunch.enumerated() {
-                                                print("📸 [BunchPreview] Setting image \(index): fileName=\(img.fileName), imgUrl=\(img.imgUrl.isEmpty ? "empty" : String(img.imgUrl.prefix(50)))")
-                                            }
-                                            
-                                            // Set images first, then navigate to full screen (matching Android Activity navigation)
-                                            bunchPreviewImages = selectionBunch
-                                            bunchPreviewCurrentIndex = 0
-                                            print("📸 [BunchPreview] State updated: bunchPreviewImages.count = \(bunchPreviewImages.count)")
-                                            
-                                            // Navigate to full screen (matching Android startActivity)
-                                            navigateToMultipleImageScreen = true
-                                            print("📸 [BunchPreview] After setting navigateToMultipleImageScreen: bunchPreviewImages.count = \(bunchPreviewImages.count)")
-                                        },
-                                        onImageTap: { imageModel in
-                                            // Open ShowImageScreen for single image (matching ChattingScreen)
-                                            selectedImageForShow = imageModel
-                                            navigateToShowImageScreen = true
-                                            },
-                                            isHighlighted: false,
-                                            isMultiSelectMode: showMultiSelectHeader,
-                                            isSelected: selectedMessageIds.contains(chatMessage.id),
-                                            onSelectionToggle: { messageId in
-                                                toggleMessageSelection(messageId: messageId)
-                                            }
-                                        )
-                                        .id(chatMessage.id)
-                                        .onAppear {
-                                            // Track last item visibility (matching ChattingScreen)
-                                            if index == messages.count - 1 {
-                                                handleLastItemVisibility(id: chatMessage.id, index: index, isAppearing: true)
-                                            }
-                                        }
-                                        .onDisappear {
-                                            // Track last item visibility (matching ChattingScreen)
-                                            if index == messages.count - 1 {
-                                                handleLastItemVisibility(id: chatMessage.id, index: index, isAppearing: false)
-                                    }
-                            }
-                            }
-                        }
-                    }
-                    .contentShape(Rectangle()) // Ensure entire area is tappable
-                    .allowsHitTesting(true) // Ensure ScrollView can receive touches
-                    .onAppear {
-                        scrollViewProxy = proxy
-                    }
-                    .onDisappear {
-                        scrollViewProxy = nil
-                    }
-                    .onChange(of: messages.count) { _ in
-                        // Scroll to bottom when new messages are added (matching Android)
-                        if !messages.isEmpty, let lastMessageId = messages.last?.id {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                withAnimation {
-                                    proxy.scrollTo(lastMessageId, anchor: .bottom)
-                                }
-                                // Hide scroll down button when scrolling to bottom
-                                self.showScrollDownButton = false
-                                self.isLastItemVisible = true
-                                self.downArrowCount = 0
-                                self.showDownArrowCount = false
-                            }
-                            }
-                        }
-                    }
-                    
-                    // Scroll down button overlay (matching ChattingScreen)
-                    if showScrollDownButton {
-                        VStack {
-                            Spacer()
-                            HStack {
-                                Spacer()
-                                scrollDownButton
-                            }
-                        }
-                        .allowsHitTesting(true) // Allow button to receive touches
-                }
-                    
-                    // Multi-select small counter text overlay
-                    if showMultiSelectHeader && selectedCount > 0 {
-                        VStack {
-                            Spacer()
-                            HStack {
-                                Spacer()
-                                Text("\(selectedCount)")
-                                    .font(.custom("Inter18pt-Bold", size: 12))
-                                    .foregroundColor(.white)
-                                    .frame(width: 24, height: 24)
-                                    .background(
-                                        Circle()
-                                            .fill(Color("buttonColorTheme"))
-                                    )
-                                    .padding(.trailing, 15)
-                                    .padding(.bottom, 60)
-                            }
-                        }
-                        .allowsHitTesting(true) // Allow counter to receive touches
-                    }
-                    
-                    // Date card overlay
-                    if showDateCard {
-                        dateCardView
-                            .zIndex(1000) // Ensure it's on top
-                            .padding(.top, 8)
-                            .allowsHitTesting(false) // Don't block touches to ScrollView
-                    }
-                    
-                    // Valuable card overlay (centered when messages are empty)
-                    if messages.isEmpty && initialLoadDone {
-                        VStack {
-                            Spacer()
-                            valuableCardView
-                            Spacer()
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .allowsHitTesting(false) // Don't block touches to ScrollView
-                    }
-                }
+                messageListView
                 
                 // Bottom input area (matching ChattingScreen layout)
                 messageInputContainer
@@ -365,6 +191,33 @@ struct GroupChattingScreen: View {
             }
         }
         .navigationBarHidden(true)
+        .overlay(
+            // Custom Clear Chat Dialog (matching Android delete_popup_row.xml)
+            Group {
+                if showClearChatDialog {
+                    ClearChatDialog(
+                        isPresented: $showClearChatDialog,
+                        onConfirm: {
+                            clearGroupChat()
+                        }
+                    )
+                }
+            }
+        )
+        .background(
+            // Hidden NavigationLink for ForGroupVisibleScreen
+            NavigationLink(
+                destination: ForGroupVisibleScreen(group: group)
+                    .onDisappear {
+                        // Reset navigation state when ForGroupVisibleScreen is dismissed
+                        navigateToGroupInfo = false
+                    },
+                isActive: $navigateToGroupInfo
+            ) {
+                EmptyView()
+            }
+            .hidden()
+        )
         .overlay(
             // Long press dialog overlay - full screen alert with blur (matching ChattingScreen)
             Group {
@@ -644,7 +497,7 @@ struct GroupChattingScreen: View {
             HStack(spacing: 0) {
                 // Back button
                 Button(action: {
-                    dismiss()
+                    handleBackTap()
                 }) {
                     ZStack {
                         Image("leftvector")
@@ -667,38 +520,54 @@ struct GroupChattingScreen: View {
                         .textFieldStyle(PlainTextFieldStyle())
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.trailing, 10)
-                } else {
-                    // Group section (hidden when search is active)
-                    HStack(spacing: 0) {
-                        // Group icon with border
-                        ZStack {
-                            Circle()
-                                .stroke(Color("blue"), lineWidth: 2)
-                                .frame(width: 44, height: 44)
-                            
-                            CachedAsyncImage(url: URL(string: group.iconURL)) { image in
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 40, height: 40)
-                                    .clipShape(Circle())
-                            } placeholder: {
-                                Image("inviteimg")
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 40, height: 40)
-                                    .clipShape(Circle())
+                        .onAppear {
+                            // Focus search field (matching Android binding.searchEt.requestFocus())
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                isMessageFieldFocused = false
                             }
                         }
-                        .padding(.leading, 5)
-                        .padding(.trailing, 16)
-                        
-                        // Name
-                        Text(group.name)
-                            .font(.custom("Inter18pt-Medium", size: 16))
-                            .foregroundColor(Color("TextColor"))
-                            .lineLimit(1)
+                        .onChange(of: searchText) { newValue in
+                            // Handle search text changes (matching Android TextWatcher)
+                            handleSearchTextChanged(newValue)
+                        }
+                } else {
+                    // Group section (hidden when search is active, clickable to open ForGroupVisibleScreen)
+                    Button(action: {
+                        // Navigate to ForGroupVisibleScreen
+                        navigateToGroupInfo = true
+                    }) {
+                        HStack(spacing: 0) {
+                            // Group icon with border
+                            ZStack {
+                                Circle()
+                                    .stroke(Color("blue"), lineWidth: 2)
+                                    .frame(width: 44, height: 44)
+                                
+                                CachedAsyncImage(url: URL(string: group.iconURL)) { image in
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 40, height: 40)
+                                        .clipShape(Circle())
+                                } placeholder: {
+                                    Image("inviteimg")
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 40, height: 40)
+                                        .clipShape(Circle())
+                                }
+                            }
+                            .padding(.leading, 5)
+                            .padding(.trailing, 16)
+                            
+                            // Name
+                            Text(group.name)
+                                .font(.custom("Inter18pt-Medium", size: 16))
+                                .foregroundColor(Color("TextColor"))
+                                .lineLimit(1)
+                        }
                     }
+                    .buttonStyle(PlainButtonStyle())
                     
                     Spacer()
                     
@@ -1556,67 +1425,274 @@ struct GroupChattingScreen: View {
         .padding(.top, 56)
     }
     
-    // MARK: - Menu Dialog
-    private var menuDialog: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Button(action: {
-                // Group Info action
-                showMenu = false
-            }) {
-                Text("Group Info")
-                    .font(.custom("Inter18pt-Medium", size: 16))
-                    .foregroundColor(Color("TextColor"))
-                    .frame(maxWidth: .infinity, alignment: .leading)
+    // MARK: - Message List View (extracted to reduce complexity)
+    private var messageListView: some View {
+        ZStack(alignment: .top) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        // Load more indicator at top (matching Android)
+                        if hasMoreMessages && !messages.isEmpty {
+                            ProgressView()
+                                .frame(height: 40)
+                                .onAppear {
+                                    loadMore()
+                                }
+                        }
+                        
+                        // Messages list (matching Android RecyclerView)
+                        // Use filtered messages when searching, otherwise use all messages
+                        ForEach(Array((isSearching ? filteredMessages : messages).enumerated()), id: \.element.id) { index, groupMessage in
+                            // Convert GroupChatMessage to ChatMessage for MessageBubbleView
+                            let chatMessage = convertGroupMessageToChatMessage(groupMessage)
+                            
+                            // Display all message types (Text, img, video, etc.) - matching ChattingScreen
+                            MessageBubbleView(
+                                message: chatMessage,
+                                onHalfSwipe: { swipedMessage in
+                                    // Handle multi-select mode first (matching Android)
+                                    if showMultiSelectHeader {
+                                        toggleMessageSelection(messageId: swipedMessage.id)
+                                        return
+                                    }
+                                    handleHalfSwipeReply(swipedMessage)
+                                },
+                                onReplyTap: { message in
+                                    // Handle multi-select mode first (matching Android)
+                                    if showMultiSelectHeader {
+                                        toggleMessageSelection(messageId: message.id)
+                                        return
+                                    }
+                                    handleReplyTap(message: message)
+                                },
+                                onLongPress: { message, position in
+                                    // Handle multi-select mode first (matching Android)
+                                    if showMultiSelectHeader {
+                                        toggleMessageSelection(messageId: message.id)
+                                        return
+                                    }
+                                    handleLongPress(message: message, position: position)
+                                },
+                                onBunchLongPress: { selectionBunch in
+                                    // Show preview dialog for bunch images (matching ChattingScreen)
+                                    print("📸 [BunchPreview] onBunchLongPress (single tap) called with \(selectionBunch.count) images")
+                                    for (index, img) in selectionBunch.enumerated() {
+                                        print("📸 [BunchPreview] Setting image \(index): fileName=\(img.fileName), imgUrl=\(img.imgUrl.isEmpty ? "empty" : String(img.imgUrl.prefix(50)))")
+                                    }
+                                    
+                                    // Set images first, then navigate to full screen (matching Android Activity navigation)
+                                    bunchPreviewImages = selectionBunch
+                                    bunchPreviewCurrentIndex = 0
+                                    print("📸 [BunchPreview] State updated: bunchPreviewImages.count = \(bunchPreviewImages.count)")
+                                    
+                                    // Navigate to full screen (matching Android startActivity)
+                                    navigateToMultipleImageScreen = true
+                                    print("📸 [BunchPreview] After setting navigateToMultipleImageScreen: bunchPreviewImages.count = \(bunchPreviewImages.count)")
+                                },
+                                onImageTap: { imageModel in
+                                    // Open ShowImageScreen for single image (matching ChattingScreen)
+                                    selectedImageForShow = imageModel
+                                    navigateToShowImageScreen = true
+                                },
+                                isHighlighted: false,
+                                isMultiSelectMode: showMultiSelectHeader,
+                                isSelected: selectedMessageIds.contains(chatMessage.id),
+                                onSelectionToggle: { messageId in
+                                    toggleMessageSelection(messageId: messageId)
+                                }
+                            )
+                            .id(chatMessage.id)
+                            .onAppear {
+                                // Track last item visibility (matching ChattingScreen)
+                                let currentMessages = isSearching ? filteredMessages : messages
+                                if index == currentMessages.count - 1 {
+                                    handleLastItemVisibility(id: chatMessage.id, index: index, isAppearing: true)
+                                }
+                            }
+                            .onDisappear {
+                                // Track last item visibility (matching ChattingScreen)
+                                let currentMessages = isSearching ? filteredMessages : messages
+                                if index == currentMessages.count - 1 {
+                                    handleLastItemVisibility(id: chatMessage.id, index: index, isAppearing: false)
+                                }
+                            }
+                        }
+                    }
+                }
+                .contentShape(Rectangle()) // Ensure entire area is tappable
+                .allowsHitTesting(true) // Ensure ScrollView can receive touches
+                .onAppear {
+                    scrollViewProxy = proxy
+                }
+                .onDisappear {
+                    scrollViewProxy = nil
+                }
+                .onChange(of: messages.count) { _ in
+                    // Scroll to bottom when new messages are added (matching Android)
+                    // Only scroll if not searching (search results are handled separately)
+                    if !isSearching && !messages.isEmpty, let lastMessageId = messages.last?.id {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            withAnimation {
+                                proxy.scrollTo(lastMessageId, anchor: .bottom)
+                            }
+                            // Hide scroll down button when scrolling to bottom
+                            self.showScrollDownButton = false
+                            self.isLastItemVisible = true
+                            self.downArrowCount = 0
+                            self.showDownArrowCount = false
+                        }
+                    }
+                }
             }
-            .padding(.leading, 32)
-            .padding(.top, 10)
             
-            Button(action: {
-                // Add Member action
-                showMenu = false
-            }) {
-                Text("Add Member")
-                    .font(.custom("Inter18pt-Medium", size: 16))
-                    .foregroundColor(Color("TextColor"))
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            // Scroll down button overlay (matching ChattingScreen)
+            if showScrollDownButton {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        scrollDownButton
+                    }
+                }
+                .allowsHitTesting(true) // Allow button to receive touches
             }
-            .padding(.leading, 32)
-            .padding(.top, 5)
             
-            Button(action: {
-                // Remove Member action
-                showMenu = false
-            }) {
-                Text("Remove Member")
-                    .font(.custom("Inter18pt-Medium", size: 16))
-                    .foregroundColor(Color("TextColor"))
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            // Multi-select small counter text overlay
+            if showMultiSelectHeader && selectedCount > 0 {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Text("\(selectedCount)")
+                            .font(.custom("Inter18pt-Bold", size: 12))
+                            .foregroundColor(.white)
+                            .frame(width: 24, height: 24)
+                            .background(
+                                Circle()
+                                    .fill(Color("buttonColorTheme"))
+                            )
+                            .padding(.trailing, 15)
+                            .padding(.bottom, 60)
+                    }
+                }
+                .allowsHitTesting(true) // Allow counter to receive touches
             }
-            .padding(.leading, 32)
-            .padding(.top, 5)
             
-            Button(action: {
-                // Delete Group action
-                showMenu = false
-            }) {
-                Text("Delete Group")
-                    .font(.custom("Inter18pt-Medium", size: 16))
-                    .foregroundColor(Color("TextColor"))
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            // Date card overlay
+            if showDateCard {
+                dateCardView
+                    .zIndex(1000) // Ensure it's on top
+                    .padding(.top, 8)
+                    .allowsHitTesting(false) // Don't block touches to ScrollView
             }
-            .padding(.leading, 32)
-            .padding(.top, 5)
+            
+            // Valuable card overlay (centered when messages are empty)
+            if messages.isEmpty && initialLoadDone {
+                VStack {
+                    Spacer()
+                    valuableCardView
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false) // Don't block touches to ScrollView
+            }
         }
-        .frame(width: 267, height: 138)
+    }
+    
+    // MARK: - Menu Dialog (matching ChattingScreen menuOverlay design)
+    private var menuDialog: some View {
+        ZStack {
+            Color.black.opacity(0.3)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation {
+                showMenu = false
+            }
+                }
+            
+            VStack(alignment: .trailing, spacing: 0) {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Search button
+            Button(action: {
+                        withAnimation {
+                            showSearch = true
+                showMenu = false
+                        }
+                        // Focus search field (matching Android binding.searchEt.requestFocus())
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            isMessageFieldFocused = false
+                        }
+            }) {
+                        HStack {
+                            Text("Search")
+                                .font(.custom("Inter18pt-Medium", size: 17))
+                    .foregroundColor(Color("TextColor"))
+                            Spacer()
+                        }
+                        .padding(.leading, 15)
+                        .padding(.top, 12)
+                        .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+            }
+                    .buttonStyle(MenuItemRippleStyle())
+            
+                    // For visible button (Group Info)
+            Button(action: {
+                        withAnimation {
+                showMenu = false
+                        }
+                        // Navigate to Group Info screen (matching Android userInfoScreen)
+                        navigateToGroupInfo = true
+            }) {
+                        HStack {
+                            Text("For visible")
+                                .font(.custom("Inter18pt-Medium", size: 17))
+                    .foregroundColor(Color("TextColor"))
+                            Spacer()
+                        }
+                        .padding(.leading, 15)
+                        .padding(.top, 12)
+                        .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+            }
+                    .buttonStyle(MenuItemRippleStyle())
+            
+                    // Clear All button
+            Button(action: {
+                        withAnimation {
+                showMenu = false
+                        }
+                        // Show confirmation dialog (matching Android delete_popup_row)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            showClearChatDialog = true
+                        }
+            }) {
+                        HStack {
+                            Text("Clear All")
+                                .font(.custom("Inter18pt-Medium", size: 17))
+                    .foregroundColor(Color("TextColor"))
+                            Spacer()
+                        }
+                        .padding(.leading, 15)
+                        .padding(.top, 12)
+                        .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+            }
+                    .buttonStyle(MenuItemRippleStyle())
+        }
+            }
         .background(
-            Image("menurect")
-                .resizable()
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color("BackgroundColor"))
+                    .shadow(color: Color.black.opacity(0.2), radius: 5, x: 0, y: 2)
         )
-        .padding(.leading, 126)
+            .frame(width: 180)
         .padding(.top, 50)
-        .padding(.trailing, 30)
-        .onTapGesture {
-            showMenu = false
+            .padding(.trailing, 10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
     }
     
@@ -1624,8 +1700,14 @@ struct GroupChattingScreen: View {
     private var menu2Dialog: some View {
         VStack {
             Button(action: {
-                showSearch.toggle()
+                withAnimation {
+                    showSearch = true
                 showMenu2 = false
+                }
+                // Focus search field (matching Android binding.searchEt.requestFocus())
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isMessageFieldFocused = false
+                }
             }) {
                 Text("Search")
                     .font(.custom("Inter18pt-Medium", size: 17))
@@ -4176,7 +4258,8 @@ struct GroupChattingScreen: View {
     // MARK: - Scroll Down Button (matching ChattingScreen)
     private var scrollDownButton: some View {
         Button(action: {
-            print("📜 [SCROLL] Scroll down button tapped - messages.count: \(messages.count)")
+            let currentMessages = isSearching ? filteredMessages : messages
+            print("📜 [SCROLL] Scroll down button tapped - messages.count: \(currentMessages.count)")
             
             // Light haptic feedback (Android-style tap vibration)
             let generator = UIImpactFeedbackGenerator(style: .light)
@@ -4219,7 +4302,8 @@ struct GroupChattingScreen: View {
     // MARK: - Handle Last Item Visibility (matching ChattingScreen)
     private func handleLastItemVisibility(id: String, index: Int, isAppearing: Bool) {
         // Check if this is the last message (matching Android lastVisiblePosition >= totalItems - 1)
-        let isLastMessage = index == messages.count - 1
+        let currentMessages = isSearching ? filteredMessages : messages
+        let isLastMessage = index == currentMessages.count - 1
         
         if isLastMessage {
             // Update isLastItemVisible flag (matching Android)
@@ -4234,19 +4318,23 @@ struct GroupChattingScreen: View {
                 downArrowCount = 0
                 showDownArrowCount = false
             }
-        } else if !isAppearing && index < messages.count - 1 {
+        } else if !isAppearing {
+            let currentMessages = isSearching ? filteredMessages : messages
+            if index < currentMessages.count - 1 {
             // If a message above the last one disappears, increment count
             // This tracks how many messages are below the visible area
             if !isLastItemVisible {
                 downArrowCount += 1
                 showDownArrowCount = true
+                }
             }
         }
     }
     
     // MARK: - Scroll To Bottom (matching ChattingScreen)
     private func scrollToBottom(animated: Bool) {
-        guard let lastId = messages.last?.id, let proxy = scrollViewProxy else {
+        let currentMessages = isSearching ? filteredMessages : messages
+        guard let lastId = currentMessages.last?.id, let proxy = scrollViewProxy else {
             return
         }
         
@@ -4265,6 +4353,163 @@ struct GroupChattingScreen: View {
         // Reset down arrow count after scrolling
         downArrowCount = 0
         showDownArrowCount = false
+    }
+    
+    // MARK: - Handle Back Tap (matching ChattingScreen)
+    private func handleBackTap() {
+        // If search is active, clear it first (matching Android back button behavior)
+        if showSearch {
+            withAnimation {
+                showSearch = false
+                searchText = ""
+                isSearching = false
+                filteredMessages.removeAll()
+            }
+            return
+        }
+        
+        // If multi-select mode is active, exit it first (matching Android back button behavior)
+        if showMultiSelectHeader {
+            showMultiSelectHeader = false
+            selectedCount = 0
+            selectedMessageIds.removeAll()
+            return
+        }
+        
+        // Otherwise, dismiss the screen
+        dismiss()
+    }
+    
+    // MARK: - Handle Search Text Changed (matching Android TextWatcher for searchEt)
+    private func handleSearchTextChanged(_ newValue: String) {
+        let query = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if !query.isEmpty {
+            // Search messages (matching Android searchMessages)
+            isSearching = true
+            searchMessages(query: query)
+        } else {
+            // Reload all messages if search is cleared (matching Android fetchMessages)
+            isSearching = false
+            filteredMessages.removeAll()
+            let senderRoom = getSenderRoom()
+            fetchMessages(senderRoom: senderRoom) {
+                // Don't scroll when search is cleared (matching Android)
+            }
+        }
+    }
+    
+    // MARK: - Clear Group Chat (matching Android clearChat, adapted for GROUPCHAT)
+    private func clearGroupChat() {
+        let groupId = group.groupId
+        let senderRoom = getSenderRoom()
+        let database = Database.database().reference()
+        
+        print("🗑️ [CLEAR GROUP CHAT] Clearing chat for group: \(groupId), room: \(senderRoom)")
+        
+        // Clear from Firebase (matching Android database.getReference().child(Constant.GROUPCHAT).child(senderRoom).removeValue())
+        database.child(Constant.GROUPCHAT).child(senderRoom).removeValue { error, _ in
+            if let error = error {
+                print("🗑️ [CLEAR GROUP CHAT] ❌ Error clearing Firebase: \(error.localizedDescription)")
+                Constant.showToast(message: "Failed to clear chat")
+            } else {
+                print("🗑️ [CLEAR GROUP CHAT] ✅ Successfully cleared Firebase data for room: \(senderRoom)")
+                
+                // Delete all pending group messages from SQLite table (matching Android clearAllPendingMessages)
+                // Get all pending messages and delete them one by one (since deleteAllPendingGroupMessages doesn't exist yet)
+                DatabaseHelper.shared.getPendingGroupMessages(groupId: groupId) { pendingMessages in
+                    for message in pendingMessages {
+                        _ = DatabaseHelper.shared.removePendingGroupMessage(modelId: message.id, groupId: groupId)
+                    }
+                    print("🗑️ [CLEAR GROUP CHAT] ✅ Deleted all pending group messages from SQLite")
+                }
+                
+                // Clear local messages
+                DispatchQueue.main.async {
+                    let pendingCount = self.messages.filter { self.messageReceiverLoaders[$0.id] == 0 }.count
+                    print("🗑️ [CLEAR GROUP CHAT] Removing \(self.messages.count) messages from UI (including \(pendingCount) pending messages)")
+                    self.messages.removeAll()
+                    self.messageReceiverLoaders.removeAll()
+                    print("🗑️ [CLEAR GROUP CHAT] ✅ Cleared local messages")
+                }
+                
+                DispatchQueue.main.async {
+                    print("🗑️ [CLEAR GROUP CHAT] ✅ Group chat cleared successfully")
+                    // Toast removed - no message shown after clearing (matching user requirement)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Search Messages (matching Android searchMessages function, adapted for GROUPCHAT)
+    private func searchMessages(query: String) {
+        let senderRoom = getSenderRoom()
+        let database = Database.database().reference()
+        let chatRef = database.child(Constant.GROUPCHAT).child(senderRoom)
+        
+        print("🔍 [SEARCH] Searching for: '\(query)' in group room: \(senderRoom)")
+        
+        // Query all messages once (matching Android addListenerForSingleValueEvent)
+        chatRef.observeSingleEvent(of: .value) { snapshot in
+            var foundMessages: [GroupChatMessage] = []
+            
+            guard snapshot.exists() else {
+                print("🔍 [SEARCH] No messages found in group room")
+                DispatchQueue.main.async {
+                    self.filteredMessages = []
+                }
+                return
+            }
+            
+            // Iterate through all messages
+            for child in snapshot.children {
+                guard let childSnapshot = child as? DataSnapshot else { continue }
+                let childKey = childSnapshot.key
+                
+                // Skip typing indicator node (matching Android)
+                if childKey == "typing" {
+                    print("🔍 [SEARCH] Skipping typing indicator node")
+                    continue
+                }
+                
+                // Skip invalid keys (matching Android)
+                if childKey.count <= 1 || childKey == ":" {
+                    print("🔍 [SEARCH] Skipping invalid key: \(childKey)")
+                    continue
+                }
+                
+                // Parse message from snapshot
+                guard let messageDict = childSnapshot.value as? [String: Any] else { continue }
+                
+                // Get message text
+                if let messageText = messageDict["message"] as? String,
+                   !messageText.isEmpty {
+                    // Check if message contains query (case-insensitive matching Android)
+                    if messageText.lowercased().contains(query.lowercased()) {
+                        // Convert to GroupChatMessage using existing parser
+                        do {
+                            let groupMessage = try self.parseGroupMessageFromDict(messageDict, messageId: childKey)
+                            foundMessages.append(groupMessage)
+                        } catch {
+                            print("❌ [SEARCH] Error parsing message: \(error.localizedDescription)")
+                        }
+                    }
+                }
+            }
+            
+            // Update filtered messages on main thread
+            DispatchQueue.main.async {
+                // Sort by timestamp (newest first) - use id for sorting since GroupChatMessage doesn't have timestamp
+                // Messages are sorted by key (which is chronological)
+                self.filteredMessages = foundMessages.sorted { $0.id > $1.id }
+                print("🔍 [SEARCH] Found \(self.filteredMessages.count) messages matching '\(query)'")
+            }
+        } withCancel: { error in
+            print("❌ [SEARCH] Error searching messages: \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                self.filteredMessages = []
+            }
+        }
     }
 }
 
@@ -4442,21 +4687,21 @@ struct GroupMessageLongPressDialog: View {
     }
     
     var body: some View {
-        ZStack {
-            // Blurred background overlay - covers entire screen and is tappable everywhere
-            Color.black.opacity(opacityValue * 0.3)
-                .background(.ultraThinMaterial)
-                .contentShape(Rectangle()) // Make entire area tappable
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ZStack {
+                // Blurred background overlay - covers entire screen and is tappable everywhere
+                Color.black.opacity(opacityValue * 0.3)
+                    .background(.ultraThinMaterial)
+                    .contentShape(Rectangle()) // Make entire area tappable
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea(edges: .all)
-                .zIndex(0) // Background layer
-                .simultaneousGesture(
-                    // Use simultaneous gesture so background can receive taps even when dialog is visible
-                    TapGesture()
-                        .onEnded { _ in
-                            dismissDialog()
-                        }
-                )
+                    .zIndex(0) // Background layer
+                    .simultaneousGesture(
+                        // Use simultaneous gesture so background can receive taps even when dialog is visible
+                        TapGesture()
+                            .onEnded { _ in
+                                dismissDialog()
+                            }
+                    )
             
             GeometryReader { geometry in
                 
@@ -4655,7 +4900,7 @@ struct GroupMessageLongPressDialog: View {
                     }
                 }
                 .frame(maxWidth: .infinity) // Ensure HStack takes full width
-                .offset(x: 0, y: adjustedOffsetY(in: geometry)) // Only offset Y, X is handled by HStack padding (matching reference file)
+            .offset(x: 0, y: adjustedOffsetY(in: geometry)) // Only offset Y, X is handled by HStack padding (matching reference file)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity) // Ensure GeometryReader fills entire ZStack
             .zIndex(1) // Dialog content on top of blur
