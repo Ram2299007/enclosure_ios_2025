@@ -192,10 +192,10 @@ struct GroupChattingScreen: View {
         }
         .navigationBarHidden(true)
         .overlay(
-            // Custom Clear Chat Dialog (matching Android delete_popup_row.xml)
+            // Custom Clear Chat Dialog (matching Android clearmsg_layout.xml)
             Group {
                 if showClearChatDialog {
-                    ClearChatDialog(
+                    ClearGroupChatDialog(
                         isPresented: $showClearChatDialog,
                         onConfirm: {
                             clearGroupChat()
@@ -6299,5 +6299,92 @@ struct GroupMessageLongPressDialog: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Clear Group Chat Dialog (matching ChattingScreen ClearChatDialog design)
+struct ClearGroupChatDialog: View {
+    @Binding var isPresented: Bool
+    let onConfirm: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        ZStack {
+            // Semi-transparent background (matching Android setCanceledOnTouchOutside)
+            Color.black.opacity(0.3)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation {
+                        isPresented = false
+                    }
+                }
+            
+            // Dialog card (matching Android CardView: 268dp width, cardBackgroundColornew, 20dp corner radius)
+            VStack(spacing: 0) {
+                VStack(spacing: 0) {
+                    // Dismiss button (matching Android dismiss ImageView: 24dp x 24dp, crossbtn drawable)
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            withAnimation {
+                                isPresented = false
+                            }
+                        }) {
+                            Image("crossbtn")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 24, height: 24)
+                                .foregroundColor(Color("TextColor"))
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .padding(.top, 0)
+                    .padding(.trailing, 0)
+                    
+                    // Title text (matching Android TextView: "Delete All Messages ?", 17sp, font weight 500, center gravity)
+                    Text("Delete All Messages ?")
+                        .font(.custom("Inter18pt-Medium", size: 17))
+                        .fontWeight(.medium)
+                        .foregroundColor(Color("TextColor"))
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(18)
+                        .padding(.top, 14)
+                    
+                    // Buttons container (matching Android LinearLayout: horizontal, center gravity, 25dp marginTop)
+                    HStack(spacing: 25) {
+                        // Ok button (matching Android AppCompatButton: button_hover4 background, 33dp height, 15sp, white text)
+                        Button(action: {
+                            withAnimation {
+                                isPresented = false
+                            }
+                            onConfirm()
+                        }) {
+                            Text("Ok")
+                                .font(.custom("Inter18pt-Regular", size: 15))
+                                .foregroundColor(.white)
+                                .frame(height: 33)
+                                .padding(.horizontal, 20)
+                                .background(Color(hex: Constant.themeColor))
+                                .cornerRadius(8)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        
+                        // Cancel button (matching Android: visibility="gone" - hidden in layout)
+                        // Note: Android layout has Cancel button but it's set to gone, so we don't show it
+                    }
+                    .padding(.top, 25)
+                }
+                .padding(20) // Matching Android padding="20dp"
+            }
+            .frame(width: 268) // Matching Android layout_width="268dp"
+            .background(
+                RoundedRectangle(cornerRadius: 20) // Matching Android cardCornerRadius="20dp"
+                    .fill(Color("cardBackgroundColornew")) // Matching Android cardBackgroundColor="@color/cardBackgroundColornew"
+                    .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 5)
+            )
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isPresented)
     }
 }
