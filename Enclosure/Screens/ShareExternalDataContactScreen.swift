@@ -18,8 +18,8 @@ struct ShareExternalDataContactScreen: View {
     @State private var selectedContactIds: Set<String> = []
     @State private var isLoading: Bool = true
     @State private var searchText: String = ""
-    @State private var showNetworkLoader: Bool = false
     @State private var isSharing: Bool = false
+    @State private var isPressed: Bool = false
     @FocusState private var isSearchFocused: Bool
     
     // Filter out blocked users (matching Android setAdapter logic)
@@ -41,32 +41,206 @@ struct ShareExternalDataContactScreen: View {
     
     // Selected contacts for display (matching Android forwardnameAdapter)
     private var selectedContacts: [UserActiveContactModel] {
-        availableContacts.filter { selectedContactIds.contains($0.uid) }
+        filteredContacts.filter { selectedContactIds.contains($0.uid) }
     }
     
     var body: some View {
         ZStack {
-            Color("BackgroundColor")
+            // Background matching Android BackgroundColor style
+            Color("background_color")
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Search section (matching Android searchlyt LinearLayout)
-                searchSection
-                
-                // Network loader (matching Android networkLoader LinearProgressIndicator)
-                if showNetworkLoader {
-                    ProgressView()
-                        .progressViewStyle(LinearProgressViewStyle())
-                        .frame(height: 4)
-                        .padding(.top, 5)
+                // Header section (matching Android searchlyt)
+                VStack(spacing: 0) {
+                    // Top bar with cancel button and "Contacts" text (matching Android)
+                    HStack(spacing: 0) {
+                        // Cancel button (matching Android backarrow LinearLayout)
+                        Button(action: {
+                            handleCancel()
+                        }) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color("circlebtnhover").opacity(0.1))
+                                    .frame(width: 26, height: 26)
+                                
+                                Image("leftvector")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 25, height: 18)
+                                    .foregroundColor(Color("TextColor"))
+                                    .padding(2)
+                            }
+                        }
+                        .padding(.leading, 20) // layout_marginStart="20dp"
+                        
+                        // "Contacts" text (matching Android theme TextView)
+                        Text("Contacts")
+                            .font(.custom("Inter18pt-Medium", size: 16))
+                            .fontWeight(.medium)
+                            .foregroundColor(Color("TextColor"))
+                            .padding(.leading, 21) // layout_marginStart="21dp"
+                        
+                        Spacer()
+                    }
+                    .padding(.top, 20) // layout_marginTop="20dp"
+                    .padding(.trailing, 17) // layout_marginEnd="17dp"
+                    
+                    // Network loader (matching Android networkLoader)
+                    if isLoading {
+                        ProgressView()
+                            .progressViewStyle(LinearProgressViewStyle(tint: Color("TextColor")))
+                            .frame(height: 4)
+                            .padding(.top, 10) // layout_marginTop="10dp"
+                    }
+                    
+                    // Search bar (matching Android searchLytNew LinearLayout)
+                    // layout_marginTop="20dp" padding="8dp" layout_weight="1" layout_marginEnd="10dp"
+                    HStack(alignment: .center, spacing: 0) {
+                        // Blue indicator line (matching Android viewnewnn)
+                        Rectangle()
+                            .fill(Color("blue"))
+                            .frame(width: 1, height: 19.24) // layout_height="19.24dp"
+                            .padding(.leading, 23) // layout_marginStart="23dp"
+                        
+                        // Search field (matching Android searchview AutoCompleteTextView)
+                        HStack(alignment: .center, spacing: 0) {
+                            TextField("Search Name", text: $searchText)
+                                .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp"
+                                .foregroundColor(Color("TextColor"))
+                                .focused($isSearchFocused)
+                                .lineSpacing(0) // lineHeight="22.5dp"
+                                .padding(.leading, 13) // layout_marginStart="13dp"
+                            
+                            Spacer()
+                            
+                            // Search icon (matching Android searchIcon)
+                            // layout_weight="3.9" layout_gravity="end|center_vertical"
+                            Image("search")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20) // layout_width="20dp" layout_height="20dp"
+                                .foregroundColor(Color("TextColor"))
+                        }
+                        .frame(maxWidth: .infinity) // layout_weight="1"
+                    }
+                    .padding(.top, 20) // layout_marginTop="20dp"
+                    .padding(.leading, 8) // padding="8dp" (left only)
+                    .padding(.trailing, 20) // Same right spacing as checkbox (20dp)
                 }
+                .padding(.horizontal, 0)
                 
-                // Contacts list (matching Android recyclerview RecyclerView)
-                contactsList
+                // Contact List (matching Android recyclerview in FrameLayout)
+                // FrameLayout: layout_below="@+id/searchlyt" layout_above="@id/dx" layout_marginTop="15dp"
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        if isLoading && filteredContacts.isEmpty {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 50)
+                        } else if filteredContacts.isEmpty {
+                            Text("No contacts found")
+                                .font(.custom("Inter18pt-Regular", size: 16))
+                                .foregroundColor(Color("gray3"))
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 50)
+                        } else {
+                            ForEach(filteredContacts) { contact in
+                                ShareContactRowView(
+                                    contact: contact,
+                                    isSelected: selectedContactIds.contains(contact.uid),
+                                    canSelect: true, // Always allow selection for share
+                                    onTap: {
+                                        toggleSelection(for: contact)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 15) // layout_marginTop="15dp" on FrameLayout
                 
-                // Bottom selected contacts and share button (matching Android dx LinearLayout)
+                Spacer()
+                
+                // Bottom bar (matching Android dx LinearLayout)
+                // layout_height="60dp" background="@drawable/rect" backgroundTint="@color/dxForward"
                 if !selectedContactIds.isEmpty {
-                    bottomShareSection
+                    HStack(spacing: 0) {
+                        // Selected contacts names (matching Android namerecyclerview with forwardnameAdapter)
+                        // Infinite width, keep left to the icon
+                        // layout_marginStart="15dp" layout_marginEnd="5dp"
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 0) {
+                                ForEach(Array(selectedContacts.enumerated()), id: \.element.uid) { index, contact in
+                                    // Each name displayed as separate item (matching forwardname_row.xml)
+                                    Text(displaySelectedContactName(contact: contact, index: index, total: selectedContacts.count))
+                                        .font(.custom("Inter18pt-Medium", size: 13)) // textSize="13sp" fontFamily="@font/inter_medium"
+                                        .foregroundColor(Color("gray3")) // textColor="@color/gray3"
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false) // wrap_content width
+                                }
+                            }
+                            .padding(.leading, 15) // layout_marginStart="15dp"
+                            .padding(.trailing, 5) // layout_marginEnd="5dp"
+                        }
+                        .frame(height: 40) // layout_height="40dp"
+                        .frame(maxWidth: .infinity) // Infinite width - takes all available space
+                        
+                        // Share icon (positioned after names, before button)
+                        Image("forward_svg")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 20, height: 20)
+                            .foregroundColor(Color("TextColor"))
+                            .padding(.trailing, 2) // Keep it close to the forbg button
+                        
+                        // Share button container (matching Android richBox LinearLayout)
+                        // android:layout_width="match_parent" android:layout_height="match_parent"
+                        // android:layout_marginTop="11dp" android:layout_marginBottom="7dp"
+                        // android:background="@drawable/forbg"
+                        Button(action: {
+                            handleShare()
+                        }) {
+                            if isSharing {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: Color("whitetogray")))
+                                    .frame(maxWidth: .infinity)
+                                    .frame(maxHeight: .infinity)
+                            } else {
+                                // TextView inside richBox (matching Android forward TextView)
+                                // android:layout_width="match_parent" android:layout_height="wrap_content"
+                                // android:layout_gravity="center" android:gravity="center"
+                                // android:layout_marginStart="15dp"
+                                Text("Share")
+                                    .font(.custom("Inter18pt-Regular", size: 16)) // android:fontFamily="@font/inter" android:textSize="16sp"
+                                    .fontWeight(.bold) // android:textStyle="bold"
+                                    .foregroundColor(Color("whitetogray")) // android:textColor="@color/whitetogray"
+                                    .padding(.leading, 15) // android:layout_marginStart="15dp"
+                                    .frame(maxWidth: .infinity) // android:layout_width="match_parent"
+                                    .frame(maxHeight: .infinity) // android:layout_height="wrap_content" with layout_gravity="center"
+                            }
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .frame(width: 80) // Fixed width 80px
+                        .background(
+                            // Background using original forbg asset from drawable (trapezoidal shape with angled left edge)
+                            Image("forbg")
+                                .resizable()
+                                .scaledToFill()
+                        )
+                        .padding(.top, 11) // android:layout_marginTop="11dp"
+                        .padding(.bottom, 7) // android:layout_marginBottom="7dp"
+                        .disabled(isSharing)
+                    }
+                    .frame(height: 60) // layout_height="60dp"
+                    .background(
+                        // Background matching Android @drawable/rect with @color/dxForward tint
+                        // android:background="@drawable/rect" android:backgroundTint="@color/dxForward"
+                        Color("dxForward")
+                    )
                 }
             }
         }
@@ -74,162 +248,64 @@ struct ShareExternalDataContactScreen: View {
         .onAppear {
             loadContacts()
         }
-        .onChange(of: viewModel.chatList) { _ in
-            // Hide loader when contacts are loaded
-            if !viewModel.chatList.isEmpty {
+        .onChange(of: viewModel.isLoading) { loading in
+            if !loading {
                 isLoading = false
-                showNetworkLoader = false
+            }
+        }
+        .onChange(of: viewModel.chatList.count) { count in
+            if count > 0 {
+                isLoading = false
             }
         }
     }
     
-    // MARK: - Search Section (matching Android searchlyt LinearLayout)
-    private var searchSection: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                // Search container (matching Android searchLytNew LinearLayout - weight 1, marginEnd 10dp)
-                HStack(spacing: 0) {
-                    // Blue vertical bar (matching Android viewnewnn View: 1dp width, 19.24dp height, 23dp marginStart)
-                    Rectangle()
-                        .fill(Color("blue"))
-                        .frame(width: 1, height: 19.24)
-                        .padding(.leading, 23)
-                    
-                    // Search field (matching Android searchview AutoCompleteTextView: 13dp marginStart)
-                    TextField("Search Name", text: $searchText)
-                        .font(.custom("Inter18pt-Regular", size: 15))
-                        .fontWeight(.medium)
-                        .foregroundColor(Color("TextColor"))
-                        .accentColor(Color("TextColor"))
-                        .focused($isSearchFocused)
-                        .padding(.leading, 13)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.trailing, 10) // marginEnd="10dp"
-                
-                // Search icon container (matching Android LinearLayout - weight 3.9)
-                HStack {
-                    // Search icon (matching Android searchIcon ImageView: 20dp x 20dp, centered)
-                    Image("search")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 20, height: 20)
-                }
-                .frame(width: UIScreen.main.bounds.width * 0.28) // Approximate weight 3.9
+    // Display selected contact name (matching Android forwardnameAdapter logic)
+    // Android format: "Name1 , Name2 , Name3" (with spaces around comma, last name without comma)
+    private func displaySelectedContactName(contact: UserActiveContactModel, index: Int, total: Int) -> String {
+        if total == 1 {
+            return contact.fullName
+        } else if total > 1 {
+            if index == total - 1 {
+                // Last item: just the name
+                return contact.fullName
+            } else {
+                // Not last: name + " , " (matching Android: model.getName()+" "+","+" ")
+                return contact.fullName + " , "
             }
-            .padding(.vertical, 8) // padding="8dp"
-            .padding(.horizontal, 8) // padding="8dp"
         }
-    }
-    
-    // MARK: - Contacts List
-    private var contactsList: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 50)
-                } else if filteredContacts.isEmpty {
-                    Text("No contacts found")
-                        .font(.custom("Inter18pt-Regular", size: 16))
-                        .foregroundColor(Color("gray3"))
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 50)
-                } else {
-                    ForEach(filteredContacts) { contact in
-                        ShareContactRowView(
-                            contact: contact,
-                            isSelected: selectedContactIds.contains(contact.uid),
-                            onTap: {
-                                toggleSelection(for: contact)
-                            }
-                        )
-                    }
-                }
-            }
-            .padding(.top, 15)
-        }
-    }
-    
-    // MARK: - Bottom Share Section (matching Android dx LinearLayout)
-    private var bottomShareSection: some View {
-        HStack(spacing: 0) {
-            // Selected contacts horizontal list (matching Android namerecyclerview RecyclerView)
-            // Shows names as text separated by commas (matching forwardnameAdapter)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 0) {
-                    ForEach(Array(selectedContacts.enumerated()), id: \.element.uid) { index, contact in
-                        if selectedContacts.count == 1 {
-                            // Single contact: just show name
-                            Text(contact.fullName)
-                                .font(.custom("Inter18pt-Medium", size: 13))
-                                .foregroundColor(Color("gray3"))
-                                .lineLimit(1)
-                        } else {
-                            // Multiple contacts: show name with comma separator
-                            if index == selectedContacts.count - 1 {
-                                // Last item: just name
-                                Text(contact.fullName)
-                                    .font(.custom("Inter18pt-Medium", size: 13))
-                                    .foregroundColor(Color("gray3"))
-                                    .lineLimit(1)
-                            } else {
-                                // Not last: name + comma + space
-                                Text("\(contact.fullName) , ")
-                                    .font(.custom("Inter18pt-Medium", size: 13))
-                                    .foregroundColor(Color("gray3"))
-                                    .lineLimit(1)
-                            }
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 5)
-            }
-            .frame(height: 40)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            
-            // Share button (matching Android forward LinearLayout - weight 2.5)
-            Button(action: {
-                handleShare()
-            }) {
-                if isSharing {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: Color("whitetogray")))
-                } else {
-                    Text("Share")
-                        .font(.custom("Inter18pt-Regular", size: 16))
-                        .fontWeight(.bold)
-                        .foregroundColor(Color("whitetogray"))
-                }
-            }
-            .frame(width: UIScreen.main.bounds.width * 0.4) // Approximate weight 2.5
-            .padding(.horizontal, 15)
-            .padding(.vertical, 11)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color("dxForward"))
-            )
-            .padding(.trailing, 10)
-            .disabled(isSharing)
-        }
-        .frame(height: 60)
-        .background(Color("dxForward"))
+        return contact.fullName
     }
     
     // MARK: - Helper Functions
     private func loadContacts() {
         isLoading = true
-        showNetworkLoader = true
-        
         viewModel.fetchChatList(uid: Constant.SenderIdMy)
         
-        // Hide loader after a delay if contacts don't load
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            if isLoading {
+        // Check loading state after a delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            if !viewModel.isLoading {
                 isLoading = false
-                showNetworkLoader = false
+            }
+        }
+        
+        // Also observe when chatList is populated
+        if !viewModel.chatList.isEmpty {
+            isLoading = false
+        }
+    }
+    
+    private func handleCancel() {
+        if isSearchFocused {
+            isSearchFocused = false
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        } else {
+            withAnimation {
+                isPressed = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                dismiss()
+                isPressed = false
             }
         }
     }
@@ -417,19 +493,33 @@ struct ShareExternalDataContactScreen: View {
     }
 }
 
-// MARK: - Share Contact Row View (matching Android share_contact_layout.xml)
+// MARK: - Share Contact Row View (matching Android forward_layout_row.xml)
 struct ShareContactRowView: View {
+    @Environment(\.colorScheme) var colorScheme
+    
     let contact: UserActiveContactModel
     let isSelected: Bool
+    let canSelect: Bool
     let onTap: () -> Void
+    
+    // Truncate name to 20 characters (matching Android)
+    private var displayName: String {
+        if contact.fullName.count > 20 {
+            return String(contact.fullName.prefix(20)) + "..."
+        }
+        return contact.fullName
+    }
     
     var body: some View {
         Button(action: {
-            onTap()
+            if canSelect {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    onTap()
+                }
+            }
         }) {
-            HStack(spacing: 0) {
-                // Profile image container (matching Android CardView with contact1img)
-                // 50dp x 50dp, 1dp marginStart, 20dp marginEnd
+            HStack(alignment: .center, spacing: 0) {
+                // Profile image (matching Android contact1img: 50dp x 50dp)
                 AsyncImage(url: URL(string: contact.photo)) { image in
                     image
                         .resizable()
@@ -441,37 +531,48 @@ struct ShareContactRowView: View {
                 }
                 .frame(width: 50, height: 50)
                 .clipShape(Circle())
-                .padding(.leading, 1) // marginStart="1dp"
+                .padding(.leading, 16) // layout_marginHorizontal="16dp"
                 .padding(.trailing, 20) // marginEnd="20dp"
                 
-                // Name and caption container (matching Android LinearLayout)
-                VStack(alignment: .leading, spacing: 0) {
-                    // Name (matching Android contact1text: 16sp, bold, inter_bold, weight 600)
-                    Text(contact.fullName)
-                        .font(.custom("Inter18pt-Bold", size: 16))
-                        .fontWeight(.semibold)
-                        .foregroundColor(Color("TextColor"))
-                        .lineLimit(1)
-                        .lineSpacing(0)
-                    
-                    // Caption (matching Android captiontext: 13sp, gray3, hidden by default)
-                    // Note: Caption is hidden in Android, so we don't show it
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                // Name (matching Android contact1text)
+                // fontFamily="@font/inter_bold" textSize="16sp" textFontWeight="600"
+                Text(displayName)
+                    .font(.custom("Inter18pt-Bold", size: 16))
+                    .fontWeight(.semibold)
+                    .foregroundColor(Color("TextColor"))
+                    .lineLimit(1)
+                    .lineSpacing(0) // lineHeight="18dp"
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 
                 Spacer()
                 
-                // Checkbox container (matching Android LinearLayout with checkbox)
-                // Checkbox (matching Android checkbox_bg drawable)
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isSelected ? Color("blue") : Color("gray3"))
-                    .font(.system(size: 24))
-                    .padding(.trailing, 16)
+                // Checkbox (matching Android checkbox_bg visual size - smaller than drawable)
+                // layout_gravity="end" - vertically centered in LinearLayout
+                // Aligned to same right edge as search icon (16dp from right)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(isSelected ? Color("TextColor") : Color.clear)
+                        .frame(width: 18, height: 18) // Reduced size
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color("TextColor"), lineWidth: 2)
+                        )
+                    
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .foregroundColor(colorScheme == .dark ? Color.black : Color(red: 0xF6/255, green: 0xF7/255, blue: 0xFF/255))
+                            .font(.system(size: 9, weight: .bold)) // Smaller checkmark to match smaller box
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                // No trailing padding - parent HStack already has .padding(.horizontal, 16) which aligns with search icon
             }
             .padding(.top, 10) // paddingTop="10dp"
             .padding(.bottom, 10) // paddingBottom="10dp"
-            .padding(.horizontal, 16) // layout_marginHorizontal="16dp"
-            .contentShape(Rectangle())
+            .padding(.leading, 16) // layout_marginStart="16dp"
+            .padding(.trailing, 20) // 20dp right margin to align with search icon
+            .background(Color("background_color"))
+            .opacity(canSelect ? 1.0 : 0.5)
         }
         .buttonStyle(PlainButtonStyle())
     }
