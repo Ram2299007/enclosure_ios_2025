@@ -76,7 +76,7 @@ struct LottieView: UIViewRepresentable {
         }
         
         if !animationLoaded {
-            print("❌ [LottieView] Failed to load animation: \(animationName)")
+            print("🚫 [LottieView] Failed to load animation: \(animationName)")
             print("   Searched in: Lottie subdirectory, main bundle, and alternative paths")
             
             // Debug: List all JSON files in bundle

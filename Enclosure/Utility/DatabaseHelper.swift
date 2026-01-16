@@ -370,13 +370,13 @@ final class DatabaseHelper {
                         print("🔑 [DatabaseHelper]   - receiverUid: \(message.receiverId)")
                     }
                 } else {
-                    print("🔑 [DatabaseHelper] ❌ MESSAGE NOT FOUND in pending_messages table")
+                    print("🔑 [DatabaseHelper] 🚫 MESSAGE NOT FOUND in pending_messages table")
                 }
                 
                 print("🔑 [DatabaseHelper] ==============================================")
                 sqlite3_finalize(statement)
             } else {
-                print("🔑 [DatabaseHelper] ❌ Failed to prepare query: \(String(cString: sqlite3_errmsg(db)))")
+                print("🔑 [DatabaseHelper] 🚫 Failed to prepare query: \(String(cString: sqlite3_errmsg(db)))")
             }
         }
     }

@@ -18,8 +18,8 @@
 		C28154A92EE56B560033FB02 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = C28154A82EE56B560033FB02 /* FirebaseAuth */; };
 		C28154AB2EE56B560033FB02 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = C28154AA2EE56B560033FB02 /* FirebaseCrashlytics */; };
 		C28154AD2EE56B560033FB02 /* FirebaseDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = C28154AC2EE56B560033FB02 /* FirebaseDatabase */; };
-		C28154AF2EE56B560033FB02 /* FirebaseInAppMessaging-Beta in Frameworks */ = {isa = PBXBuildFile; productRef = C28154AE2EE56B560033FB02 /* FirebaseInAppMessaging-Beta */; };
 		C28154B12EE56B560033FB02 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = C28154B02EE56B560033FB02 /* FirebaseStorage */; };
+		C2C0913E2F18C29400932D59 /* EnclosureShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C2C091342F18C29400932D59 /* EnclosureShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C2CC67FF2F064961004ABBF9 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = C2CC67FE2F064961004ABBF9 /* Lottie */; };
 /* End PBXBuildFile section */
 
@@ -38,12 +38,34 @@
 			remoteGlobalIDString = C22079672D848199006AA986;
 			remoteInfo = Enclosure;
 		};
+		C2C0913C2F18C29400932D59 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C22079602D848199006AA986 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C2C091332F18C29400932D59;
+			remoteInfo = EnclosureShareExtension;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		C2C091432F18C29400932D59 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				C2C0913E2F18C29400932D59 /* EnclosureShareExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		C22079682D848199006AA986 /* Enclosure.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Enclosure.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C220797D2D84819C006AA986 /* EnclosureTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EnclosureTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C22079872D84819C006AA986 /* EnclosureUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EnclosureUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C2C091342F18C29400932D59 /* EnclosureShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = EnclosureShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -53,6 +75,13 @@
 				Info.plist,
 			);
 			target = C22079672D848199006AA986 /* Enclosure */;
+		};
+		C2C091422F18C29400932D59 /* Exceptions for "EnclosureShareExtension" folder in "EnclosureShareExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = C2C091332F18C29400932D59 /* EnclosureShareExtension */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -75,6 +104,14 @@
 			path = EnclosureUITests;
 			sourceTree = "<group>";
 		};
+		C2C091352F18C29400932D59 /* EnclosureShareExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C2C091422F18C29400932D59 /* Exceptions for "EnclosureShareExtension" folder in "EnclosureShareExtension" target */,
+			);
+			path = EnclosureShareExtension;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -95,7 +132,6 @@
 				C28154AD2EE56B560033FB02 /* FirebaseDatabase in Frameworks */,
 				C261E29D2D95334700E1CFE8 /* FirebaseMessaging in Frameworks */,
 				C28154A72EE56B560033FB02 /* FirebaseAnalyticsOnDeviceConversion in Frameworks */,
-				C28154AF2EE56B560033FB02 /* FirebaseInAppMessaging-Beta in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -113,6 +149,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C2C091312F18C29400932D59 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -122,6 +165,7 @@
 				C220796A2D848199006AA986 /* Enclosure */,
 				C22079802D84819C006AA986 /* EnclosureTests */,
 				C220798A2D84819C006AA986 /* EnclosureUITests */,
+				C2C091352F18C29400932D59 /* EnclosureShareExtension */,
 				C22079692D848199006AA986 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -132,6 +176,7 @@
 				C22079682D848199006AA986 /* Enclosure.app */,
 				C220797D2D84819C006AA986 /* EnclosureTests.xctest */,
 				C22079872D84819C006AA986 /* EnclosureUITests.xctest */,
+				C2C091342F18C29400932D59 /* EnclosureShareExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -146,10 +191,12 @@
 				C22079642D848199006AA986 /* Sources */,
 				C22079652D848199006AA986 /* Frameworks */,
 				C22079662D848199006AA986 /* Resources */,
+				C2C091432F18C29400932D59 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				C2C0913D2F18C29400932D59 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				C220796A2D848199006AA986 /* Enclosure */,
@@ -167,7 +214,6 @@
 				C28154A82EE56B560033FB02 /* FirebaseAuth */,
 				C28154AA2EE56B560033FB02 /* FirebaseCrashlytics */,
 				C28154AC2EE56B560033FB02 /* FirebaseDatabase */,
-				C28154AE2EE56B560033FB02 /* FirebaseInAppMessaging-Beta */,
 				C28154B02EE56B560033FB02 /* FirebaseStorage */,
 				C2CC67FE2F064961004ABBF9 /* Lottie */,
 			);
@@ -221,6 +267,28 @@
 			productReference = C22079872D84819C006AA986 /* EnclosureUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		C2C091332F18C29400932D59 /* EnclosureShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C2C0913F2F18C29400932D59 /* Build configuration list for PBXNativeTarget "EnclosureShareExtension" */;
+			buildPhases = (
+				C2C091302F18C29400932D59 /* Sources */,
+				C2C091312F18C29400932D59 /* Frameworks */,
+				C2C091322F18C29400932D59 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				C2C091352F18C29400932D59 /* EnclosureShareExtension */,
+			);
+			name = EnclosureShareExtension;
+			packageProductDependencies = (
+			);
+			productName = EnclosureShareExtension;
+			productReference = C2C091342F18C29400932D59 /* EnclosureShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -228,7 +296,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1620;
+				LastSwiftUpdateCheck = 2610;
 				LastUpgradeCheck = 1620;
 				TargetAttributes = {
 					C22079672D848199006AA986 = {
@@ -241,6 +309,9 @@
 					C22079862D84819C006AA986 = {
 						CreatedOnToolsVersion = 16.2;
 						TestTargetID = C22079672D848199006AA986;
+					};
+					C2C091332F18C29400932D59 = {
+						CreatedOnToolsVersion = 26.1.1;
 					};
 				};
 			};
@@ -266,6 +337,7 @@
 				C22079672D848199006AA986 /* Enclosure */,
 				C220797C2D84819C006AA986 /* EnclosureTests */,
 				C22079862D84819C006AA986 /* EnclosureUITests */,
+				C2C091332F18C29400932D59 /* EnclosureShareExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -286,6 +358,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		C22079852D84819C006AA986 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C2C091322F18C29400932D59 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -316,6 +395,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C2C091302F18C29400932D59 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -328,6 +414,11 @@
 			isa = PBXTargetDependency;
 			target = C22079672D848199006AA986 /* Enclosure */;
 			targetProxy = C22079882D84819C006AA986 /* PBXContainerItemProxy */;
+		};
+		C2C0913D2F18C29400932D59 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C2C091332F18C29400932D59 /* EnclosureShareExtension */;
+			targetProxy = C2C0913C2F18C29400932D59 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -605,6 +696,66 @@
 			};
 			name = Release;
 		};
+		C2C091402F18C29400932D59 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = EnclosureShareExtension/EnclosureShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 3BF3D2Q33L;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = EnclosureShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = EnclosureShareExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.enclosure.EnclosureShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C2C091412F18C29400932D59 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = EnclosureShareExtension/EnclosureShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 3BF3D2Q33L;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = EnclosureShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = EnclosureShareExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.enclosure.EnclosureShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -640,6 +791,15 @@
 			buildConfigurations = (
 				C22079982D84819C006AA986 /* Debug */,
 				C22079992D84819C006AA986 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C2C0913F2F18C29400932D59 /* Build configuration list for PBXNativeTarget "EnclosureShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C2C091402F18C29400932D59 /* Debug */,
+				C2C091412F18C29400932D59 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -728,11 +888,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseDatabase;
-		};
-		C28154AE2EE56B560033FB02 /* FirebaseInAppMessaging-Beta */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = "FirebaseInAppMessaging-Beta";
 		};
 		C28154B02EE56B560033FB02 /* FirebaseStorage */ = {
 			isa = XCSwiftPackageProductDependency;

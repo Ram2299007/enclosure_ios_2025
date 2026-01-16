@@ -43,9 +43,24 @@ struct ContentView: View {
                     print("🔍 [ContentView] onAppear called")
                     setupSplashScreen()
                     startSplashThread()
+                    
+                    // Check for shared content from Share Extension when app opens
+                    checkForSharedContentOnLaunch()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ThemeColorUpdated"))) { notification in
                     setupSplashScreen()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("HandleSharedContent"))) { notification in
+                    print("📤 [ContentView] Received HandleSharedContent notification")
+                    // Ensure we navigate to MainActivityOld if not already there
+                    let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? "0"
+                    if uid != "0" {
+                        let sleepKeyCheckOFF = UserDefaults.standard.string(forKey: Constant.sleepKeyCheckOFF) ?? ""
+                        let loggedInKey = UserDefaults.standard.string(forKey: Constant.loggedInKey) ?? ""
+                        if loggedInKey == Constant.loggedInKey && sleepKeyCheckOFF != "on" {
+                            isNavigatingToMain = true
+                        }
+                    }
                 }
             }
             
@@ -157,6 +172,22 @@ struct ContentView: View {
         }
         
         print("🔍 [ContentView] Final navigation state - isNavigating: \(isNavigating), isNavigatingToMain: \(isNavigatingToMain), isNavigatingToOnboarding: \(isNavigatingToOnboarding)")
+    }
+    
+    // Check for shared content when app launches (from Share Extension)
+    private func checkForSharedContentOnLaunch() {
+        // Add delay to ensure Share Extension has finished saving to UserDefaults
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure")
+            
+            if let contentType = sharedDefaults?.string(forKey: "sharedContentType") {
+                print("📤 [ContentView] Found shared content on launch: \(contentType)")
+                // Post notification so MainActivityOld can handle it
+                NotificationCenter.default.post(name: NSNotification.Name("HandleSharedContent"), object: nil)
+            } else {
+                print("📤 [ContentView] No shared content found on launch")
+            }
+        }
     }
 }
 

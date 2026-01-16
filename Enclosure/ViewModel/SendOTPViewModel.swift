@@ -38,12 +38,12 @@ class SendOTPViewModel: ObservableObject {
             }
 
             if let error = error {
-                print("❌ Error: \(error.localizedDescription)")
+                print("🚫 Error: \(error.localizedDescription)")
                 return
             }
 
             guard let data = data else {
-                print("❌ No Data")
+                print("🚫 No Data")
                 return
             }
 
@@ -62,7 +62,7 @@ class SendOTPViewModel: ObservableObject {
                     }
                 }
             } catch {
-                print("❌ JSON Parsing Error: \(error.localizedDescription)")
+                print("🚫 JSON Parsing Error: \(error.localizedDescription)")
             }
         }.resume()
     }

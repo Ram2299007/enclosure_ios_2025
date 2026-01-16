@@ -1138,12 +1138,12 @@ struct GroupChattingScreen: View {
                 self.isLoadingEmojis = false
                 
                 if let error = error {
-                    print("❌ [fetchEmojis] Error: \(error.localizedDescription)")
+                    print("🚫 [fetchEmojis] Error: \(error.localizedDescription)")
                     return
                 }
                 
                 guard let data = data else {
-                    print("❌ [fetchEmojis] No data received")
+                    print("🚫 [fetchEmojis] No data received")
                     return
                 }
                 
@@ -1175,7 +1175,7 @@ struct GroupChattingScreen: View {
                         print("✅ [fetchEmojis] Loaded \(fetchedEmojis.count) emojis")
                     }
                 } catch {
-                    print("❌ [fetchEmojis] JSON parsing error: \(error.localizedDescription)")
+                    print("🚫 [fetchEmojis] JSON parsing error: \(error.localizedDescription)")
                 }
             }
         }.resume()
@@ -2233,7 +2233,7 @@ struct GroupChattingScreen: View {
         // After all uploads complete, update message and send to API
         dispatchGroup.notify(queue: .main) {
             if uploadResults.isEmpty {
-                print("❌ [GROUP_MULTI_IMAGE] Upload failed - no results")
+                print("🚫 [GROUP_MULTI_IMAGE] Upload failed - no results")
                 Constant.showToast(message: "Unable to upload images. Please try again.")
                 return
             }
@@ -2331,7 +2331,7 @@ struct GroupChattingScreen: View {
                     // Check if message exists in Firebase and stop progress bar (matching ChattingScreen)
                     self.checkMessageInFirebaseAndStopProgress(messageId: modelId, groupId: self.group.groupId)
                 } else {
-                    print("❌ [GROUP_MULTI_IMAGE] Upload error: \(errorMessage ?? "Unknown error")")
+                    print("🚫 [GROUP_MULTI_IMAGE] Upload error: \(errorMessage ?? "Unknown error")")
                     Constant.showToast(message: "Failed to send images. Please try again.")
                     // Keep receiverLoader as 0 to show progress bar (message still pending)
                 }
@@ -2373,7 +2373,7 @@ struct GroupChattingScreen: View {
             print("📱 [LOCAL_STORAGE] File Path: \(fileURL.path)")
             print("📱 [LOCAL_STORAGE] Size: \(data.count) bytes (\(String(format: "%.2f", Double(data.count) / 1024.0)) KB)")
         } catch {
-            print("❌ [LOCAL_STORAGE] Error saving image to local storage: \(error.localizedDescription)")
+            print("🚫 [LOCAL_STORAGE] Error saving image to local storage: \(error.localizedDescription)")
         }
     }
     
@@ -2933,7 +2933,7 @@ struct GroupChattingScreen: View {
                             // Check if message exists in Firebase and stop progress bar (matching Android)
                             self.checkMessageInFirebaseAndStopProgress(messageId: modelId, groupId: groupId)
                         } else {
-                            print("❌ MessageUploadService: Error uploading group message: \(errorMessage ?? "Unknown error")")
+                            print("🚫 MessageUploadService: Error uploading group message: \(errorMessage ?? "Unknown error")")
                             // Keep receiverLoader as 0 to show progress bar (message still pending)
                         }
                     }
@@ -2988,7 +2988,7 @@ struct GroupChattingScreen: View {
                 let receiverLoaderRef = database.child(Constant.GROUPCHAT).child(chatKey).child(messageId).child("receiverLoader")
                 receiverLoaderRef.setValue(1) { error, _ in
                     if let error = error {
-                        print("❌ [ProgressBar] Error updating receiverLoader: \(error.localizedDescription)")
+                        print("🚫 [ProgressBar] Error updating receiverLoader: \(error.localizedDescription)")
             } else {
                         print("✅ [ProgressBar] receiverLoader updated to 1 for message: \(messageId)")
                         // Update local state immediately
@@ -3148,7 +3148,7 @@ struct GroupChattingScreen: View {
                             tempList.append(model)
                         }
                     } catch {
-                        print("❌ [fetchMessages] Error parsing message for key: \(childKey), error: \(error.localizedDescription)")
+                        print("🚫 [fetchMessages] Error parsing message for key: \(childKey), error: \(error.localizedDescription)")
                         continue
                     }
                 }
@@ -3198,7 +3198,7 @@ struct GroupChattingScreen: View {
                         DispatchQueue.main.async {
                     self.initialLoadDone = true
                 }
-                print("❌ [fetchMessages] Error fetching initial messages: \(error.localizedDescription)")
+                print("🚫 [fetchMessages] Error fetching initial messages: \(error.localizedDescription)")
                 
                 // Don't show toast for network errors to avoid spam (matching Android)
                 let nsError = error as NSError
@@ -3259,7 +3259,7 @@ struct GroupChattingScreen: View {
     // MARK: - Handle Child Added (matching Android onChildAdded)
     private func handleChildAdded(snapshot: DataSnapshot, senderRoom: String) {
         guard let messageDict = snapshot.value as? [String: Any] else {
-            print("❌ [handleChildAdded] Invalid message data")
+            print("🚫 [handleChildAdded] Invalid message data")
                 return
             }
             
@@ -3305,7 +3305,7 @@ struct GroupChattingScreen: View {
                 }
             }
         } catch {
-            print("❌ [handleChildAdded] Error parsing message: \(error.localizedDescription)")
+            print("🚫 [handleChildAdded] Error parsing message: \(error.localizedDescription)")
         }
     }
     
@@ -3336,7 +3336,7 @@ struct GroupChattingScreen: View {
                 }
             }
                 } catch {
-            print("❌ [handleChildChanged] Error parsing message: \(error.localizedDescription)")
+            print("🚫 [handleChildChanged] Error parsing message: \(error.localizedDescription)")
         }
     }
     
@@ -3551,7 +3551,7 @@ struct GroupChattingScreen: View {
                         newLastKey = snapshotKey
                     }
         } catch {
-                    print("❌ [loadMore] Error parsing message: \(error.localizedDescription)")
+                    print("🚫 [loadMore] Error parsing message: \(error.localizedDescription)")
                 }
             }
             
@@ -3652,7 +3652,7 @@ struct GroupChattingScreen: View {
         
         messageRef.removeValue { error, _ in
             if let error = error {
-                print("❌ [handleDeleteMessage] Error removing from Firebase: \(error.localizedDescription)")
+                print("🚫 [handleDeleteMessage] Error removing from Firebase: \(error.localizedDescription)")
                 Constant.showToast(message: "Failed to delete message")
                 return
             }
@@ -3683,7 +3683,7 @@ struct GroupChattingScreen: View {
         // Call get_group_members API (matching Android Webservice.get_group_members_for_adapter)
         let urlString = "\(Constant.baseURL)groupController/get_group_members"
         guard let url = URL(string: urlString) else {
-            print("❌ [getGroupMembersAndDelete] Invalid URL")
+            print("🚫 [getGroupMembersAndDelete] Invalid URL")
             return
         }
         
@@ -3699,12 +3699,12 @@ struct GroupChattingScreen: View {
         
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                print("❌ [getGroupMembersAndDelete] Error fetching group members: \(error.localizedDescription)")
+                print("🚫 [getGroupMembersAndDelete] Error fetching group members: \(error.localizedDescription)")
                 return
             }
             
             guard let data = data else {
-                print("❌ [getGroupMembersAndDelete] No data received")
+                print("🚫 [getGroupMembersAndDelete] No data received")
                 return
             }
             
@@ -3729,7 +3729,7 @@ struct GroupChattingScreen: View {
                     }
                 }
             } catch {
-                print("❌ [getGroupMembersAndDelete] JSON parsing error: \(error.localizedDescription)")
+                print("🚫 [getGroupMembersAndDelete] JSON parsing error: \(error.localizedDescription)")
             }
         }.resume()
     }
@@ -3738,7 +3738,7 @@ struct GroupChattingScreen: View {
     private func deleteMessageForMember(messageId: String, senderId: String, memberUid: String) {
         let urlString = "\(Constant.baseURL)chatController/delete_chatingindivisual"
         guard let url = URL(string: urlString) else {
-            print("❌ [deleteMessageForMember] Invalid URL")
+            print("🚫 [deleteMessageForMember] Invalid URL")
             return
         }
         
@@ -3756,7 +3756,7 @@ struct GroupChattingScreen: View {
         
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                print("❌ [deleteMessageForMember] Error deleting for member \(memberUid): \(error.localizedDescription)")
+                print("🚫 [deleteMessageForMember] Error deleting for member \(memberUid): \(error.localizedDescription)")
                 return
             }
             
@@ -4239,7 +4239,7 @@ struct GroupChattingScreen: View {
                         // Check if message exists in Firebase and stop progress bar (matching Android)
                         self.checkMessageInFirebaseAndStopProgress(messageId: modelId, groupId: groupId)
                     } else {
-                        print("❌ [VOICE_RECORDING] Upload error: \(errorMessage ?? "Unknown error")")
+                        print("🚫 [VOICE_RECORDING] Upload error: \(errorMessage ?? "Unknown error")")
                         Constant.showToast(message: "Failed to send audio. Please try again.")
                         // Keep receiverLoader as 0 to show progress bar (message still pending)
                     }
@@ -4410,7 +4410,7 @@ struct GroupChattingScreen: View {
         // Clear from Firebase (matching Android database.getReference().child(Constant.GROUPCHAT).child(senderRoom).removeValue())
         database.child(Constant.GROUPCHAT).child(senderRoom).removeValue { error, _ in
             if let error = error {
-                print("🗑️ [CLEAR GROUP CHAT] ❌ Error clearing Firebase: \(error.localizedDescription)")
+                print("🗑️ [CLEAR GROUP CHAT] 🚫 Error clearing Firebase: \(error.localizedDescription)")
                 Constant.showToast(message: "Failed to clear chat")
             } else {
                 print("🗑️ [CLEAR GROUP CHAT] ✅ Successfully cleared Firebase data for room: \(senderRoom)")
@@ -4491,7 +4491,7 @@ struct GroupChattingScreen: View {
                             let groupMessage = try self.parseGroupMessageFromDict(messageDict, messageId: childKey)
                             foundMessages.append(groupMessage)
                         } catch {
-                            print("❌ [SEARCH] Error parsing message: \(error.localizedDescription)")
+                            print("🚫 [SEARCH] Error parsing message: \(error.localizedDescription)")
                         }
                     }
                 }
@@ -4505,7 +4505,7 @@ struct GroupChattingScreen: View {
                 print("🔍 [SEARCH] Found \(self.filteredMessages.count) messages matching '\(query)'")
             }
         } withCancel: { error in
-            print("❌ [SEARCH] Error searching messages: \(error.localizedDescription)")
+            print("🚫 [SEARCH] Error searching messages: \(error.localizedDescription)")
             DispatchQueue.main.async {
                 self.filteredMessages = []
             }
@@ -6077,7 +6077,7 @@ struct GroupMessageLongPressDialog: View {
                 self.isLoadingEmojis = false
                 
                 if let error = error {
-                    print("❌ [fetchAvailableEmojis] Error: \(error.localizedDescription)")
+                    print("🚫 [fetchAvailableEmojis] Error: \(error.localizedDescription)")
                     return
                 }
                 
@@ -6107,7 +6107,7 @@ struct GroupMessageLongPressDialog: View {
                         self.availableEmojis = fetchedEmojis
                     }
                 } catch {
-                    print("❌ [fetchAvailableEmojis] JSON parsing error: \(error.localizedDescription)")
+                    print("🚫 [fetchAvailableEmojis] JSON parsing error: \(error.localizedDescription)")
                 }
             }
         }.resume()

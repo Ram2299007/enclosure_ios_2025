@@ -376,7 +376,7 @@ struct ForGroupVisibleScreen: View {
         // Android uses MultipartBody with form data, so we'll use URL-encoded form data
         let urlString = "\(Constant.baseURL)get_group_details"
         guard let url = URL(string: urlString) else {
-            print("❌ [ForGroupVisible] Invalid URL")
+            print("🚫 [ForGroupVisible] Invalid URL")
             isLoading = false
             showNetworkLoader = false
             return
@@ -403,12 +403,12 @@ struct ForGroupVisibleScreen: View {
                 showNetworkLoader = false
                 
                 if let error = error {
-                    print("❌ [ForGroupVisible] Error fetching group members: \(error.localizedDescription)")
+                    print("🚫 [ForGroupVisible] Error fetching group members: \(error.localizedDescription)")
                     return
                 }
                 
                 guard let data = data else {
-                    print("❌ [ForGroupVisible] No data received")
+                    print("🚫 [ForGroupVisible] No data received")
                     return
                 }
                 
@@ -424,9 +424,9 @@ struct ForGroupVisibleScreen: View {
                         
                         // Check error_code first (matching API response structure)
                         if let errorCode = json["error_code"] as? String, errorCode != "200" {
-                            print("❌ [ForGroupVisible] API returned error: \(errorCode)")
+                            print("🚫 [ForGroupVisible] API returned error: \(errorCode)")
                             if let message = json["message"] as? String {
-                                print("❌ [ForGroupVisible] Error message: \(message)")
+                                print("🚫 [ForGroupVisible] Error message: \(message)")
                             }
                             return
                         }
@@ -492,9 +492,9 @@ struct ForGroupVisibleScreen: View {
                                         fetchedMembers.append(member)
                                         print("✅ [ForGroupVisible] Successfully parsed member \(index): \(member.full_name ?? "no name"), uid: \(member.uid ?? "no uid")")
                                     } catch {
-                                        print("❌ [ForGroupVisible] Failed to parse member \(index): \(error.localizedDescription)")
-                                        print("❌ [ForGroupVisible] Decoding error details: \(error)")
-                                        print("❌ [ForGroupVisible] Formatted member dict: \(formattedMember)")
+                                        print("🚫 [ForGroupVisible] Failed to parse member \(index): \(error.localizedDescription)")
+                                        print("🚫 [ForGroupVisible] Decoding error details: \(error)")
+                                        print("🚫 [ForGroupVisible] Formatted member dict: \(formattedMember)")
                                     }
                                 }
                                 
@@ -511,12 +511,12 @@ struct ForGroupVisibleScreen: View {
                             print("⚠️ [ForGroupVisible] Response structure: \(json)")
                         }
                     } else {
-                        print("❌ [ForGroupVisible] Failed to parse JSON as dictionary")
+                        print("🚫 [ForGroupVisible] Failed to parse JSON as dictionary")
                     }
                 } catch {
-                    print("❌ [ForGroupVisible] JSON parsing error: \(error.localizedDescription)")
+                    print("🚫 [ForGroupVisible] JSON parsing error: \(error.localizedDescription)")
                     if let rawString = String(data: data, encoding: .utf8) {
-                        print("❌ [ForGroupVisible] Raw response: \(rawString)")
+                        print("🚫 [ForGroupVisible] Raw response: \(rawString)")
                     }
                 }
             }

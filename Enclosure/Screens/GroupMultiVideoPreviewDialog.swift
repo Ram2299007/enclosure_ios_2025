@@ -429,7 +429,7 @@ struct GroupMultiVideoPreviewDialog: View {
                 let receiverLoaderRef = database.child(Constant.GROUPCHAT).child(groupId).child(messageId).child("receiverLoader")
                 receiverLoaderRef.setValue(1) { error, _ in
                     if let error = error {
-                        print("❌ [ProgressBar] Error updating receiverLoader: \(error.localizedDescription)")
+                        print("🚫 [ProgressBar] Error updating receiverLoader: \(error.localizedDescription)")
                     } else {
                         print("✅ [ProgressBar] receiverLoader updated to 1 for video message: \(messageId)")
                     }
@@ -550,7 +550,7 @@ struct GroupMultiVideoPreviewDialog: View {
         
         dispatchGroup.notify(queue: .main) {
             if uploadResults.isEmpty {
-                print("❌ [GROUP_MULTI_VIDEO] Upload failed - no results")
+                print("🚫 [GROUP_MULTI_VIDEO] Upload failed - no results")
                 Constant.showToast(message: "Unable to upload videos. Please try again.")
                 return
             }
@@ -666,7 +666,7 @@ struct GroupMultiVideoPreviewDialog: View {
                         // Check if message exists in Firebase and stop progress bar
                         self.checkMessageInFirebaseAndStopProgress(messageId: videoModelId, groupId: groupId)
                     } else {
-                        print("❌ [GROUP_MULTI_VIDEO] Upload error: \(errorMessage ?? "Unknown error")")
+                        print("🚫 [GROUP_MULTI_VIDEO] Upload error: \(errorMessage ?? "Unknown error")")
                         Constant.showToast(message: "Failed to send video. Please try again.")
                     }
                 }
@@ -826,7 +826,7 @@ struct GroupMultiVideoPreviewDialog: View {
             print("📱 [LOCAL_STORAGE] File Path: \(fileURL.path)")
             print("📱 [LOCAL_STORAGE] Size: \(data.count) bytes (\(String(format: "%.2f", Double(data.count) / 1024.0 / 1024.0)) MB)")
         } catch {
-            print("❌ [LOCAL_STORAGE] Error saving video to local storage: \(error.localizedDescription)")
+            print("🚫 [LOCAL_STORAGE] Error saving video to local storage: \(error.localizedDescription)")
         }
     }
     

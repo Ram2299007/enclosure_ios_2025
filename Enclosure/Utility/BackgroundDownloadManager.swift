@@ -334,7 +334,7 @@ class BackgroundDownloadManager: NSObject {
         // Add or update notification
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
-                print("❌ [BackgroundDownload] Failed to show notification: \(error.localizedDescription)")
+                print("🚫 [BackgroundDownload] Failed to show notification: \(error.localizedDescription)")
             }
         }
     }
@@ -363,7 +363,7 @@ class BackgroundDownloadManager: NSObject {
         
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
-                print("❌ [BackgroundDownload] Failed to show error notification: \(error.localizedDescription)")
+                print("🚫 [BackgroundDownload] Failed to show error notification: \(error.localizedDescription)")
             }
         }
     }

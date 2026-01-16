@@ -153,14 +153,14 @@ class ChatViewModel: ObservableObject {
             }
         } withCancel: { error in
             // Handle cancellation/error (matching Android onCancelled)
-            print("❌ [ChatViewModel] Firebase database error: \(error.localizedDescription)")
+            print("🚫 [ChatViewModel] Firebase database error: \(error.localizedDescription)")
         }
         
         // Verify listener was set up
         if firebaseListenerHandle != nil {
             print("✅ [ChatViewModel] Firebase listener set up successfully with handle: \(firebaseListenerHandle!)")
         } else {
-            print("❌ [ChatViewModel] Failed to set up Firebase listener")
+            print("🚫 [ChatViewModel] Failed to set up Firebase listener")
         }
     }
     

@@ -12,7 +12,7 @@ struct ImageLoaderHelper {
         if success {
             print("✅ [ImageLoader] Icon loaded successfully: \(imageName)")
         } else {
-            print("❌ [ImageLoader] Icon MISSING or FAILED to load: \(imageName)")
+            print("🚫 [ImageLoader] Icon MISSING or FAILED to load: \(imageName)")
         }
     }
     

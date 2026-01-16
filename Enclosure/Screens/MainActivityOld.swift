@@ -5,6 +5,7 @@ import FirebaseAuth
 
 struct MainActivityOld: View {
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.scenePhase) var scenePhase
     @State private var searchText = ""
     @State private var isSearchActive = false
     @State private var isCallEnabled = true
@@ -65,6 +66,16 @@ struct MainActivityOld: View {
     @State private var sleepImageName: String = "sleep" // Dynamic sleep seekbar image based on theme color
     @State private var isMenuButtonPressed = false // Track menu button press state
     @State private var initialFadeInOpacity: Double = 0.0 // Start at 0 for smooth fade-in
+    
+    // Shared content handling (for Share Extension)
+    @State private var showShareExternalDataContactScreen: Bool = false
+    @State private var sharedContentToShow: SharedContent?
+    @State private var sharedCaption: String = ""
+    
+    // DEBUG: Test button to verify screen presentation works
+    #if DEBUG
+    @State private var showTestShareScreen: Bool = false
+    #endif
     
     // Computed property for background tint: appThemeColor in light mode, darker tint in dark mode
     private var backgroundTintColor: Color {
@@ -822,6 +833,36 @@ struct MainActivityOld: View {
                     }
                 }
             }
+            .fullScreenCover(isPresented: $showShareExternalDataContactScreen) {
+                Group {
+                    if let content = sharedContentToShow {
+                        ShareExternalDataContactScreen(
+                            sharedContent: content,
+                            caption: sharedCaption
+                        )
+                        .onAppear {
+                            print("✅ [MainActivityOld] ShareExternalDataContactScreen appeared!")
+                        }
+                    } else {
+                        VStack {
+                            Text("Error: No shared content")
+                                .foregroundColor(.red)
+                            Button("Close") {
+                                showShareExternalDataContactScreen = false
+                            }
+                        }
+                        .onAppear {
+                            print("🚫 [MainActivityOld] ShareExternalDataContactScreen appeared but sharedContentToShow is nil!")
+                        }
+                    }
+                }
+            }
+            .onChange(of: showShareExternalDataContactScreen) { newValue in
+                print("📤 [MainActivityOld] showShareExternalDataContactScreen changed to: \(newValue)")
+            }
+            .onChange(of: sharedContentToShow != nil) { hasContent in
+                print("📤 [MainActivityOld] sharedContentToShow changed: \(hasContent)")
+            }
         }
         .onAppear {
             showNetworkLoader = !networkMonitor.isConnected
@@ -843,6 +884,10 @@ struct MainActivityOld: View {
                     showNameDialog = true
                 }
             }
+            
+            // Don't check for shared content in onAppear - only check when notification is received
+            // The Share Extension opens the app via URL scheme, which triggers AppDelegate
+            // AppDelegate posts a notification, which we handle below
         }
         .onReceive(networkMonitor.$isConnected) { isConnected in
             withAnimation(.easeInOut(duration: 0.2)) {
@@ -851,6 +896,41 @@ struct MainActivityOld: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ThemeColorUpdated"))) { notification in
             updateLogoBasedOnTheme()
+        }
+        .onChange(of: scenePhase) { newPhase in
+            // When app becomes active, check for shared content (Share Extension might have just opened us)
+            if newPhase == .active {
+                print("📤 [MainActivityOld] App became active - checking for shared content...")
+                // Wait 1.5s to ensure Share Extension has finished saving and data is synced across processes
+                // This is important because Share Extension opens app via URL scheme, but if app is already running,
+                // iOS might not call application(_:open:options:) immediately
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    print("📤 [MainActivityOld] ⏰ Checking for shared content after becoming active...")
+                    checkForSharedContent()
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("HandleSharedContent"))) { notification in
+            NSLog("📤📤📤 [MainActivityOld] ====== Received HandleSharedContent notification ======")
+            print("📤 [MainActivityOld] Received HandleSharedContent notification")
+            NSLog("📤 [MainActivityOld] Notification object: \(notification.object ?? "nil")")
+            print("📤 [MainActivityOld] Notification object: \(notification.object ?? "nil")")
+            
+            if let url = notification.object as? URL {
+                NSLog("📤 [MainActivityOld] Notification contains URL: \(url)")
+                print("📤 [MainActivityOld] Notification contains URL: \(url)")
+                handleSharedContent(from: url)
+            } else {
+                // Notification without URL - check UserDefaults directly
+                // File container is fast - check immediately
+                NSLog("📤 [MainActivityOld] Notification without URL - checking file container immediately...")
+                print("📤 [MainActivityOld] Notification without URL - checking file container immediately...")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    NSLog("📤📤📤 [MainActivityOld] ⏰⏰⏰ DELAY COMPLETE - Calling checkForSharedContent NOW ⏰⏰⏰")
+                    print("📤 [MainActivityOld] ⏰ Checking for shared content after notification...")
+                    self.checkForSharedContent()
+                }
+            }
         }
     }
     
@@ -1152,16 +1232,355 @@ struct MainActivityOld: View {
         print("🔐 [MainActivityOld] No existing session, signing in as guest...")
         Auth.auth().signInAnonymously { authResult, error in
             if let error = error {
-                print("❌ [MainActivityOld] Guest authentication error: \(error.localizedDescription)")
+                print("🚫 [MainActivityOld] Guest authentication error: \(error.localizedDescription)")
                 return
             }
             
             if let user = authResult?.user {
                 print("✅ [MainActivityOld] Guest authentication successful - UID: \(user.uid)")
             } else {
-                print("❌ [MainActivityOld] Guest authentication failed - no user returned")
+                print("🚫 [MainActivityOld] Guest authentication failed - no user returned")
             }
         }
+    }
+    
+    // MARK: - Shared Content Handling (for Share Extension)
+    private func checkForSharedContent(maxRetries: Int = 10, currentRetry: Int = 0) {
+        // Check immediately - delay is handled by callers
+        DispatchQueue.main.async {
+            NSLog("📤📤📤 [MainActivityOld] ====== CHECKING FOR SHARED CONTENT ======")
+            print("📤 [MainActivityOld] ====== CHECKING FOR SHARED CONTENT ======")
+            NSLog("📤 [MainActivityOld] Attempt \(currentRetry + 1)/\(maxRetries)")
+            print("📤 [MainActivityOld] Attempt \(currentRetry + 1)/\(maxRetries)")
+            
+            // First, try reading from shared file container (more reliable)
+            var contentType: String?
+            var imageUrls: [String] = []
+            var videoUrls: [String] = []
+            var documentUrl: String?
+            var documentName: String?
+            var textData: String?
+            
+            NSLog("📤 [MainActivityOld] Step 1: Checking file container...")
+            if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.enclosure") {
+                NSLog("📤 [MainActivityOld] ✅ File container accessible: \(containerURL.path)")
+                let sharedFileURL = containerURL.appendingPathComponent("sharedContent.json")
+                NSLog("📤 [MainActivityOld] Looking for file at: \(sharedFileURL.path)")
+                
+                if FileManager.default.fileExists(atPath: sharedFileURL.path) {
+                    NSLog("📤📤📤 [MainActivityOld] ✅✅✅ FOUND FILE IN CONTAINER ✅✅✅")
+                    print("📤 [MainActivityOld] Found shared content file: \(sharedFileURL.path)")
+                    
+                    do {
+                        let fileData = try Data(contentsOf: sharedFileURL)
+                        NSLog("📤 [MainActivityOld] File size: \(fileData.count) bytes")
+                        if let json = try JSONSerialization.jsonObject(with: fileData) as? [String: Any] {
+                            contentType = json["sharedContentType"] as? String
+                            imageUrls = json["sharedImageUrls"] as? [String] ?? []
+                            videoUrls = json["sharedVideoUrls"] as? [String] ?? []
+                            documentUrl = json["sharedDocumentUrl"] as? String
+                            documentName = json["sharedDocumentName"] as? String
+                            textData = json["sharedTextData"] as? String
+                            
+                            NSLog("📤📤📤 [MainActivityOld] ✅✅✅ Successfully read from file container ✅✅✅")
+                            print("📤 [MainActivityOld] ✅ Successfully read from file container")
+                            NSLog("📤 [MainActivityOld] Content type from file: \(contentType ?? "nil")")
+                            print("📤 [MainActivityOld] Content type from file: \(contentType ?? "nil")")
+                            
+                            // Delete file after reading
+                            try? FileManager.default.removeItem(at: sharedFileURL)
+                            NSLog("📤 [MainActivityOld] Deleted shared content file after reading")
+                            print("📤 [MainActivityOld] Deleted shared content file after reading")
+                        }
+                    } catch {
+                        NSLog("🚫 [MainActivityOld] Failed to read shared content file: \(error.localizedDescription)")
+                        print("🚫 [MainActivityOld] Failed to read shared content file: \(error.localizedDescription)")
+                    }
+                } else {
+                    NSLog("📤 [MainActivityOld] Shared content file does not exist at: \(sharedFileURL.path)")
+                    print("📤 [MainActivityOld] Shared content file does not exist yet")
+                }
+            } else {
+                NSLog("📤 [MainActivityOld] ⚠️ File container not accessible - App Group may not be configured")
+            }
+            
+            NSLog("📤 [MainActivityOld] Step 2: Checking UserDefaults...")
+            NSLog("📤 [MainActivityOld] Current contentType before UserDefaults check: \(contentType ?? "nil")")
+            // Always check UserDefaults (primary method since file container might not be accessible)
+            let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure")
+            
+            if sharedDefaults == nil {
+                NSLog("🔴🔴🔴 [MainActivityOld] CRITICAL: App Group UserDefaults is nil!")
+                print("🔴 [MainActivityOld] CRITICAL: App Group UserDefaults is nil!")
+                if currentRetry < maxRetries - 1 {
+                    NSLog("📤 [MainActivityOld] Retrying in 0.5s... (attempt \(currentRetry + 1)/\(maxRetries))")
+                    print("📤 [MainActivityOld] Retrying in 0.5s... (attempt \(currentRetry + 1)/\(maxRetries))")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.checkForSharedContent(maxRetries: maxRetries, currentRetry: currentRetry + 1)
+                    }
+                } else {
+                    NSLog("🚫 [MainActivityOld] Failed after \(maxRetries) attempts - App Group not accessible")
+                    print("🚫 [MainActivityOld] Failed after \(maxRetries) attempts - App Group not accessible")
+                }
+                return
+            }
+            
+            NSLog("📤 [MainActivityOld] ✅ UserDefaults accessible")
+            // Debug: List all keys in UserDefaults to see what's there
+            if currentRetry == 0 {
+                let allKeys = sharedDefaults!.dictionaryRepresentation().keys
+                let sharedKeys = Array(allKeys).filter { $0.hasPrefix("shared") }
+                NSLog("📤📤📤 [MainActivityOld] All UserDefaults keys with 'shared' prefix: \(sharedKeys)")
+                print("📤 [MainActivityOld] All UserDefaults keys: \(sharedKeys)")
+            }
+            
+            // Use UserDefaults data if file data wasn't found, or if file container isn't accessible
+            NSLog("📤 [MainActivityOld] Step 3: Checking if contentType is nil...")
+            NSLog("📤 [MainActivityOld] contentType value: \(contentType ?? "nil")")
+            if contentType == nil {
+                NSLog("📤 [MainActivityOld] File container data not found - checking UserDefaults...")
+                print("📤 [MainActivityOld] File container data not found - checking UserDefaults...")
+                contentType = sharedDefaults!.string(forKey: "sharedContentType")
+                imageUrls = (sharedDefaults!.array(forKey: "sharedImageUrls") as? [String]) ?? []
+                videoUrls = (sharedDefaults!.array(forKey: "sharedVideoUrls") as? [String]) ?? []
+                documentUrl = sharedDefaults!.string(forKey: "sharedDocumentUrl")
+                documentName = sharedDefaults!.string(forKey: "sharedDocumentName")
+                textData = sharedDefaults!.string(forKey: "sharedTextData")
+                
+                // ALSO check CFPreferences as fallback (more reliable for App Groups)
+                if contentType == nil {
+                    NSLog("📤 [MainActivityOld] UserDefaults empty - checking CFPreferences...")
+                    let appGroupID = "group.com.enclosure" as CFString
+                    // Force synchronize CFPreferences first
+                    CFPreferencesSynchronize(appGroupID, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
+                    NSLog("📤 [MainActivityOld] CFPreferences synchronized, checking for keys...")
+                    
+                    if let cfContentType = CFPreferencesCopyAppValue("sharedContentType" as CFString, appGroupID) as? String {
+                        contentType = cfContentType
+                        NSLog("📤📤📤 [MainActivityOld] ✅✅✅ FOUND IN CFPREFERENCES: \(cfContentType) ✅✅✅")
+                    } else {
+                        NSLog("📤 [MainActivityOld] CFPreferences returned nil for sharedContentType")
+                    }
+                    if let cfTextData = CFPreferencesCopyAppValue("sharedTextData" as CFString, appGroupID) as? String {
+                        textData = cfTextData
+                        NSLog("📤📤📤 [MainActivityOld] ✅✅✅ Found textData via CFPreferences: \(cfTextData.count) chars ✅✅✅")
+                    } else {
+                        NSLog("📤 [MainActivityOld] CFPreferences returned nil for sharedTextData")
+                    }
+                }
+                
+                // Debug: Print what we found
+                NSLog("📤 [MainActivityOld] UserDefaults check results:")
+                print("📤 [MainActivityOld] UserDefaults check results:")
+                NSLog("   - sharedContentType: \(contentType ?? "nil")")
+                print("   - sharedContentType: \(contentType ?? "nil")")
+                NSLog("   - sharedTextData: \(textData != nil ? "\(textData!.count) chars" : "nil")")
+                print("   - sharedTextData: \(textData != nil ? "\(textData!.count) chars" : "nil")")
+                NSLog("   - sharedImageUrls: \(imageUrls.count) items")
+                print("   - sharedImageUrls: \(imageUrls.count) items")
+                NSLog("   - sharedVideoUrls: \(videoUrls.count) items")
+                print("   - sharedVideoUrls: \(videoUrls.count) items")
+                
+                if contentType != nil {
+                    NSLog("📤📤📤 [MainActivityOld] ✅✅✅ FOUND CONTENT IN USERDEFAULTS ✅✅✅")
+                    print("📤 [MainActivityOld] ✅ Found content in UserDefaults")
+                    NSLog("📤 [MainActivityOld] Content type: \(contentType ?? "nil")")
+                    print("📤 [MainActivityOld] Content type from UserDefaults: \(contentType ?? "nil")")
+                    NSLog("📤 [MainActivityOld] Text data: \(textData?.prefix(50) ?? "nil")...")
+                    print("📤 [MainActivityOld] Text data from UserDefaults: \(textData?.prefix(50) ?? "nil")...")
+                } else {
+                    NSLog("📤 [MainActivityOld] ⚠️ No content found in UserDefaults yet")
+                    print("📤 [MainActivityOld] ⚠️ No content found in UserDefaults yet")
+                    // Force synchronize to ensure we have latest data
+                    sharedDefaults!.synchronize()
+                    NSLog("📤 [MainActivityOld] Called synchronize() - retrying read...")
+                    print("📤 [MainActivityOld] Called synchronize() - retrying read...")
+                    contentType = sharedDefaults!.string(forKey: "sharedContentType")
+                    textData = sharedDefaults!.string(forKey: "sharedTextData")
+                    if contentType != nil {
+                        NSLog("📤📤📤 [MainActivityOld] ✅✅✅ FOUND CONTENT AFTER SYNCHRONIZE() ✅✅✅")
+                        print("📤 [MainActivityOld] ✅ Found content after synchronize()!")
+                    } else {
+                        NSLog("📤 [MainActivityOld] ❌ Still no content after synchronize()")
+                        print("📤 [MainActivityOld] ❌ Still no content after synchronize()")
+                    }
+                }
+            } else {
+                print("📤 [MainActivityOld] ✅ Using data from file container")
+            }
+            
+            guard let contentType = contentType else {
+                // Retry if we haven't exceeded max retries
+                NSLog("📤📤📤 [MainActivityOld] ❌❌❌ contentType is NIL - will retry or give up ❌❌❌")
+                print("📤 [MainActivityOld] ❌ contentType is nil")
+                if currentRetry < maxRetries - 1 {
+                    NSLog("📤 [MainActivityOld] Retrying in 0.2s... (attempt \(currentRetry + 1)/\(maxRetries))")
+                    print("📤 [MainActivityOld] No shared content found - retrying in 0.2s... (attempt \(currentRetry + 1)/\(maxRetries))")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        self.checkForSharedContent(maxRetries: maxRetries, currentRetry: currentRetry + 1)
+                    }
+                    return
+                } else {
+                    NSLog("📤📤📤 [MainActivityOld] ❌❌❌ NO CONTENT FOUND AFTER \(maxRetries) ATTEMPTS ❌❌❌")
+                    print("📤 [MainActivityOld] No shared content found after \(maxRetries) attempts")
+                    print("📤 [MainActivityOld] This might mean:")
+                    print("   1. Share Extension hasn't saved data yet")
+                    print("   2. Share Extension failed to save data")
+                    print("   3. App Group is not shared between Extension and App")
+                    return
+                }
+            }
+            
+            NSLog("📤📤📤 [MainActivityOld] ✅✅✅ FOUND CONTENT TYPE: \(contentType) ✅✅✅")
+            print("📤 [MainActivityOld] Found shared content type: \(contentType)")
+        
+        var sharedContent: SharedContent
+        
+        switch contentType {
+        case "image":
+            let urls = imageUrls.compactMap { URL(fileURLWithPath: $0) }
+            sharedContent = SharedContent(type: .image)
+            sharedContent.imageUrls = urls
+            print("📤 [MainActivityOld] Found \(urls.count) images")
+            
+        case "video":
+            let urls = videoUrls.compactMap { URL(fileURLWithPath: $0) }
+            sharedContent = SharedContent(type: .video)
+            sharedContent.videoUrls = urls
+            print("📤 [MainActivityOld] Found \(urls.count) videos")
+            
+        case "document":
+            let docUrl = documentUrl ?? ""
+            let docName = documentName ?? ""
+            let documentUrlPath = URL(fileURLWithPath: docUrl)
+            sharedContent = SharedContent(type: .document)
+            sharedContent.documentUrl = documentUrlPath
+            sharedContent.documentName = docName
+            print("📤 [MainActivityOld] Found document: \(docName)")
+            
+        case "contact":
+            let docUrl = documentUrl ?? ""
+            let documentUrlPath = URL(fileURLWithPath: docUrl)
+            // Parse contact from vCard file
+            if let contactInfo = parseContactFromVCard(url: documentUrlPath) {
+                sharedContent = SharedContent(type: .contact)
+                sharedContent.contact = contactInfo
+                print("📤 [MainActivityOld] Found contact: \(contactInfo.name)")
+            } else {
+                print("🚫 [MainActivityOld] Failed to parse contact")
+                return
+            }
+            
+        case "text":
+            let text = textData ?? ""
+            sharedContent = SharedContent(type: .text)
+            sharedContent.textData = text
+            print("📤 [MainActivityOld] Found text: \(text.prefix(50))...")
+            
+        default:
+            print("⚠️ [MainActivityOld] Unknown content type: \(contentType)")
+            return
+        }
+        
+        // Clear shared content from UserDefaults (if it exists)
+        if let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure") {
+            sharedDefaults.removeObject(forKey: "sharedContentType")
+            sharedDefaults.removeObject(forKey: "sharedImageUrls")
+            sharedDefaults.removeObject(forKey: "sharedVideoUrls")
+            sharedDefaults.removeObject(forKey: "sharedDocumentUrl")
+            sharedDefaults.removeObject(forKey: "sharedDocumentName")
+            sharedDefaults.removeObject(forKey: "sharedTextData")
+            sharedDefaults.synchronize()
+        }
+        
+        // Show contact selection screen directly (matching Android shareExternalDataCONTACTScreen)
+        NSLog("📤📤📤 [MainActivityOld] ====== SHARED CONTENT READY ======")
+        print("📤 [MainActivityOld] ====== SHARED CONTENT READY ======")
+        NSLog("📤 [MainActivityOld] Content type: \(sharedContent.type)")
+        print("📤 [MainActivityOld] Content type: \(sharedContent.type)")
+        NSLog("📤 [MainActivityOld] Setting sharedContentToShow...")
+        print("📤 [MainActivityOld] Setting sharedContentToShow...")
+        
+        // Set on main thread to ensure UI updates
+        DispatchQueue.main.async {
+            NSLog("📤📤📤 [MainActivityOld] ⏰⏰⏰ INSIDE DISPATCHQUEUE.MAIN.ASYNC ⏰⏰⏰")
+            self.sharedContentToShow = sharedContent
+            self.sharedCaption = "" // Initialize with empty caption
+            NSLog("📤 [MainActivityOld] sharedContentToShow set: \(self.sharedContentToShow != nil)")
+            print("📤 [MainActivityOld] sharedContentToShow set: \(self.sharedContentToShow != nil)")
+            NSLog("📤 [MainActivityOld] Setting showShareExternalDataContactScreen = true...")
+            print("📤 [MainActivityOld] Setting showShareExternalDataContactScreen = true...")
+            self.showShareExternalDataContactScreen = true
+            NSLog("📤📤📤 [MainActivityOld] ✅✅✅ showShareExternalDataContactScreen: \(self.showShareExternalDataContactScreen) ✅✅✅")
+            print("📤 [MainActivityOld] ✅ showShareExternalDataContactScreen: \(self.showShareExternalDataContactScreen)")
+            NSLog("📤📤📤 [MainActivityOld] ====== CONTACT SCREEN SHOULD APPEAR NOW ======")
+            print("📤 [MainActivityOld] ====== CONTACT SCREEN SHOULD APPEAR NOW ======")
+            
+            // Force UI update
+            if self.showShareExternalDataContactScreen {
+                NSLog("📤 [MainActivityOld] ✅ State confirmed: showShareExternalDataContactScreen is TRUE")
+                print("📤 [MainActivityOld] ✅ State confirmed: showShareExternalDataContactScreen is TRUE")
+            } else {
+                NSLog("🚫 [MainActivityOld] ❌ ERROR: showShareExternalDataContactScreen is FALSE after setting!")
+                print("🚫 [MainActivityOld] ❌ ERROR: showShareExternalDataContactScreen is FALSE after setting!")
+            }
+        }
+        }
+    }
+    
+    private func handleSharedContent(from url: URL) {
+        // Handle URL scheme from Share Extension
+        if url.scheme == "enclosure" && url.host == "share" {
+            print("📤 [MainActivityOld] ✅ Received share URL scheme: \(url)")
+            print("📤 [MainActivityOld] Share Extension should have saved data by now")
+            // File container is fast - check immediately
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                print("📤 [MainActivityOld] ⏰ Delay complete - checking for shared content now...")
+                checkForSharedContent()
+            }
+        } else {
+            print("📤 [MainActivityOld] ⚠️ URL scheme does not match: scheme=\(url.scheme ?? "nil"), host=\(url.host ?? "nil")")
+        }
+    }
+    
+    private func parseContactFromVCard(url: URL) -> SharedContent.ContactInfo? {
+        guard let data = try? Data(contentsOf: url) else {
+            print("🚫 [MainActivityOld] Failed to read vCard file")
+            return nil
+        }
+        
+        guard let vCardString = String(data: data, encoding: .utf8) else {
+            print("🚫 [MainActivityOld] Failed to decode vCard data")
+            return nil
+        }
+        
+        var name = ""
+        var phone = ""
+        var email = ""
+        
+        let lines = vCardString.components(separatedBy: .newlines)
+        for line in lines {
+            if line.hasPrefix("FN:") {
+                name = String(line.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+            } else if line.hasPrefix("TEL") {
+                let components = line.components(separatedBy: ":")
+                if components.count > 1 {
+                    phone = components[1].trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            } else if line.hasPrefix("EMAIL") {
+                let components = line.components(separatedBy: ":")
+                if components.count > 1 {
+                    email = components[1].trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+        }
+        
+        guard !name.isEmpty else {
+            print("🚫 [MainActivityOld] Contact name is empty")
+            return nil
+        }
+        
+        return SharedContent.ContactInfo(name: name, phoneNumber: phone, email: email.isEmpty ? nil : email)
     }
 }
 

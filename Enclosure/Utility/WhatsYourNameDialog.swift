@@ -149,7 +149,7 @@ struct WhatsYourNameDialog: View {
         
         let urlString = Constant.baseURL + "create_name"
         guard let url = URL(string: urlString) else {
-            print("❌ Invalid URL: \(urlString)")
+            print("🚫 Invalid URL: \(urlString)")
             isLoading = false
             return
         }
@@ -169,18 +169,18 @@ struct WhatsYourNameDialog: View {
                 isLoading = false
                 
                 if let error = error {
-                    print("❌ Network Error: \(error.localizedDescription)")
+                    print("🚫 Network Error: \(error.localizedDescription)")
                     Constant.showToast(message: "Network error. Please try again.")
                     return
                 }
                 
                 guard let httpResponse = response as? HTTPURLResponse else {
-                    print("❌ Invalid Response")
+                    print("🚫 Invalid Response")
                     return
                 }
                 
                 guard let data = data else {
-                    print("❌ No data received")
+                    print("🚫 No data received")
                     return
                 }
                 
@@ -201,11 +201,11 @@ struct WhatsYourNameDialog: View {
                         }
                     } else {
                         let message = json?["message"] as? String ?? "Unknown error"
-                        print("❌ API returned an error: \(message)")
+                        print("🚫 API returned an error: \(message)")
                         Constant.showToast(message: message)
                     }
                 } catch {
-                    print("❌ JSON Parsing Error: \(error.localizedDescription)")
+                    print("🚫 JSON Parsing Error: \(error.localizedDescription)")
                     Constant.showToast(message: "Failed to parse response")
                 }
             }

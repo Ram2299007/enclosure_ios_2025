@@ -149,5 +149,16 @@
 			</array>
 		</dict>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>enclosure</string>
+			</array>
+			<key>CFBundleURLName</key>
+			<string>com.enclosure</string>
+		</dict>
+	</array>
 </dict>
 </plist>

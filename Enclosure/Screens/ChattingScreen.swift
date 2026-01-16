@@ -416,7 +416,7 @@ struct ChattingScreen: View {
                                         // The state is already set correctly above
                                         // No toast shown (matching Android behavior)
                                     } else {
-                                        print("🚫 [MENU BLOCK] ❌ Failed to block user: \(message)")
+                                        print("🚫 [MENU BLOCK] 🚫 Failed to block user: \(message)")
                                         Constant.showToast(message: "Failed to block user")
                                     }
                                 }
@@ -895,7 +895,7 @@ struct ChattingScreen: View {
             print("📱 [checkMessageInFirebase] Room: \(room), ModelId: \(targetModelId), Exists: \(exists)")
             completion(exists)
         } withCancel: { error in
-            print("❌ [checkMessageInFirebase] Error checking room \(room): \(error.localizedDescription)")
+            print("🚫 [checkMessageInFirebase] Error checking room \(room): \(error.localizedDescription)")
             completion(false)
         }
     }
@@ -1455,7 +1455,7 @@ struct ChattingScreen: View {
                     }
             } else {
                 // Debug: Log why container is not showing
-                let _ = print("🚫 [BLOCK CONTAINER] ❌ Bottom container NOT showing - isUserBlocked: \(isUserBlocked), showBlockCard: \(showBlockCard)")
+                let _ = print("🚫 [BLOCK CONTAINER] 🚫 Bottom container NOT showing - isUserBlocked: \(isUserBlocked), showBlockCard: \(showBlockCard)")
             }
             
             // Message input container (messageboxContainer) - hide when current user blocked other user
@@ -1530,7 +1530,7 @@ struct ChattingScreen: View {
                                         print("🚫 [BLOCK] ✅ User unblocked successfully")
                                         // No toast shown (matching Android behavior)
                                     } else {
-                                        print("🚫 [BLOCK] ❌ Failed to unblock user: \(message)")
+                                        print("🚫 [BLOCK] 🚫 Failed to unblock user: \(message)")
                                         Constant.showToast(message: "Failed to unblock user")
                                     }
                                 }
@@ -2462,12 +2462,12 @@ struct ChattingScreen: View {
                 self.isLoadingEmojis = false
                 
                 if let error = error {
-                    print("❌ [fetchEmojis] Error: \(error.localizedDescription)")
+                    print("🚫 [fetchEmojis] Error: \(error.localizedDescription)")
                     return
                 }
                 
                 guard let data = data else {
-                    print("❌ [fetchEmojis] No data received")
+                    print("🚫 [fetchEmojis] No data received")
                     return
                 }
                 
@@ -2499,7 +2499,7 @@ struct ChattingScreen: View {
                         print("✅ [fetchEmojis] Loaded \(fetchedEmojis.count) emojis")
                     }
                 } catch {
-                    print("❌ [fetchEmojis] JSON parsing error: \(error.localizedDescription)")
+                    print("🚫 [fetchEmojis] JSON parsing error: \(error.localizedDescription)")
                 }
             }
         }.resume()
@@ -2584,7 +2584,7 @@ struct ChattingScreen: View {
                 print("🔍 [SEARCH] Found \(self.filteredMessages.count) messages matching '\(query)'")
             }
         } withCancel: { error in
-            print("❌ [SEARCH] Error searching messages: \(error.localizedDescription)")
+            print("🚫 [SEARCH] Error searching messages: \(error.localizedDescription)")
             DispatchQueue.main.async {
                 self.filteredMessages = []
             }
@@ -2813,7 +2813,7 @@ struct ChattingScreen: View {
                             }
                         }
                     } catch {
-                        print("❌ [fetchMessages] Error parsing message for key: \(childKey), error: \(error.localizedDescription)")
+                        print("🚫 [fetchMessages] Error parsing message for key: \(childKey), error: \(error.localizedDescription)")
                         continue
                     }
                 }
@@ -2870,7 +2870,7 @@ struct ChattingScreen: View {
                 DispatchQueue.main.async {
                     self.updateEmptyState(isEmpty: self.messages.isEmpty)
                 }
-                print("❌ [fetchMessages] Error fetching initial messages: \(error.localizedDescription)")
+                print("🚫 [fetchMessages] Error fetching initial messages: \(error.localizedDescription)")
                 
                 // Don't show toast for network errors to avoid spam (matching Android)
                 // Check if it's a network error by checking error domain
@@ -3019,7 +3019,7 @@ struct ChattingScreen: View {
                         print("⚠️ [TypingIndicator] Ignoring typing indicator from self")
                     }
                 } else {
-                    print("❌ [TypingIndicator] Failed to parse typing message from dict")
+                    print("🚫 [TypingIndicator] Failed to parse typing message from dict")
                 }
             } else {
                 // Typing indicator removed - remove from message list
@@ -3147,7 +3147,7 @@ struct ChattingScreen: View {
             let receiverLoaderRef = database.child(Constant.CHAT).child(receiverRoom).child(model.id).child("receiverLoader")
             receiverLoaderRef.setValue(1) { error, _ in
                 if let error = error {
-                    print("❌ [ProgressBar] Error updating receiverLoader in handleChildAdded: \(error.localizedDescription)")
+                    print("🚫 [ProgressBar] Error updating receiverLoader in handleChildAdded: \(error.localizedDescription)")
                 } else {
                     print("✅ [ProgressBar] ✅ Fixed receiverLoader: 0 → 1 for message: \(model.id.prefix(8))... (progress bar will stop)")
                 }
@@ -3374,7 +3374,7 @@ struct ChattingScreen: View {
                 receiverLoader: receiverLoader
             )
         } catch {
-            print("❌ [parseMessageFromDict] Error parsing message: \(error.localizedDescription)")
+            print("🚫 [parseMessageFromDict] Error parsing message: \(error.localizedDescription)")
             return nil
         }
     }
@@ -3564,7 +3564,7 @@ struct ChattingScreen: View {
                 self.isLoadingMore = false
             }
         } withCancel: { error in
-            print("❌ [loadMore] Error loading more messages: \(error.localizedDescription)")
+            print("🚫 [loadMore] Error loading more messages: \(error.localizedDescription)")
             DispatchQueue.main.async {
                 self.isLoadingMore = false
             }
@@ -3624,7 +3624,7 @@ struct ChattingScreen: View {
                     // API says not blocked and contact data also says not blocked - hide block card
                     showBlockCard = false
                     isUserBlocked = false
-                    print("🚫 [BLOCK] ❌ Block card will be hidden (not blocked)")
+                    print("🚫 [BLOCK] 🚫 Block card will be hidden (not blocked)")
                 }
             }
         }
@@ -3671,14 +3671,14 @@ struct ChattingScreen: View {
                             print("📇 [CONTACT] Contact saved check - phone: \(phoneNumber), isSaved: \(found)")
                         }
                     } catch {
-                        print("❌ [CONTACT] Error checking contact: \(error.localizedDescription)")
+                        print("🚫 [CONTACT] Error checking contact: \(error.localizedDescription)")
                         DispatchQueue.main.async {
                             self.isContactSaved = false
                         }
                     }
                 }
             } else {
-                print("❌ [CONTACT] Contact access denied")
+                print("🚫 [CONTACT] Contact access denied")
                 DispatchQueue.main.async {
                     self.isContactSaved = false
                 }
@@ -3702,7 +3702,7 @@ struct ChattingScreen: View {
                     print("🚫 [BLOCK] ✅ Current user is blocked by other user - showing block container")
                 } else {
                     isBlockedByUser = false
-                    print("🚫 [BLOCK] ❌ Current user is not blocked by other user - hiding block container")
+                    print("🚫 [BLOCK] 🚫 Current user is not blocked by other user - hiding block container")
                 }
             }
         }
@@ -3752,7 +3752,7 @@ struct ChattingScreen: View {
                     // Hide message input container (matching Android messageboxContainer.setVisibility(View.GONE))
                 } else {
                     // Show error if needed
-                    print("🚫 [BLOCK] ❌ Failed to block user: \(message)")
+                    print("🚫 [BLOCK] 🚫 Failed to block user: \(message)")
                 }
             }
         }
@@ -3796,12 +3796,12 @@ struct ChattingScreen: View {
                                         blockedUserSubtitle = "~ \(contact.fullName)"
                                         print("🚫 [BLOCK] ✅ User blocked successfully")
                                     } else {
-                                        print("🚫 [BLOCK] ❌ Failed to block user: \(message)")
+                                        print("🚫 [BLOCK] 🚫 Failed to block user: \(message)")
                                     }
                                 }
                             }
                         } else {
-                            print("🚫 [BLOCK] ❌ Failed to unblock user: \(message)")
+                            print("🚫 [BLOCK] 🚫 Failed to unblock user: \(message)")
                         }
                     }
                 }
@@ -3833,12 +3833,12 @@ struct ChattingScreen: View {
                                         showBlockCard = false
                                         print("🚫 [BLOCK] ✅ User unblocked successfully")
                                     } else {
-                                        print("🚫 [BLOCK] ❌ Failed to unblock user: \(message)")
+                                        print("🚫 [BLOCK] 🚫 Failed to unblock user: \(message)")
                                     }
                                 }
                             }
                         } else {
-                            print("🚫 [BLOCK] ❌ Failed to block user: \(message)")
+                            print("🚫 [BLOCK] 🚫 Failed to block user: \(message)")
                         }
                     }
                 }
@@ -3868,7 +3868,7 @@ struct ChattingScreen: View {
                         print("🚫 [MENU BLOCK] ✅ User unblocked successfully")
                         // No toast shown (matching Android behavior)
                     } else {
-                        print("🚫 [MENU BLOCK] ❌ Failed to unblock user: \(message)")
+                        print("🚫 [MENU BLOCK] 🚫 Failed to unblock user: \(message)")
                         Constant.showToast(message: "Failed to unblock user")
                     }
                 }
@@ -3893,7 +3893,7 @@ struct ChattingScreen: View {
         // Clear from Firebase (matching Android database.getReference().child(Constant.CHAT).child(receiverRoom).removeValue())
         database.child(Constant.CHAT).child(receiverRoom).removeValue { error, _ in
             if let error = error {
-                print("🗑️ [CLEAR CHAT] ❌ Error clearing Firebase: \(error.localizedDescription)")
+                print("🗑️ [CLEAR CHAT] 🚫 Error clearing Firebase: \(error.localizedDescription)")
                 Constant.showToast(message: "Failed to clear chat")
             } else {
                 print("🗑️ [CLEAR CHAT] ✅ Successfully cleared Firebase data for room: \(receiverRoom)")
@@ -4004,7 +4004,7 @@ struct ChattingScreen: View {
                 // Remove typing indicator messageModel from Firebase
                 typingRef.removeValue { error, _ in
                     if let error = error {
-                        print("❌ [TypingIndicator] Error removing typing indicator: \(error.localizedDescription)")
+                        print("🚫 [TypingIndicator] Error removing typing indicator: \(error.localizedDescription)")
                     } else {
                         DispatchQueue.main.async {
                             self.isTyping = false
@@ -4017,7 +4017,7 @@ struct ChattingScreen: View {
                 print("🧹 [TypingIndicator] isTyping is false, skipping Firebase removal")
             }
         } catch {
-            print("❌ [TypingIndicator] Error clearing typing status: \(error.localizedDescription)")
+            print("🚫 [TypingIndicator] Error clearing typing status: \(error.localizedDescription)")
         }
     }
     
@@ -4176,7 +4176,7 @@ struct ChattingScreen: View {
                 print("💾 [TypingIndicator] Calling Firebase setValue with timestamp: \(currentTimestamp)")
                 typingRef.setValue(typingDict) { error, _ in
                     if let error = error {
-                        print("❌ [TypingIndicator] ERROR saving typing indicator: \(error.localizedDescription)")
+                        print("🚫 [TypingIndicator] ERROR saving typing indicator: \(error.localizedDescription)")
                     } else {
                         DispatchQueue.main.async {
                             let wasTyping = self.isTyping
@@ -4214,7 +4214,7 @@ struct ChattingScreen: View {
                     // Remove typing indicator from Firebase after 3 seconds of inactivity
                     delayedTypingRef.removeValue { error, _ in
                         if let error = error {
-                            print("❌ [TypingIndicator] Error removing typing indicator after 3s: \(error.localizedDescription)")
+                            print("🚫 [TypingIndicator] Error removing typing indicator after 3s: \(error.localizedDescription)")
                         } else {
                             DispatchQueue.main.async {
                                 let wasTyping = self.isTyping
@@ -4240,7 +4240,7 @@ struct ChattingScreen: View {
                 clearTypingStatus()
             }
         } catch {
-            print("❌ [TypingIndicator] Error updating typing status: \(error.localizedDescription)")
+            print("🚫 [TypingIndicator] Error updating typing status: \(error.localizedDescription)")
         }
     }
     
@@ -4367,7 +4367,7 @@ struct ChattingScreen: View {
         
         messageRef.setValue(receiverLoader) { error, _ in
             if let error = error {
-                print("❌ [updateReceiverLoader] Error updating receiverLoader: \(error.localizedDescription)")
+                print("🚫 [updateReceiverLoader] Error updating receiverLoader: \(error.localizedDescription)")
             } else {
                 print("✅ [updateReceiverLoader] receiverLoader updated to \(receiverLoader) for message: \(messageId)")
                 
@@ -4739,7 +4739,7 @@ struct ChattingScreen: View {
                             self.checkMessageInFirebaseAndStopProgress(messageId: newMessageId, receiverUid: contactId)
                         } else {
                             failedMessages += 1
-                            print("❌ Forward: Failed to forward message \(messageIndex + 1) to \(contactName): \(errorMessage ?? "Unknown error")")
+                            print("🚫 Forward: Failed to forward message \(messageIndex + 1) to \(contactName): \(errorMessage ?? "Unknown error")")
                             // Keep receiverLoader as 0 to show progress bar (message still pending)
                         }
                         
@@ -5028,7 +5028,7 @@ struct ChattingScreen: View {
                                 // Check if message exists in Firebase and stop progress bar (matching Android)
                                 self.checkMessageInFirebaseAndStopProgress(messageId: modelId, receiverUid: receiverUid)
                             } else {
-                                print("❌ MessageUploadService: Error uploading message: \(errorMessage ?? "Unknown error")")
+                                print("🚫 MessageUploadService: Error uploading message: \(errorMessage ?? "Unknown error")")
                                 // Keep receiverLoader as 0 to show progress bar (message still pending)
                             }
                         }
@@ -5861,7 +5861,7 @@ struct ChattingScreen: View {
         // After all uploads complete, update message and send to API
         dispatchGroup.notify(queue: .main) {
             if uploadResults.isEmpty {
-                print("❌ [MULTI_IMAGE] Upload failed - no results")
+                print("🚫 [MULTI_IMAGE] Upload failed - no results")
                 Constant.showToast(message: "Unable to upload images. Please try again.")
                 return
             }
@@ -5918,7 +5918,7 @@ struct ChattingScreen: View {
                             // Check if message exists in Firebase and stop progress bar (matching Android)
                             self.checkMessageInFirebaseAndStopProgress(messageId: modelId, receiverUid: receiverUid)
                 } else {
-                    print("❌ [MULTI_IMAGE] Upload error: \(errorMessage ?? "Unknown error")")
+                    print("🚫 [MULTI_IMAGE] Upload error: \(errorMessage ?? "Unknown error")")
                     Constant.showToast(message: "Failed to send images. Please try again.")
                             // Keep receiverLoader as 0 to show progress bar (message still pending)
                         }
@@ -6000,7 +6000,7 @@ struct ChattingScreen: View {
             #endif
             print("")
         } catch {
-            print("❌ [LOCAL_STORAGE] Error saving image to local storage: \(error.localizedDescription)")
+            print("🚫 [LOCAL_STORAGE] Error saving image to local storage: \(error.localizedDescription)")
         }
     }
     
@@ -6028,7 +6028,7 @@ struct ChattingScreen: View {
             }
             print("📱 [LOCAL_STORAGE] ==============================")
         } catch {
-            print("❌ [LOCAL_STORAGE] Error listing images: \(error.localizedDescription)")
+            print("🚫 [LOCAL_STORAGE] Error listing images: \(error.localizedDescription)")
         }
     }
     
@@ -6473,7 +6473,7 @@ struct ChattingScreen: View {
                         // Check if message exists in Firebase and stop progress bar (matching Android)
                         self.checkMessageInFirebaseAndStopProgress(messageId: modelId, receiverUid: receiverUid)
                     } else {
-                        print("❌ [VOICE_RECORDING] Upload error: \(errorMessage ?? "Unknown error")")
+                        print("🚫 [VOICE_RECORDING] Upload error: \(errorMessage ?? "Unknown error")")
                         Constant.showToast(message: "Failed to send audio. Please try again.")
                         // Keep receiverLoader as 0 to show progress bar (message still pending)
                     }
@@ -7111,7 +7111,7 @@ struct DynamicImageView: View {
     // Download image using BackgroundDownloadManager (matching Android startSenderImageDownloadWithProgress)
     private func downloadImage() {
         guard let fileName = fileName, !fileName.isEmpty else {
-            print("❌ [DOWNLOAD] No fileName available")
+            print("🚫 [DOWNLOAD] No fileName available")
             return
         }
         
@@ -7171,7 +7171,7 @@ struct DynamicImageView: View {
                     self.showDownloadProgress = false
                     self.showDownloadButton = true
                     self.downloadProgress = 0.0
-                    print("❌ [DOWNLOAD] Download failed: \(error.localizedDescription)")
+                    print("🚫 [DOWNLOAD] Download failed: \(error.localizedDescription)")
                     // No toast - notification will show instead
                 }
             }
@@ -7543,7 +7543,7 @@ struct ReceiverDynamicImageView: View {
     // Download image to Photos library (public directory)
     private func downloadImage() {
         guard let fileName = fileName, !fileName.isEmpty else {
-            print("❌ [DOWNLOAD] No fileName available")
+            print("🚫 [DOWNLOAD] No fileName available")
             return
         }
         
@@ -7595,7 +7595,7 @@ struct ReceiverDynamicImageView: View {
                     self.showDownloadProgress = false
                     self.showDownloadButton = true
                     self.downloadProgress = 0.0
-                    print("❌ [DOWNLOAD] Download failed: \(error.localizedDescription)")
+                    print("🚫 [DOWNLOAD] Download failed: \(error.localizedDescription)")
                 }
             }
         )
@@ -7917,7 +7917,7 @@ struct SenderVideoView: View {
             return url
         }
         
-        print("❌ [VIDEO] No valid video URL found. hasLocalFile: \(hasLocalFile), videoUrl: \(videoUrl)")
+        print("🚫 [VIDEO] No valid video URL found. hasLocalFile: \(hasLocalFile), videoUrl: \(videoUrl)")
         return nil
     }
     
@@ -7926,7 +7926,7 @@ struct SenderVideoView: View {
         print("▶️ [VIDEO] Play button tapped")
         
         guard let videoURL = getVideoURL() else {
-            print("❌ [VIDEO] No video URL available")
+            print("🚫 [VIDEO] No video URL available")
             return
         }
         
@@ -7953,7 +7953,7 @@ struct SenderVideoView: View {
     // Download video to local storage
     private func downloadVideo() {
         guard let fileName = fileName, !fileName.isEmpty else {
-            print("❌ [DOWNLOAD] No fileName available")
+            print("🚫 [DOWNLOAD] No fileName available")
             return
         }
         
@@ -8014,7 +8014,7 @@ struct SenderVideoView: View {
                     self.showProgressBar = false
                     self.showDownloadButton = true
                     self.downloadProgress = 0.0
-                    print("❌ [DOWNLOAD] Download failed: \(error.localizedDescription)")
+                    print("🚫 [DOWNLOAD] Download failed: \(error.localizedDescription)")
                 }
             }
         )
@@ -8096,7 +8096,7 @@ struct SenderVideoView: View {
                     } else {
                         Text("Loading...")
                             .onAppear {
-                                print("❌ [VIDEO] Player is nil in sheet")
+                                print("🚫 [VIDEO] Player is nil in sheet")
                             }
                     }
                 }
@@ -8402,7 +8402,7 @@ struct ReceiverVideoView: View {
     // Play video
     private func playVideo() {
         guard let videoURL = getVideoURL() else {
-            print("❌ [VIDEO] No video URL available")
+            print("🚫 [VIDEO] No video URL available")
             return
         }
         
@@ -8419,7 +8419,7 @@ struct ReceiverVideoView: View {
     // Download video to Photos library
     private func downloadVideo() {
         guard let fileName = fileName, !fileName.isEmpty else {
-            print("❌ [DOWNLOAD] No fileName available")
+            print("🚫 [DOWNLOAD] No fileName available")
             return
         }
         
@@ -8477,7 +8477,7 @@ struct ReceiverVideoView: View {
                     self.showProgressBar = false
                     self.showDownloadButton = true
                     self.downloadProgress = 0.0
-                    print("❌ [DOWNLOAD] Download failed: \(error.localizedDescription)")
+                    print("🚫 [DOWNLOAD] Download failed: \(error.localizedDescription)")
                 }
             }
         )
@@ -8559,7 +8559,7 @@ struct ReceiverVideoView: View {
                     } else {
                         Text("Loading...")
                             .onAppear {
-                                print("❌ [VIDEO] Player is nil in sheet")
+                                print("🚫 [VIDEO] Player is nil in sheet")
                             }
                     }
                 }
@@ -8875,12 +8875,12 @@ struct SenderDocumentView: View {
     // Download document
     private func downloadDocument() {
         guard !fileName.isEmpty else {
-            print("❌ [DOWNLOAD] No fileName available")
+            print("🚫 [DOWNLOAD] No fileName available")
             return
         }
         
         guard !documentUrl.isEmpty else {
-            print("❌ [DOWNLOAD] No document URL available")
+            print("🚫 [DOWNLOAD] No document URL available")
             return
         }
         
@@ -8942,7 +8942,7 @@ struct SenderDocumentView: View {
                     self.showProgressBar = false
                     self.showDownloadButton = true
                     self.downloadProgress = 0.0
-                    print("❌ [DOWNLOAD] Download failed: \(error.localizedDescription)")
+                    print("🚫 [DOWNLOAD] Download failed: \(error.localizedDescription)")
                 }
             }
         )
@@ -9140,7 +9140,7 @@ struct SenderDocumentView: View {
                 } else {
                     Color.black.ignoresSafeArea()
                         .onAppear {
-                            print("❌ [SenderDocumentView] fullScreenCover triggered but documentPreviewURL is nil!")
+                            print("🚫 [SenderDocumentView] fullScreenCover triggered but documentPreviewURL is nil!")
                         }
                 }
             }
@@ -9498,13 +9498,13 @@ struct SenderDocumentView: View {
                     print("✅ [SenderDocumentView] Local file found and valid: \(localFilePath!)")
                     print("🎵 [SenderDocumentView] Audio URL with file://: \(audioUrl)")
                 } else {
-                    print("❌ [SenderDocumentView] Local file exists but is empty")
+                    print("🚫 [SenderDocumentView] Local file exists but is empty")
                 }
             } else {
-                print("❌ [SenderDocumentView] Local file not found: \(localFile.path)")
+                print("🚫 [SenderDocumentView] Local file not found: \(localFile.path)")
             }
         } else {
-            print("❌ [SenderDocumentView] Audios directory not found: \(audiosDir.path)")
+            print("🚫 [SenderDocumentView] Audios directory not found: \(audiosDir.path)")
         }
         
         print("🎵 [SenderDocumentView] Final audioUrl: \(audioUrl)")
@@ -9566,7 +9566,7 @@ struct SenderDocumentView: View {
             // Start download and open when complete
             downloadDocumentAndOpen()
         } else {
-            print("❌ [SenderDocumentView] No document URL available")
+            print("🚫 [SenderDocumentView] No document URL available")
         }
     }
     
@@ -9636,7 +9636,7 @@ struct SenderDocumentView: View {
     // Download document and open when complete
     private func downloadDocumentAndOpen() {
         guard !fileName.isEmpty else {
-            print("❌ [DOWNLOAD] No fileName available")
+            print("🚫 [DOWNLOAD] No fileName available")
             return
         }
         
@@ -9697,7 +9697,7 @@ struct SenderDocumentView: View {
                     self.showDownloadProgress = false
                     self.showDownloadButton = true
                     self.downloadProgress = 0.0
-                    print("❌ [DOWNLOAD] Download failed: \(error.localizedDescription)")
+                    print("🚫 [DOWNLOAD] Download failed: \(error.localizedDescription)")
                 }
             }
         )
@@ -9818,12 +9818,12 @@ struct ReceiverDocumentView: View {
     // Download document
     private func downloadDocument() {
         guard !fileName.isEmpty else {
-            print("❌ [DOWNLOAD] No fileName available")
+            print("🚫 [DOWNLOAD] No fileName available")
             return
         }
         
         guard !documentUrl.isEmpty else {
-            print("❌ [DOWNLOAD] No document URL available")
+            print("🚫 [DOWNLOAD] No document URL available")
             return
         }
         
@@ -9885,7 +9885,7 @@ struct ReceiverDocumentView: View {
                     self.showProgressBar = false
                     self.showDownloadButton = true
                     self.downloadProgress = 0.0
-                    print("❌ [DOWNLOAD] Download failed: \(error.localizedDescription)")
+                    print("🚫 [DOWNLOAD] Download failed: \(error.localizedDescription)")
                 }
             }
         )
@@ -10089,7 +10089,7 @@ struct ReceiverDocumentView: View {
                 } else {
                     Color.black.ignoresSafeArea()
                         .onAppear {
-                            print("❌ [ReceiverDocumentView] fullScreenCover triggered but documentPreviewURL is nil!")
+                            print("🚫 [ReceiverDocumentView] fullScreenCover triggered but documentPreviewURL is nil!")
                         }
                 }
             }
@@ -10408,13 +10408,13 @@ struct ReceiverDocumentView: View {
                     print("✅ [ReceiverDocumentView] Local file found and valid: \(localFilePath!)")
                     print("🎵 [ReceiverDocumentView] Audio URL with file://: \(audioUrl)")
                 } else {
-                    print("❌ [ReceiverDocumentView] Local file exists but is empty")
+                    print("🚫 [ReceiverDocumentView] Local file exists but is empty")
                 }
             } else {
-                print("❌ [ReceiverDocumentView] Local file not found: \(localFile.path)")
+                print("🚫 [ReceiverDocumentView] Local file not found: \(localFile.path)")
             }
         } else {
-            print("❌ [ReceiverDocumentView] Audios directory not found: \(audiosDir.path)")
+            print("🚫 [ReceiverDocumentView] Audios directory not found: \(audiosDir.path)")
         }
         
         print("🎵 [ReceiverDocumentView] Final audioUrl: \(audioUrl)")
@@ -10487,14 +10487,14 @@ struct ReceiverDocumentView: View {
             // Start download and open when complete
             downloadDocumentAndOpen()
         } else {
-            print("❌ [ReceiverDocumentView] No document URL available")
+            print("🚫 [ReceiverDocumentView] No document URL available")
         }
     }
     
     // Download document and open when complete
     private func downloadDocumentAndOpen() {
         guard !fileName.isEmpty else {
-            print("❌ [DOWNLOAD] No fileName available")
+            print("🚫 [DOWNLOAD] No fileName available")
             return
         }
         
@@ -10554,7 +10554,7 @@ struct ReceiverDocumentView: View {
                     self.showDownloadProgress = false
                     self.showDownloadButton = true
                     self.downloadProgress = 0.0
-                    print("❌ [DOWNLOAD] Download failed: \(error.localizedDescription)")
+                    print("🚫 [DOWNLOAD] Download failed: \(error.localizedDescription)")
                 }
             }
         )
@@ -10697,7 +10697,7 @@ struct DocumentPreviewView: View {
             print("📄 [DocumentPreviewView] Found file at: \(localURL.path)")
             return localURL
         }
-        print("❌ [DocumentPreviewView] File not found locally: \(fileName)")
+        print("🚫 [DocumentPreviewView] File not found locally: \(fileName)")
         return nil
     }
     
@@ -10956,7 +10956,7 @@ struct DocumentPreviewView: View {
                     imageToDisplay = image
                     showImagePreview = true
                 } else {
-                    print("❌ [DocumentPreviewView] Failed to load image from: \(localURL.path)")
+                    print("🚫 [DocumentPreviewView] Failed to load image from: \(localURL.path)")
                 }
             } else if isVideo {
                 // Setup video player
@@ -10970,7 +10970,7 @@ struct DocumentPreviewView: View {
                 showVideoPlayer = false
             }
         } else {
-            print("❌ [DocumentPreviewView] File not found locally, showing download controls")
+            print("🚫 [DocumentPreviewView] File not found locally, showing download controls")
             isDownloaded = false
         }
     }
@@ -10978,12 +10978,12 @@ struct DocumentPreviewView: View {
     // Download file
     private func downloadFile() {
         guard let downloadUrl = downloadUrl, !downloadUrl.isEmpty else {
-            print("❌ [DocumentPreviewView] No download URL available")
+            print("🚫 [DocumentPreviewView] No download URL available")
             return
         }
         
         guard !fileName.isEmpty else {
-            print("❌ [DOWNLOAD] No fileName available")
+            print("🚫 [DOWNLOAD] No fileName available")
             return
         }
         
@@ -11032,7 +11032,7 @@ struct DocumentPreviewView: View {
             onFailure: { error in
                 DispatchQueue.main.async {
                     self.isDownloading = false
-                    print("❌ [DOWNLOAD] Download failed: \(error.localizedDescription)")
+                    print("🚫 [DOWNLOAD] Download failed: \(error.localizedDescription)")
                 }
             }
         )
@@ -11041,7 +11041,7 @@ struct DocumentPreviewView: View {
     // Open downloaded file with external app
     private func openDownloadedFile() {
         guard let localURL = localFileURL else {
-            print("❌ [DocumentPreviewView] File not found locally")
+            print("🚫 [DocumentPreviewView] File not found locally")
             return
         }
         
@@ -11075,7 +11075,7 @@ struct DocumentPreviewView: View {
     // Save file to gallery
     private func saveFileToGallery() {
         guard let localURL = localFileURL else {
-            print("❌ [DocumentPreviewView] File not found locally")
+            print("🚫 [DocumentPreviewView] File not found locally")
             return
         }
         
@@ -11095,7 +11095,7 @@ struct DocumentPreviewView: View {
                             if success {
                                 print("✅ Video saved successfully")
                             } else {
-                                print("❌ Error saving video: \(error?.localizedDescription ?? "Unknown error")")
+                                print("🚫 Error saving video: \(error?.localizedDescription ?? "Unknown error")")
                             }
                         }
                     })
@@ -11364,7 +11364,7 @@ struct SenderImageBunchView: View {
                 },
                 onFailure: { error in
                     completedCount += 1
-                    print("❌ [BUNCH] Download failed: \(bunch.fileName) - \(error.localizedDescription)")
+                    print("🚫 [BUNCH] Download failed: \(bunch.fileName) - \(error.localizedDescription)")
                     
                     // Check if all downloads are complete (even if some failed)
                     DispatchQueue.main.async {
@@ -11668,7 +11668,7 @@ struct ReceiverImageBunchView: View {
                 },
                 onFailure: { error in
                     completedCount += 1
-                    print("❌ [BUNCH] Download failed: \(bunch.fileName) - \(error.localizedDescription)")
+                    print("🚫 [BUNCH] Download failed: \(bunch.fileName) - \(error.localizedDescription)")
                     
                     // Check if all downloads are complete (even if some failed)
                     DispatchQueue.main.async {
@@ -13715,7 +13715,7 @@ struct MessageBubbleView: View {
             if isPendingMessage {
                 print("🔍 [ProgressBar] ✅ SHOWING PROGRESS BAR (receiverLoader == 0, message is pending)")
             } else {
-                print("🔍 [ProgressBar] ❌ HIDING PROGRESS BAR (receiverLoader == \(message.receiverLoader), message is sent)")
+                print("🔍 [ProgressBar] 🚫 HIDING PROGRESS BAR (receiverLoader == \(message.receiverLoader), message is sent)")
             }
         }
         
@@ -14556,13 +14556,13 @@ struct MusicPlayerBottomSheet: View {
                     finalAudioUrl = "file://" + localFilePath!
                     print("✅ [MusicPlayer] Using local file: \(localFilePath!)")
                 } else {
-                    print("❌ [MusicPlayer] Local file exists but is empty")
+                    print("🚫 [MusicPlayer] Local file exists but is empty")
                 }
             } else {
-                print("❌ [MusicPlayer] Local file not found: \(localFile.path)")
+                print("🚫 [MusicPlayer] Local file not found: \(localFile.path)")
             }
         } else {
-            print("❌ [MusicPlayer] Audios directory not found: \(audiosDir.path)")
+            print("🚫 [MusicPlayer] Audios directory not found: \(audiosDir.path)")
         }
         
         // Create player
@@ -14574,7 +14574,7 @@ struct MusicPlayerBottomSheet: View {
         } else if let httpUrl = URL(string: finalAudioUrl) {
             url = httpUrl
         } else {
-            print("❌ [MusicPlayer] Invalid audio URL: \(finalAudioUrl)")
+            print("🚫 [MusicPlayer] Invalid audio URL: \(finalAudioUrl)")
             return
         }
         
@@ -14953,11 +14953,11 @@ struct SenderContactView: View {
                             }
                         }
                     } catch {
-                        print("❌ [Contact] Failed to save contact: \(error.localizedDescription)")
+                        print("🚫 [Contact] Failed to save contact: \(error.localizedDescription)")
                     }
                 }
             } else {
-                print("❌ [Contact] Contact access denied")
+                print("🚫 [Contact] Contact access denied")
             }
         }
     }
@@ -14981,7 +14981,7 @@ struct SenderContactView: View {
             try vcfContent.write(to: contactFile, atomically: true, encoding: .utf8)
             print("✅ [Contact] Contact saved to local storage: \(contactFile.path)")
         } catch {
-            print("❌ [Contact] Failed to save contact to local storage: \(error.localizedDescription)")
+            print("🚫 [Contact] Failed to save contact to local storage: \(error.localizedDescription)")
         }
     }
     
@@ -15037,7 +15037,7 @@ struct SenderContactView: View {
                     self.showDownloadProgress = false
                     self.showDownloadButton = true
                     self.downloadProgress = 0.0
-                    print("❌ [Contact] Download failed: \(error.localizedDescription)")
+                    print("🚫 [Contact] Download failed: \(error.localizedDescription)")
                 }
             }
         )
@@ -15307,7 +15307,7 @@ struct ReceiverContactView: View {
                     self.showDownloadProgress = false
                     self.showDownloadButton = true
                     self.downloadProgress = 0.0
-                    print("❌ [Contact] Download failed: \(error.localizedDescription)")
+                    print("🚫 [Contact] Download failed: \(error.localizedDescription)")
                 }
             }
         )
@@ -15367,11 +15367,11 @@ struct ReceiverContactView: View {
                             }
                         }
                     } catch {
-                        print("❌ [Contact] Failed to save contact: \(error.localizedDescription)")
+                        print("🚫 [Contact] Failed to save contact: \(error.localizedDescription)")
                     }
                 }
             } else {
-                print("❌ [Contact] Contact access denied")
+                print("🚫 [Contact] Contact access denied")
             }
         }
     }
@@ -15395,7 +15395,7 @@ struct ReceiverContactView: View {
             try vcfContent.write(to: contactFile, atomically: true, encoding: .utf8)
             print("✅ [Contact] Contact saved to local storage: \(contactFile.path)")
         } catch {
-            print("❌ [Contact] Failed to save contact to local storage: \(error.localizedDescription)")
+            print("🚫 [Contact] Failed to save contact to local storage: \(error.localizedDescription)")
         }
     }
 }
@@ -15895,7 +15895,7 @@ struct ReceiverVoiceAudioView: View {
                     self.showDownloadProgress = false
                     self.showDownloadButton = true
                     self.downloadProgress = 0.0
-                    print("❌ [VoiceAudio] Download failed: \(error.localizedDescription)")
+                    print("🚫 [VoiceAudio] Download failed: \(error.localizedDescription)")
                 }
             }
         )
@@ -16165,7 +16165,7 @@ struct ContactPickerViewControllerWrapper: UIViewControllerRepresentable {
                 try store.execute(saveRequest)
                 print("✅ [Contact] Phone number added to existing contact")
             } catch {
-                print("❌ [Contact] Failed to add phone number: \(error.localizedDescription)")
+                print("🚫 [Contact] Failed to add phone number: \(error.localizedDescription)")
             }
             
             picker.dismiss(animated: true) {
@@ -16244,7 +16244,7 @@ struct LinkPreviewImageView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: height)
                 case .failure(let error):
-                    let _ = print("❌ [LinkPreview] Failed to load image from \(imageUrlString): \(error.localizedDescription)")
+                    let _ = print("🚫 [LinkPreview] Failed to load image from \(imageUrlString): \(error.localizedDescription)")
                     DefaultLinkIconView(width: width, height: height)
                 @unknown default:
                     DefaultLinkIconView(width: width, height: height)
@@ -16618,7 +16618,7 @@ struct SenderRichLinkView: View {
             guard let data = data,
                   let html = String(data: data, encoding: .utf8),
                   error == nil else {
-                print("❌ [LinkPreview] Failed to fetch HTML: \(error?.localizedDescription ?? "unknown error")")
+                print("🚫 [LinkPreview] Failed to fetch HTML: \(error?.localizedDescription ?? "unknown error")")
                 DispatchQueue.main.async {
                     self.isFetching = false
                 }
@@ -17155,7 +17155,7 @@ struct ReceiverRichLinkView: View {
             guard let data = data,
                   let html = String(data: data, encoding: .utf8),
                   error == nil else {
-                print("❌ [LinkPreview] Failed to fetch HTML: \(error?.localizedDescription ?? "unknown error")")
+                print("🚫 [LinkPreview] Failed to fetch HTML: \(error?.localizedDescription ?? "unknown error")")
                 DispatchQueue.main.async {
                     self.isFetching = false
                 }
@@ -19079,7 +19079,7 @@ struct MessageLongPressDialog: View {
                 self.isLoadingEmojis = false
                 
                 if let error = error {
-                    print("❌ [fetchAvailableEmojis] Error: \(error.localizedDescription)")
+                    print("🚫 [fetchAvailableEmojis] Error: \(error.localizedDescription)")
                     return
                 }
                 
@@ -19109,7 +19109,7 @@ struct MessageLongPressDialog: View {
                         self.availableEmojis = fetchedEmojis
                     }
                 } catch {
-                    print("❌ [fetchAvailableEmojis] JSON parsing error: \(error.localizedDescription)")
+                    print("🚫 [fetchAvailableEmojis] JSON parsing error: \(error.localizedDescription)")
                 }
             }
         }.resume()
@@ -19714,7 +19714,7 @@ struct BunchImagePreviewDialog: View {
                                         let imageURL = getImageURL(for: imageModel)
                                         print("📸 [BunchPreview] Image \(index) - URL result: \(imageURL?.absoluteString ?? "nil")")
                                         if imageURL == nil {
-                                            print("❌ [BunchPreview] Image \(index) - No valid URL found. fileName: '\(imageModel.fileName)', imgUrl: '\(imageModel.imgUrl)'")
+                                            print("🚫 [BunchPreview] Image \(index) - No valid URL found. fileName: '\(imageModel.fileName)', imgUrl: '\(imageModel.imgUrl)'")
                                         }
                                     }
                                 }
@@ -19735,7 +19735,7 @@ struct BunchImagePreviewDialog: View {
             print("📸 [BunchPreview] Current index: \(currentIndex)")
             
             if images.isEmpty {
-                print("❌ [BunchPreview] ERROR: images array is EMPTY!")
+                print("🚫 [BunchPreview] ERROR: images array is EMPTY!")
             } else {
                 for (index, imageModel) in images.enumerated() {
                     print("📸 [BunchPreview] --- Image \(index) ---")
@@ -19772,7 +19772,7 @@ struct BunchImagePreviewDialog: View {
                 print("✅ [BunchPreview] Local file FOUND: \(localURL.path)")
                 return localURL
             } else {
-                print("❌ [BunchPreview] Local file NOT FOUND: \(localURL.path)")
+                print("🚫 [BunchPreview] Local file NOT FOUND: \(localURL.path)")
                 // List files in directory for debugging
                 if let files = try? FileManager.default.contentsOfDirectory(atPath: imagesDir.path) {
                     print("📁 [BunchPreview] Files in directory: \(files.prefix(10))")
@@ -19789,13 +19789,13 @@ struct BunchImagePreviewDialog: View {
                 print("✅ [BunchPreview] Valid network URL created: \(url.absoluteString)")
                 return url
             } else {
-                print("❌ [BunchPreview] Invalid network URL format: \(imageModel.imgUrl)")
+                print("🚫 [BunchPreview] Invalid network URL format: \(imageModel.imgUrl)")
             }
         } else {
             print("⚠️ [BunchPreview] imgUrl is empty for fileName: \(imageModel.fileName)")
         }
         
-        print("❌ [BunchPreview] No valid URL found for image")
+        print("🚫 [BunchPreview] No valid URL found for image")
         return nil
     }
 }

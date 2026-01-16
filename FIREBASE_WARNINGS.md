@@ -40,3 +40,11 @@ You can reduce Firebase logging verbosity, but this will also suppress other use
 ### Recommendation:
 **Just ignore the warning.** It's a non-critical message and doesn't impact your app's functionality.
 
+### Note:
+These warnings appear in the console but don't affect:
+- ✅ Share Extension functionality
+- ✅ Firebase Realtime Database
+- ✅ Firebase Cloud Messaging
+- ✅ App performance
+
+You can filter them out in Xcode console by searching for logs that don't contain "FirebaseInAppMessaging".

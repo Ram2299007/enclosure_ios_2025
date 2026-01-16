@@ -43,7 +43,7 @@ class FirebaseManager: NSObject, ObservableObject {
             options: authOptions,
             completionHandler: { granted, error in
                 if let error = error {
-                    print("❌ Notification permission error: \(error.localizedDescription)")
+                    print("🚫 Notification permission error: \(error.localizedDescription)")
                     return
                 }
                 
@@ -53,7 +53,7 @@ class FirebaseManager: NSObject, ObservableObject {
                         UIApplication.shared.registerForRemoteNotifications()
                     }
                 } else {
-                    print("❌ Notification permission denied")
+                    print("🚫 Notification permission denied")
                 }
             }
         )
@@ -62,7 +62,7 @@ class FirebaseManager: NSObject, ObservableObject {
     func getFCMToken(completion: @escaping (String?) -> Void) {
         Messaging.messaging().token { token, error in
             if let error = error {
-                print("❌ Error fetching FCM token: \(error.localizedDescription)")
+                print("🚫 Error fetching FCM token: \(error.localizedDescription)")
                 completion(nil)
                 return
             }
@@ -74,7 +74,7 @@ class FirebaseManager: NSObject, ObservableObject {
                 }
                 completion(token)
             } else {
-                print("❌ FCM token is nil")
+                print("🚫 FCM token is nil")
                 completion(nil)
             }
         }

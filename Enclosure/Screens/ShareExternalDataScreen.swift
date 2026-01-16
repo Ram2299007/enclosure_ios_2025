@@ -13,7 +13,7 @@ struct ShareExternalDataScreen: View {
     // Shared content data
     let sharedContent: SharedContent
     @State private var caption: String = ""
-    @State private var showContactPicker: Bool = false
+    @State private var navigateToContactPicker: Bool = false
     @Environment(\.presentationMode) var presentationMode
     
     // Video player state
@@ -24,64 +24,66 @@ struct ShareExternalDataScreen: View {
     @State private var resizeMode: Int = 0 // 0: FIT, 1: FILL, 2: ZOOM
     
     var body: some View {
-        ZStack {
-            // Black background (matching Android android:background="@color/black")
-            Color.black
-                .ignoresSafeArea()
-            
-            // Content based on type
-            switch sharedContent.type {
-            case .image:
-                imagePreviewView
-            case .video:
-                videoPreviewView
-            case .document:
-                documentPreviewView
-            case .text:
-                textPreviewView
-            case .contact:
-                contactPreviewView
-            }
-            
-            // Bottom section with caption and send button (matching Android bottom LinearLayout)
-            VStack {
-                Spacer()
-                bottomSection
-            }
-            
-            // Back button (matching Android arrowback LinearLayout)
-            VStack {
-                HStack {
-                    Button(action: {
-                        presentationMode.wrappedValue.dismiss()
-                    }) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 20)
-                                .fill(Color.black.opacity(0.4))
-                                .frame(width: 35, height: 36)
-                            
-                            Image("leftvector")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 25, height: 18)
-                                .foregroundColor(.white)
+        NavigationStack {
+            ZStack {
+                // Black background (matching Android android:background="@color/black")
+                Color.black
+                    .ignoresSafeArea()
+                
+                // Content based on type
+                switch sharedContent.type {
+                case .image:
+                    imagePreviewView
+                case .video:
+                    videoPreviewView
+                case .document:
+                    documentPreviewView
+                case .text:
+                    textPreviewView
+                case .contact:
+                    contactPreviewView
+                }
+                
+                // Bottom section with caption and send button (matching Android bottom LinearLayout)
+                VStack {
+                    Spacer()
+                    bottomSection
+                }
+                
+                // Back button (matching Android arrowback LinearLayout)
+                VStack {
+                    HStack {
+                        Button(action: {
+                            presentationMode.wrappedValue.dismiss()
+                        }) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(Color.black.opacity(0.4))
+                                    .frame(width: 35, height: 36)
+                                
+                                Image("leftvector")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 25, height: 18)
+                                    .foregroundColor(.white)
+                            }
                         }
+                        .padding(.leading, 20)
+                        .padding(.top, 50)
+                        
+                        Spacer()
                     }
-                    .padding(.leading, 20)
-                    .padding(.top, 50)
-                    
                     Spacer()
                 }
-                Spacer()
             }
-        }
-        .navigationBarHidden(true)
-        .fullScreenCover(isPresented: $showContactPicker) {
-            ShareExternalDataContactScreen(
-                sharedContent: sharedContent,
-                caption: caption
-            )
+            .navigationBarHidden(true)
+            .navigationDestination(isPresented: $navigateToContactPicker) {
+                ShareExternalDataContactScreen(
+                    sharedContent: sharedContent,
+                    caption: caption
+                )
+            }
         }
     }
     
@@ -271,7 +273,7 @@ struct ShareExternalDataScreen: View {
             
             // Send button (matching Android sendGrp LinearLayout)
             Button(action: {
-                showContactPicker = true
+                navigateToContactPicker = true
             }) {
                 ZStack {
                     Circle()
@@ -319,7 +321,7 @@ struct SharedContent {
         case contact
     }
     
-    let type: ContentType
+    var type: ContentType
     var imageUrls: [URL] = []
     var videoUrls: [URL] = []
     var documentUrl: URL?

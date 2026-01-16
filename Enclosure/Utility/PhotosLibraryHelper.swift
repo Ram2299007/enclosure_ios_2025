@@ -58,7 +58,7 @@ class PhotosLibraryHelper {
                     if success {
                         print("📱 [PhotosLibraryHelper] ✅ Image saved to Photos library: \(fileName)")
                     } else {
-                        print("❌ [PhotosLibraryHelper] Failed to save image: \(error?.localizedDescription ?? "Unknown error")")
+                        print("🚫 [PhotosLibraryHelper] Failed to save image: \(error?.localizedDescription ?? "Unknown error")")
                     }
                     completion(success, error)
                 }
@@ -98,7 +98,7 @@ class PhotosLibraryHelper {
                             PhotosLibraryHelper.shared.saveToCache(fileName: fileName, imageData: videoData)
                             print("📱 [PhotosLibraryHelper] ✅ Video saved to Photos library: \(fileName)")
                         } else {
-                            print("❌ [PhotosLibraryHelper] Failed to save video: \(error?.localizedDescription ?? "Unknown error")")
+                            print("🚫 [PhotosLibraryHelper] Failed to save video: \(error?.localizedDescription ?? "Unknown error")")
                         }
                         completion(success, error)
                     }
@@ -213,7 +213,7 @@ class PhotosLibraryHelper {
             print("📱 [PUBLIC_DIRECTORY] ==============================")
             print("")
         } catch {
-            print("❌ [PUBLIC_DIRECTORY] Error listing images: \(error.localizedDescription)")
+            print("🚫 [PUBLIC_DIRECTORY] Error listing images: \(error.localizedDescription)")
         }
     }
 }

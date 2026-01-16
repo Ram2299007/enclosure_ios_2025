@@ -25,7 +25,6 @@ class SharedContentHandler: ObservableObject {
     
     // Process shared items from NSExtensionContext (for Share Extension)
     func processSharedItems(_ items: [NSExtensionItem], completion: @escaping (SharedContent?) -> Void) {
-        var sharedContent = SharedContent(type: .text)
         var imageUrls: [URL] = []
         var videoUrls: [URL] = []
         var documentUrl: URL?
@@ -40,8 +39,6 @@ class SharedContentHandler: ObservableObject {
             // Handle text
             if let text = item.attributedContentText?.string, !text.isEmpty {
                 textData = text
-                sharedContent.textData = text
-                sharedContent.type = .text
             }
             
             // Handle attachments
@@ -98,21 +95,33 @@ class SharedContentHandler: ObservableObject {
         }
         
         group.notify(queue: .main) {
-            // Determine content type
+            // Create SharedContent with determined type
+            var sharedContent: SharedContent
+            
+            // Determine content type and create appropriate SharedContent
             if !imageUrls.isEmpty {
-                sharedContent.type = .image
+                sharedContent = SharedContent(type: .image)
                 sharedContent.imageUrls = imageUrls
             } else if !videoUrls.isEmpty {
-                sharedContent.type = .video
+                sharedContent = SharedContent(type: .video)
                 sharedContent.videoUrls = videoUrls
             } else if let contact = contactInfo {
-                sharedContent.type = .contact
+                sharedContent = SharedContent(type: .contact)
                 sharedContent.contact = contact
             } else if documentUrl != nil {
-                sharedContent.type = .document
+                sharedContent = SharedContent(type: .document)
                 sharedContent.documentUrl = documentUrl
                 sharedContent.documentName = documentName
                 sharedContent.documentSize = documentSize
+            } else {
+                // Default to text
+                sharedContent = SharedContent(type: .text)
+                sharedContent.textData = textData
+            }
+            
+            // Set text data if available (for captions)
+            if let text = textData {
+                sharedContent.textData = text
             }
             
             completion(sharedContent)
@@ -131,7 +140,7 @@ class SharedContentHandler: ObservableObject {
             try data.write(to: fileURL)
             return fileURL
         } catch {
-            print("❌ Error saving image to temp: \(error)")
+            print("🚫 Error saving image to temp: \(error)")
             return nil
         }
     }

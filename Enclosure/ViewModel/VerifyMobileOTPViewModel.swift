@@ -18,7 +18,7 @@ class VerifyMobileOTPViewModel: ObservableObject {
 
         let urlString = Constant.baseURL + "verify_mobile_otp"
         guard let url = URL(string: urlString) else {
-            print("❌ Invalid URL: \(urlString)")
+            print("🚫 Invalid URL: \(urlString)")
             return
         }
 
@@ -76,12 +76,12 @@ class VerifyMobileOTPViewModel: ObservableObject {
                 DispatchQueue.main.async {
                     self.errorMessage = error.localizedDescription
                 }
-                print("❌ Network Error: \(error.localizedDescription)")
+                print("🚫 Network Error: \(error.localizedDescription)")
                 return
             }
 
             guard let httpResponse = response as? HTTPURLResponse else {
-                print("❌ Invalid Response")
+                print("🚫 Invalid Response")
                 return
             }
             print("📩 Response Status Code: \(httpResponse.statusCode)")
@@ -90,7 +90,7 @@ class VerifyMobileOTPViewModel: ObservableObject {
                 DispatchQueue.main.async {
                     self.errorMessage = "No data received"
                 }
-                print("❌ No data received")
+                print("🚫 No data received")
                 return
             }
 
@@ -159,12 +159,12 @@ class VerifyMobileOTPViewModel: ObservableObject {
 
                                                         self.isNavigating = true
                                                     } else {
-                                                        print("❌ Error: \(message)")
+                                                        print("🚫 Error: \(message)")
                                                     }
                                                 }
                                             }
                                     } else {
-                                        print("❌ Failure: \(message)")
+                                        print("🚫 Failure: \(message)")
                                         DispatchQueue.main.async {
                                             self.isLoading = false
                                         }
@@ -177,7 +177,7 @@ class VerifyMobileOTPViewModel: ObservableObject {
                         DispatchQueue.main.async {
                             self.errorMessage = "Invalid data format from API"
                         }
-                        print("❌ Error: Invalid data format from API")
+                        print("🚫 Error: Invalid data format from API")
                     }
                 } else {
 
@@ -185,7 +185,7 @@ class VerifyMobileOTPViewModel: ObservableObject {
 
                     }
                     let message = json?["message"] as? String ?? "Unknown error"
-                    print("❌ API returned an error: \(message)")
+                    print("🚫 API returned an error: \(message)")
 
 
                     DispatchQueue.main.async {
@@ -202,7 +202,7 @@ class VerifyMobileOTPViewModel: ObservableObject {
                 DispatchQueue.main.async {
                     self.errorMessage = "Failed to parse response"
                 }
-                print("❌ JSON Parsing Error: \(error.localizedDescription)")
+                print("🚫 JSON Parsing Error: \(error.localizedDescription)")
             }
         }.resume()
     }

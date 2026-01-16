@@ -104,11 +104,11 @@ class MessageUploadService {
                             )
                             print("📤 Uploading local file for upload_docs: \(filePath)")
                         } else {
-                            print("❌ File exceeds 200MB: \(filePath)")
+                            print("🚫 File exceeds 200MB: \(filePath)")
                             multipartFormData.append(Data("".utf8), withName: "upload_docs")
                         }
                     } else {
-                        print("❌ File does not exist: \(filePath)")
+                        print("🚫 File does not exist: \(filePath)")
                         multipartFormData.append(Data("".utf8), withName: "upload_docs")
                     }
                 } else {
@@ -124,7 +124,7 @@ class MessageUploadService {
                 print("📩 Server response: \(value)")
                 
                 guard let json = value as? [String: Any] else {
-                    print("❌ Invalid JSON response")
+                    print("🚫 Invalid JSON response")
                     completion(false, "Invalid response format")
                     return
                 }
@@ -137,7 +137,7 @@ class MessageUploadService {
                           let errorCodeInt = Int(errorCodeString) {
                     errorCode = errorCodeInt
                 } else {
-                    print("❌ Invalid error_code in response")
+                    print("🚫 Invalid error_code in response")
                     completion(false, "Invalid response format")
                     return
                 }
@@ -165,17 +165,17 @@ class MessageUploadService {
                     }
                 } else if errorCode == 205 {
                     let errorMessage = json["message"] as? String ?? "Unknown error"
-                    print("❌ Server error 205: \(errorMessage)")
+                    print("🚫 Server error 205: \(errorMessage)")
                     completion(false, errorMessage)
                 } else {
                     let errorMessage = json["message"] as? String ?? "Unknown error"
-                    print("❌ Server error: \(errorMessage)")
+                    print("🚫 Server error: \(errorMessage)")
                     Constant.showToast(message: errorMessage)
                     completion(false, errorMessage)
                 }
                 
             case .failure(let error):
-                print("❌ Network error: \(error.localizedDescription)")
+                print("🚫 Network error: \(error.localizedDescription)")
                 completion(false, error.localizedDescription)
             }
         }
@@ -267,11 +267,11 @@ class MessageUploadService {
                             )
                             print("📤 Uploading local file for upload_docs: \(filePath)")
                         } else {
-                            print("❌ File exceeds 200MB: \(filePath)")
+                            print("🚫 File exceeds 200MB: \(filePath)")
                             multipartFormData.append(Data("".utf8), withName: "upload_docs")
                         }
                     } else {
-                        print("❌ File does not exist: \(filePath)")
+                        print("🚫 File does not exist: \(filePath)")
                         multipartFormData.append(Data("".utf8), withName: "upload_docs")
                     }
                 } else {
@@ -301,7 +301,7 @@ class MessageUploadService {
                 print("📩 Server response: \(value)")
                 
                 guard let json = value as? [String: Any] else {
-                    print("❌ Invalid JSON response")
+                    print("🚫 Invalid JSON response")
                     completion(false, "Invalid response format")
                     return
                 }
@@ -314,7 +314,7 @@ class MessageUploadService {
                           let errorCodeInt = Int(errorCodeString) {
                     errorCode = errorCodeInt
                 } else {
-                    print("❌ Invalid error_code in response")
+                    print("🚫 Invalid error_code in response")
                     completion(false, "Invalid response format")
                     return
                 }
@@ -346,7 +346,7 @@ class MessageUploadService {
                                 }
                                 completion(true, nil)
                             } else {
-                                print("❌ [GROUP_UPLOAD] Firebase update failed for modelId=\(model.id)")
+                                print("🚫 [GROUP_UPLOAD] Firebase update failed for modelId=\(model.id)")
                                 completion(false, "Firebase update failed")
                             }
                         }
@@ -356,17 +356,17 @@ class MessageUploadService {
                     }
                 } else if errorCode == 205 {
                     let errorMessage = json["message"] as? String ?? "Unknown error"
-                    print("❌ Server error 205: \(errorMessage)")
+                    print("🚫 Server error 205: \(errorMessage)")
                     completion(false, errorMessage)
                 } else {
                     let errorMessage = json["message"] as? String ?? "Unknown error"
-                    print("❌ Server error: \(errorMessage)")
+                    print("🚫 Server error: \(errorMessage)")
                     Constant.showToast(message: errorMessage)
                     completion(false, errorMessage)
                 }
                 
             case .failure(let error):
-                print("❌ Network error: \(error.localizedDescription)")
+                print("🚫 Network error: \(error.localizedDescription)")
                 completion(false, error.localizedDescription)
             }
         }
@@ -394,7 +394,7 @@ class MessageUploadService {
         
         database.child(Constant.GROUPCHAT).child(chatKey).child(model.id).setValue(messageMap) { error, _ in
             if let error = error {
-                print("❌ Firebase sync failed: \(error.localizedDescription)")
+                print("🚫 Firebase sync failed: \(error.localizedDescription)")
                 completion(false)
             } else {
                 print("✅ Firebase sync successful for group message")
@@ -466,7 +466,7 @@ class MessageUploadService {
         
         database.updateChildValues(updates) { error, _ in
             if let error = error {
-                print("❌ Firebase sync failed: \(error.localizedDescription)")
+                print("🚫 Firebase sync failed: \(error.localizedDescription)")
                 completion(false)
             } else {
                 print("✅ Firebase sync successful")
@@ -475,7 +475,7 @@ class MessageUploadService {
                 let pushKey = database.child(Constant.chattingSocket).child(model.receiverId).childByAutoId().key ?? ""
                 database.child(Constant.chattingSocket).child(model.receiverId).setValue(pushKey) { error, _ in
                     if let error = error {
-                        print("❌ Push key sync failed: \(error.localizedDescription)")
+                        print("🚫 Push key sync failed: \(error.localizedDescription)")
                         completion(false)
                     } else {
                         print("✅ Push key sync successful")
@@ -659,7 +659,7 @@ class MessageUploadService {
             let endpoint = Constant.baseURL + "EmojiController/send_notification_api"
             
             guard let url = URL(string: endpoint) else {
-                print("❌ Invalid notification URL: \(endpoint)")
+                print("🚫 Invalid notification URL: \(endpoint)")
                 return
             }
             
@@ -670,7 +670,7 @@ class MessageUploadService {
             do {
                 request.httpBody = try JSONSerialization.data(withJSONObject: requestJson)
             } catch {
-                print("❌ Failed to serialize notification JSON: \(error.localizedDescription)")
+                print("🚫 Failed to serialize notification JSON: \(error.localizedDescription)")
                 return
             }
             
@@ -678,7 +678,7 @@ class MessageUploadService {
             
             URLSession.shared.dataTask(with: request) { data, response, error in
                 if let error = error {
-                    print("❌ Notification failed for modelId: \(model.id): \(error.localizedDescription)")
+                    print("🚫 Notification failed for modelId: \(model.id): \(error.localizedDescription)")
                     return
                 }
                 
@@ -688,7 +688,7 @@ class MessageUploadService {
                     print("📲 Notification response for modelId: \(model.id), Status: \(statusCode), Body: \(responseBody)")
                     
                     if !(200...299).contains(statusCode) {
-                        print("❌ Notification HTTP error \(statusCode): \(responseBody)")
+                        print("🚫 Notification HTTP error \(statusCode): \(responseBody)")
                     }
                 }
             }.resume()
@@ -823,7 +823,7 @@ class MessageUploadService {
         let endpoint = Constant.baseURL + "EmojiController/end_notification_api_group"
         
         guard let url = URL(string: endpoint) else {
-            print("❌ [GROUP_NOTIFICATION] Invalid URL: \(endpoint) for modelId: \(model.id)")
+            print("🚫 [GROUP_NOTIFICATION] Invalid URL: \(endpoint) for modelId: \(model.id)")
             return
         }
         
@@ -835,7 +835,7 @@ class MessageUploadService {
             request.httpBody = try JSONSerialization.data(withJSONObject: requestJson)
             print("📲 [GROUP_NOTIFICATION] Request body serialized successfully for modelId: \(model.id)")
         } catch {
-            print("❌ [GROUP_NOTIFICATION] Failed to serialize JSON for modelId: \(model.id), error: \(error.localizedDescription)")
+            print("🚫 [GROUP_NOTIFICATION] Failed to serialize JSON for modelId: \(model.id), error: \(error.localizedDescription)")
             return
         }
         
@@ -844,7 +844,7 @@ class MessageUploadService {
         
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                print("❌ [GROUP_NOTIFICATION] Network error for modelId: \(model.id), error: \(error.localizedDescription)")
+                print("🚫 [GROUP_NOTIFICATION] Network error for modelId: \(model.id), error: \(error.localizedDescription)")
                 return
             }
             
@@ -858,14 +858,14 @@ class MessageUploadService {
                     print("✅ [GROUP_NOTIFICATION] Response Body: \(responseBody.isEmpty ? "(empty)" : responseBody)")
                     print("✅ [GROUP_NOTIFICATION] ===== END end_notification_api_group (SUCCESS) =====")
                 } else {
-                    print("❌ [GROUP_NOTIFICATION] HTTP ERROR for modelId: \(model.id)")
-                    print("❌ [GROUP_NOTIFICATION] Status Code: \(statusCode)")
-                    print("❌ [GROUP_NOTIFICATION] Response Body: \(responseBody.isEmpty ? "(empty)" : responseBody)")
-                    print("❌ [GROUP_NOTIFICATION] ===== END end_notification_api_group (ERROR) =====")
+                    print("🚫 [GROUP_NOTIFICATION] HTTP ERROR for modelId: \(model.id)")
+                    print("🚫 [GROUP_NOTIFICATION] Status Code: \(statusCode)")
+                    print("🚫 [GROUP_NOTIFICATION] Response Body: \(responseBody.isEmpty ? "(empty)" : responseBody)")
+                    print("🚫 [GROUP_NOTIFICATION] ===== END end_notification_api_group (ERROR) =====")
                 }
             } else {
-                print("❌ [GROUP_NOTIFICATION] Invalid HTTP response for modelId: \(model.id)")
-                print("❌ [GROUP_NOTIFICATION] ===== END end_notification_api_group (ERROR) =====")
+                print("🚫 [GROUP_NOTIFICATION] Invalid HTTP response for modelId: \(model.id)")
+                print("🚫 [GROUP_NOTIFICATION] ===== END end_notification_api_group (ERROR) =====")
             }
         }.resume()
     }
@@ -909,7 +909,7 @@ class MessageUploadService {
               let privateKey = json["private_key"] as? String,
               let clientEmail = json["client_email"] as? String,
               let tokenUri = json["token_uri"] as? String else {
-            print("❌ Failed to parse service account JSON")
+            print("🚫 Failed to parse service account JSON")
             completion(nil)
             return
         }
@@ -962,7 +962,7 @@ class MessageUploadService {
               let claimData = try? JSONSerialization.data(withJSONObject: claim),
               let headerBase64 = base64URLEncode(headerData),
               let claimBase64 = base64URLEncode(claimData) else {
-            print("❌ Failed to encode JWT header/claim")
+            print("🚫 Failed to encode JWT header/claim")
             completion(nil)
             return
         }
@@ -972,7 +972,7 @@ class MessageUploadService {
         // Sign JWT with RSA private key
         signJWT(unsignedJWT: unsignedJWT, privateKey: privateKey) { [weak self] signature in
             guard let self = self, let signature = signature else {
-                print("❌ Failed to sign JWT")
+                print("🚫 Failed to sign JWT")
                 completion(nil)
                 return
             }
@@ -988,7 +988,7 @@ class MessageUploadService {
                     print("✅ Access token obtained successfully")
                     completion(accessToken)
                 } else {
-                    print("❌ Failed to exchange JWT for access token")
+                    print("🚫 Failed to exchange JWT for access token")
                     completion(nil)
                 }
             }
@@ -1007,7 +1007,7 @@ class MessageUploadService {
                 .replacingOccurrences(of: " ", with: "")
             
             guard let keyData = Data(base64Encoded: cleanedKey) else {
-                print("❌ Failed to decode private key")
+                print("🚫 Failed to decode private key")
                 completion(nil)
                 return
             }
@@ -1035,16 +1035,16 @@ class MessageUploadService {
                     secKey = SecKeyCreateWithData(pkcs1Data as CFData, keyDict as CFDictionary, &error)
                     if secKey == nil {
                         let errorDesc = error?.takeRetainedValue().localizedDescription ?? "Unknown error"
-                        print("❌ Failed to create SecKey from PKCS#1: \(errorDesc)")
+                        print("🚫 Failed to create SecKey from PKCS#1: \(errorDesc)")
                     }
                 } else {
-                    print("❌ Failed to extract PKCS#1 from PKCS#8")
+                    print("🚫 Failed to extract PKCS#1 from PKCS#8")
                 }
             }
             
             guard let secKey = secKey else {
                 let errorDesc = error?.takeRetainedValue().localizedDescription ?? "Unknown error"
-                print("❌ Failed to create SecKey: \(errorDesc)")
+                print("🚫 Failed to create SecKey: \(errorDesc)")
                 print("⚠️ Since Android works, consider:")
                 print("   1. Creating a backend endpoint that provides the access token")
                 print("   2. Using a JWT library like SwiftJWT")
@@ -1057,7 +1057,7 @@ class MessageUploadService {
             
             // Sign the JWT
             guard let messageData = unsignedJWT.data(using: .utf8) else {
-                print("❌ Failed to convert JWT to data")
+                print("🚫 Failed to convert JWT to data")
                 completion(nil)
                 return
             }
@@ -1069,7 +1069,7 @@ class MessageUploadService {
                 messageData as CFData,
                 &error2
             ) as Data? else {
-                print("❌ Failed to sign JWT: \(error2?.takeRetainedValue().localizedDescription ?? "Unknown error")")
+                print("🚫 Failed to sign JWT: \(error2?.takeRetainedValue().localizedDescription ?? "Unknown error")")
                 completion(nil)
                 return
             }
@@ -1083,7 +1083,7 @@ class MessageUploadService {
     // MARK: - Exchange JWT for Access Token
     private func exchangeJWTForAccessToken(jwt: String, tokenUri: String, completion: @escaping (String?, Int?) -> Void) {
         guard let url = URL(string: tokenUri) else {
-            print("❌ Invalid token URI: \(tokenUri)")
+            print("🚫 Invalid token URI: \(tokenUri)")
             completion(nil, nil)
             return
         }
@@ -1097,7 +1097,7 @@ class MessageUploadService {
         
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                print("❌ Token exchange error: \(error.localizedDescription)")
+                print("🚫 Token exchange error: \(error.localizedDescription)")
                 completion(nil, nil)
                 return
             }
@@ -1106,7 +1106,7 @@ class MessageUploadService {
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let accessToken = json["access_token"] as? String else {
                 let responseBody = data != nil ? String(data: data!, encoding: .utf8) ?? "" : ""
-                print("❌ Failed to parse token response: \(responseBody)")
+                print("🚫 Failed to parse token response: \(responseBody)")
                 completion(nil, nil)
                 return
             }

@@ -1,0 +1,42 @@
+// MINIMAL TEST CODE FOR ShareViewController.swift
+// Temporarily replace the entire content of ShareViewController.swift with this to test
+// If this works (shows red screen), then the issue is in the full code
+// If this doesn't work, the issue is fundamental (signing, Info.plist, etc.)
+
+import UIKit
+
+class ShareViewController: UIViewController {
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        
+        // CRITICAL TEST - This should appear if Share Extension runs
+        print("🔴🔴🔴 MINIMAL SHARE EXTENSION TEST - viewDidLoad CALLED 🔴🔴🔴")
+        fputs("🔴 MINIMAL TEST\n", stderr)
+        fflush(stderr)
+        
+        // Show simple UI - RED background so we can see it
+        view.backgroundColor = .red
+        
+        let label = UILabel()
+        label.text = "TEST - Share Extension Running!"
+        label.textColor = .white
+        label.textAlignment = .center
+        label.font = UIFont.systemFont(ofSize: 20, weight: .bold)
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(label)
+        
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            label.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 20),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -20)
+        ])
+        
+        // Complete immediately after 2 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+        }
+    }
+}

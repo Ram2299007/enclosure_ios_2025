@@ -101,10 +101,10 @@ final class ImageLoader: ObservableObject {
                         }
                     }
                 } else {
-                    print("❌ [CachedAsyncImage] Failed to create UIImage from local file data")
+                    print("🚫 [CachedAsyncImage] Failed to create UIImage from local file data")
                 }
             } else {
-                print("❌ [CachedAsyncImage] Failed to load data from local file: \(url.path)")
+                print("🚫 [CachedAsyncImage] Failed to load data from local file: \(url.path)")
             }
             return
         }
@@ -114,12 +114,12 @@ final class ImageLoader: ObservableObject {
         task?.cancel()
         task = URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
             if let error = error {
-                print("❌ [CachedAsyncImage] Network error: \(error.localizedDescription)")
+                print("🚫 [CachedAsyncImage] Network error: \(error.localizedDescription)")
                 return
             }
             
             guard let self = self, let data = data else {
-                print("❌ [CachedAsyncImage] No data received from network")
+                print("🚫 [CachedAsyncImage] No data received from network")
                 return
             }
             
@@ -135,7 +135,7 @@ final class ImageLoader: ObservableObject {
                     }
                 }
             } else {
-                print("❌ [CachedAsyncImage] Failed to create UIImage from network data")
+                print("🚫 [CachedAsyncImage] Failed to create UIImage from network data")
             }
         }
         task?.resume()

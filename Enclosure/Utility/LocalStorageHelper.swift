@@ -58,7 +58,7 @@ class LocalStorageHelper {
             }
             print("📱 [LOCAL_STORAGE] ==============================\n")
         } catch {
-            print("❌ [LOCAL_STORAGE] Error listing images: \(error.localizedDescription)")
+            print("🚫 [LOCAL_STORAGE] Error listing images: \(error.localizedDescription)")
         }
     }
     
@@ -190,7 +190,7 @@ class LocalStorageHelper {
             
             print("✅ [LOCAL_STORAGE] Deleted \(files.count) images")
         } catch {
-            print("❌ [LOCAL_STORAGE] Error deleting images: \(error.localizedDescription)")
+            print("🚫 [LOCAL_STORAGE] Error deleting images: \(error.localizedDescription)")
         }
     }
 }
