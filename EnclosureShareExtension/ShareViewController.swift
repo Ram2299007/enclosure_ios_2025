@@ -366,15 +366,19 @@ class ShareViewController: UIViewController {
                 fputs("🔴 group.notify CALLED\n", stderr)
                 fflush(stderr)
                 
-                // Merge loaded text data with textData
-                var finalTextData = textData
+                // Determine final text data
+                // If we loaded text from attachments, use that (it's more complete)
+                // Otherwise use attributedContentText
+                // Don't merge them as they're usually the same content, causing duplication
+                var finalTextData: String?
                 if let loaded = self.loadedTextData, !loaded.isEmpty {
-                    NSLog("📤 [ShareExtension] Merging loaded text (\(loaded.count) chars) with attributedContentText")
-                    if finalTextData == nil || finalTextData!.isEmpty {
-                        finalTextData = loaded
-                    } else {
-                        finalTextData = finalTextData! + "\n" + loaded
-                    }
+                    // Use loaded text from attachment (more reliable and complete)
+                    finalTextData = loaded
+                    NSLog("📤 [ShareExtension] Using loaded text from attachment (\(loaded.count) chars)")
+                } else if let attributedText = textData, !attributedText.isEmpty {
+                    // Fallback to attributedContentText if no attachment text was loaded
+                    finalTextData = attributedText
+                    NSLog("📤 [ShareExtension] Using attributedContentText (\(attributedText.count) chars)")
                 }
                 
                 // Determine content type
