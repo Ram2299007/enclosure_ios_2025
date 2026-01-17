@@ -10,6 +10,7 @@ import SwiftUI
 struct ShareExternalDataContactScreen: View {
     let sharedContent: SharedContent
     let caption: String
+    var onNavigateToChat: ((UserActiveContactModel) -> Void)? = nil // Callback to navigate to chat screen
     
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) var colorScheme
@@ -455,8 +456,19 @@ struct ShareExternalDataContactScreen: View {
                 if index == selectedContacts.count - 1 {
                     DispatchQueue.main.async {
                         self.isSharing = false
-                        Constant.showToast(message: "Shared with \(selectedContacts.count) contact(s)")
-                        self.dismiss()
+                        
+                        // If sending to single contact, navigate to ChattingScreen (matching Android behavior)
+                        if selectedContacts.count == 1, let firstContact = selectedContacts.first {
+                            // Navigate to chat screen for single contact
+                            self.dismiss()
+                            // Small delay to ensure dismiss completes before navigation
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                onNavigateToChat?(firstContact)
+                            }
+                        } else {
+                            // Multiple contacts - just dismiss (no toast, matching Android)
+                            self.dismiss()
+                        }
                     }
                 }
             }

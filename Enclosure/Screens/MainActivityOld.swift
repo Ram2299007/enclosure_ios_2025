@@ -838,7 +838,12 @@ struct MainActivityOld: View {
                     if let content = sharedContentToShow {
                         ShareExternalDataContactScreen(
                             sharedContent: content,
-                            caption: sharedCaption
+                            caption: sharedCaption,
+                            onNavigateToChat: { contact in
+                                // Navigate to ChattingScreen for single contact (matching Android behavior)
+                                selectedChatForNavigation = contact
+                                showShareExternalDataContactScreen = false
+                            }
                         )
                         .onAppear {
                             print("✅ [MainActivityOld] ShareExternalDataContactScreen appeared!")
