@@ -173,6 +173,12 @@ class ShareViewController: UIViewController {
         var textData: String?
         var contentType = "text"
         
+        // Track content types to detect mixed selections (images + videos + documents)
+        var hasImages = false
+        var hasVideos = false
+        var hasDocuments = false
+        var hasContacts = false
+        
         let group = DispatchGroup()
         
         // Count total attachments and extract text
@@ -191,10 +197,12 @@ class ShareViewController: UIViewController {
                 hasAttachments = true
                 totalAttachments += attachments.count
                 
-                // Check if attachments are only plain text (text sharing from external apps)
+                // Check if attachments are only plain text or URLs (text sharing from external apps)
                 for attachment in attachments {
                     if attachment.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) ||
-                       attachment.hasItemConformingToTypeIdentifier("public.plain-text") {
+                       attachment.hasItemConformingToTypeIdentifier("public.plain-text") ||
+                       attachment.hasItemConformingToTypeIdentifier(UTType.url.identifier) ||
+                       attachment.hasItemConformingToTypeIdentifier("public.url") {
                         hasTextAttachments = true
                     } else {
                         hasNonTextAttachments = true
@@ -243,8 +251,40 @@ class ShareViewController: UIViewController {
                 for attachment in attachments {
                     group.enter()
                     
-                    // Handle plain text attachments (text sharing from external apps)
-                    if attachment.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) ||
+                    // Handle URL attachments (YouTube links, web URLs, etc.)
+                    if attachment.hasItemConformingToTypeIdentifier(UTType.url.identifier) ||
+                       attachment.hasItemConformingToTypeIdentifier("public.url") {
+                        // URLs should be treated as text
+                        let typeIdentifier = attachment.hasItemConformingToTypeIdentifier(UTType.url.identifier) 
+                            ? UTType.url.identifier 
+                            : "public.url"
+                        
+                        NSLog("📤 [ShareExtension] Loading URL attachment with type: \(typeIdentifier)")
+                        attachment.loadItem(forTypeIdentifier: typeIdentifier, options: nil) { [weak self] (data, error) in
+                            defer { group.leave() }
+                            
+                            guard let self = self else {
+                                NSLog("🚫 [ShareExtension] self is nil in URL loading closure")
+                                return
+                            }
+                            
+                            if let error = error {
+                                NSLog("🚫 [ShareExtension] Error loading URL: \(error.localizedDescription)")
+                                return
+                            }
+                            
+                            // URL can come as URL object or String
+                            if let url = data as? URL {
+                                let urlString = url.absoluteString
+                                self.handleLoadedText(data: urlString as NSSecureCoding, error: nil)
+                                NSLog("📤 [ShareExtension] Loaded URL: \(urlString)")
+                            } else if let urlString = data as? String {
+                                self.handleLoadedText(data: urlString as NSSecureCoding, error: nil)
+                                NSLog("📤 [ShareExtension] Loaded URL string: \(urlString)")
+                            }
+                            self.processedCount += 1
+                        }
+                    } else if attachment.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) ||
                        attachment.hasItemConformingToTypeIdentifier("public.plain-text") {
                         // Try loading with plainText first, fallback to public.plain-text
                         let typeIdentifier = attachment.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) 
@@ -284,11 +324,30 @@ class ShareViewController: UIViewController {
                             defer { group.leave() }
                             
                             if let url = data as? URL {
-                                imageUrls.append(url.path)
+                                // Copy image to permanent location (app's documents directory)
+                                // The original URL might be in a temporary location that gets cleaned up
+                                if let copiedUrl = self?.copyImageToPermanentLocation(sourceUrl: url) {
+                                    imageUrls.append(copiedUrl.path)
+                                    hasImages = true
+                                    NSLog("📤 [ShareExtension] Image copied to permanent location: \(copiedUrl.path)")
+                                } else {
+                                    // Fallback: try to use original URL with security-scoped access
+                                    let _ = url.startAccessingSecurityScopedResource()
+                                    defer { url.stopAccessingSecurityScopedResource() }
+                                    if FileManager.default.fileExists(atPath: url.path) {
+                                        imageUrls.append(url.path)
+                                        hasImages = true
+                                        NSLog("📤 [ShareExtension] Using original image URL: \(url.path)")
+                                    } else {
+                                        NSLog("🚫 [ShareExtension] Image file does not exist at: \(url.path)")
+                                    }
+                                }
                                 self?.processedCount += 1
                             } else if let imageData = data as? Data {
                                 if let tempUrl = self?.saveToTemp(data: imageData, extension: "jpg") {
                                     imageUrls.append(tempUrl.path)
+                                    hasImages = true
+                                    NSLog("📤 [ShareExtension] Image saved from data to: \(tempUrl.path)")
                                 }
                                 self?.processedCount += 1
                             }
@@ -298,7 +357,24 @@ class ShareViewController: UIViewController {
                             defer { group.leave() }
                             
                             if let url = data as? URL {
-                                videoUrls.append(url.path)
+                                // Copy video to permanent location (app's documents directory)
+                                // The original URL might be in a temporary location that gets cleaned up
+                                if let copiedUrl = self?.copyVideoToPermanentLocation(sourceUrl: url) {
+                                    videoUrls.append(copiedUrl.path)
+                                    hasVideos = true
+                                    NSLog("📤 [ShareExtension] Video copied to permanent location: \(copiedUrl.path)")
+                                } else {
+                                    // Fallback: try to use original URL with security-scoped access
+                                    let _ = url.startAccessingSecurityScopedResource()
+                                    defer { url.stopAccessingSecurityScopedResource() }
+                                    if FileManager.default.fileExists(atPath: url.path) {
+                                        videoUrls.append(url.path)
+                                        hasVideos = true
+                                        NSLog("📤 [ShareExtension] Using original video URL: \(url.path)")
+                                    } else {
+                                        NSLog("🚫 [ShareExtension] Video file does not exist at: \(url.path)")
+                                    }
+                                }
                                 self?.processedCount += 1
                             }
                         }
@@ -307,16 +383,38 @@ class ShareViewController: UIViewController {
                             defer { group.leave() }
                             
                             if let url = data as? URL {
-                                if let tempUrl = self?.copyToTemp(url: url, extension: "vcf") {
-                                    documentUrl = tempUrl.path
+                                // Copy contact to permanent location
+                                if let copiedUrl = self?.copyDocumentToPermanentLocation(sourceUrl: url, extension: "vcf") {
+                                    documentUrl = copiedUrl.path
                                     documentName = url.lastPathComponent
                                     contentType = "contact"
+                                    hasContacts = true
+                                    NSLog("📤 [ShareExtension] Contact copied to permanent location: \(copiedUrl.path)")
+                                } else {
+                                    // Fallback: use temp location
+                                    if let tempUrl = self?.copyToTemp(url: url, extension: "vcf") {
+                                        documentUrl = tempUrl.path
+                                        documentName = url.lastPathComponent
+                                        contentType = "contact"
+                                        hasContacts = true
+                                    }
                                 }
                             } else if let vCardData = data as? Data {
-                                if let tempUrl = self?.saveToTemp(data: vCardData, extension: "vcf") {
-                                    documentUrl = tempUrl.path
+                                // Save contact data to permanent location
+                                if let copiedUrl = self?.saveDocumentDataToPermanentLocation(data: vCardData, extension: "vcf", fileName: "contact.vcf") {
+                                    documentUrl = copiedUrl.path
                                     documentName = "contact.vcf"
                                     contentType = "contact"
+                                    hasContacts = true
+                                    NSLog("📤 [ShareExtension] Contact data saved to permanent location: \(copiedUrl.path)")
+                                } else {
+                                    // Fallback: use temp location
+                                    if let tempUrl = self?.saveToTemp(data: vCardData, extension: "vcf") {
+                                        documentUrl = tempUrl.path
+                                        documentName = "contact.vcf"
+                                        contentType = "contact"
+                                        hasContacts = true
+                                    }
                                 }
                             }
                             self?.processedCount += 1
@@ -326,10 +424,22 @@ class ShareViewController: UIViewController {
                             defer { group.leave() }
                             
                             if let url = data as? URL {
-                                if let tempUrl = self?.copyToTemp(url: url, extension: url.pathExtension) {
-                                    documentUrl = tempUrl.path
+                                // Copy document to permanent location
+                                let fileExtension = url.pathExtension.isEmpty ? "bin" : url.pathExtension
+                                if let copiedUrl = self?.copyDocumentToPermanentLocation(sourceUrl: url, extension: fileExtension) {
+                                    documentUrl = copiedUrl.path
                                     documentName = url.lastPathComponent
                                     contentType = "document"
+                                    hasDocuments = true
+                                    NSLog("📤 [ShareExtension] Document copied to permanent location: \(copiedUrl.path)")
+                                } else {
+                                    // Fallback: use temp location
+                                    if let tempUrl = self?.copyToTemp(url: url, extension: fileExtension) {
+                                        documentUrl = tempUrl.path
+                                        documentName = url.lastPathComponent
+                                        contentType = "document"
+                                        hasDocuments = true
+                                    }
                                 }
                             }
                             self?.processedCount += 1
@@ -347,12 +457,9 @@ class ShareViewController: UIViewController {
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 let finalTextData = textData
-                if finalTextData != nil {
-                    self.saveAndOpenApp(contentType: "text", imageUrls: [], videoUrls: [], documentUrl: nil, documentName: nil, textData: finalTextData)
-                } else {
-                    NSLog("🚫 [ShareExtension] No text data available")
-                    self.openMainApp()
-                }
+                // Even if textData is empty, save it as text type (URLs might be in attributedContentText)
+                // This ensures the contact screen is shown
+                self.saveAndOpenApp(contentType: "text", imageUrls: [], videoUrls: [], documentUrl: nil, documentName: nil, textData: finalTextData ?? "")
             }
         } else {
             group.notify(queue: .main) { [weak self] in
@@ -382,8 +489,18 @@ class ShareViewController: UIViewController {
                 }
                 
                 // Determine content type
+                // Check for mixed content types (images + videos + documents) - treat as documents
+                let typeCount = (hasImages ? 1 : 0) + (hasVideos ? 1 : 0) + (hasDocuments ? 1 : 0) + (hasContacts ? 1 : 0)
+                let isMixedSelection = typeCount > 1
+                
                 var finalContentType = contentType
-                if !imageUrls.isEmpty {
+                if isMixedSelection {
+                    // Mixed selection (images + videos, images + documents, videos + documents, or all)
+                    // Treat as documents (matching Android behavior)
+                    finalContentType = "document"
+                    NSLog("📤 [ShareExtension] Mixed content types detected - treating as document")
+                    NSLog("📤 [ShareExtension] Has images: \(hasImages), Has videos: \(hasVideos), Has documents: \(hasDocuments), Has contacts: \(hasContacts)")
+                } else if !imageUrls.isEmpty {
                     finalContentType = "image"
                 } else if !videoUrls.isEmpty {
                     finalContentType = "video"
@@ -394,24 +511,51 @@ class ShareViewController: UIViewController {
                 }
                 
                 NSLog("📤 [ShareExtension] Content type determined: \(finalContentType)")
+                if isMixedSelection {
+                    NSLog("📤 [ShareExtension] Mixed selection detected - treating as documents")
+                    NSLog("📤 [ShareExtension] Images: \(imageUrls.count), Videos: \(videoUrls.count), Documents: \(documentUrl != nil ? "1" : "0")")
+                }
+                
+                // For mixed selections, combine all URLs into documentUrl (use first available)
+                var finalDocumentUrl = documentUrl
+                var finalDocumentName = documentName
+                
+                if isMixedSelection {
+                    // Combine all files - use first image, video, or document as the primary document
+                    if let firstImage = imageUrls.first {
+                        finalDocumentUrl = firstImage
+                        finalDocumentName = URL(fileURLWithPath: firstImage).lastPathComponent
+                        NSLog("📤 [ShareExtension] Mixed selection - using first image as document: \(firstImage)")
+                    } else if let firstVideo = videoUrls.first {
+                        finalDocumentUrl = firstVideo
+                        finalDocumentName = URL(fileURLWithPath: firstVideo).lastPathComponent
+                        NSLog("📤 [ShareExtension] Mixed selection - using first video as document: \(firstVideo)")
+                    } else if let docUrl = documentUrl {
+                        finalDocumentUrl = docUrl
+                        finalDocumentName = documentName
+                        NSLog("📤 [ShareExtension] Mixed selection - using document: \(docUrl)")
+                    }
+                    
+                    // Clear imageUrls and videoUrls for mixed selection (treated as documents)
+                    // Note: The main app will handle this as a document type
+                }
+                
                 NSLog("📤 [ShareExtension] Final text data length: \(finalTextData?.count ?? 0) chars")
                 NSLog("📤 [ShareExtension] Final text preview: \(finalTextData?.prefix(50) ?? "nil")...")
                 fputs("📤 Content type: \(finalContentType)\n", stderr)
                 fflush(stderr)
                 
-                if finalTextData == nil || finalTextData!.isEmpty {
-                    NSLog("🚫 [ShareExtension] No text data after processing - opening app anyway")
-                    self.openMainApp()
-                } else {
-                    self.saveAndOpenApp(
-                        contentType: finalContentType,
-                        imageUrls: imageUrls,
-                        videoUrls: videoUrls,
-                        documentUrl: documentUrl,
-                        documentName: documentName,
-                        textData: finalTextData
-                    )
-                }
+                // Always save and open app, even if textData is empty
+                // This ensures contact screen is shown for all content types
+                // Empty text might occur with URLs or other edge cases
+                self.saveAndOpenApp(
+                    contentType: finalContentType,
+                    imageUrls: isMixedSelection ? [] : imageUrls, // Clear for mixed selection
+                    videoUrls: isMixedSelection ? [] : videoUrls, // Clear for mixed selection
+                    documentUrl: finalDocumentUrl,
+                    documentName: finalDocumentName,
+                    textData: finalTextData ?? ""
+                )
             }
         }
     }
@@ -625,6 +769,133 @@ class ShareViewController: UIViewController {
             return fileURL
         } catch {
             print("🚫 Error copying to temp: \(error)")
+            return nil
+        }
+    }
+    
+    // Copy image to permanent location in app's documents directory
+    func copyImageToPermanentLocation(sourceUrl: URL) -> URL? {
+        return copyFileToPermanentLocation(sourceUrl: sourceUrl, subdirectory: "SharedImages", defaultExtension: "jpg")
+    }
+    
+    // Copy video to permanent location in app's documents directory
+    func copyVideoToPermanentLocation(sourceUrl: URL) -> URL? {
+        return copyFileToPermanentLocation(sourceUrl: sourceUrl, subdirectory: "SharedVideos", defaultExtension: "mp4")
+    }
+    
+    // Copy document to permanent location in app's documents directory
+    func copyDocumentToPermanentLocation(sourceUrl: URL, extension ext: String) -> URL? {
+        return copyFileToPermanentLocation(sourceUrl: sourceUrl, subdirectory: "SharedDocuments", defaultExtension: ext)
+    }
+    
+    // Save document data to permanent location
+    func saveDocumentDataToPermanentLocation(data: Data, extension ext: String, fileName: String) -> URL? {
+        // Use app group container for shared access between extension and main app
+        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.enclosure") else {
+            NSLog("🚫 [ShareExtension] Cannot access app group container, using documents directory")
+            // Fallback to documents directory
+            guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+                return nil
+            }
+            let documentsDir = documentsURL.appendingPathComponent("SharedDocuments", isDirectory: true)
+            try? FileManager.default.createDirectory(at: documentsDir, withIntermediateDirectories: true)
+            let fileURL = documentsDir.appendingPathComponent(fileName)
+            
+            do {
+                if FileManager.default.fileExists(atPath: fileURL.path) {
+                    try FileManager.default.removeItem(at: fileURL)
+                }
+                try data.write(to: fileURL)
+                NSLog("✅ [ShareExtension] Document data saved to documents: \(fileURL.path)")
+                return fileURL
+            } catch {
+                NSLog("🚫 [ShareExtension] Error saving document data to documents: \(error.localizedDescription)")
+                return nil
+            }
+        }
+        
+        // Use app group container
+        let documentsDir = containerURL.appendingPathComponent("SharedDocuments", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: documentsDir, withIntermediateDirectories: true)
+        } catch {
+            NSLog("🚫 [ShareExtension] Error creating SharedDocuments directory: \(error.localizedDescription)")
+        }
+        
+        let fileURL = documentsDir.appendingPathComponent(fileName)
+        
+        do {
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                try FileManager.default.removeItem(at: fileURL)
+            }
+            try data.write(to: fileURL)
+            NSLog("✅ [ShareExtension] Document data saved to app group container: \(fileURL.path)")
+            return fileURL
+        } catch {
+            NSLog("🚫 [ShareExtension] Error saving document data: \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
+    // Generic function to copy file to permanent location
+    private func copyFileToPermanentLocation(sourceUrl: URL, subdirectory: String, defaultExtension: String) -> URL? {
+        // Use app group container for shared access between extension and main app
+        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.enclosure") else {
+            NSLog("🚫 [ShareExtension] Cannot access app group container, using documents directory")
+            // Fallback to documents directory
+            guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+                return nil
+            }
+            let targetDir = documentsURL.appendingPathComponent(subdirectory, isDirectory: true)
+            try? FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)
+            let fileExtension = sourceUrl.pathExtension.isEmpty ? defaultExtension : sourceUrl.pathExtension
+            let fileName = UUID().uuidString + ".\(fileExtension)"
+            let destinationURL = targetDir.appendingPathComponent(fileName)
+            
+            do {
+                // Start accessing security-scoped resource if needed
+                let _ = sourceUrl.startAccessingSecurityScopedResource()
+                defer { sourceUrl.stopAccessingSecurityScopedResource() }
+                
+                if FileManager.default.fileExists(atPath: destinationURL.path) {
+                    try FileManager.default.removeItem(at: destinationURL)
+                }
+                try FileManager.default.copyItem(at: sourceUrl, to: destinationURL)
+                NSLog("✅ [ShareExtension] File copied to documents (\(subdirectory)): \(destinationURL.path)")
+                return destinationURL
+            } catch {
+                NSLog("🚫 [ShareExtension] Error copying file to documents: \(error.localizedDescription)")
+                return nil
+            }
+        }
+        
+        // Use app group container
+        let targetDir = containerURL.appendingPathComponent(subdirectory, isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)
+        } catch {
+            NSLog("🚫 [ShareExtension] Error creating \(subdirectory) directory: \(error.localizedDescription)")
+        }
+        
+        let fileExtension = sourceUrl.pathExtension.isEmpty ? defaultExtension : sourceUrl.pathExtension
+        let fileName = UUID().uuidString + ".\(fileExtension)"
+        let destinationURL = targetDir.appendingPathComponent(fileName)
+        
+        do {
+            // Start accessing security-scoped resource if needed
+            let _ = sourceUrl.startAccessingSecurityScopedResource()
+            defer { sourceUrl.stopAccessingSecurityScopedResource() }
+            
+            if FileManager.default.fileExists(atPath: destinationURL.path) {
+                try FileManager.default.removeItem(at: destinationURL)
+            }
+            try FileManager.default.copyItem(at: sourceUrl, to: destinationURL)
+            NSLog("✅ [ShareExtension] File copied to app group container (\(subdirectory)): \(destinationURL.path)")
+            return destinationURL
+        } catch {
+            NSLog("🚫 [ShareExtension] Error copying file: \(error.localizedDescription)")
+            NSLog("🚫 [ShareExtension] Source URL: \(sourceUrl.path)")
+            NSLog("🚫 [ShareExtension] Source exists: \(FileManager.default.fileExists(atPath: sourceUrl.path))")
             return nil
         }
     }

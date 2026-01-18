@@ -1481,10 +1481,17 @@ struct MainActivityOld: View {
             sharedContent = SharedContent(type: .text)
             sharedContent.textData = text
             print("📤 [MainActivityOld] Found text: \(text.prefix(50))...")
+            // Even if text is empty, still show contact screen (user might want to add caption)
+            // This handles cases where URLs or other text might be empty initially
             
         default:
             print("⚠️ [MainActivityOld] Unknown content type: \(contentType)")
-            return
+            // Don't return - still show contact screen even for unknown types
+            // Create a text type as fallback
+            let text = textData ?? ""
+            sharedContent = SharedContent(type: .text)
+            sharedContent.textData = text
+            print("📤 [MainActivityOld] Fallback: Created text content with: \(text.prefix(50))...")
         }
         
         // Clear shared content from UserDefaults (if it exists)
