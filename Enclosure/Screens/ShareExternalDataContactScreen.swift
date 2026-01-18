@@ -109,17 +109,17 @@ struct ShareExternalDataContactScreen: View {
                     // layout_marginTop="20dp" padding="8dp" layout_weight="1" layout_marginEnd="10dp"
                     HStack(alignment: .center, spacing: 0) {
                         // Blue indicator line (matching Android viewnewnn)
-                        Rectangle()
-                            .fill(Color("blue"))
+                    Rectangle()
+                        .fill(Color("blue"))
                             .frame(width: 1, height: 19.24) // layout_height="19.24dp"
                             .padding(.leading, 23) // layout_marginStart="23dp"
-                        
+                    
                         // Search field (matching Android searchview AutoCompleteTextView)
                         HStack(alignment: .center, spacing: 0) {
-                            TextField("Search Name", text: $searchText)
+                    TextField("Search Name", text: $searchText)
                                 .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp"
-                                .foregroundColor(Color("TextColor"))
-                                .focused($isSearchFocused)
+                        .foregroundColor(Color("TextColor"))
+                        .focused($isSearchFocused)
                                 .lineSpacing(0) // lineHeight="22.5dp"
                                 .padding(.leading, 13) // layout_marginStart="13dp"
                             
@@ -127,48 +127,48 @@ struct ShareExternalDataContactScreen: View {
                             
                             // Search icon (matching Android searchIcon)
                             // layout_weight="3.9" layout_gravity="end|center_vertical"
-                            Image("search")
+                    Image("search")
                                 .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
+                        .resizable()
+                        .scaledToFit()
                                 .frame(width: 20, height: 20) // layout_width="20dp" layout_height="20dp"
                                 .foregroundColor(Color("TextColor"))
-                        }
+                }
                         .frame(maxWidth: .infinity) // layout_weight="1"
-                    }
+            }
                     .padding(.top, 20) // layout_marginTop="20dp"
                     .padding(.leading, 8) // padding="8dp" (left only)
                     .padding(.trailing, 20) // Same right spacing as checkbox (20dp)
-                }
+        }
                 .padding(.horizontal, 0)
-                
+    
                 // Contact List (matching Android recyclerview in FrameLayout)
                 // FrameLayout: layout_below="@+id/searchlyt" layout_above="@id/dx" layout_marginTop="15dp"
-                ScrollView {
-                    LazyVStack(spacing: 0) {
+        ScrollView {
+            LazyVStack(spacing: 0) {
                         if isLoading && filteredContacts.isEmpty {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                                .padding(.top, 50)
-                        } else if filteredContacts.isEmpty {
-                            Text("No contacts found")
-                                .font(.custom("Inter18pt-Regular", size: 16))
-                                .foregroundColor(Color("gray3"))
-                                .frame(maxWidth: .infinity)
-                                .padding(.top, 50)
-                        } else {
-                            ForEach(filteredContacts) { contact in
-                                ShareContactRowView(
-                                    contact: contact,
-                                    isSelected: selectedContactIds.contains(contact.uid),
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 50)
+                } else if filteredContacts.isEmpty {
+                    Text("No contacts found")
+                        .font(.custom("Inter18pt-Regular", size: 16))
+                        .foregroundColor(Color("gray3"))
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 50)
+                } else {
+                    ForEach(filteredContacts) { contact in
+                        ShareContactRowView(
+                            contact: contact,
+                            isSelected: selectedContactIds.contains(contact.uid),
                                     canSelect: true, // Always allow selection for share
-                                    onTap: {
-                                        toggleSelection(for: contact)
-                                    }
-                                )
+                            onTap: {
+                                toggleSelection(for: contact)
                             }
-                        }
+                        )
                     }
+                }
+            }
                 }
                 .padding(.top, 15) // layout_marginTop="15dp" on FrameLayout
                 
@@ -177,18 +177,18 @@ struct ShareExternalDataContactScreen: View {
                 // Bottom bar (matching Android dx LinearLayout)
                 // layout_height="60dp" background="@drawable/rect" backgroundTint="@color/dxForward"
                 if !selectedContactIds.isEmpty {
-                    HStack(spacing: 0) {
+        HStack(spacing: 0) {
                         // Selected contacts names (matching Android namerecyclerview with forwardnameAdapter)
                         // Infinite width, keep left to the icon
                         // layout_marginStart="15dp" layout_marginEnd="5dp"
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 0) {
-                                ForEach(Array(selectedContacts.enumerated()), id: \.element.uid) { index, contact in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 0) {
+                    ForEach(Array(selectedContacts.enumerated()), id: \.element.uid) { index, contact in
                                     // Each name displayed as separate item (matching forwardname_row.xml)
                                     Text(displaySelectedContactName(contact: contact, index: index, total: selectedContacts.count))
                                         .font(.custom("Inter18pt-Medium", size: 13)) // textSize="13sp" fontFamily="@font/inter_medium"
                                         .foregroundColor(Color("gray3")) // textColor="@color/gray3"
-                                        .lineLimit(1)
+                                .lineLimit(1)
                                         .fixedSize(horizontal: true, vertical: false) // wrap_content width
                                 }
                             }
@@ -211,20 +211,20 @@ struct ShareExternalDataContactScreen: View {
                         // android:layout_width="match_parent" android:layout_height="match_parent"
                         // android:layout_marginTop="11dp" android:layout_marginBottom="7dp"
                         // android:background="@drawable/forbg"
-                        Button(action: {
-                            handleShare()
-                        }) {
-                            if isSharing {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: Color("whitetogray")))
+            Button(action: {
+                handleShare()
+            }) {
+                if isSharing {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: Color("whitetogray")))
                                     .frame(maxWidth: .infinity)
                                     .frame(maxHeight: .infinity)
-                            } else {
+                } else {
                                 // TextView inside richBox (matching Android forward TextView)
                                 // android:layout_width="match_parent" android:layout_height="wrap_content"
                                 // android:layout_gravity="center" android:gravity="center"
                                 // android:layout_marginStart="15dp"
-                                Text("Share")
+                    Text("Share")
                                     .font(.custom("Inter18pt-Regular", size: 16)) // android:fontFamily="@font/inter" android:textSize="16sp"
                                     .fontWeight(.bold) // android:textStyle="bold"
                                     .foregroundColor(Color("whitetogray")) // android:textColor="@color/whitetogray"
@@ -235,7 +235,7 @@ struct ShareExternalDataContactScreen: View {
                         }
                         .buttonStyle(PlainButtonStyle())
                         .frame(width: 80) // Fixed width 80px
-                        .background(
+            .background(
                             // Background using original forbg asset from drawable (trapezoidal shape with angled left edge)
                             Image("forbg")
                                 .resizable()
@@ -243,8 +243,8 @@ struct ShareExternalDataContactScreen: View {
                         )
                         .padding(.top, 11) // android:layout_marginTop="11dp"
                         .padding(.bottom, 7) // android:layout_marginBottom="7dp"
-                        .disabled(isSharing)
-                    }
+            .disabled(isSharing)
+        }
                     .frame(height: 60) // layout_height="60dp"
                     .background(
                         // Background matching Android @drawable/rect with @color/dxForward tint
@@ -517,7 +517,7 @@ struct ShareExternalDataContactScreen: View {
                         // If sending to single contact, navigate to ChattingScreen (matching Android behavior)
                         if selectedContacts.count == 1, let firstContact = selectedContacts.first {
                             // Navigate to chat screen for single contact
-                            self.dismiss()
+                        self.dismiss()
                             // Small delay to ensure dismiss completes before navigation
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                 onNavigateToChat?(firstContact)
@@ -535,7 +535,7 @@ struct ShareExternalDataContactScreen: View {
     private func sendImagesToContacts(selectedContacts: [UserActiveContactModel], caption: String = "") {
         guard !sharedContent.imageUrls.isEmpty else {
             Constant.showToast(message: "No images to share")
-            isSharing = false
+        isSharing = false
             return
         }
         
@@ -560,11 +560,15 @@ struct ShareExternalDataContactScreen: View {
         var failedMessages = 0
         
         // Send each image to each contact
+        // Only first image gets caption (matching Android/MultiDocumentPreviewDialog behavior)
         for (contactIndex, contact) in selectedContacts.enumerated() {
             for (imageIndex, imageUrl) in sharedContent.imageUrls.enumerated() {
                 totalMessages += 1
                 let modelId = UUID().uuidString
                 let fileName = "\(modelId).jpg"
+                
+                // Only first image gets caption (matching MultiDocumentPreviewDialog: index == 0)
+                let imageCaption = (imageIndex == 0) ? trimmedCaption : ""
                 
                 // Create message (matching Android sendMultiImages logic)
                 let chatMessage = ChatMessage(
@@ -592,7 +596,7 @@ struct ShareExternalDataContactScreen: View {
                     fileName: fileName,
                     thumbnail: nil,
                     fileNameThumbnail: nil,
-                    caption: trimmedCaption.isEmpty ? nil : trimmedCaption,
+                    caption: imageCaption.isEmpty ? nil : imageCaption,
                     notification: 1,
                     currentDate: currentDateString,
                     emojiModel: nil,
@@ -609,6 +613,13 @@ struct ShareExternalDataContactScreen: View {
                     linkImageUrl: nil,
                     favIconUrl: nil
                 )
+                
+                // Save image to local storage BEFORE upload (matching ChattingScreen)
+                // This prevents download icon from showing for sender
+                // The file is already local, so we can save it immediately
+                if let imageData = try? Data(contentsOf: imageUrl) {
+                    self.saveImageToLocalStorage(data: imageData, fileName: fileName)
+                }
                 
                 // Store in SQLite
                 DatabaseHelper.shared.insertPendingMessage(chatMessage)
@@ -652,7 +663,7 @@ struct ShareExternalDataContactScreen: View {
     private func sendVideosToContacts(selectedContacts: [UserActiveContactModel], caption: String = "") {
         guard !sharedContent.videoUrls.isEmpty else {
             Constant.showToast(message: "No videos to share")
-            isSharing = false
+        isSharing = false
             return
         }
         
@@ -677,11 +688,15 @@ struct ShareExternalDataContactScreen: View {
         var failedMessages = 0
         
         // Send each video to each contact
+        // Only first video gets caption (matching Android/MultiDocumentPreviewDialog behavior)
         for (contactIndex, contact) in selectedContacts.enumerated() {
             for (videoIndex, videoUrl) in sharedContent.videoUrls.enumerated() {
                 totalMessages += 1
                 let modelId = UUID().uuidString
                 let fileName = "\(modelId).mp4"
+                
+                // Only first video gets caption (matching MultiDocumentPreviewDialog: index == 0)
+                let videoCaption = (videoIndex == 0) ? trimmedCaption : ""
                 
                 // Create message (matching Android sendMultiVideos logic)
                 let chatMessage = ChatMessage(
@@ -709,7 +724,7 @@ struct ShareExternalDataContactScreen: View {
                     fileName: fileName,
                     thumbnail: nil,
                     fileNameThumbnail: nil,
-                    caption: trimmedCaption.isEmpty ? nil : trimmedCaption,
+                    caption: videoCaption.isEmpty ? nil : videoCaption,
                     notification: 1,
                     currentDate: currentDateString,
                     emojiModel: nil,
@@ -726,6 +741,13 @@ struct ShareExternalDataContactScreen: View {
                     linkImageUrl: nil,
                     favIconUrl: nil
                 )
+                
+                // Save video to local storage BEFORE upload (matching ChattingScreen)
+                // This prevents download icon from showing for sender
+                // The file is already local, so we can save it immediately
+                if let videoData = try? Data(contentsOf: videoUrl) {
+                    self.saveVideoToLocalStorage(data: videoData, fileName: fileName)
+                }
                 
                 // Store in SQLite
                 DatabaseHelper.shared.insertPendingMessage(chatMessage)
@@ -769,7 +791,7 @@ struct ShareExternalDataContactScreen: View {
     private func sendDocumentsToContacts(selectedContacts: [UserActiveContactModel], caption: String = "") {
         guard let documentUrl = sharedContent.documentUrl else {
             Constant.showToast(message: "No document to share")
-            isSharing = false
+        isSharing = false
             return
         }
         
@@ -850,6 +872,11 @@ struct ShareExternalDataContactScreen: View {
                 linkImageUrl: nil,
                 favIconUrl: nil
             )
+            
+            // Save document to local storage BEFORE upload (matching ChattingScreen)
+            // This prevents download icon from showing for sender
+            // The file is already local, so we can save it immediately
+            self.saveDocumentToLocalStorage(documentURL: documentUrl, fileName: fileName)
             
             // Store in SQLite
             DatabaseHelper.shared.insertPendingMessage(chatMessage)
@@ -995,6 +1022,98 @@ struct ShareExternalDataContactScreen: View {
             }
         }
     }
+    
+    // MARK: - Local Storage Functions (matching ChattingScreen)
+    
+    /// Get local images directory path (matching Android Enclosure/Media/Images)
+    private func getLocalImagesDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let imagesDir = documentsPath.appendingPathComponent("Enclosure/Media/Images", isDirectory: true)
+        try? FileManager.default.createDirectory(at: imagesDir, withIntermediateDirectories: true, attributes: nil)
+        return imagesDir
+    }
+    
+    /// Save image to local storage (matching Android file saving logic)
+    private func saveImageToLocalStorage(data: Data, fileName: String) {
+        let imagesDir = getLocalImagesDirectory()
+        let fileURL = imagesDir.appendingPathComponent(fileName)
+        
+        // Check if file already exists (matching Android doesFileExist check)
+        guard !FileManager.default.fileExists(atPath: fileURL.path) else {
+            print("📱 [LOCAL_STORAGE] Image already exists locally: \(fileName)")
+            return
+        }
+        
+        do {
+            try data.write(to: fileURL, options: .atomic)
+            print("📱 [LOCAL_STORAGE] ✅ Saved image to local storage")
+            print("📱 [LOCAL_STORAGE] File: \(fileName)")
+            print("📱 [LOCAL_STORAGE] File Path: \(fileURL.path)")
+            print("📱 [LOCAL_STORAGE] Size: \(data.count) bytes (\(String(format: "%.2f", Double(data.count) / 1024.0)) KB)")
+        } catch {
+            print("🚫 [LOCAL_STORAGE] Error saving image to local storage: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Get local videos directory path (matching Android Enclosure/Media/Videos)
+    private func getLocalVideosDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let videosDir = documentsPath.appendingPathComponent("Enclosure/Media/Videos", isDirectory: true)
+        try? FileManager.default.createDirectory(at: videosDir, withIntermediateDirectories: true, attributes: nil)
+        return videosDir
+    }
+    
+    /// Save video to local storage (matching Android file saving logic)
+    private func saveVideoToLocalStorage(data: Data, fileName: String) {
+        let videosDir = getLocalVideosDirectory()
+        let fileURL = videosDir.appendingPathComponent(fileName)
+        
+        // Check if file already exists (matching Android doesFileExist check)
+        guard !FileManager.default.fileExists(atPath: fileURL.path) else {
+            print("📱 [LOCAL_STORAGE] Video already exists locally: \(fileName)")
+            return
+        }
+        
+        do {
+            try data.write(to: fileURL, options: .atomic)
+            print("📱 [LOCAL_STORAGE] ✅ Saved video to local storage")
+            print("📱 [LOCAL_STORAGE] File: \(fileName)")
+            print("📱 [LOCAL_STORAGE] File Path: \(fileURL.path)")
+            print("📱 [LOCAL_STORAGE] Size: \(data.count) bytes (\(String(format: "%.2f", Double(data.count) / 1024.0 / 1024.0)) MB)")
+        } catch {
+            print("🚫 [LOCAL_STORAGE] Error saving video to local storage: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Get local documents directory path (matching Android Enclosure/Media/Documents)
+    private func getLocalDocumentsDirectory() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let docsDir = documentsPath.appendingPathComponent("Enclosure/Media/Documents", isDirectory: true)
+        try? FileManager.default.createDirectory(at: docsDir, withIntermediateDirectories: true, attributes: nil)
+        return docsDir
+    }
+    
+    /// Save document to local storage (matching Android file saving logic)
+    private func saveDocumentToLocalStorage(documentURL: URL, fileName: String) {
+        let docsDir = getLocalDocumentsDirectory()
+        let destinationURL = docsDir.appendingPathComponent(fileName)
+        
+        // Check if file already exists
+        guard !FileManager.default.fileExists(atPath: destinationURL.path) else {
+            print("📱 [LOCAL_STORAGE] Document already exists locally: \(fileName)")
+            return
+        }
+        
+        // Copy file to local storage
+        do {
+            try FileManager.default.copyItem(at: documentURL, to: destinationURL)
+            print("📱 [LOCAL_STORAGE] ✅ Saved document to local storage")
+            print("📱 [LOCAL_STORAGE] File: \(fileName)")
+            print("📱 [LOCAL_STORAGE] File Path: \(destinationURL.path)")
+        } catch {
+            print("❌ [LOCAL_STORAGE] Failed to save document: \(error.localizedDescription)")
+        }
+    }
 }
 
 // MARK: - Share Contact Row View (matching Android forward_layout_row.xml)
@@ -1018,7 +1137,7 @@ struct ShareContactRowView: View {
         Button(action: {
             if canSelect {
                 withAnimation(.easeInOut(duration: 0.2)) {
-                    onTap()
+            onTap()
                 }
             }
         }) {
@@ -1041,12 +1160,12 @@ struct ShareContactRowView: View {
                 // Name (matching Android contact1text)
                 // fontFamily="@font/inter_bold" textSize="16sp" textFontWeight="600"
                 Text(displayName)
-                    .font(.custom("Inter18pt-Bold", size: 16))
-                    .fontWeight(.semibold)
-                    .foregroundColor(Color("TextColor"))
-                    .lineLimit(1)
+                        .font(.custom("Inter18pt-Bold", size: 16))
+                        .fontWeight(.semibold)
+                        .foregroundColor(Color("TextColor"))
+                        .lineLimit(1)
                     .lineSpacing(0) // lineHeight="18dp"
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 
                 Spacer()
                 

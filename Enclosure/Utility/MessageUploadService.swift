@@ -63,6 +63,8 @@ class MessageUploadService {
                 multipartFormData.append(Data((model.phone ?? "").utf8), withName: "phone")
                 multipartFormData.append(Data((model.micPhoto ?? "").utf8), withName: "micPhoto")
                 multipartFormData.append(Data((model.miceTiming ?? "").utf8), withName: "miceTiming")
+                multipartFormData.append(Data((model.caption ?? "").utf8), withName: "caption")
+                multipartFormData.append(Data((model.selectionCount ?? "1").utf8), withName: "selection_count")
                 multipartFormData.append(Data(userFTokenKey.utf8), withName: "fTokenKey")
                 
                 // Handle upload_docs (matching Android logic)
