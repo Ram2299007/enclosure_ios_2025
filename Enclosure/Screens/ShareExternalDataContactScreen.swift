@@ -93,7 +93,7 @@ struct ShareExternalDataContactScreen: View {
                             .padding(.leading, 21) // layout_marginStart="21dp"
                         
                         Spacer()
-                    }
+        }
                     .padding(.top, 20) // layout_marginTop="20dp"
                     .padding(.trailing, 17) // layout_marginEnd="17dp"
                     
@@ -122,7 +122,7 @@ struct ShareExternalDataContactScreen: View {
                         .focused($isSearchFocused)
                                 .lineSpacing(0) // lineHeight="22.5dp"
                                 .padding(.leading, 13) // layout_marginStart="13dp"
-                            
+                
                             Spacer()
                             
                             // Search icon (matching Android searchIcon)
@@ -240,7 +240,7 @@ struct ShareExternalDataContactScreen: View {
                             Image("forbg")
                                 .resizable()
                                 .scaledToFill()
-                        )
+            )
                         .padding(.top, 11) // android:layout_marginTop="11dp"
                         .padding(.bottom, 7) // android:layout_marginBottom="7dp"
             .disabled(isSharing)

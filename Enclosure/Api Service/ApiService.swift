@@ -435,6 +435,23 @@ class ApiService {
                         
                         print("🟢 [ApiService] Decoded - errorCode: '\(decoded.errorCode)', message: '\(decoded.message)', data count: \(chatList.count)")
                         
+                        // Print detailed contact information including FCM tokens
+                        print("🟢 [ApiService] ===== CONTACT LIST DETAILS =====")
+                        for (index, contact) in chatList.enumerated() {
+                            print("🟢 [ApiService] Contact #\(index + 1):")
+                            print("🟢 [ApiService]   - UID: \(contact.uid)")
+                            print("🟢 [ApiService]   - Full Name: \(contact.fullName)")
+                            print("🟢 [ApiService]   - Mobile No: \(contact.mobileNo)")
+                            print("🟢 [ApiService]   - FCM Token (fToken): \(contact.fToken.isEmpty ? "EMPTY" : "\(contact.fToken.prefix(50))...")")
+                            print("🟢 [ApiService]   - FCM Token Full: \(contact.fToken)")
+                            print("🟢 [ApiService]   - Device Type: \(contact.deviceType)")
+                            print("🟢 [ApiService]   - Notification: \(contact.notification)")
+                            print("🟢 [ApiService]   - Data Type: \(contact.dataType)")
+                            print("🟢 [ApiService]   - Message: \(contact.message)")
+                            print("🟢 [ApiService]   - Sent Time: \(contact.sentTime)")
+                        }
+                        print("🟢 [ApiService] ===== END CONTACT LIST =====")
+                        
                         // Treat "Data not found" as success with empty data, not an error
                         if decoded.errorCode == "200" || message.contains("data not found") || message.contains("no data") {
                             // Success case: return empty array if no data
@@ -469,17 +486,29 @@ class ApiService {
                                 if let dataArray = json["data"] as? [[String: Any]] {
                                     print("🟢 [ApiService] Found data array with \(dataArray.count) items, attempting manual parsing")
                                     
-                                    for item in dataArray {
+                                    for (index, item) in dataArray.enumerated() {
                                         do {
                                             let itemData = try JSONSerialization.data(withJSONObject: item)
                                             let chatItem = try JSONDecoder().decode(UserActiveContactModel.self, from: itemData)
                                             parsedChatList.append(chatItem)
+                                            
+                                            // Print detailed contact information including FCM tokens
+                                            print("🟢 [ApiService] Parsed Contact #\(index + 1):")
+                                            print("🟢 [ApiService]   - UID: \(chatItem.uid)")
+                                            print("🟢 [ApiService]   - Full Name: \(chatItem.fullName)")
+                                            print("🟢 [ApiService]   - Mobile No: \(chatItem.mobileNo)")
+                                            print("🟢 [ApiService]   - FCM Token (fToken): \(chatItem.fToken.isEmpty ? "EMPTY" : "\(chatItem.fToken.prefix(50))...")")
+                                            print("🟢 [ApiService]   - FCM Token Full: \(chatItem.fToken)")
+                                            print("🟢 [ApiService]   - Device Type: \(chatItem.deviceType)")
+                                            print("🟢 [ApiService]   - Notification: \(chatItem.notification)")
                                         } catch {
-                                            print("🔴 [ApiService] Failed to parse individual item: \(error)")
+                                            print("🔴 [ApiService] Failed to parse individual item #\(index + 1): \(error)")
+                                            print("🔴 [ApiService] Item data: \(item)")
                                         }
                                     }
                                     
                                     print("🟢 [ApiService] Successfully parsed \(parsedChatList.count) items")
+                                    print("🟢 [ApiService] ===== END CONTACT LIST (Manual Parse) =====")
                                     completion(true, "", parsedChatList)
                                 } else {
                                     print("🟢 [ApiService] No data array found or empty - treating as SUCCESS with empty array")

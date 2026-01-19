@@ -335,7 +335,7 @@ class ShareViewController: UIViewController {
                                     let _ = url.startAccessingSecurityScopedResource()
                                     defer { url.stopAccessingSecurityScopedResource() }
                                     if FileManager.default.fileExists(atPath: url.path) {
-                                        imageUrls.append(url.path)
+                                imageUrls.append(url.path)
                                         hasImages = true
                                         NSLog("📤 [ShareExtension] Using original image URL: \(url.path)")
                                     } else {
@@ -368,7 +368,7 @@ class ShareViewController: UIViewController {
                                     let _ = url.startAccessingSecurityScopedResource()
                                     defer { url.stopAccessingSecurityScopedResource() }
                                     if FileManager.default.fileExists(atPath: url.path) {
-                                        videoUrls.append(url.path)
+                                videoUrls.append(url.path)
                                         hasVideos = true
                                         NSLog("📤 [ShareExtension] Using original video URL: \(url.path)")
                                     } else {
@@ -392,10 +392,10 @@ class ShareViewController: UIViewController {
                                     NSLog("📤 [ShareExtension] Contact copied to permanent location: \(copiedUrl.path)")
                                 } else {
                                     // Fallback: use temp location
-                                    if let tempUrl = self?.copyToTemp(url: url, extension: "vcf") {
-                                        documentUrl = tempUrl.path
-                                        documentName = url.lastPathComponent
-                                        contentType = "contact"
+                                if let tempUrl = self?.copyToTemp(url: url, extension: "vcf") {
+                                    documentUrl = tempUrl.path
+                                    documentName = url.lastPathComponent
+                                    contentType = "contact"
                                         hasContacts = true
                                     }
                                 }
@@ -409,10 +409,10 @@ class ShareViewController: UIViewController {
                                     NSLog("📤 [ShareExtension] Contact data saved to permanent location: \(copiedUrl.path)")
                                 } else {
                                     // Fallback: use temp location
-                                    if let tempUrl = self?.saveToTemp(data: vCardData, extension: "vcf") {
-                                        documentUrl = tempUrl.path
-                                        documentName = "contact.vcf"
-                                        contentType = "contact"
+                                if let tempUrl = self?.saveToTemp(data: vCardData, extension: "vcf") {
+                                    documentUrl = tempUrl.path
+                                    documentName = "contact.vcf"
+                                    contentType = "contact"
                                         hasContacts = true
                                     }
                                 }
@@ -435,9 +435,9 @@ class ShareViewController: UIViewController {
                                 } else {
                                     // Fallback: use temp location
                                     if let tempUrl = self?.copyToTemp(url: url, extension: fileExtension) {
-                                        documentUrl = tempUrl.path
-                                        documentName = url.lastPathComponent
-                                        contentType = "document"
+                                    documentUrl = tempUrl.path
+                                    documentName = url.lastPathComponent
+                                    contentType = "document"
                                         hasDocuments = true
                                     }
                                 }
@@ -480,7 +480,7 @@ class ShareViewController: UIViewController {
                 var finalTextData: String?
                 if let loaded = self.loadedTextData, !loaded.isEmpty {
                     // Use loaded text from attachment (more reliable and complete)
-                    finalTextData = loaded
+                        finalTextData = loaded
                     NSLog("📤 [ShareExtension] Using loaded text from attachment (\(loaded.count) chars)")
                 } else if let attributedText = textData, !attributedText.isEmpty {
                     // Fallback to attributedContentText if no attachment text was loaded
@@ -548,14 +548,14 @@ class ShareViewController: UIViewController {
                 // Always save and open app, even if textData is empty
                 // This ensures contact screen is shown for all content types
                 // Empty text might occur with URLs or other edge cases
-                self.saveAndOpenApp(
-                    contentType: finalContentType,
+                    self.saveAndOpenApp(
+                        contentType: finalContentType,
                     imageUrls: isMixedSelection ? [] : imageUrls, // Clear for mixed selection
                     videoUrls: isMixedSelection ? [] : videoUrls, // Clear for mixed selection
                     documentUrl: finalDocumentUrl,
                     documentName: finalDocumentName,
                     textData: finalTextData ?? ""
-                )
+                    )
             }
         }
     }

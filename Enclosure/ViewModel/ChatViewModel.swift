@@ -79,7 +79,18 @@ class ChatViewModel: ObservableObject {
                     self.errorMessage = nil // Clear error on success
                     self.hasCachedChats = !self.chatList.isEmpty
                     print("🔵 [ChatViewModel] SUCCESS - chatList count: \(self.chatList.count), errorMessage: \(self.errorMessage ?? "nil")")
+                    
+                    // Print FCM tokens for all contacts
+                    print("🔵 [ChatViewModel] ===== CONTACT FCM TOKENS =====")
+                    for (index, contact) in self.chatList.enumerated() {
+                        print("🔵 [ChatViewModel] Contact #\(index + 1) - UID: \(contact.uid), Name: \(contact.fullName)")
+                        print("🔵 [ChatViewModel]   FCM Token: \(contact.fToken.isEmpty ? "EMPTY" : contact.fToken)")
+                        print("🔵 [ChatViewModel]   FCM Token Preview: \(contact.fToken.isEmpty ? "EMPTY" : "\(contact.fToken.prefix(50))...")")
+                    }
+                    print("🔵 [ChatViewModel] ===== END FCM TOKENS =====")
+                    
                     self.cacheManager.cacheChats(self.chatList)
+                    print("🔵 [ChatViewModel] Contacts cached to SQLite database")
                 } else {
                     // Only set error message if message is not empty
                     self.errorMessage = message.isEmpty ? nil : message

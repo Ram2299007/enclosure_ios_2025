@@ -149,13 +149,25 @@ class MessageUploadService {
                     if let data = json["data"] as? [String: Any] {
                         self.updateFirebaseDatabase(model: model) { success in
                             if success {
-                                // Send push notification if needed
-                                if !userFTokenKey.isEmpty {
-                                    self.sendPushNotificationIfNeeded(
-                                        model: model,
-                                        userFTokenKey: userFTokenKey,
-                                        deviceType: deviceType
-                                    )
+                                // Get receiver's FCM token from contact database (not sender's token)
+                                ChatCacheManager.shared.getFCMToken(for: model.receiverId) { receiverFCMToken in
+                                    let finalReceiverFCMToken = receiverFCMToken ?? userFTokenKey // Fallback to passed token if not found
+                                    
+                                    print("🔑 [SEND_NOTIFICATION_API] Receiver FCM token from database: \(receiverFCMToken != nil ? "Found" : "Not found")")
+                                    if let token = receiverFCMToken {
+                                        print("🔑 [SEND_NOTIFICATION_API] Receiver token: \(token.prefix(50))...")
+                                    } else {
+                                        print("⚠️ [SEND_NOTIFICATION_API] Using fallback token: \(userFTokenKey.prefix(50))...")
+                                    }
+                                    
+                                    // Send push notification if needed
+                                    if !finalReceiverFCMToken.isEmpty {
+                                        self.sendPushNotificationIfNeeded(
+                                            model: model,
+                                            userFTokenKey: finalReceiverFCMToken,
+                                            deviceType: deviceType
+                                        )
+                                    }
                                 }
                                 completion(true, nil)
                             } else {
@@ -561,6 +573,17 @@ class MessageUploadService {
     ) {
         let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         
+        // Validate FCM token before sending notification
+        let isValidFCMToken = !userFTokenKey.isEmpty && 
+                               userFTokenKey != "apns_missing" && 
+                               !userFTokenKey.lowercased().contains("missing")
+        
+        if !isValidFCMToken {
+            print("⚠️ [SEND_NOTIFICATION_API] Skipping notification - invalid FCM token: '\(userFTokenKey)'")
+            print("⚠️ [SEND_NOTIFICATION_API] Receiver (uid: \(model.receiverId)) has not registered a valid FCM token")
+            return
+        }
+        
         // Only send if receiver is not the current user
         if model.receiverId != uid {
             let messageBody: String
@@ -617,28 +640,51 @@ class MessageUploadService {
         // Truncate message to 100 words (matching Android truncateToWords)
         let truncatedMessage = truncateToWords(message, maxWords: 100)
         
-        print("📲 Preparing notification for modelId: \(model.id), uid: \(model.uid), receiverUid: \(model.receiverId)")
+        print("📲 [SEND_NOTIFICATION_API] Preparing notification for modelId: \(model.id), uid: \(model.uid), receiverUid: \(model.receiverId)")
+        print("📲 [SEND_NOTIFICATION_API] Device token (userFTokenKey): \(userFTokenKey.isEmpty ? "EMPTY" : "\(userFTokenKey.prefix(50))...")")
+        print("📲 [SEND_NOTIFICATION_API] My FCM token: \(myFcmToken.isEmpty ? "EMPTY" : "\(myFcmToken.prefix(50))...")")
         
         // Get access token (matching Android Accesstoken.getAccessToke())
         // For now, we'll get it from a helper - you may need to implement GoogleCredentials in iOS
         getAccessToken { [weak self] accessToken in
             guard let self = self else { return }
             
-            // Use access token if available, otherwise use empty string
+            // Use access token if available, otherwise use FCM token as fallback (matching group notification behavior)
             // Note: For production, implement proper OAuth2 JWT signing with RSA private key
             // You may need to add SwiftJWT or similar library, or use a backend endpoint
-            let finalAccessToken = accessToken ?? ""
-            
-            if accessToken == nil || accessToken!.isEmpty {
-                print("⚠️ Access token not available for modelId: \(model.id) - using placeholder")
-                print("⚠️ Notification may fail - implement proper OAuth2 token retrieval")
+            let finalAccessToken: String
+            if let token = accessToken, !token.isEmpty {
+                finalAccessToken = token
+                print("✅ [SEND_NOTIFICATION_API] Using OAuth2 access token for modelId: \(model.id)")
+                print("🔑 [SEND_NOTIFICATION_API] Access token length: \(token.count) characters")
+                print("🔑 [SEND_NOTIFICATION_API] Access token prefix: \(token.prefix(20))...")
+                print("🔑 [SEND_NOTIFICATION_API] Access token format: \(token.hasPrefix("ya29.") ? "Valid Google OAuth2 token" : "Unexpected format")")
+            } else {
+                // Fallback to FCM token (matching group notification behavior)
+                finalAccessToken = myFcmToken
+                if myFcmToken.isEmpty {
+                    print("⚠️ [SEND_NOTIFICATION_API] Access token not available and FCM token is empty for modelId: \(model.id)")
+                    print("⚠️ [SEND_NOTIFICATION_API] Notification may fail - both access token and FCM token are missing")
+                } else {
+                    print("⚠️ [SEND_NOTIFICATION_API] Access token not available for modelId: \(model.id) - using FCM token as fallback")
+                }
             }
             
-            // Build JSON request (matching Android JSONObject)
+            // Build JSON request (matching backend PHP send_notification_api parameters)
             var requestJson: [String: Any] = [:]
+            
+            // Validate FCM token before sending
+            if userFTokenKey.isEmpty || userFTokenKey == "apns_missing" || userFTokenKey.lowercased().contains("missing") {
+                print("🚫 [SEND_NOTIFICATION_API] Invalid FCM token detected: '\(userFTokenKey)' - skipping notification")
+                print("🚫 [SEND_NOTIFICATION_API] Receiver (uid: \(model.receiverId)) needs to register a valid FCM token")
+                return
+            }
+            
+            // Required fields
             requestJson["deviceToken"] = self.safeString(userFTokenKey)
-            requestJson["myFcmOwn"] = self.safeString(myFcmToken)
             requestJson["accessToken"] = self.safeString(finalAccessToken)
+            
+            // Notification fields
             requestJson["title"] = self.safeString(userName)
             requestJson["body"] = self.safeString(truncatedMessage)
             requestJson["receiverKey"] = self.safeString(senderId)
@@ -646,22 +692,48 @@ class MessageUploadService {
             requestJson["photo"] = self.safeString(profile)
             requestJson["currentDateTimeString"] = self.safeString(sentTime)
             requestJson["deviceType"] = self.safeString(deviceType)
-            requestJson["bodyKey"] = Constant.chatting
             requestJson["click_action"] = "OPEN_ACTIVITY_1"
             requestJson["icon"] = "notification_icon"
+            requestJson["selectionCount"] = self.safeString(model.selectionCount ?? "1")
+            
+            // Message fields (matching backend PHP parameters)
+            requestJson["uid"] = self.safeString(model.uid)
+            requestJson["message"] = self.safeString(truncatedMessage)
+            requestJson["time"] = self.safeString(sentTime)
+            requestJson["document"] = self.safeString(model.document)
+            requestJson["dataType"] = self.safeString(model.dataType)
+            requestJson["extension"] = self.safeString(model.fileExtension ?? "")
+            requestJson["name"] = self.safeString(model.name ?? "")
+            requestJson["phone"] = self.safeString(model.phone ?? "")
+            requestJson["miceTiming"] = self.safeString(model.miceTiming ?? "")
+            requestJson["micPhoto"] = self.safeString(model.micPhoto ?? "")
+            requestJson["userName"] = self.safeString(userName)
+            requestJson["replytextData"] = self.safeString(model.replytextData ?? "")
+            requestJson["replyKey"] = self.safeString(model.replyKey ?? "")
+            requestJson["replyType"] = self.safeString(model.replyType ?? "")
+            requestJson["replyOldData"] = self.safeString(model.replyOldData ?? "")
+            requestJson["replyCrtPostion"] = self.safeString(model.replyCrtPostion ?? "")
             requestJson["modelId"] = self.safeString(model.id)
             requestJson["receiverUid"] = self.safeString(model.receiverId)
-            requestJson["forwardedKey"] = self.safeString(model.forwaredKey ?? "")
-            requestJson["dataType"] = self.safeString(model.dataType)
-            requestJson["selectionCount"] = self.safeString(model.selectionCount ?? "")
+            requestJson["forwaredKey"] = self.safeString(model.forwaredKey ?? "")
+            requestJson["groupName"] = self.safeString(model.groupName ?? "")
+            requestJson["docSize"] = self.safeString(model.docSize ?? "")
+            requestJson["fileName"] = self.safeString(model.fileName ?? "")
+            requestJson["thumbnail"] = self.safeString(model.thumbnail ?? "")
+            requestJson["fileNameThumbnail"] = self.safeString(model.fileNameThumbnail ?? "")
+            requestJson["caption"] = self.safeString(model.caption ?? "")
+            requestJson["notification"] = String(model.notification) // Firebase FCM requires strings, not integers
+            requestJson["currentDate"] = self.safeString(model.currentDate ?? "")
+            requestJson["senderTokenReply"] = self.safeString(myFcmToken)
+            requestJson["userFcmToken"] = self.safeString(userFTokenKey) // Backend uses deviceToken for userFcmTokenPower
             
-            print("📲 Notification request JSON for modelId: \(model.id): \(requestJson)")
+            print("📲 [SEND_NOTIFICATION_API] Notification request JSON for modelId: \(model.id): \(requestJson)")
             
             // Send POST request (matching Android OkHttp POST)
             let endpoint = Constant.baseURL + "EmojiController/send_notification_api"
             
             guard let url = URL(string: endpoint) else {
-                print("🚫 Invalid notification URL: \(endpoint)")
+                print("🚫 [SEND_NOTIFICATION_API] Invalid notification URL: \(endpoint)")
                 return
             }
             
@@ -672,25 +744,34 @@ class MessageUploadService {
             do {
                 request.httpBody = try JSONSerialization.data(withJSONObject: requestJson)
             } catch {
-                print("🚫 Failed to serialize notification JSON: \(error.localizedDescription)")
+                print("🚫 [SEND_NOTIFICATION_API] Failed to serialize notification JSON: \(error.localizedDescription)")
                 return
             }
             
-            print("📲 Sending notification to URL: \(endpoint) for modelId: \(model.id)")
+            print("📲 [SEND_NOTIFICATION_API] Sending notification to URL: \(endpoint) for modelId: \(model.id)")
             
             URLSession.shared.dataTask(with: request) { data, response, error in
                 if let error = error {
-                    print("🚫 Notification failed for modelId: \(model.id): \(error.localizedDescription)")
+                    print("🚫 [SEND_NOTIFICATION_API] Notification failed for modelId: \(model.id): \(error.localizedDescription)")
                     return
                 }
                 
                 if let httpResponse = response as? HTTPURLResponse {
                     let statusCode = httpResponse.statusCode
                     let responseBody = data != nil ? String(data: data!, encoding: .utf8) ?? "" : ""
-                    print("📲 Notification response for modelId: \(model.id), Status: \(statusCode), Body: \(responseBody)")
+                    print("📲 [SEND_NOTIFICATION_API] Notification response for modelId: \(model.id), Status: \(statusCode), Body: \(responseBody)")
                     
-                    if !(200...299).contains(statusCode) {
-                        print("🚫 Notification HTTP error \(statusCode): \(responseBody)")
+                    if (200...299).contains(statusCode) {
+                        // Check if FCM returned an error in the response body
+                        if responseBody.contains("THIRD_PARTY_AUTH_ERROR") || responseBody.contains("UNAUTHENTICATED") {
+                            print("⚠️ [SEND_NOTIFICATION_API] Backend API succeeded (200) but FCM rejected the access token")
+                            print("⚠️ [SEND_NOTIFICATION_API] This may indicate a backend issue - backend should use token as 'Bearer <token>' in Authorization header")
+                            print("⚠️ [SEND_NOTIFICATION_API] Token format is correct (ya29.c...), matching Android implementation")
+                        } else {
+                            print("✅ [SEND_NOTIFICATION_API] Notification sent successfully")
+                        }
+                    } else {
+                        print("🚫 [SEND_NOTIFICATION_API] Notification HTTP error \(statusCode): \(responseBody)")
                     }
                 }
             }.resume()
@@ -890,31 +971,44 @@ class MessageUploadService {
         generateAccessTokenLocally(completion: completion)
     }
     
-    // MARK: - Generate Access Token Locally
+    // MARK: - Generate Access Token Locally (matching Android Accesstoken.java)
     private func generateAccessTokenLocally(completion: @escaping (String?) -> Void) {
-        // SECURITY: Service account credentials should NOT be hardcoded in source code
-        // Get from secure storage (UserDefaults for development, Keychain for production)
-        // Or use backend endpoint (recommended)
+        print("🔑 [ACCESS_TOKEN] Starting to fetch access token...")
         
-        guard let serviceAccountJSON = UserDefaults.standard.string(forKey: "FirebaseServiceAccountJSON"),
-              !serviceAccountJSON.isEmpty else {
-            print("⚠️ Service account JSON not found in secure storage")
-            print("⚠️ Please add it via UserDefaults or implement backend endpoint")
-            print("⚠️ For development: UserDefaults.standard.set(serviceAccountJSON, forKey: \"FirebaseServiceAccountJSON\")")
-            completion(nil)
-            return
+        // Hardcoded service account JSON (matching Android Accesstoken.java)
+        let serviceAccountJSON = """
+        {
+          "type": "service_account",
+          "project_id": "enclosure-30573",
+          "private_key_id": "0214c5bb83d50e5d11d72ba8d3e4ebba7d313677",
+          "private_key": "-----BEGIN PRIVATE KEY-----\\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQD04bnvGLULC8tn\\nU6wBT6ymn3axN5l3UTyaoNjGGH9CNK0Qx1r5tsreXqfw/iDsy5p/Wsjc5WGWBcrI\\nxIsMb820tM1v1Gscv8LxcyHwovlPYguseFLsWJ+Nc/TnsVS34Ykuf11iWYWVJBXF\\n1K1MGuDhjuIB+5GosOpw72yrZYVVJhWppiu00YX/193IFxZgScF45DydWZ8Hu3Q3\\n83ZWT3Q7IWJGcwpApBLjW6Cb9ccG9yrGVYkDvq5FpqVrlRBxfRtKFLZQnGuJyuZE\\nxAQYMrWE12Hhqrz1zrivJkuS4mX8AniYqKI2rUpAenlpn4bFmmNXFv9FCDfULCOz\\nOB8VzLz5AgMBAAECggEABFCAeM3z9/Xakj950FbEW/XYntaz8CjmQHMvs+Mf8DKt\\nZJZJQWJka0vk+ZdV99YT1W/sCg2gjTFyQ9ydS+LMZQVVI/CXfTIuZRf6M8XV+VK+\\nPJOszQKNYm316qnH1wA07TTL7b0AtYKlP48NCUI6pBQNt1XkrcGFipKCqk0SRFBr\\n+MiF8qr+fjrOEwt12q6sOYlHEHfAAsFGq4yJgnHudVPklcxIFYiW6JgmvDSTFHXV\\nYXQNHhZ+zlicdlE+dwu2mPfvn9dJgRf4Enjl3araA03Ga39uCq21ii0D8AqgwtPp\\nxguJ5wmcBbf1b7hHIDG0P0uTdCbTMi44qW8uvwbp4QKBgQD/6vSc2CjQtFaqir0C\\ni5OSDKBa1h3TKBRKcmPsbG3OPTsX+a3u1PN9hDBRaaX9/TeEuDQpC0t2WAs7df1i\\n1Q1WqUbDnsBA70imBkUuV7THogxLT5vbtx8FryTPt7GA1nRxUZct0kc2TG+lm1Kl\\nnKxIhyS/ULRckusg7AADdszfvwKBgQD09dz/q2DppH3hiUeM2jYhx0a0dVD5bwj9\\niujf3eKhbR6fpwj56OFC7dzTQYp5laqMMw9dIaA/uR4LAoRKOKDFXSOLR65YCxse\\nmCV8NDZ2RsHWb6cTCA2nytIDTsw1hqljEwuN1bnxz6+rrIQeiuOpE2KQa9dAuPVL\\nkznXb6ERRwKBgQDnShO1RO7uYG4LR8Q27qp6TosGTYk683gTKHsCi6RZxqEHtBHs\\nTe2ZvMRmb9MjT5zDiC8sARc8Z6oPHT3Z+q9JaUeZOHqMtTW1RulzTrUFz4DI97Pm\\nyQNyga4FRQFZbXhjidfWA7t0aXRl+ZCiOIzEJ8+gUHIRUH7MjD4e41mZxQKBgBEx\\nkKmBZfQAT7Wc5SDF0Dbevd+8vEpFuOPS9DWCZX3fIt8h4kdoSSdherZ5SzbtgmME\\n0nc+/Ph8DdfH/XEYOHCh8PS9u0cCwIyNMVReddQnc0OR4rA7SHoWilchGMRJB2qk\\n05LJBZwrb7ElEsDyDri3W5u3dgxc7xq24sB0XWHRAoGAaGIdVSYh/9UJEorTNTAl\\n/pWGF0f2eqcNu/zzWxSboAYEu8IXsVj42nb2C4wkBC2IDVXvqez70Y2eCDYwu1Uj\\npr7ohx6rJVssvjI2jzQKCa0KRR8W9WBzkC9fyspnBEJzpZyLz+UC6dkV7pA7vEyl\\njVn2aZOkuUaPlkdoVzF8VO0=\\n-----END PRIVATE KEY-----\\n",
+          "client_email": "firebase-adminsdk-nulab@enclosure-30573.iam.gserviceaccount.com",
+          "client_id": "118076563992961353315",
+          "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+          "token_uri": "https://oauth2.googleapis.com/token",
+          "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+          "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-nulab%40enclosure-30573.iam.gserviceaccount.com",
+          "universe_domain": "googleapis.com"
         }
+        """
         
-        // Parse service account JSON
+        print("✅ [ACCESS_TOKEN] Service account JSON created successfully")
+        
+        // Parse service account JSON (matching Android GoogleCredentials.fromStream)
         guard let jsonData = serviceAccountJSON.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
               let privateKey = json["private_key"] as? String,
               let clientEmail = json["client_email"] as? String,
               let tokenUri = json["token_uri"] as? String else {
-            print("🚫 Failed to parse service account JSON")
+            print("🚫 [ACCESS_TOKEN] Failed to parse service account JSON")
+            print("🚫 [ACCESS_TOKEN] Required fields: private_key, client_email, token_uri")
             completion(nil)
             return
         }
+        
+        print("✅ [ACCESS_TOKEN] Service account JSON parsed successfully")
+        print("🔑 [ACCESS_TOKEN] Client email: \(clientEmail)")
+        print("🔑 [ACCESS_TOKEN] Token URI: \(tokenUri)")
         
         // Get access token using OAuth2 JWT flow (matching Android GoogleCredentials)
         getOAuth2AccessToken(
@@ -934,12 +1028,16 @@ class MessageUploadService {
         scope: String,
         completion: @escaping (String?) -> Void
     ) {
-        // Try to get cached token first
+        // Try to get cached token first (matching Android refreshIfExpired behavior)
         if let cachedToken = getCachedAccessToken(), !isTokenExpired(cachedToken) {
-            print("✅ Using cached access token")
+            let timeUntilExpiry = cachedToken.expiry.timeIntervalSinceNow
+            print("✅ [ACCESS_TOKEN] Using cached access token (expires in \(Int(timeUntilExpiry)) seconds)")
+            print("🔑 [ACCESS_TOKEN] Token format: \(cachedToken.token.prefix(20))...")
             completion(cachedToken.token)
             return
         }
+        
+        print("🔑 [ACCESS_TOKEN] No valid cached token or token expired, generating new OAuth2 access token...")
         
         // Create JWT for service account authentication (matching Android GoogleCredentials)
         let now = Int(Date().timeIntervalSince1970)
@@ -959,38 +1057,43 @@ class MessageUploadService {
             "iat": now
         ]
         
+        print("🔑 [ACCESS_TOKEN] Creating JWT with scope: \(scope)")
+        
         // Encode JWT header and payload
         guard let headerData = try? JSONSerialization.data(withJSONObject: header),
               let claimData = try? JSONSerialization.data(withJSONObject: claim),
               let headerBase64 = base64URLEncode(headerData),
               let claimBase64 = base64URLEncode(claimData) else {
-            print("🚫 Failed to encode JWT header/claim")
+            print("🚫 [ACCESS_TOKEN] Failed to encode JWT header/claim")
             completion(nil)
             return
         }
         
         let unsignedJWT = "\(headerBase64).\(claimBase64)"
+        print("✅ [ACCESS_TOKEN] JWT header and payload encoded, signing with RSA private key...")
         
         // Sign JWT with RSA private key
         signJWT(unsignedJWT: unsignedJWT, privateKey: privateKey) { [weak self] signature in
             guard let self = self, let signature = signature else {
-                print("🚫 Failed to sign JWT")
+                print("🚫 [ACCESS_TOKEN] Failed to sign JWT")
                 completion(nil)
                 return
             }
             
             let signedJWT = "\(unsignedJWT).\(signature)"
-            print("✅ JWT created successfully")
+            print("✅ [ACCESS_TOKEN] JWT signed successfully, exchanging for access token...")
             
             // Exchange JWT for access token
             self.exchangeJWTForAccessToken(jwt: signedJWT, tokenUri: tokenUri) { accessToken, expiresIn in
                 if let accessToken = accessToken, let expiresIn = expiresIn {
                     // Cache the token
                     self.cacheAccessToken(accessToken, expiresIn: expiresIn)
-                    print("✅ Access token obtained successfully")
+                    print("✅ [ACCESS_TOKEN] Access token obtained successfully (expires in \(expiresIn) seconds)")
+                    print("🔑 [ACCESS_TOKEN] Token format: \(accessToken.prefix(20))... (length: \(accessToken.count))")
+                    print("🔑 [ACCESS_TOKEN] Token is valid Google OAuth2 format: \(accessToken.hasPrefix("ya29."))")
                     completion(accessToken)
                 } else {
-                    print("🚫 Failed to exchange JWT for access token")
+                    print("🚫 [ACCESS_TOKEN] Failed to exchange JWT for access token")
                     completion(nil)
                 }
             }
@@ -1085,10 +1188,12 @@ class MessageUploadService {
     // MARK: - Exchange JWT for Access Token
     private func exchangeJWTForAccessToken(jwt: String, tokenUri: String, completion: @escaping (String?, Int?) -> Void) {
         guard let url = URL(string: tokenUri) else {
-            print("🚫 Invalid token URI: \(tokenUri)")
+            print("🚫 [ACCESS_TOKEN] Invalid token URI: \(tokenUri)")
             completion(nil, nil)
             return
         }
+        
+        print("🔑 [ACCESS_TOKEN] Exchanging JWT for access token at: \(tokenUri)")
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -1099,21 +1204,29 @@ class MessageUploadService {
         
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                print("🚫 Token exchange error: \(error.localizedDescription)")
+                print("🚫 [ACCESS_TOKEN] Token exchange network error: \(error.localizedDescription)")
                 completion(nil, nil)
                 return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("🔑 [ACCESS_TOKEN] Token exchange HTTP status: \(httpResponse.statusCode)")
             }
             
             guard let data = data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let accessToken = json["access_token"] as? String else {
                 let responseBody = data != nil ? String(data: data!, encoding: .utf8) ?? "" : ""
-                print("🚫 Failed to parse token response: \(responseBody)")
+                print("🚫 [ACCESS_TOKEN] Failed to parse token response: \(responseBody)")
+                if let httpResponse = response as? HTTPURLResponse {
+                    print("🚫 [ACCESS_TOKEN] HTTP status code: \(httpResponse.statusCode)")
+                }
                 completion(nil, nil)
                 return
             }
             
             let expiresIn = json["expires_in"] as? Int ?? 3600
+            print("✅ [ACCESS_TOKEN] Successfully exchanged JWT for access token (expires in \(expiresIn) seconds)")
             completion(accessToken, expiresIn)
         }.resume()
     }

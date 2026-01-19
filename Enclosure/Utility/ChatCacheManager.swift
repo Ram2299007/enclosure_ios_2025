@@ -86,6 +86,46 @@ final class ChatCacheManager {
             }
         }
     }
+    
+    func getFCMToken(for uid: String, completion: @escaping (String?) -> Void) {
+        queue.async {
+            guard let db = self.db else {
+                print("🔑 [ChatCacheManager] Database not available for FCM token lookup - uid: \(uid)")
+                DispatchQueue.main.async { completion(nil) }
+                return
+            }
+            
+            print("🔑 [ChatCacheManager] Looking up FCM token for receiver UID: \(uid)")
+            let query = "SELECT f_token FROM chats WHERE uid = ? LIMIT 1;"
+            var statement: OpaquePointer?
+            var fcmToken: String?
+            
+            if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+                sqlite3_bind_text(statement, 1, uid, -1, SQLITE_TRANSIENT)
+                
+                if sqlite3_step(statement) == SQLITE_ROW {
+                    if let cString = sqlite3_column_text(statement, 0) {
+                        fcmToken = String(cString: cString)
+                        print("🔑 [ChatCacheManager] ✅ FCM token found for UID: \(uid)")
+                        print("🔑 [ChatCacheManager]   Token: \(fcmToken?.isEmpty == false ? fcmToken! : "EMPTY")")
+                        print("🔑 [ChatCacheManager]   Token Preview: \(fcmToken?.isEmpty == false ? "\(fcmToken!.prefix(50))..." : "EMPTY")")
+                    } else {
+                        print("🔑 [ChatCacheManager] ⚠️ FCM token column is NULL for UID: \(uid)")
+                    }
+                } else {
+                    print("🔑 [ChatCacheManager] ⚠️ No contact found in database for UID: \(uid)")
+                }
+            } else {
+                print("🔑 [ChatCacheManager] ❌ SQLite getFCMToken failed: \(String(cString: sqlite3_errmsg(db)))")
+            }
+            
+            sqlite3_finalize(statement)
+            
+            DispatchQueue.main.async {
+                completion(fcmToken)
+            }
+        }
+    }
 }
 
 private extension ChatCacheManager {
