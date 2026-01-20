@@ -37,18 +37,28 @@ struct whatsTheCode: View {
     @State private var fcmToken = ""
     @State private var deviceId = UIDevice.current.identifierForVendor?.uuidString ?? "unknown"
     @Environment(\.colorScheme) var colorScheme
+    @State private var isProcessingInput = false // Prevent concurrent input processing
+    
+    // Helper to dismiss keyboard on tap
+    private func hideKeyboard() {
+        focusedField = nil
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
 
 
     var body: some View {
 
         NavigationStack {
-            ZStack { // Use ZStack to overlay content
+            ZStack(alignment: .bottom) { // Use ZStack to overlay content and keep bottom fixed
                 Color("background_color")
                     .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { hideKeyboard() }
                 
                 VStack {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 16) {
                             // Back Button
                             Button(action: handleBackTap) {
                                 ZStack {
@@ -122,7 +132,11 @@ struct whatsTheCode: View {
                                             return otp[index] 
                                         },
                                         set: { newValue in
-                                            handleOTPInput(newValue, at: index)
+                                            // Limit input to prevent blocking - only process if value actually changed
+                                            let filtered = newValue.filter { $0.isNumber }
+                                            if filtered != otp[index] {
+                                                handleOTPInput(filtered, at: index)
+                                            }
                                         }
                                     ))
                                     .frame(width: 45, height: 48) // width="45dp", height="48dp"
@@ -140,6 +154,8 @@ struct whatsTheCode: View {
                                     .textContentType(.oneTimeCode) // Helps iOS optimize keyboard
                                     .focused($focusedField, equals: index)
                                     .submitLabel(.done)
+                                    .autocorrectionDisabled()
+                                    .textInputAutocapitalization(.never)
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .center)
@@ -188,6 +204,13 @@ struct whatsTheCode: View {
                             }
                             .padding(.top, 28) // marginTop="28dp"
                         }
+                        .id("otpContainer")
+                        }
+                        .simultaneousGesture(
+                            TapGesture().onEnded { _ in hideKeyboard() }
+                        )
+                        // Scroll the OTP container into view when any field is focused (adjustPan-like)
+                        // Removed to prevent UI blocking - scroll happens naturally with keyboard
                     }
 
                     Spacer() // Pushes the button to the bottom
@@ -216,6 +239,7 @@ struct whatsTheCode: View {
                     .padding(.horizontal, 20) // marginHorizontal="20dp"
                     .padding(.bottom, 100) // marginBottom="100dp" matching Android
                 }
+                .ignoresSafeArea(.keyboard, edges: .bottom)
 
                 if verifyViewModel.isLoading {
                     ZStack {
@@ -246,31 +270,54 @@ struct whatsTheCode: View {
             .onAppear {
                 print("UID: \(uid), Country Code: \(country_Code), Mobile No: \(mobile_no)")
                 
-                // Get FCM token (non-blocking)
-                FirebaseManager.shared.getFCMToken { token in
-                    if let token = token {
-                        DispatchQueue.main.async {
-                            self.fcmToken = token
-                        }
-                    } else {
-                        // Fallback: try to get from UserDefaults if available
-                        if let savedToken = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) {
-                            DispatchQueue.main.async {
-                                self.fcmToken = savedToken
+                // Request notification permissions FIRST (required for APNs token)
+                // This must happen before FCM token can be retrieved
+                requestNotificationPermissionEarly { [self] granted in
+                    if granted {
+                        print("✅ [FCM_TOKEN] Notification permission granted - APNs token will be available soon")
+                        // Wait a bit for APNs token to be set, then get FCM token
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            FirebaseManager.shared.getFCMToken { token in
+                                DispatchQueue.main.async {
+                                    if let token = token {
+                                        print("✅ [FCM_TOKEN] FCM token retrieved: \(token.prefix(50))...")
+                                        self.fcmToken = token
+                                        UserDefaults.standard.set(token, forKey: Constant.FCM_TOKEN)
+                                    } else {
+                                        // Fallback: try to get from UserDefaults if available
+                                        if let savedToken = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN), !savedToken.isEmpty, savedToken != "apns_missing" {
+                                            print("✅ [FCM_TOKEN] Using saved token from UserDefaults")
+                                            self.fcmToken = savedToken
+                                        }
+                                    }
+                                }
                             }
                         }
+                    } else {
+                        print("⚠️ [FCM_TOKEN] Notification permission denied")
                     }
                 }
                 
-                // Delay permission requests to avoid blocking UI initialization
+                // Delay other permission requests to avoid blocking UI initialization
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     requestPermissions()
                 }
             }
             .onAppear {
+                // Check clipboard for OTP when screen appears (Android behavior)
+                checkClipboardForOTP()
+                
                 // Auto-focus first OTP field when screen appears
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     focusedField = 0
+                }
+            }
+            .onChange(of: focusedField) { newValue in
+                // Check clipboard when first field gets focus (Android behavior)
+                if newValue == 0 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        checkClipboardForOTP()
+                    }
                 }
             }
         }
@@ -376,6 +423,39 @@ struct whatsTheCode: View {
     }
 
 
+    /// Request Notification Permission Early (before FCM token retrieval)
+    private func requestNotificationPermissionEarly(completion: @escaping (Bool) -> Void) {
+        // Check current status first
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            print("📱 [FCM_TOKEN] Current notification authorization status: \(settings.authorizationStatus.rawValue)")
+            
+            if settings.authorizationStatus == .authorized {
+                print("✅ [FCM_TOKEN] Notification permission already granted - registering for remote notifications...")
+                DispatchQueue.main.async {
+                    UIApplication.shared.registerForRemoteNotifications()
+                    print("📱 [FCM_TOKEN] registerForRemoteNotifications() called")
+                    completion(true)
+                }
+            } else {
+                print("📱 [FCM_TOKEN] Requesting notification permission...")
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                    DispatchQueue.main.async {
+                        if granted {
+                            print("✅ [FCM_TOKEN] Notification permission granted - registering for remote notifications...")
+                            // Register for remote notifications to get APNs token
+                            UIApplication.shared.registerForRemoteNotifications()
+                            print("📱 [FCM_TOKEN] registerForRemoteNotifications() called")
+                            completion(true)
+                        } else {
+                            print("🚫 [FCM_TOKEN] Notification permission denied: \(error?.localizedDescription ?? "Unknown error")")
+                            completion(false)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
     /// Request Notification Permission
     private func requestNotificationPermission() {
         // Request notification permission asynchronously without blocking
@@ -497,29 +577,97 @@ struct whatsTheCode: View {
         }
 
         // If token already available, proceed
-        if !fcmToken.isEmpty {
+        if !fcmToken.isEmpty && fcmToken != "apns_missing" {
             performOTPVerification()
             return
         }
 
         // Try fallback from UserDefaults
-        if let savedToken = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN), !savedToken.isEmpty {
+        if let savedToken = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN), !savedToken.isEmpty, savedToken != "apns_missing" {
             fcmToken = savedToken
             performOTPVerification()
             return
         }
 
-        // Fetch new token then proceed; if APNs not ready, fall back to placeholder
-        FirebaseManager.shared.getFCMToken { token in
+        // Ensure notification permissions are granted first, then fetch FCM token
+        print("🔑 [FCM_TOKEN] Checking notification permissions before fetching FCM token...")
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
             DispatchQueue.main.async {
-                if let token = token, !token.isEmpty {
-                    self.fcmToken = token
+                if settings.authorizationStatus == .authorized {
+                    // Permission granted - ensure we're registered for remote notifications
+                    print("✅ [FCM_TOKEN] Notification permission granted - calling registerForRemoteNotifications()...")
+                    UIApplication.shared.registerForRemoteNotifications()
+                    print("📱 [FCM_TOKEN] registerForRemoteNotifications() CALLED - waiting for APNs token callback...")
+                    
+                    // Wait a moment for APNs token, then fetch FCM token
+                    print("✅ [FCM_TOKEN] Waiting 2 seconds for APNs token...")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                        self.fetchFCMTokenWithRetries(maxRetries: 5, retryDelay: 1.0) { token in
+                            DispatchQueue.main.async {
+                                if let token = token, !token.isEmpty {
+                                    print("✅ [FCM_TOKEN] FCM token retrieved successfully: \(token.prefix(50))...")
+                                    self.fcmToken = token
+                                    UserDefaults.standard.set(token, forKey: Constant.FCM_TOKEN)
+                                    self.performOTPVerification()
+                                } else {
+                                    print("⚠️ [FCM_TOKEN] FCM token not available after retries - proceeding with placeholder")
+                                    self.fcmToken = "apns_missing"
+                                    self.performOTPVerification()
+                                }
+                            }
+                        }
+                    }
                 } else {
-                    // APNs token missing; use placeholder to avoid empty backend param
-                    self.fcmToken = "apns_missing"
-                    Constant.showToast(message: "Push token unavailable; proceeding with limited token.")
+                    // Request permission first
+                    print("🔑 [FCM_TOKEN] Requesting notification permission...")
+                    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                        DispatchQueue.main.async {
+                            if granted {
+                                UIApplication.shared.registerForRemoteNotifications()
+                                // Wait longer for APNs token, then fetch FCM token
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                    self.fetchFCMTokenWithRetries(maxRetries: 5, retryDelay: 1.0) { token in
+                                        DispatchQueue.main.async {
+                                            if let token = token, !token.isEmpty {
+                                                print("✅ [FCM_TOKEN] FCM token retrieved: \(token.prefix(50))...")
+                                                self.fcmToken = token
+                                                UserDefaults.standard.set(token, forKey: Constant.FCM_TOKEN)
+                                                self.performOTPVerification()
+                                            } else {
+                                                print("⚠️ [FCM_TOKEN] FCM token not available - proceeding with placeholder")
+                                                self.fcmToken = "apns_missing"
+                                                self.performOTPVerification()
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                print("⚠️ [FCM_TOKEN] Notification permission denied - proceeding with placeholder")
+                                self.fcmToken = "apns_missing"
+                                self.performOTPVerification()
+                            }
+                        }
+                    }
                 }
-                self.performOTPVerification()
+            }
+        }
+    }
+    
+    /// Fetch FCM token with multiple retries
+    private func fetchFCMTokenWithRetries(maxRetries: Int, retryDelay: TimeInterval, currentRetry: Int = 0, completion: @escaping (String?) -> Void) {
+        FirebaseManager.shared.getFCMToken { token in
+            if let token = token, !token.isEmpty {
+                completion(token)
+            } else {
+                if currentRetry < maxRetries {
+                    print("⚠️ [FCM_TOKEN] FCM token not available (attempt \(currentRetry + 1)/\(maxRetries + 1)), retrying after \(retryDelay) seconds...")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) {
+                        self.fetchFCMTokenWithRetries(maxRetries: maxRetries, retryDelay: retryDelay, currentRetry: currentRetry + 1, completion: completion)
+                    }
+                } else {
+                    print("⚠️ [FCM_TOKEN] FCM token not available after \(maxRetries + 1) attempts")
+                    completion(nil)
+                }
             }
         }
     }
@@ -568,54 +716,100 @@ struct whatsTheCode: View {
 
     /// Normalize OTP input to avoid flicker and only keep numeric characters
     private func handleOTPInput(_ newValue: String, at index: Int) {
-        let oldValue = otp[index]
-        let digits = newValue.filter { $0.isNumber }
-
-        // Handle paste: distribute digits across fields without animations or delays
-        if digits.count > 1 {
-            var current = index
-            for digit in digits {
-                guard current < otp.count else { break }
-                otp[current] = String(digit)
-                current += 1
-            }
-            // Delay focus change to avoid keyboard constraint conflicts
+        // Prevent concurrent processing to avoid UI blocking
+        guard !isProcessingInput else { return }
+        
+        // Prevent processing if value hasn't actually changed (avoids infinite loops)
+        let currentValue = otp[index]
+        if newValue == currentValue {
+            return
+        }
+        
+        isProcessingInput = true
+        defer { 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.focusedField = min(current, self.otp.count - 1)
-                if current >= self.otp.count {
-                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                self.isProcessingInput = false
+            }
+        }
+        
+        let digits = newValue.filter { $0.isNumber }
+        
+        // Handle paste: if 6 digits are pasted, distribute them across all fields (Android behavior)
+        if digits.count >= 6 {
+            // Extract first 6 digits
+            let otpString = String(digits.prefix(6))
+            for i in 0..<min(6, otp.count) {
+                otp[i] = String(otpString[otpString.index(otpString.startIndex, offsetBy: i)])
+            }
+            // Focus on last field and hide keyboard (matching Android)
+            DispatchQueue.main.async {
+                self.focusedField = 5
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+            }
+            return
+        }
+        
+        // Handle paste: if multiple digits pasted into a field, distribute from that field
+        if digits.count > 1 {
+            var currentIndex = index
+            for digit in digits {
+                guard currentIndex < otp.count else { break }
+                otp[currentIndex] = String(digit)
+                currentIndex += 1
+            }
+            // Focus on the last filled field or next empty field
+            let nextFocus = min(currentIndex, otp.count - 1)
+            DispatchQueue.main.async {
+                self.focusedField = nextFocus
+                if nextFocus >= self.otp.count - 1 && !self.otp[self.otp.count - 1].isEmpty {
+                    // All fields filled, hide keyboard
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
                 }
             }
             return
         }
 
-        // Backspace handling
+        // Backspace handling: if field becomes empty, move to previous field (Android behavior)
         if newValue.isEmpty {
             otp[index] = ""
-            if oldValue.isEmpty && index > 0 {
-                // Delay focus change to avoid keyboard constraint conflicts
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            // If field was already empty or just became empty, move to previous field
+            if index > 0 {
+                DispatchQueue.main.async {
                     self.focusedField = index - 1
+                }
+            } else {
+                // First field, clear focus
+                DispatchQueue.main.async {
+                    self.focusedField = nil
                 }
             }
             return
         }
 
-        // Single digit entry
+        // Single digit entry: only allow one digit per field (Android behavior)
         guard let firstDigit = digits.first else {
-            otp[index] = oldValue // Ignore non-digit characters
+            // Non-digit character entered, restore old value
+            otp[index] = currentValue
             return
         }
 
+        // Set the digit (limit to single character)
         otp[index] = String(firstDigit)
-
-        // Move focus forward with a small delay to avoid keyboard constraint conflicts
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        
+        // Move focus to next field asynchronously with small delay to avoid blocking
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             if index < self.otp.count - 1 {
                 self.focusedField = index + 1
-        } else {
+            } else {
+                // Last field filled, hide keyboard
                 self.focusedField = nil
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
             }
         }
     }
@@ -639,8 +833,36 @@ struct whatsTheCode: View {
 
         topVC.present(alert, animated: true)
     }
-
-
+    
+    /// Check clipboard for 6-digit OTP and auto-fill if found (matching Android behavior)
+    private func checkClipboardForOTP() {
+        let pasteboard = UIPasteboard.general
+        guard let clipboardText = pasteboard.string else { return }
+        
+        // Extract only digits
+        let digits = clipboardText.filter { $0.isNumber }
+        
+        // Check if clipboard contains 6-digit OTP and all fields are empty
+        if digits.count >= 6 {
+            let allFieldsEmpty = otp.allSatisfy { $0.isEmpty }
+            
+            if allFieldsEmpty {
+                // Extract first 6 digits
+                let otpString = String(digits.prefix(6))
+                
+                // Fill all fields
+                for i in 0..<min(6, otp.count) {
+                    otp[i] = String(otpString[otpString.index(otpString.startIndex, offsetBy: i)])
+                }
+                
+                // Focus on last field and hide keyboard (matching Android)
+                focusedField = 5
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+            }
+        }
+    }
 
 }
 

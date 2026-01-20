@@ -19,16 +19,23 @@ struct whatsYourNumber: View {
     @State private var shakeOffset: CGFloat = 0
     @State private var phoneError: String? = nil  // Error message for phone number
     @FocusState private var isFocused: Bool
+    
+    // Helper function to hide keyboard
+    private func hideKeyboard() {
+        isFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color("background_color")
-                    .ignoresSafeArea()
-                
-                VStack(alignment: .leading) {
-                    ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
+            GeometryReader { geometry in
+                ZStack(alignment: .bottom) {
+                    Color("background_color")
+                        .ignoresSafeArea()
+                    
+                    VStack(spacing: 0) {
+                        // Top content - simple VStack (no ScrollView for Android adjustPan behavior)
+                        VStack(alignment: .leading, spacing: 16) {
                         Text("What's your\nnumber?")
                             .font(.custom("Inter18pt-SemiBold", size: 40))
                             .foregroundColor(Color("TextColor"))
@@ -104,11 +111,19 @@ struct whatsYourNumber: View {
 
                         }
                         .padding(.top, 39)
-
                     }
                     .padding(.horizontal, 20)
-                }
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
+                    Spacer()
+                }
+                .simultaneousGesture(
+                    TapGesture().onEnded { _ in
+                        hideKeyboard()
+                    }
+                )
+
+                // Bottom content - absolutely positioned at bottom (Android adjustPan behavior)
                 VStack(spacing: 5) {
                     HStack(spacing: 0) {
                         // Checkbox with "I agree to the " text (matching Android checkbox structure)
@@ -220,10 +235,20 @@ struct whatsYourNumber: View {
                         }
                         .disabled(viewModel.isLoading)
                         .padding(.horizontal, 20)
+                    }
+                    .padding(.bottom, 80)
+                    .background(Color("background_color"))
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(.bottom, 80)
+                .ignoresSafeArea(.keyboard, edges: .bottom)
                 }
             }
+            .ignoresSafeArea(.keyboard)
+            .simultaneousGesture(
+                TapGesture().onEnded { _ in
+                    hideKeyboard()
+                }
+            )
             .navigationBarHidden(true)
             .onChange(of: selectedCountryShortCode) { newValue in
                 print("Country short code updated in whatsYourNumber: \(newValue)")
@@ -244,8 +269,6 @@ struct whatsYourNumber: View {
             }
         }
     }
-}
-
 
 #Preview {
     whatsYourNumber()
