@@ -44,10 +44,20 @@ struct InviteScreen: View {
         uniqueContacts.filter { !$0.isActiveUser }
     }
     
+    // Helper function to hide keyboard
+    private func hideKeyboard() {
+        isSearchFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
     var body: some View {
         ZStack {
             Color("background_color")
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    hideKeyboard()
+                }
             
             VStack(spacing: 0) {
                 header

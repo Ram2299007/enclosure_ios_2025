@@ -29,11 +29,20 @@ struct ShowImageScreen: View {
         self.viewHolderTypeKey = viewHolderTypeKey
     }
     
+    // Helper function to hide keyboard
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
     var body: some View {
         ZStack {
             // Full-screen black background (matching Android @color/black)
             Color.black
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    hideKeyboard()
+                }
             
             // Image with zoom and pan (matching Android PhotoView)
             GeometryReader { geometry in

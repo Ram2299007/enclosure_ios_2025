@@ -13,11 +13,20 @@ struct SettingsView: View {
     @State private var navigateToContactUs = false
     @State private var navigateToAccount = false
     
+    // Helper function to hide keyboard
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
     var body: some View {
         ZStack {
             // Android-style background with dynamic color
             Color("background_color")
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    hideKeyboard()
+                }
             
             VStack(spacing: 0) {
                 // Custom Android-style toolbar

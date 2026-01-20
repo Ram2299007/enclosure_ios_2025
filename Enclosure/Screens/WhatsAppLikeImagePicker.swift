@@ -49,11 +49,20 @@ struct WhatsAppLikeImagePicker: View {
         self.onImagesSelected = onImagesSelected
     }
     
+    // Helper function to hide keyboard
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
     var body: some View {
         ZStack {
             // Background matching Android bottom_sheet_background
             Color("chattingMessageBox")
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    hideKeyboard()
+                }
             
             VStack(spacing: 0) {
                 // Cancel button - top left (matching Android cancelButton and CameraGalleryView)

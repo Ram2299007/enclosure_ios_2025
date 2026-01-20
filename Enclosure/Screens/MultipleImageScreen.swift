@@ -27,11 +27,20 @@ struct MultipleImageScreen: View {
         }
     }
     
+    // Helper function to hide keyboard
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
     var body: some View {
         ZStack {
             // Full-screen background (matching Android @color/modetheme2)
             Color("BackgroundColor")
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    hideKeyboard()
+                }
             
             // Vertical scrolling images (matching Android RecyclerView with VERTICAL LinearLayoutManager)
             ScrollViewReader { proxy in

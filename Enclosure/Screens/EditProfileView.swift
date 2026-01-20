@@ -20,11 +20,20 @@ struct EditProfileView: View {
     @State private var originalEmail = ""
     @State private var originalBio = ""
     
+    // Helper function to hide keyboard
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
     var body: some View {
         NavigationView {
             ZStack {
                 Color("background_color")
                     .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        hideKeyboard()
+                    }
                 
                 ScrollView {
                     VStack(spacing: 30) {

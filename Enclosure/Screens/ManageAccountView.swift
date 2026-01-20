@@ -21,10 +21,19 @@ struct ManageAccountView: View {
     @State private var otpVerificationData: (uid: String, phoneNumber: String, countryCode: String)?
     @State private var otpVerificationDeleteData: (uid: String, phoneNumber: String, countryCode: String)?
     
+    // Helper function to hide keyboard
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
     var body: some View {
         ZStack {
             Color("background_color")
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    hideKeyboard()
+                }
             
             VStack(spacing: 0) {
                 // Toolbar

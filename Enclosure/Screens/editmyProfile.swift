@@ -28,12 +28,22 @@ struct EditmyProfile: View {
     @State private var selectedImageID: String? // To track the tapped image
 
 
+    // Helper function to hide keyboard
+    private func hideKeyboard() {
+        isFullNameFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
     var body: some View {
         NavigationStack {
             ZStack{
                 // Background color to match the theme
                 Color("background_color")
                     .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        hideKeyboard()
+                    }
                 
                 ScrollView {
                     VStack(spacing: 0) {

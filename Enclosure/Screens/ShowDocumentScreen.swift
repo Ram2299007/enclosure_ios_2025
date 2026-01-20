@@ -146,12 +146,21 @@ struct ShowDocumentScreen: View {
         return nil
     }
     
+    // Helper function to hide keyboard
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
     var body: some View {
         let _ = print("📄 [ShowDocumentScreen] body computed - fileName: \(fileName), documentURL: \(documentURL)")
         ZStack {
             // Full-screen black background (matching Android @color/black)
             Color.black
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    hideKeyboard()
+                }
             
             // Main content area
             ZStack {

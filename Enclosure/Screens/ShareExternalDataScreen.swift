@@ -23,12 +23,21 @@ struct ShareExternalDataScreen: View {
     @State private var duration: Double = 0
     @State private var resizeMode: Int = 0 // 0: FIT, 1: FILL, 2: ZOOM
     
+    // Helper function to hide keyboard
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
     var body: some View {
         NavigationStack {
             ZStack {
                 // Black background (matching Android android:background="@color/black")
                 Color.black
                     .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        hideKeyboard()
+                    }
                 
                 // Content based on type
                 switch sharedContent.type {

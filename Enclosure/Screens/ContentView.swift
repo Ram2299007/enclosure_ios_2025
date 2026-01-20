@@ -13,12 +13,21 @@ struct ContentView: View {
     @State var isNavigatingToOnboarding = false
     @State private var logoImageName = "ec_modern" // Default logo
 
+    // Helper function to hide keyboard
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
     var body: some View {
         ZStack {
             NavigationStack {
                 ZStack {
                     Color("BackgroundColor")
                         .edgesIgnoringSafeArea(.all)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            hideKeyboard()
+                        }
                     
                     // Centered Logo (matching Android SplashScreen)
                     VStack {

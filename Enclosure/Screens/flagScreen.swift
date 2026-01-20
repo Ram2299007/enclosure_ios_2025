@@ -20,6 +20,12 @@ struct flagScreen: View {
     @Binding var selectedCountryShortCode: String
     @Binding var selectedCountryID: String
 
+    // Helper function to hide keyboard
+    private func hideKeyboard() {
+        isSearchFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
                 // Back Arrow Above Title
@@ -138,6 +144,10 @@ struct flagScreen: View {
                 }
             }
             .background(Color("BackgroundColor"))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                hideKeyboard()
+            }
             .onAppear {
                 // Auto-focus search field and show keyboard (matching Android behavior)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {

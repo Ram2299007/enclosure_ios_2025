@@ -20,6 +20,10 @@ struct ContactUsView: View {
             // Background color matching the design
             Color("background_color")
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    hideKeyboard()
+                }
             
             VStack(spacing: 0) {
                 // Custom Android-style toolbar
@@ -134,10 +138,11 @@ struct ContactUsView: View {
         } message: {
             Text(alertMessage)
         }
-        .onTapGesture {
-            // Dismiss keyboard when tapping outside
-            hideKeyboard()
-        }
+        .simultaneousGesture(
+            TapGesture().onEnded { _ in
+                hideKeyboard()
+            }
+        )
     }
     
     // MARK: - Android-style Toolbar (same as editmyProfile.swift)

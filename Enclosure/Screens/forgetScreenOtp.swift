@@ -38,6 +38,12 @@ struct forgetScreenOtp: View {
     @State private var deviceId = UIDevice.current.identifierForVendor?.uuidString ?? "unknown"
 
 
+    // Helper function to hide keyboard
+    private func hideKeyboard() {
+        focusedField = nil
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
     var body: some View {
 
 
@@ -45,6 +51,10 @@ struct forgetScreenOtp: View {
             ZStack { // Use ZStack to overlay content
                 Color("background_color")
                     .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        hideKeyboard()
+                    }
                 
                 VStack {
                     ScrollView {

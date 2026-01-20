@@ -597,23 +597,20 @@ struct whatsTheCode: View {
                     // Permission granted - ensure we're registered for remote notifications
                     print("✅ [FCM_TOKEN] Notification permission granted - calling registerForRemoteNotifications()...")
                     UIApplication.shared.registerForRemoteNotifications()
-                    print("📱 [FCM_TOKEN] registerForRemoteNotifications() CALLED - waiting for APNs token callback...")
+                    print("📱 [FCM_TOKEN] registerForRemoteNotifications() CALLED - fetching FCM token immediately (no waiting)")
                     
-                    // Wait a moment for APNs token, then fetch FCM token
-                    print("✅ [FCM_TOKEN] Waiting 2 seconds for APNs token...")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                        self.fetchFCMTokenWithRetries(maxRetries: 5, retryDelay: 1.0) { token in
-                            DispatchQueue.main.async {
-                                if let token = token, !token.isEmpty {
-                                    print("✅ [FCM_TOKEN] FCM token retrieved successfully: \(token.prefix(50))...")
-                                    self.fcmToken = token
-                                    UserDefaults.standard.set(token, forKey: Constant.FCM_TOKEN)
-                                    self.performOTPVerification()
-                                } else {
-                                    print("⚠️ [FCM_TOKEN] FCM token not available after retries - proceeding with placeholder")
-                                    self.fcmToken = "apns_missing"
-                                    self.performOTPVerification()
-                                }
+                    // Fetch FCM token immediately without waiting
+                    FirebaseManager.shared.getFCMToken { token in
+                        DispatchQueue.main.async {
+                            if let token = token, !token.isEmpty {
+                                print("✅ [FCM_TOKEN] FCM token retrieved successfully: \(token.prefix(50))...")
+                                self.fcmToken = token
+                                UserDefaults.standard.set(token, forKey: Constant.FCM_TOKEN)
+                                self.performOTPVerification()
+                            } else {
+                                print("⚠️ [FCM_TOKEN] FCM token not available - proceeding with placeholder")
+                                self.fcmToken = "apns_missing"
+                                self.performOTPVerification()
                             }
                         }
                     }
@@ -624,20 +621,20 @@ struct whatsTheCode: View {
                         DispatchQueue.main.async {
                             if granted {
                                 UIApplication.shared.registerForRemoteNotifications()
-                                // Wait longer for APNs token, then fetch FCM token
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                                    self.fetchFCMTokenWithRetries(maxRetries: 5, retryDelay: 1.0) { token in
-                                        DispatchQueue.main.async {
-                                            if let token = token, !token.isEmpty {
-                                                print("✅ [FCM_TOKEN] FCM token retrieved: \(token.prefix(50))...")
-                                                self.fcmToken = token
-                                                UserDefaults.standard.set(token, forKey: Constant.FCM_TOKEN)
-                                                self.performOTPVerification()
-                                            } else {
-                                                print("⚠️ [FCM_TOKEN] FCM token not available - proceeding with placeholder")
-                                                self.fcmToken = "apns_missing"
-                                                self.performOTPVerification()
-                                            }
+                                print("📱 [FCM_TOKEN] registerForRemoteNotifications() CALLED - fetching FCM token immediately (no waiting)")
+                                
+                                // Fetch FCM token immediately without waiting
+                                FirebaseManager.shared.getFCMToken { token in
+                                    DispatchQueue.main.async {
+                                        if let token = token, !token.isEmpty {
+                                            print("✅ [FCM_TOKEN] FCM token retrieved: \(token.prefix(50))...")
+                                            self.fcmToken = token
+                                            UserDefaults.standard.set(token, forKey: Constant.FCM_TOKEN)
+                                            self.performOTPVerification()
+                                        } else {
+                                            print("⚠️ [FCM_TOKEN] FCM token not available - proceeding with placeholder")
+                                            self.fcmToken = "apns_missing"
+                                            self.performOTPVerification()
                                         }
                                     }
                                 }
@@ -653,24 +650,6 @@ struct whatsTheCode: View {
         }
     }
     
-    /// Fetch FCM token with multiple retries
-    private func fetchFCMTokenWithRetries(maxRetries: Int, retryDelay: TimeInterval, currentRetry: Int = 0, completion: @escaping (String?) -> Void) {
-        FirebaseManager.shared.getFCMToken { token in
-            if let token = token, !token.isEmpty {
-                completion(token)
-            } else {
-                if currentRetry < maxRetries {
-                    print("⚠️ [FCM_TOKEN] FCM token not available (attempt \(currentRetry + 1)/\(maxRetries + 1)), retrying after \(retryDelay) seconds...")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) {
-                        self.fetchFCMTokenWithRetries(maxRetries: maxRetries, retryDelay: retryDelay, currentRetry: currentRetry + 1, completion: completion)
-                    }
-                } else {
-                    print("⚠️ [FCM_TOKEN] FCM token not available after \(maxRetries + 1) attempts")
-                    completion(nil)
-                }
-            }
-        }
-    }
 
     /// Performs OTP verification after prerequisites are satisfied.
     private func performOTPVerification() {

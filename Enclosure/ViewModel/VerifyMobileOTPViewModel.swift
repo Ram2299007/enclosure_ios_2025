@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import UIKit
+import FirebaseMessaging
 
 class VerifyMobileOTPViewModel: ObservableObject {
     @Published var isNavigating = false
@@ -31,15 +32,93 @@ class VerifyMobileOTPViewModel: ObservableObject {
             ? (UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? "")
             : token
 
-        // If we still do not have a token (APNs not ready), use a safe placeholder so
-        // the backend gets a non-empty value while we surface a warning.
+        print("🔑 [VERIFY_OTP] FCM Token Check:")
+        print("🔑 [VERIFY_OTP]   - Passed token: \(token.isEmpty ? "EMPTY" : "\(token.prefix(50))...")")
+        print("🔑 [VERIFY_OTP]   - UserDefaults token: \(UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? "EMPTY")")
+        print("🔑 [VERIFY_OTP]   - Resolved token: \(resolvedToken.isEmpty ? "EMPTY" : "\(resolvedToken.prefix(50))...")")
+        
+        // If we still do not have a token (APNs not ready), check notification permissions and try to get token
         let finalToken: String
-        if resolvedToken.isEmpty {
-            finalToken = "apns_missing"
-            print("⚠️ Missing f_token; using placeholder \(finalToken)")
+        if resolvedToken.isEmpty || resolvedToken == "apns_missing" {
+            print("⚠️ [VERIFY_OTP] Token is empty or 'apns_missing' - checking notification permissions...")
+            
+            // Check notification permission status first
+            let semaphore = DispatchSemaphore(value: 0)
+            var permissionGranted = false
+            var fetchedToken: String? = nil
+            
+            UNUserNotificationCenter.current().getNotificationSettings { settings in
+                print("🔑 [VERIFY_OTP] ===== NOTIFICATION PERMISSION CHECK =====")
+                print("🔑 [VERIFY_OTP] Authorization status: \(settings.authorizationStatus.rawValue)")
+                print("🔑 [VERIFY_OTP] Authorization status string: \(self.authorizationStatusString(settings.authorizationStatus))")
+                print("🔑 [VERIFY_OTP] Alert setting: \(settings.alertSetting.rawValue)")
+                print("🔑 [VERIFY_OTP] Badge setting: \(settings.badgeSetting.rawValue)")
+                print("🔑 [VERIFY_OTP] Sound setting: \(settings.soundSetting.rawValue)")
+                print("🔑 [VERIFY_OTP] Is simulator: \(self.isSimulator())")
+                print("🔑 [VERIFY_OTP] =========================================")
+                
+                permissionGranted = (settings.authorizationStatus == .authorized)
+                
+                if !permissionGranted {
+                    print("🚫 [VERIFY_OTP] Notification permission not granted (status: \(settings.authorizationStatus.rawValue)) - cannot get APNs token")
+                    semaphore.signal()
+                    return
+                }
+                
+                if self.isSimulator() {
+                    print("⚠️ [VERIFY_OTP] Running on simulator - APNs tokens only work on real devices!")
+                    semaphore.signal()
+                    return
+                }
+                
+                // Permission granted - ensure we're registered for remote notifications
+                print("✅ [VERIFY_OTP] Notification permission granted - checking if registered for remote notifications...")
+                DispatchQueue.main.async {
+                    // Check if APNs token is already set
+                    if Messaging.messaging().apnsToken != nil {
+                        print("✅ [VERIFY_OTP] APNs token already set - fetching FCM token...")
+                        Messaging.messaging().token { token, error in
+                            if let error = error {
+                                print("🚫 [VERIFY_OTP] Error fetching FCM token: \(error.localizedDescription)")
+                            } else if let token = token, !token.isEmpty {
+                                print("✅ [VERIFY_OTP] FCM token fetched successfully: \(token.prefix(50))...")
+                                fetchedToken = token
+                                UserDefaults.standard.set(token, forKey: Constant.FCM_TOKEN)
+                            } else {
+                                print("🚫 [VERIFY_OTP] FCM token is nil")
+                            }
+                            semaphore.signal()
+                        }
+                    } else {
+                        print("⚠️ [VERIFY_OTP] APNs token not set - registering for remote notifications...")
+                        UIApplication.shared.registerForRemoteNotifications()
+                        print("📱 [VERIFY_OTP] registerForRemoteNotifications() called - returning immediately (no waiting)")
+                        // Return immediately instead of waiting
+                        // FCM token will be available via MessagingDelegate callback when APNs token is ready
+                        semaphore.signal()
+                    }
+                }
+            }
+            
+            // Wait briefly for token (no waiting for APNs - returns immediately)
+            let result = semaphore.wait(timeout: .now() + 1.0)
+            
+            if result == .timedOut {
+                print("⏱️ [VERIFY_OTP] Timeout waiting for FCM token (1 second)")
+                finalToken = "apns_missing"
+            } else if let token = fetchedToken, !token.isEmpty {
+                print("✅ [VERIFY_OTP] Using fetched FCM token")
+                finalToken = token
+            } else {
+                print("⚠️ [VERIFY_OTP] Still no token available - using placeholder")
+                finalToken = "apns_missing"
+            }
         } else {
             finalToken = resolvedToken
+            print("✅ [VERIFY_OTP] Using resolved token")
         }
+        
+        print("🔑 [VERIFY_OTP] Final token to send: \(finalToken == "apns_missing" ? "apns_missing" : "\(finalToken.prefix(50))...")")
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -205,6 +284,25 @@ class VerifyMobileOTPViewModel: ObservableObject {
                 print("🚫 JSON Parsing Error: \(error.localizedDescription)")
             }
         }.resume()
+    }
+    
+    private func authorizationStatusString(_ status: UNAuthorizationStatus) -> String {
+        switch status {
+        case .notDetermined: return "notDetermined"
+        case .denied: return "denied"
+        case .authorized: return "authorized"
+        case .provisional: return "provisional"
+        case .ephemeral: return "ephemeral"
+        @unknown default: return "unknown"
+        }
+    }
+    
+    private func isSimulator() -> Bool {
+        #if targetEnvironment(simulator)
+        return true
+        #else
+        return false
+        #endif
     }
 
 

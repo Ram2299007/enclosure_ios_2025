@@ -18,10 +18,22 @@ struct ChangePasswordView: View {
     @FocusState private var isNewPasswordFocused: Bool
     @FocusState private var isConfirmPasswordFocused: Bool
     
+    // Helper function to hide keyboard
+    private func hideKeyboard() {
+        isCurrentPasswordFocused = false
+        isNewPasswordFocused = false
+        isConfirmPasswordFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
     var body: some View {
         ZStack {
             Color("background_color")
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    hideKeyboard()
+                }
             
             VStack(spacing: 0) {
                 // Toolbar

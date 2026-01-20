@@ -54,11 +54,20 @@ struct MultiVideoPreviewDialog: View {
         videoAssets.filter { selectedAssetIds.contains($0.localIdentifier) }
     }
     
+    // Helper function to hide keyboard
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
     var body: some View {
         ZStack {
             // Full-screen background (matching Android transparent background)
             Color.black
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    hideKeyboard()
+                }
             
             VStack(spacing: 0) {
                 // Top bar with back button and video count (matching Android header)

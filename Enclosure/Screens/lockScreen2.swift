@@ -13,11 +13,20 @@ struct LockScreen2View: View {
         print("🔍 [LockScreen2View] init() called - View is being created")
     }
     
+    // Helper function to hide keyboard
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
     var body: some View {
                 NavigationStack {
                     ZStack {
                         Color("BackgroundColor")
                             .ignoresSafeArea()
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                hideKeyboard()
+                            }
             
                         VStack {
                             Spacer()
