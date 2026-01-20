@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C2449CA02F1FC930003B6DB7 /* PopGestureRecognizerSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = C2449C9F2F1FC930003B6DB7 /* PopGestureRecognizerSwiftUI */; };
 		C261E29A2D95334700E1CFE6 /* Alamofire in Frameworks */ = {isa = PBXBuildFile; productRef = C261E2992D95334700E1CFE6 /* Alamofire */; };
 		C261E29B2D95334700E1CFE7 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = C261E29C2D95334700E1CFE7 /* FirebaseCore */; };
 		C261E29D2D95334700E1CFE8 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = C261E29E2D95334700E1CFE8 /* FirebaseMessaging */; };
@@ -119,6 +120,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C2449CA02F1FC930003B6DB7 /* PopGestureRecognizerSwiftUI in Frameworks */,
 				C261E29A2D95334700E1CFE6 /* Alamofire in Frameworks */,
 				C2CC67FF2F064961004ABBF9 /* Lottie in Frameworks */,
 				C28154A32EE56B560033FB02 /* FirebaseAnalyticsCore in Frameworks */,
@@ -216,6 +218,7 @@
 				C28154AC2EE56B560033FB02 /* FirebaseDatabase */,
 				C28154B02EE56B560033FB02 /* FirebaseStorage */,
 				C2CC67FE2F064961004ABBF9 /* Lottie */,
+				C2449C9F2F1FC930003B6DB7 /* PopGestureRecognizerSwiftUI */,
 			);
 			productName = Enclosure;
 			productReference = C22079682D848199006AA986 /* Enclosure.app */;
@@ -328,6 +331,7 @@
 				C261E2982D95334700E1CFE6 /* XCRemoteSwiftPackageReference "Alamofire" */,
 				C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				C2CC67FD2F064961004ABBF9 /* XCRemoteSwiftPackageReference "lottie-ios" */,
+				C2449C9E2F1FC930003B6DB7 /* XCRemoteSwiftPackageReference "PopGestureRecognizerSwiftUI" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C22079692D848199006AA986 /* Products */;
@@ -547,6 +551,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
 				CODE_SIGN_ENTITLEMENTS = Enclosure/Enclosure.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -590,6 +595,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
 				CODE_SIGN_ENTITLEMENTS = Enclosure/Enclosure.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -807,6 +813,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		C2449C9E2F1FC930003B6DB7 /* XCRemoteSwiftPackageReference "PopGestureRecognizerSwiftUI" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/hayek/PopGestureRecognizerSwiftUI";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
 		C261E2982D95334700E1CFE6 /* XCRemoteSwiftPackageReference "Alamofire" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/Alamofire/Alamofire.git";
@@ -834,6 +848,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		C2449C9F2F1FC930003B6DB7 /* PopGestureRecognizerSwiftUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C2449C9E2F1FC930003B6DB7 /* XCRemoteSwiftPackageReference "PopGestureRecognizerSwiftUI" */;
+			productName = PopGestureRecognizerSwiftUI;
+		};
 		C261E2992D95334700E1CFE6 /* Alamofire */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = C261E2982D95334700E1CFE6 /* XCRemoteSwiftPackageReference "Alamofire" */;

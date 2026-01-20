@@ -60,11 +60,41 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     
     // Handle remote notification registration
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let tokenString = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+        print("📱 [APNS_TOKEN] ✅✅✅✅✅ APNs device token received: \(tokenString)")
+        print("📱 [APNS_TOKEN] ✅✅✅✅✅ Token length: \(deviceToken.count) bytes")
+        NSLog("📱 [APNS_TOKEN] ✅✅✅✅✅ APNs device token received")
+        
         Messaging.messaging().apnsToken = deviceToken
+        print("📱 [APNS_TOKEN] APNs token set to Firebase Messaging")
+        
+        // Post notification that APNs token is available
+        NotificationCenter.default.post(name: NSNotification.Name("APNsTokenReceived"), object: deviceToken)
+        
+        // Force FCM token refresh after APNs token is set
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            Messaging.messaging().token { token, error in
+                if let error = error {
+                    print("🚫 [APNS_TOKEN] Error fetching FCM token after APNs registration: \(error.localizedDescription)")
+                } else if let token = token {
+                    print("✅ [APNS_TOKEN] FCM token generated after APNs registration: \(token.prefix(50))...")
+                    UserDefaults.standard.set(token, forKey: Constant.FCM_TOKEN)
+                    // Post notification that FCM token is available
+                    NotificationCenter.default.post(name: NSNotification.Name("FCMTokenReceived"), object: token)
+                } else {
+                    print("🚫 [APNS_TOKEN] FCM token is nil after APNs registration")
+                }
+            }
+        }
     }
     
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        print("🚫 Failed to register for remote notifications: \(error.localizedDescription)")
+        print("🚫 [APNS_TOKEN] ❌❌❌❌❌ Failed to register for remote notifications: \(error.localizedDescription)")
+        print("🚫 [APNS_TOKEN] ❌❌❌❌❌ Error details: \(error)")
+        NSLog("🚫 [APNS_TOKEN] ❌❌❌❌❌ Failed to register: \(error.localizedDescription)")
+        
+        // Post notification that registration failed
+        NotificationCenter.default.post(name: NSNotification.Name("APNsTokenFailed"), object: error)
     }
     
     // Handle URL schemes (for Share Extension)

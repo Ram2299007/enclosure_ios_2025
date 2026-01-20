@@ -1,5 +1,5 @@
 {
-  "originHash" : "1d282bf1e66b898a8dc2d5c4fc21c15e40c693a833c28735db065cde28ae22c3",
+  "originHash" : "c37dc26d4934b652e2740ef8325541b473f215468beba6598c8b5920a8d7ba5c",
   "pins" : [
     {
       "identity" : "abseil-cpp-binary",
@@ -125,6 +125,15 @@
       "state" : {
         "revision" : "b7e1104502eca3a213b46303391ca4d3bc8ddec1",
         "version" : "2.30910.0"
+      }
+    },
+    {
+      "identity" : "popgesturerecognizerswiftui",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/hayek/PopGestureRecognizerSwiftUI",
+      "state" : {
+        "revision" : "ca74d8683fd4f62453c670bb7a5d419e2b7a5934",
+        "version" : "2.0.0"
       }
     },
     {

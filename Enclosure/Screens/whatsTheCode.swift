@@ -3,6 +3,7 @@ import AVFoundation
 import Photos
 import Contacts
 import UserNotifications
+import PopGestureRecognizerSwiftUI
 
 struct whatsTheCode: View {
     var uid: String
@@ -47,15 +48,14 @@ struct whatsTheCode: View {
 
 
     var body: some View {
-
-        NavigationStack {
-            ZStack(alignment: .bottom) { // Use ZStack to overlay content and keep bottom fixed
-                Color("background_color")
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture { hideKeyboard() }
-                
-                VStack {
+        // Remove NavigationStack wrapper - it should be provided by parent (like ForthView)
+        ZStack(alignment: .bottom) { // Use ZStack to overlay content and keep bottom fixed
+            Color("background_color")
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { hideKeyboard() }
+            
+            VStack {
                     ScrollViewReader { proxy in
                         ScrollView {
                             VStack(alignment: .leading, spacing: 16) {
@@ -78,23 +78,7 @@ struct whatsTheCode: View {
                                         .foregroundColor(Color("icontintGlobal"))
                                 }
                             }
-                            .simultaneousGesture(
-                                DragGesture(minimumDistance: 0)
-                                    .onEnded { _ in
-                                        withAnimation {
-                                            isPressed = false
-                                        }
-                                    }
-                            )
                             .buttonStyle(.plain)
-                            .simultaneousGesture(
-                                DragGesture(minimumDistance: 0)
-                                    .onEnded { _ in
-                                        withAnimation {
-                                            isPressed = false
-                                        }
-                                    }
-                            )
                             .padding(.top, 20)
                             .padding(.leading, 20)
 
@@ -267,6 +251,11 @@ struct whatsTheCode: View {
                 }
             }
             .navigationBarHidden(true)
+            // PopGestureRecognizerSwiftUI: Gesture is enabled by default (like ForthView)
+            // We don't call .swipeBackGestureDisabled(), so the native interactive pop gesture works
+            .background(
+                NavigationGestureEnabler()
+            )
             .onAppear {
                 print("UID: \(uid), Country Code: \(country_Code), Mobile No: \(mobile_no)")
                 
@@ -320,7 +309,6 @@ struct whatsTheCode: View {
                     }
                 }
             }
-        }
     }
 
     private func handleBackTap() {
@@ -795,7 +783,8 @@ struct whatsTheCode: View {
 
 
     func showPermissionAlert() {
-        guard let topVC = UIApplication.shared.windows.first?.rootViewController else { return }
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let topVC = windowScene.windows.first?.rootViewController else { return }
 
         let alert = UIAlertController(
             title: "Contacts Permission Required",
@@ -843,6 +832,92 @@ struct whatsTheCode: View {
         }
     }
 
+}
+
+// Helper to enable interactive pop gesture - matches PopGestureRecognizerSwiftUI approach
+struct NavigationGestureEnabler: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> UIViewController {
+        let controller = UIViewController()
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
+        DispatchQueue.main.async {
+            // Find navigation controller using PopGestureRecognizerSwiftUI logic
+            if let navController = getCurrentNavigationController() {
+                // Enable interactive pop gesture
+                navController.interactivePopGestureRecognizer?.isEnabled = true
+                navController.interactivePopGestureRecognizer?.delegate = nil
+                
+                // Configure ScrollView gestures if needed
+                if let topVC = navController.topViewController {
+                    configureScrollViewGestures(in: topVC.view, popGesture: navController.interactivePopGestureRecognizer!)
+                }
+            }
+        }
+    }
+    
+    private func getCurrentNavigationController() -> UINavigationController? {
+        let keyWindow = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }
+        
+        return findNavigationController(viewController: keyWindow?.rootViewController)
+    }
+    
+    private func findNavigationController(viewController: UIViewController?) -> UINavigationController? {
+        guard let viewController = viewController else { return nil }
+        
+        if let splitViewController = viewController as? UISplitViewController {
+            for vc in splitViewController.viewControllers {
+                if let navigationController = findNavigationController(viewController: vc) {
+                    return navigationController
+                }
+            }
+        }
+        
+        if let tabBarController = viewController as? UITabBarController {
+            if let tabBarViewController = tabBarController.selectedViewController {
+                if let navigationController = findNavigationController(viewController: tabBarViewController) {
+                    return navigationController
+                }
+            }
+        }
+        
+        if let presentedViewController = viewController.presentedViewController {
+            if let navigationController = findNavigationController(viewController: presentedViewController) {
+                return navigationController
+            }
+        }
+        
+        for childViewController in viewController.children {
+            if let navigationController = findNavigationController(viewController: childViewController) {
+                return navigationController
+            }
+        }
+        
+        if let navigationController = viewController as? UINavigationController {
+            return navigationController
+        }
+        
+        if let navigationController = viewController.navigationController {
+            return navigationController
+        }
+        
+        return nil
+    }
+    
+    private func configureScrollViewGestures(in view: UIView, popGesture: UIGestureRecognizer) {
+        if let scrollView = view as? UIScrollView {
+            let panGesture = scrollView.panGestureRecognizer
+            panGesture.require(toFail: popGesture)
+        }
+        
+        for subview in view.subviews {
+            configureScrollViewGestures(in: subview, popGesture: popGesture)
+        }
+    }
 }
 
 #Preview {
