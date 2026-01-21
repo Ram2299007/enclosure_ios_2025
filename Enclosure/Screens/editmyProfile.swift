@@ -44,16 +44,6 @@ struct EditmyProfile: View {
                     .onTapGesture {
                         hideKeyboard()
                     }
-                // Fallback: manual swipe-to-dismiss if system pop fails
-                .gesture(
-                    DragGesture(minimumDistance: 15, coordinateSpace: .local)
-                        .onEnded { value in
-                            // Right-swipe with horizontal dominance
-                            if value.translation.width > 40 && abs(value.translation.height) < abs(value.translation.width) * 0.6 {
-                                dismiss()
-                            }
-                        }
-                )
                 
                 ScrollView {
                     VStack(spacing: 0) {
@@ -410,20 +400,7 @@ struct EditmyProfile: View {
                 }
             }
         .navigationBarHidden(true)
-        // PopGestureRecognizerSwiftUI: Gesture is enabled by default (like ForthView)
-        // We don't call .swipeBackGestureDisabled(), so the native interactive pop gesture works
-        .background(
-            NavigationGestureEnabler()
-        )
-        // High-priority fallback: manual right-swipe to dismiss if native pop is blocked
-        .highPriorityGesture(
-            DragGesture(minimumDistance: 15, coordinateSpace: .local)
-                .onEnded { value in
-                    if value.translation.width > 40 && abs(value.translation.height) < abs(value.translation.width) * 0.6 {
-                        dismiss()
-                    }
-                }
-        )
+        .background(NavigationGestureEnabler())
     }
     private func handleBackTap() {
         withAnimation {

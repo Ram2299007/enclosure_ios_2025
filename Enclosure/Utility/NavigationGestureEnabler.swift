@@ -14,7 +14,7 @@ struct NavigationGestureEnabler: UIViewControllerRepresentable {
         let controller = UIViewController()
         // Configure immediately when view controller is created
         DispatchQueue.main.async {
-            configureGestures()
+            configureGestures(for: controller)
         }
         
         // Set up periodic checks to ensure gesture stays enabled
@@ -29,17 +29,17 @@ struct NavigationGestureEnabler: UIViewControllerRepresentable {
         
         // Configure immediately and also with a slight delay to catch ScrollViews that load later
         DispatchQueue.main.async {
-            configureGestures()
+            configureGestures(for: uiViewController)
         }
         
         // Also configure after a short delay to ensure ScrollViews are fully loaded
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            configureGestures()
+            configureGestures(for: uiViewController)
         }
         
         // Configure again after a longer delay to catch any late changes
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            configureGestures()
+            configureGestures(for: uiViewController)
         }
     }
     
@@ -54,7 +54,7 @@ struct NavigationGestureEnabler: UIViewControllerRepresentable {
             checkCount += 1
             
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                configureGestures()
+                configureGestures(for: controller)
                 periodicCheck()
             }
         }
@@ -65,9 +65,9 @@ struct NavigationGestureEnabler: UIViewControllerRepresentable {
         }
     }
     
-    private func configureGestures() {
-        // Find navigation controller using PopGestureRecognizerSwiftUI logic
-        guard let navController = getCurrentNavigationController() else { return }
+    private func configureGestures(for controller: UIViewController) {
+        // Find navigation controller closest to this view
+        guard let navController = getCurrentNavigationController(startingAt: controller) else { return }
         
         // Safety check: Ensure navigation controller is still valid
         guard navController.view.window != nil else { return }
@@ -84,13 +84,36 @@ struct NavigationGestureEnabler: UIViewControllerRepresentable {
         configureScrollViewGestures(in: topVC.view, popGesture: popGesture)
     }
     
-    private func getCurrentNavigationController() -> UINavigationController? {
+    private func getCurrentNavigationController(startingAt controller: UIViewController) -> UINavigationController? {
+        if let nav = findNavigationControllerInParents(of: controller) {
+            return nav
+        }
+        
         let keyWindow = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .flatMap { $0.windows }
             .first { $0.isKeyWindow }
         
         return findNavigationController(viewController: keyWindow?.rootViewController)
+    }
+    
+    private func findNavigationControllerInParents(of controller: UIViewController) -> UINavigationController? {
+        if let nav = controller.navigationController {
+            return nav
+        }
+        
+        var currentParent = controller.parent
+        while let parent = currentParent {
+            if let nav = parent as? UINavigationController {
+                return nav
+            }
+            if let nav = parent.navigationController {
+                return nav
+            }
+            currentParent = parent.parent
+        }
+        
+        return nil
     }
     
     private func findNavigationController(viewController: UIViewController?) -> UINavigationController? {
