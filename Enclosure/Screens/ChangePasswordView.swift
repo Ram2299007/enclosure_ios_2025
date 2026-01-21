@@ -199,14 +199,6 @@ struct ChangePasswordView: View {
         }
         .navigationBarHidden(true)
         .background(NavigationGestureEnabler())
-        .highPriorityGesture(
-            DragGesture(minimumDistance: 15, coordinateSpace: .local)
-                .onEnded { value in
-                    if value.translation.width > 40 && abs(value.translation.height) < abs(value.translation.width) * 0.6 {
-                        dismiss()
-                    }
-                }
-        )
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK") {
                 if alertTitle == "Success" {
