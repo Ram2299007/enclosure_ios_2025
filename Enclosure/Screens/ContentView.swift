@@ -263,6 +263,7 @@ struct OnboardingView: View {
             }
         }
         .navigationBarHidden(true)
+        .background(NavigationGestureEnabler())
     }
 }
 

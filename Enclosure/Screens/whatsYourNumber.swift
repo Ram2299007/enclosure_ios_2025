@@ -250,6 +250,7 @@ struct whatsYourNumber: View {
                 }
             )
             .navigationBarHidden(true)
+            .background(NavigationGestureEnabler())
             .onChange(of: selectedCountryShortCode) { newValue in
                 print("Country short code updated in whatsYourNumber: \(newValue)")
                 // Dismiss keyboard when country is selected (returning from flagScreen)

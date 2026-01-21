@@ -812,6 +812,7 @@ struct MainActivityOld: View {
             }
             .opacity(initialFadeInOpacity)
             .navigationBarHidden(true)
+            .background(NavigationGestureEnabler())
             .navigationDestination(isPresented: $showInviteScreen) {
                 InviteScreen()
             }

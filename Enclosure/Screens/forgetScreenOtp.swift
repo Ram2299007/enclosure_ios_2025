@@ -423,6 +423,15 @@ struct forgetScreenOtp: View {
                 }
             }
             .navigationBarHidden(true)
+            .background(NavigationGestureEnabler())
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 15, coordinateSpace: .local)
+                    .onEnded { value in
+                        if value.translation.width > 40 && abs(value.translation.height) < abs(value.translation.width) * 0.6 {
+                            dismiss()
+                        }
+                    }
+            )
             .onAppear {
                 print("UID: \(uid), Country Code: \(country_Code), Mobile No: \(mobile_no)")
                 

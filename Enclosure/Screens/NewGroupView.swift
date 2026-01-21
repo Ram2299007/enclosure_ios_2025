@@ -121,6 +121,7 @@ struct NewGroupView: View {
             submitButton
         }
         .navigationBarHidden(true)
+        .background(NavigationGestureEnabler())
         .sheet(isPresented: $isImagePickerPresented) {
             ImagePicker(sourceType: .photoLibrary, selectedImage: Binding(
                 get: { nil },

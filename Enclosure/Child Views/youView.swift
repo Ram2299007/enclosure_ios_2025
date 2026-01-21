@@ -7,7 +7,7 @@
 
 import Foundation
 import SwiftUI
-import SwiftUI
+import PopGestureRecognizerSwiftUI
 
 
 struct youView: View {
@@ -203,6 +203,8 @@ struct youView: View {
             )
             .animation(.spring(), value: dragOffset)
         }
+        // Ensure native back-swipe stays enabled for pushes from this screen
+        .background(NavigationGestureEnabler())
         .onAppear {
             isTopHeaderVisible = false
             mainvectorTintColor = getMainvectorTintColor(for: themeColorHex) // Initialize tint color

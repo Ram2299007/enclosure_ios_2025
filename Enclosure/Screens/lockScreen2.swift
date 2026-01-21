@@ -151,6 +151,7 @@ struct LockScreen2View: View {
                         checkSleepModeStatus()
                     }
                     .navigationBarHidden(true)
+                    .background(NavigationGestureEnabler())
                     .background(
                         NavigationLink(destination: MainActivityOld(), isActive: $shouldNavigateToMain) {
                             EmptyView()

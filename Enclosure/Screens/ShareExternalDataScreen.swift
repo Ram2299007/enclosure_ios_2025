@@ -87,6 +87,7 @@ struct ShareExternalDataScreen: View {
                 }
             }
             .navigationBarHidden(true)
+            .background(NavigationGestureEnabler())
             .navigationDestination(isPresented: $navigateToContactPicker) {
                 ShareExternalDataContactScreen(
                     sharedContent: sharedContent,
