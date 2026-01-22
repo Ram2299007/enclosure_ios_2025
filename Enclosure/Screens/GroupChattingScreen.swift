@@ -2354,6 +2354,45 @@ struct GroupChattingScreen: View {
         let imagesDir = getLocalImagesDirectory()
         return imagesDir.appendingPathComponent(fileName)
     }
+
+    /// Resolve selection bunch URL to local path when available
+    private func resolveSelectionBunchImageURL(remoteUrl: String, fileName: String) -> String {
+        let imagesDir = getLocalImagesDirectory()
+        
+        if !fileName.isEmpty {
+            let localURL = imagesDir.appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: localURL.path) {
+                return localURL.path
+            }
+        }
+        
+        guard !remoteUrl.isEmpty else {
+            return remoteUrl
+        }
+        
+        if remoteUrl.hasPrefix("file://"), let url = URL(string: remoteUrl),
+           FileManager.default.fileExists(atPath: url.path) {
+            return url.path
+        }
+        
+        if remoteUrl.hasPrefix("/") && FileManager.default.fileExists(atPath: remoteUrl) {
+            return remoteUrl
+        }
+        
+        if let url = URL(string: remoteUrl), url.isFileURL,
+           FileManager.default.fileExists(atPath: url.path) {
+            return url.path
+        }
+        
+        if let url = URL(string: remoteUrl), !url.lastPathComponent.isEmpty {
+            let localURL = imagesDir.appendingPathComponent(url.lastPathComponent)
+            if FileManager.default.fileExists(atPath: localURL.path) {
+                return localURL.path
+            }
+        }
+        
+        return remoteUrl
+    }
     
     /// Save image to local storage (matching Android file saving logic)
     private func saveImageToLocalStorage(data: Data, fileName: String) {
@@ -3376,7 +3415,8 @@ struct GroupChattingScreen: View {
                           let fileName = bunchDict["fileName"] as? String else {
                         return nil
                     }
-                    return SelectionBunchModel(imgUrl: imgUrl, fileName: fileName)
+                    let resolvedUrl = resolveSelectionBunchImageURL(remoteUrl: imgUrl, fileName: fileName)
+                    return SelectionBunchModel(imgUrl: resolvedUrl, fileName: fileName)
                 }
                 if !parsed.isEmpty {
                     return parsed
@@ -3414,7 +3454,8 @@ struct GroupChattingScreen: View {
                     }
                     
                     if let url = imgUrl, let name = imgFileName {
-                        bunch.append(SelectionBunchModel(imgUrl: url, fileName: name))
+                        let resolvedUrl = resolveSelectionBunchImageURL(remoteUrl: url, fileName: name)
+                        bunch.append(SelectionBunchModel(imgUrl: resolvedUrl, fileName: name))
                     }
                 }
                 
@@ -3436,10 +3477,12 @@ struct GroupChattingScreen: View {
                 // Check if selectionCount exists and is > 1, if so, we might need to wait for more images
                 if let count = selectionCount, let countInt = Int(count), countInt > 1 {
                     // Multiple images expected but only document available - return single image for now
-                    return [SelectionBunchModel(imgUrl: document, fileName: fileName)]
+                    let resolvedUrl = resolveSelectionBunchImageURL(remoteUrl: document, fileName: fileName)
+                    return [SelectionBunchModel(imgUrl: resolvedUrl, fileName: fileName)]
                 } else {
                     // Single image message
-                    return [SelectionBunchModel(imgUrl: document, fileName: fileName)]
+                    let resolvedUrl = resolveSelectionBunchImageURL(remoteUrl: document, fileName: fileName)
+                    return [SelectionBunchModel(imgUrl: resolvedUrl, fileName: fileName)]
                 }
             }
             

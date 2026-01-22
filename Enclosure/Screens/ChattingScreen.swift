@@ -11745,24 +11745,49 @@ struct BunchImageView: View {
     let corners: UIRectCorner
     let cornerRadius: CGFloat
     
-    // Check if local file exists (for sender)
-    private var hasLocalFile: Bool {
+    private var localImagesDirectory: URL {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let imagesDir = documentsPath.appendingPathComponent("Enclosure/Media/Images", isDirectory: true)
-        let localURL = imagesDir.appendingPathComponent(fileName)
-        return FileManager.default.fileExists(atPath: localURL.path)
+        return documentsPath.appendingPathComponent("Enclosure/Media/Images", isDirectory: true)
+    }
+    
+    private func localURLIfExists(_ url: URL?) -> URL? {
+        guard let url = url else { return nil }
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+    
+    private var localURLFromFileName: URL? {
+        guard !fileName.isEmpty else { return nil }
+        return localURLIfExists(localImagesDirectory.appendingPathComponent(fileName))
+    }
+    
+    private var localURLFromImageUrl: URL? {
+        guard !imageUrl.isEmpty else { return nil }
+        
+        if imageUrl.hasPrefix("file://"), let url = URL(string: imageUrl) {
+            return localURLIfExists(url)
+        }
+        
+        if imageUrl.hasPrefix("/") {
+            return localURLIfExists(URL(fileURLWithPath: imageUrl))
+        }
+        
+        if let url = URL(string: imageUrl), url.isFileURL {
+            return localURLIfExists(url)
+        }
+        
+        if let url = URL(string: imageUrl), !url.lastPathComponent.isEmpty {
+            return localURLIfExists(localImagesDirectory.appendingPathComponent(url.lastPathComponent))
+        }
+        
+        return nil
     }
     
     // Get image source URL (local first, then online)
     private var sourceURL: URL? {
-        // Check local file first
-        if hasLocalFile {
-            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            let imagesDir = documentsPath.appendingPathComponent("Enclosure/Media/Images", isDirectory: true)
-            return imagesDir.appendingPathComponent(fileName)
+        if let localURL = localURLFromFileName ?? localURLFromImageUrl {
+            return localURL
         }
         
-        // Fallback to online URL
         if let url = URL(string: imageUrl), !imageUrl.isEmpty {
             return url
         }
@@ -12400,7 +12425,11 @@ struct MessageBubbleView: View {
             viewFrame = frame // Update synchronously to avoid delays
         }
         // Use onLongPressGesture which allows scrolling to take priority
-        .onLongPressGesture(minimumDuration: 0.5, maximumDistance: .infinity) {
+        .onLongPressGesture(minimumDuration: 0.5, maximumDistance: 20) {
+            // Prefer swipe-to-reply over long press
+            if isDragging || dragTranslation != .zero {
+                return
+            }
             // Long press detected - trigger callback with exact touch location
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onLongPress?(message, CGPoint(x: viewFrame.midX, y: viewFrame.midY))
