@@ -1156,7 +1156,15 @@ struct ChattingScreen: View {
                                     isSelected: isMessageSelected(messageId: message.id),
                                     onSelectionToggle: { messageId in
                                         toggleMessageSelection(messageId: messageId)
-                                    }
+                                    },
+                                    onReceiverPendingComplete: { pendingMessage in
+                                        // Mirror Android: update receiverLoader for last receiver message
+                                        checkMessageInFirebaseAndStopProgress(
+                                            messageId: pendingMessage.id,
+                                            receiverUid: contact.uid
+                                        )
+                                    },
+                                    isLastMessage: index == (isSearching ? filteredMessages.count : messages.count) - 1
                                 )
                                     .id(message.id)
                                     .onAppear {
@@ -12284,14 +12292,17 @@ struct MessageBubbleView: View {
     let isMultiSelectMode: Bool
     let isSelected: Bool
     let onSelectionToggle: ((String) -> Void)?
+    let onReceiverPendingComplete: ((ChatMessage) -> Void)?
+    let isLastMessage: Bool
     @GestureState private var dragTranslation: CGSize = .zero
     @State private var isDragging: Bool = false
     @State private var viewFrame: CGRect = .zero
+    @State private var receiverProgressCompleted: Bool = false
     // Removed longPressLocation - no longer needed with onLongPressGesture
     private let halfSwipeThreshold: CGFloat = 60
     @Environment(\.colorScheme) private var colorScheme
     
-    init(message: ChatMessage, onHalfSwipe: @escaping (ChatMessage) -> Void = { _ in }, onReplyTap: ((ChatMessage) -> Void)? = nil, onLongPress: ((ChatMessage, CGPoint) -> Void)? = nil, onEmojiCardTap: ((ChatMessage) -> Void)? = nil, onBunchLongPress: (([SelectionBunchModel]) -> Void)? = nil, onImageTap: ((SelectionBunchModel) -> Void)? = nil, isHighlighted: Bool = false, isMultiSelectMode: Bool = false, isSelected: Bool = false, onSelectionToggle: ((String) -> Void)? = nil) {
+    init(message: ChatMessage, onHalfSwipe: @escaping (ChatMessage) -> Void = { _ in }, onReplyTap: ((ChatMessage) -> Void)? = nil, onLongPress: ((ChatMessage, CGPoint) -> Void)? = nil, onEmojiCardTap: ((ChatMessage) -> Void)? = nil, onBunchLongPress: (([SelectionBunchModel]) -> Void)? = nil, onImageTap: ((SelectionBunchModel) -> Void)? = nil, isHighlighted: Bool = false, isMultiSelectMode: Bool = false, isSelected: Bool = false, onSelectionToggle: ((String) -> Void)? = nil, onReceiverPendingComplete: ((ChatMessage) -> Void)? = nil, isLastMessage: Bool = false) {
         self.message = message
         self.isSentByMe = message.uid == Constant.SenderIdMy
         self.onBunchLongPress = onBunchLongPress
@@ -12304,6 +12315,8 @@ struct MessageBubbleView: View {
         self.isMultiSelectMode = isMultiSelectMode
         self.isSelected = isSelected
         self.onSelectionToggle = onSelectionToggle
+        self.onReceiverPendingComplete = onReceiverPendingComplete
+        self.isLastMessage = isLastMessage
     }
     
     var body: some View {
@@ -12429,6 +12442,19 @@ struct MessageBubbleView: View {
         )
         .onPreferenceChange(MessageFramePreferenceKey.self) { frame in
             viewFrame = frame // Update synchronously to avoid delays
+        }
+        .onChange(of: message.id) { _ in
+            receiverProgressCompleted = false
+        }
+        .onChange(of: message.receiverLoader) { newValue in
+            if newValue != 0 {
+                receiverProgressCompleted = false
+            }
+        }
+        .onChange(of: isLastMessage) { isLast in
+            if !isLast {
+                receiverProgressCompleted = false
+            }
         }
         // Use onLongPressGesture which allows scrolling to take priority
         .onLongPressGesture(minimumDuration: 0.5, maximumDistance: 20) {
@@ -13030,7 +13056,7 @@ struct MessageBubbleView: View {
                             }
                             .frame(width: calculateBunchWidth(selectionCount: selectionCount)) // Container width matches bunch width exactly
                             .background(
-                                getReceiverGlassBackground(cornerRadius: 12)
+                                getReceiverGlassBackground(cornerRadius: 20)
                             )
                             Spacer(minLength: 0)
                         }
@@ -13084,7 +13110,7 @@ struct MessageBubbleView: View {
                             .frame(width: calculateImageSize(imageWidth: message.imageWidth, imageHeight: message.imageHeight, aspectRatio: message.aspectRatio).width) // Container width matches image width exactly
                             .background(
                                 // Container background with glassmorphism (matching modern_glass_background_receiver.xml)
-                                getReceiverGlassBackground(cornerRadius: 12) // matching receiver text message corner radius
+                                getReceiverGlassBackground(cornerRadius: 20) // matching receiver text message corner radius
                             )
                             Spacer(minLength: 0) // Don't expand beyond content
                         }
@@ -13125,7 +13151,7 @@ struct MessageBubbleView: View {
                             }
                             .frame(width: calculateImageSize(imageWidth: message.imageWidth, imageHeight: message.imageHeight, aspectRatio: message.aspectRatio).width) // Container width matches video width exactly
                             .background(
-                                getReceiverGlassBackground(cornerRadius: 12)
+                                getReceiverGlassBackground(cornerRadius: 20)
                             )
                             Spacer(minLength: 0)
                         }
@@ -13298,7 +13324,7 @@ struct MessageBubbleView: View {
                                             .padding(.top, showBackground ? 5 : 0)
                                             .padding(.bottom, showBackground ? 6 : 0)
                                             .background(
-                                                showBackground ? getReceiverGlassBackground(cornerRadius: 12) : nil
+                                                showBackground ? getReceiverGlassBackground(cornerRadius: 20) : nil
                                             )
                                     } else {
                                         // Default text message styling for text_and_emoji and only_text
@@ -13313,7 +13339,7 @@ struct MessageBubbleView: View {
                                             .padding(.top, 5) // paddingTop="5dp"
                                             .padding(.bottom, 6) // paddingBottom="6dp"
                                             .background(
-                                                getReceiverGlassBackground(cornerRadius: 12) // matching Android corner radius
+                                                getReceiverGlassBackground(cornerRadius: 20) // matching Android corner radius
                                             )
                                     }
                                 }
@@ -13732,18 +13758,20 @@ struct MessageBubbleView: View {
     // Shows animated horizontal progress bar when receiverLoader == 0 (pending message)
     private func progressIndicatorView(isSender: Bool) -> some View {
         let themeColor = Color(hex: Constant.themeColor)
-        // Sender: use themeColor for both track and indicator (per ThemeColorKey); Receiver: asset colors
-        let indicatorColor = isSender ? themeColor : Color("line")
-        let trackColor = isSender ? themeColor : Color("line")
+        // Sender: use themeColor for both track and indicator; Receiver: use gray (no theme color)
+        let indicatorColor = isSender ? themeColor : Color("gray3")
+        let trackColor = isSender ? themeColor : Color("gray3")
         let cornerRadius: CGFloat = isSender ? 20 : 10
         
-        // Check if this is a pending message (receiverLoader == 0) for sender messages
-        let isPendingMessage = isSentByMe && message.receiverLoader == 0
+        // Show pending progress for sender, and for receiver only on last message
+        let isPendingMessage = message.receiverLoader == 0 && (isSentByMe || (!isSentByMe && isLastMessage))
+        let isReceiverPending = !isSentByMe && isLastMessage && message.receiverLoader == 0
         
         // 🔍 PROGRESS BAR LOG: Log why progress bar is shown/hidden
-        if isSentByMe {
+        if isSentByMe || isLastMessage {
             print("🔍 [ProgressBar] Message ID: \(message.id.prefix(8))...")
             print("🔍 [ProgressBar]   - isSentByMe: \(isSentByMe)")
+            print("🔍 [ProgressBar]   - isLastMessage: \(isLastMessage)")
             print("🔍 [ProgressBar]   - receiverLoader: \(message.receiverLoader)")
             print("🔍 [ProgressBar]   - isPendingMessage: \(isPendingMessage)")
             print("🔍 [ProgressBar]   - dataType: \(message.dataType)")
@@ -13755,11 +13783,39 @@ struct MessageBubbleView: View {
         }
         
         if isPendingMessage {
+            if isReceiverPending && receiverProgressCompleted {
+                let pendingIndicatorColor = isReceiverPending ? Color("gray3") : indicatorColor
+                let pendingTrackColor = isReceiverPending ? Color("gray3").opacity(0.3) : trackColor
+                return AnyView(
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(pendingTrackColor)
+                            .frame(width: 20, height: 1)
+                        Capsule()
+                            .fill(pendingIndicatorColor)
+                            .frame(width: 20, height: 1)
+                    }
+                    .frame(width: 20, height: 1)
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+                )
+            }
             // Show animated horizontal progress bar for pending messages (matching Android viewnew LinearProgressIndicator)
+            let pendingIndicatorColor = isReceiverPending ? Color("gray3") : themeColor
+            let pendingTrackColor = isReceiverPending ? Color("gray3").opacity(0.3) : themeColor.opacity(0.3)
             return AnyView(
                 AnimatedProgressBarView(
-                    themeColor: themeColor,
-                    cornerRadius: cornerRadius
+                    indicatorColor: pendingIndicatorColor,
+                    trackColor: pendingTrackColor,
+                    cornerRadius: cornerRadius,
+                    direction: isSentByMe ? .rightToLeft : .leftToRight,
+                    shouldRepeat: isSentByMe,
+                    duration: 1.0,
+                    onComplete: {
+                        if isReceiverPending {
+                            receiverProgressCompleted = true
+                            onReceiverPendingComplete?(message)
+                        }
+                    }
                 )
                 .frame(width: 20, height: 1)
             )
@@ -13784,35 +13840,57 @@ struct MessageBubbleView: View {
 // MARK: - Animated Progress Bar View (matching Android viewnew LinearProgressIndicator)
 // Shows animated horizontal progress bar for pending messages (receiverLoader == 0)
 struct AnimatedProgressBarView: View {
-    let themeColor: Color
+    enum Direction {
+        case leftToRight
+        case rightToLeft
+    }
+    
+    let indicatorColor: Color
+    let trackColor: Color
     let cornerRadius: CGFloat
+    let direction: Direction
+    let shouldRepeat: Bool
+    let duration: Double
+    let onComplete: (() -> Void)?
     @State private var animationProgress: CGFloat = 0
     
     var body: some View {
         GeometryReader { geometry in
             let barWidth = max(geometry.size.width * 0.4, 8) // 40% of width, minimum 8 points
             let maxOffset = geometry.size.width - barWidth
+            let offset = direction == .leftToRight
+                ? animationProgress * maxOffset
+                : maxOffset - (animationProgress * maxOffset)
             
             ZStack(alignment: .leading) {
                 // Track (background) - full width
                 Capsule()
-                    .fill(themeColor.opacity(0.3))
+                    .fill(trackColor)
                     .frame(height: 1)
                 
                 // Animated indicator (matching Android indeterminate progress)
-                // Moves from left to right continuously
                 Capsule()
-                    .fill(themeColor)
+                    .fill(indicatorColor)
                     .frame(width: barWidth, height: 1)
-                    .offset(x: animationProgress * maxOffset)
+                    .offset(x: offset)
             }
         }
         .frame(height: 1)
         .onAppear {
-            // Start continuous animation (matching Android setIndeterminate(true))
-            // Reset to 0 and animate to 1, then repeat
-            withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
-                animationProgress = 1.0
+            animationProgress = 0
+            if shouldRepeat {
+                // Start continuous animation (matching Android setIndeterminate(true))
+                withAnimation(.linear(duration: duration).repeatForever(autoreverses: false)) {
+                    animationProgress = 1.0
+                }
+            } else {
+                // Run a single cycle and stop (matching Android setIndeterminate(false) after delay)
+                withAnimation(.linear(duration: duration)) {
+                    animationProgress = 1.0
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+                    onComplete?()
+                }
             }
         }
         .onDisappear {
@@ -17725,7 +17803,7 @@ struct MessageLongPressDialog: View {
                                         .padding(.horizontal, 12)
                                         .padding(.top, 5)
                                         .padding(.bottom, 6)
-                                        .background(getReceiverGlassBackground(cornerRadius: 12))
+                                        .background(getReceiverGlassBackground(cornerRadius: 20))
                                 }
                             } else {
                                 Text(messageContent)
@@ -17760,7 +17838,7 @@ struct MessageLongPressDialog: View {
                                     .padding(.horizontal, 12)
                                     .padding(.top, 5)
                                     .padding(.bottom, 6)
-                                    .background(getReceiverGlassBackground(cornerRadius: 12))
+                                    .background(getReceiverGlassBackground(cornerRadius: 20))
                             }
                         }
                     }

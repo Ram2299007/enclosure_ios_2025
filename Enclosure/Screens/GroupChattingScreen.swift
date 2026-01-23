@@ -1500,7 +1500,8 @@ struct GroupChattingScreen: View {
                                 isSelected: selectedMessageIds.contains(chatMessage.id),
                                 onSelectionToggle: { messageId in
                                     toggleMessageSelection(messageId: messageId)
-                                }
+                                },
+                                isLastMessage: index == (isSearching ? filteredMessages.count : messages.count) - 1
                             )
                             .id(chatMessage.id)
                             .onAppear {
