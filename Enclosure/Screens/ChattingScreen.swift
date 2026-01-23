@@ -332,32 +332,31 @@ struct ChattingScreen: View {
                     onReply: {
                         showLongPressDialog = false
                         longPressedMessage = nil
-                        // TODO: Handle reply action
-                        print("Reply to message: \(message.id)")
+                        handleHalfSwipeReply(message)
                     },
                     onForward: {
                         showLongPressDialog = false
                         longPressedMessage = nil
-                        // TODO: Handle forward action
-                        print("Forward message: \(message.id)")
+                        selectedMessageIds = [message.id]
+                        selectedCount = 1
+                        openContactSelectionForForward()
                     },
                     onCopy: {
                         showLongPressDialog = false
                         longPressedMessage = nil
-                        // TODO: Handle copy action
-                        print("Copy message: \(message.id)")
+                        UIPasteboard.general.string = message.message
+                        Constant.showToast(message: "Copied")
                     },
                     onDelete: {
                         showLongPressDialog = false
                         longPressedMessage = nil
-                        // TODO: Handle delete action
-                        print("Delete message: \(message.id)")
+                        deleteMessage(message: message)
                     },
                     onMultiSelect: {
                         showLongPressDialog = false
                         longPressedMessage = nil
-                        // TODO: Handle multi-select action
-                        print("Multi-select message: \(message.id)")
+                        enterMultiSelectMode()
+                        toggleMessageSelection(messageId: message.id)
                     },
                     onImageTap: { imageModel in
                         // Open ShowImageScreen for single image
@@ -4758,12 +4757,7 @@ struct ChattingScreen: View {
                         
                         // Check if all messages are processed
                         if completedMessages + failedMessages >= totalMessages {
-                            // Show completion message
-                            if failedMessages == 0 {
-                                Constant.showToast(message: "Successfully forwarded \(completedMessages) messages")
-                            } else {
-                                Constant.showToast(message: "Forwarded \(completedMessages) messages, \(failedMessages) failed")
-                            }
+                            // Completion reached; no toast needed
                             
                             // Exit multi-select mode after forwarding (matching Android chatAdapter.exitMultiSelectMode())
                             exitMultiSelectMode()
