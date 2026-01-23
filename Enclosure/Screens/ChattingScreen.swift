@@ -17987,9 +17987,12 @@ struct MessageLongPressDialog: View {
                     .frame(maxWidth: 250)
                 }
             }
+            
+            // Time row with progress indicator for preview
+            timeRowPreviewView
         }
-                            .padding(.horizontal, isSentByMe ? 16 : 12)
-                            .padding(.top, 2)
+        .padding(.horizontal, isSentByMe ? 16 : 12)
+        .padding(.vertical, 10)
     }
                             
     // Contact message preview view - matching MessageBubbleView exact styling
@@ -18080,9 +18083,12 @@ struct MessageLongPressDialog: View {
                     .frame(maxWidth: 250)
                 }
             }
+            
+            // Time row with progress indicator for preview
+            timeRowPreviewView
         }
         .padding(.horizontal, isSentByMe ? 16 : 12)
-        .padding(.top, 2)
+        .padding(.vertical, 10)
     }
     
     // Video message preview view - matching MessageBubbleView exact styling
@@ -18181,9 +18187,12 @@ struct MessageLongPressDialog: View {
                     .frame(maxWidth: 250)
                 }
             }
+            
+            // Time row with progress indicator for preview
+            timeRowPreviewView
         }
         .padding(.horizontal, isSentByMe ? 16 : 12)
-        .padding(.top, 2)
+        .padding(.vertical, 10)
     }
     
     // Voice audio message preview view - matching MessageBubbleView exact styling
@@ -18274,9 +18283,12 @@ struct MessageLongPressDialog: View {
                     .frame(maxWidth: 250)
                 }
             }
+            
+            // Time row with progress indicator for preview
+            timeRowPreviewView
         }
         .padding(.horizontal, isSentByMe ? 16 : 12)
-        .padding(.top, 2)
+        .padding(.vertical, 10)
     }
     
     // Image message preview view - matching MessageBubbleView exact styling
@@ -18387,9 +18399,12 @@ struct MessageLongPressDialog: View {
                     .frame(maxWidth: 250)
                                     }
             }
+            
+            // Time row with progress indicator for preview
+            timeRowPreviewView
         }
         .padding(.horizontal, isSentByMe ? 16 : 12)
-        .padding(.top, 2)
+        .padding(.vertical, 10)
                                 }
                                 
     // Calculate image size (matching MessageBubbleView calculateImageSize)
@@ -18546,7 +18561,7 @@ struct MessageLongPressDialog: View {
                                         textMessagePreviewView
                                             .padding(.trailing, isSentByMe ? 16 : 0) // Match emoji and action buttons spacing
                                             .padding(.leading, isSentByMe ? 0 : 0)
-                                            .padding(.top, 2) // Add spacing between emoji card and message preview
+                                            .padding(.vertical, 10) // Vertical spacing for preview bubble
                                         if !isSentByMe {
                                             Spacer(minLength: 0) // Keep on left for receiver
                                         }
@@ -18575,13 +18590,16 @@ struct MessageLongPressDialog: View {
                                     }
                                     .padding(.horizontal, 12)
                                 } else {
-                                            Text(getMessagePreviewText())
-                                            .font(.custom("Inter18pt-Regular", size: 13))
-                                            .foregroundColor(isSentByMe ? Color(hex: "#e7ebf4") : Color("TextColor"))
-                                            .padding(.horizontal, 12)
-                                                .padding(.top, 5)
-                                                .padding(.bottom, 6)
-                                        }
+                                    Text(getMessagePreviewText())
+                                        .font(.custom("Inter18pt-Regular", size: 13))
+                                        .foregroundColor(isSentByMe ? Color(hex: "#e7ebf4") : Color("TextColor"))
+                                        .padding(.horizontal, 12)
+                                        .padding(.top, 5)
+                                        .padding(.bottom, 6)
+                                }
+                                
+                                // Time row with progress indicator for preview
+                                timeRowPreviewView
                             }
                             .frame(maxWidth: 220)
                             .background(
@@ -18590,7 +18608,7 @@ struct MessageLongPressDialog: View {
                             )
                                     .padding(.trailing, isSentByMe ? 16 : 0)
                                     .padding(.leading, isSentByMe ? 0 : 0)
-                            .padding(.top, 2)
+                            .padding(.vertical, 10)
                                 }
                             
                             // Action buttons card (matching Android cardview exactly)

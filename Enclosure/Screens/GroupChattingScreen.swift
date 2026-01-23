@@ -4788,7 +4788,7 @@ struct GroupMessageLongPressDialog: View {
                                         textMessagePreviewView
                                             .padding(.trailing, isSentByMe ? 16 : 0) // Match emoji and action buttons spacing
                                             .padding(.leading, isSentByMe ? 0 : 0)
-                                            .padding(.top, 2) // Add spacing between emoji card and message preview
+                                            .padding(.vertical, 10) // Vertical spacing for preview bubble
                                         if !isSentByMe {
                                             Spacer(minLength: 0) // Keep on left for receiver
                                         }
@@ -4824,6 +4824,9 @@ struct GroupMessageLongPressDialog: View {
                                                 .padding(.top, 5)
                                                 .padding(.bottom, 6)
                                         }
+                                        
+                                        // Time row with progress indicator for preview
+                                        timeRowPreviewView
                                     }
                                     .frame(maxWidth: 220)
                                     .background(
@@ -4832,7 +4835,7 @@ struct GroupMessageLongPressDialog: View {
                                     )
                                     .padding(.trailing, isSentByMe ? 16 : 0)
                                     .padding(.leading, isSentByMe ? 0 : 0)
-                                    .padding(.top, 2)
+                                    .padding(.vertical, 10)
                                 }
                             
                                 // Action buttons card (matching Android cardview exactly)
@@ -5303,9 +5306,13 @@ struct GroupMessageLongPressDialog: View {
                     .frame(maxWidth: 250)
                 }
             }
+            
+            // Time row with progress indicator for preview
+            timeRowPreviewView
         }
         .padding(.horizontal, isSentByMe ? 16 : 12)
         .padding(.top, 2)
+        .padding(.bottom, 2)
     }
     
     // Video message preview view - matching MessageBubbleView exact styling
@@ -5404,9 +5411,12 @@ struct GroupMessageLongPressDialog: View {
                     .frame(maxWidth: 250)
                 }
             }
+            
+            // Time row with progress indicator for preview
+            timeRowPreviewView
         }
         .padding(.horizontal, isSentByMe ? 16 : 12)
-        .padding(.top, 2)
+        .padding(.vertical, 10)
     }
     
     // Document message preview view - matching MessageBubbleView exact styling
@@ -5501,9 +5511,12 @@ struct GroupMessageLongPressDialog: View {
                     .frame(maxWidth: 250)
                 }
             }
+            
+            // Time row with progress indicator for preview
+            timeRowPreviewView
         }
         .padding(.horizontal, isSentByMe ? 16 : 12)
-        .padding(.top, 2)
+        .padding(.vertical, 10)
     }
     
     // Contact message preview view - matching MessageBubbleView exact styling
@@ -5594,9 +5607,12 @@ struct GroupMessageLongPressDialog: View {
                     .frame(maxWidth: 250)
                 }
             }
+            
+            // Time row with progress indicator for preview
+            timeRowPreviewView
         }
         .padding(.horizontal, isSentByMe ? 16 : 12)
-        .padding(.top, 2)
+        .padding(.vertical, 10)
     }
     
     // Voice audio message preview view - matching MessageBubbleView exact styling
@@ -5687,9 +5703,12 @@ struct GroupMessageLongPressDialog: View {
                     .frame(maxWidth: 250)
                 }
             }
+            
+            // Time row with progress indicator for preview
+            timeRowPreviewView
         }
         .padding(.horizontal, isSentByMe ? 16 : 12)
-        .padding(.top, 2)
+        .padding(.vertical, 10)
     }
     
     // MARK: - Emoji Reactions View
@@ -5740,8 +5759,7 @@ struct GroupMessageLongPressDialog: View {
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .padding(.trailing, isSentByMe ? 16 : 0)
         .padding(.leading, isSentByMe ? 0 : 0)
-        .padding(.top, 2)
-        .padding(.bottom, 2)
+        .padding(.vertical, 10)
         .onAppear {
             displayEmojis = staticEmojis
             setupEmojiListener()
