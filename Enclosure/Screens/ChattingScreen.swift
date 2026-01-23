@@ -1220,7 +1220,15 @@ struct ChattingScreen: View {
                 }
                 // Initial scroll is driven by onAppear of the last message; no scroll here
                 .onChange(of: initialLoadDone) { done in
-                    // Initial load done - no action needed, scroll handled by onAppear of last message
+                    guard done, !hasPerformedInitialScroll else { return }
+                    // Scroll immediately to last message without visible animation
+                    hasPerformedInitialScroll = true
+                    hasScrolledToBottom = true
+                    isInitialScrollInProgress = true
+                    scrollToBottom(animated: false)
+                    isInitialScrollInProgress = false
+                    initialScrollCompletedTime = Date()
+                    allowAnimatedScroll = true
                 }
                 .onChange(of: pendingInitialScrollId) { targetId in
                     guard let id = targetId, !hasScrolledToBottom else {
@@ -3240,10 +3248,15 @@ struct ChattingScreen: View {
             
             // Auto scroll for receiver messages (matching Android real-time scroll)
             if isReceiverMessage {
-                // Scroll will be handled by ScrollViewReader in messageListView
-                // Set pending scroll ID for real-time messages (matching Android scrollToPosition)
-                self.pendingInitialScrollId = model.id
-                print("📱 [handleChildAdded] 🚀 FAST REAL-TIME SCROLL - New receiver message, ID: \(model.id)")
+                // Scroll only for truly new messages, not initial listener backfill
+                if !self.initiallyLoadedMessageIds.contains(model.id) {
+                    // Scroll will be handled by ScrollViewReader in messageListView
+                    // Set pending scroll ID for real-time messages (matching Android scrollToPosition)
+                    self.pendingInitialScrollId = model.id
+                    print("📱 [handleChildAdded] 🚀 FAST REAL-TIME SCROLL - New receiver message, ID: \(model.id)")
+                } else {
+                    print("📱 [handleChildAdded] Skipping scroll for initial message: \(model.id)")
+                }
             }
             
             // Update empty state
