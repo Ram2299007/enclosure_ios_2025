@@ -4348,7 +4348,7 @@ struct ChattingScreen: View {
                 // Wait 900ms then stop animation and update receiverLoader (matching Android Handler.postDelayed)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
                     // Update receiverLoader to 1 to stop progress bar animation (matching Android setIndeterminate(false))
-                    self.updateReceiverLoaderForMessage(messageId: messageId, receiverLoader: 1)
+                    self.updateReceiverLoaderForMessage(messageId: messageId, receiverUid: receiverUid, receiverLoader: 1)
                 }
             } else {
                 print("⚠️ [ProgressBar] Message not found in Firebase yet, keeping animation")
@@ -4361,8 +4361,7 @@ struct ChattingScreen: View {
     }
     
     /// Update receiverLoader for a message in Firebase (matching Android setValue receiverLoader)
-    private func updateReceiverLoaderForMessage(messageId: String, receiverLoader: Int) {
-        let receiverUid = contact.uid
+    private func updateReceiverLoaderForMessage(messageId: String, receiverUid: String, receiverLoader: Int) {
         let senderId = Constant.SenderIdMy
         
         guard !receiverUid.isEmpty && !senderId.isEmpty else {

@@ -117,6 +117,7 @@ struct GroupChattingScreen: View {
     @State private var isSearching: Bool = false // Track if currently searching
     @State private var isLoading: Bool = false
     @State private var initialLoadDone: Bool = false
+    @State private var hasPerformedInitialScroll: Bool = false // Track if initial scroll has been performed
     @State private var lastKey: String? = nil // For pagination (matching Android lastKey)
     @State private var uniqueDates: Set<String> = [] // Track unique dates for date headers
     @State private var initiallyLoadedMessageIds: Set<String> = [] // Prevent duplicates from listener
@@ -1527,10 +1528,22 @@ struct GroupChattingScreen: View {
                 .onDisappear {
                     scrollViewProxy = nil
                 }
+                .onChange(of: initialLoadDone) { done in
+                    guard done, !hasPerformedInitialScroll, !messages.isEmpty else { return }
+                    hasPerformedInitialScroll = true
+                    scrollToBottom(animated: false)
+                    self.showScrollDownButton = false
+                    self.isLastItemVisible = true
+                    self.downArrowCount = 0
+                    self.showDownArrowCount = false
+                }
                 .onChange(of: messages.count) { _ in
                     // Scroll to bottom when new messages are added (matching Android)
                     // Only scroll if not searching (search results are handled separately)
-                    if !isSearching && !messages.isEmpty, let lastMessageId = messages.last?.id {
+                    if !isSearching,
+                       hasPerformedInitialScroll,
+                       let lastMessageId = messages.last?.id,
+                       !initiallyLoadedMessageIds.contains(lastMessageId) {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                             withAnimation {
                                 proxy.scrollTo(lastMessageId, anchor: .bottom)
