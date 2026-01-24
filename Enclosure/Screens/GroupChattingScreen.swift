@@ -4595,22 +4595,49 @@ struct GroupMessageLongPressDialog: View {
     @State private var rotationAngle: Double = 0.0
     @State private var scaleValue: CGFloat = 0.0
     @State private var opacityValue: Double = 0.0
+    @State private var backdropOpacity: Double = 0.0
     @State private var isDismissing: Bool = false // Track if we're currently dismissing
+    
+    // Presentation tuning for a softer, magical feel
+    private let presentRotation: Double = 12
+    private let dismissRotation: Double = 18
+    private let presentScale: CGFloat = 0.92
+    private let dismissScale: CGFloat = 0.86
     
     // Helper function for smooth dismissal
     private func dismissDialog() {
         guard !isDismissing else { return } // Prevent multiple taps
         isDismissing = true
-        // Smooth dismissal animation - reverse the unfold with spring animation for smoother feel
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-            rotationAngle = 45.0
-            scaleValue = 0.0
-            opacityValue = 0.0
-        }
+        animateOut()
         // Dismiss after animation completes
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             isPresented = false
             isDismissing = false
+        }
+    }
+    
+    private func animateIn() {
+        rotationAngle = presentRotation
+        scaleValue = presentScale
+        opacityValue = 0.0
+        backdropOpacity = 0.0
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+                rotationAngle = 0.0
+                scaleValue = 1.0
+                opacityValue = 1.0
+                backdropOpacity = 1.0
+            }
+        }
+    }
+    
+    private func animateOut() {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
+            rotationAngle = dismissRotation
+            scaleValue = dismissScale
+            opacityValue = 0.0
+            backdropOpacity = 0.0
         }
     }
     
@@ -4746,17 +4773,22 @@ struct GroupMessageLongPressDialog: View {
     var body: some View {
             ZStack {
                 // Blurred background overlay - covers entire screen and is tappable everywhere
-                Color.black.opacity(opacityValue * 0.3)
+                Color.black.opacity(0.35 * backdropOpacity)
                     .background(.ultraThinMaterial)
+                    .opacity(backdropOpacity)
                     .contentShape(Rectangle()) // Make entire area tappable
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea(edges: .all)
                     .zIndex(0) // Background layer
+                    .onTapGesture {
+                        dismissDialog()
+                    }
                     .simultaneousGesture(
-                        // Use simultaneous gesture so background can receive taps even when dialog is visible
-                        TapGesture()
-                            .onEnded { _ in
-                                dismissDialog()
+                        DragGesture(minimumDistance: 20)
+                            .onEnded { value in
+                                if value.translation.height > 30 {
+                                    dismissDialog()
+                                }
                             }
                     )
             
@@ -4969,53 +5001,21 @@ struct GroupMessageLongPressDialog: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea(edges: .all)
         .onAppear {
-            // Set initial state (no animation) - start from folded position
-            // Both sender and receiver animate from top-left, so both start at 45°
-            rotationAngle = 45.0
-            scaleValue = 0.0
-            opacityValue = 0.0
-            
-            // Small delay to ensure initial state is set, then animate
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                // Android unfold animation: 400ms duration, simultaneous rotate and scale
-                // Both sender and receiver: rotate from 45° to 0°, scale from 0 to 1, pivot at top-left
-                withAnimation(.easeOut(duration: 0.4)) {
-                    rotationAngle = 0.0 // End rotation (0 degrees)
-                    scaleValue = 1.0 // End scale (full size)
-                    opacityValue = 1.0 // Fade in
-                }
-            }
+            animateIn()
         }
         .onChange(of: isPresented) { newValue in
             if !newValue && !isDismissing {
                 // Animate dialog dismissal - reverse the unfold animation with spring for smoother feel
                 // Only animate if not already dismissing (prevents double animation)
                 isDismissing = true
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    rotationAngle = 45.0 // Both return to 45° (top-left animation)
-                    scaleValue = 0.0 // Start scale
-                    opacityValue = 0.0 // Fade out
-                }
+                animateOut()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                     isDismissing = false
                 }
             } else if newValue {
                 // Reset dismissing flag when presenting
                 isDismissing = false
-                // Reset to initial state when presenting (before animation)
-                // Both sender and receiver start at 45° for top-left animation
-                rotationAngle = 45.0
-                scaleValue = 0.0
-                opacityValue = 0.0
-                
-                // Small delay then animate
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                    withAnimation(.easeOut(duration: 0.4)) {
-                        rotationAngle = 0.0
-                        scaleValue = 1.0
-                        opacityValue = 1.0
-                    }
-                }
+                animateIn()
             }
         }
     }
