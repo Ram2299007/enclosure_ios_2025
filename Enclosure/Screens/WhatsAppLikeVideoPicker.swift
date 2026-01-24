@@ -25,7 +25,6 @@ struct WhatsAppLikeVideoPicker: View {
     @State private var isLoading: Bool = true
     @State private var showPermissionText: Bool = false
     @State private var isMessageBoxFocused: Bool = false
-    @State private var keyboardHeight: CGFloat = 0
     @State private var isPressed: Bool = false
     @State private var showMultiVideoPreview: Bool = false
     @State private var multiVideoPreviewCaption: String = ""
@@ -56,6 +55,7 @@ struct WhatsAppLikeVideoPicker: View {
     
     // Helper function to hide keyboard
     private func hideKeyboard() {
+        isCaptionFocused = false
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
     
@@ -178,18 +178,21 @@ struct WhatsAppLikeVideoPicker: View {
                 
                 // Caption bar + Done button (matching Android captionlyt)
                 captionBarView
-                    .padding(.bottom, keyboardHeight > 0 ? keyboardHeight - 20 : 10)
+                    .padding(.bottom, 10)
             }
         }
         .navigationBarHidden(true)
         .background(NavigationGestureEnabler())
-        
+        .ignoresSafeArea(.keyboard)
+        .simultaneousGesture(
+            TapGesture().onEnded { _ in
+                hideKeyboard()
+            }
+        )
         .onAppear {
             requestVideosAndLoad()
-            setupKeyboardObservers()
         }
         .onDisappear {
-            removeKeyboardObservers()
         }
         .fullScreenCover(isPresented: $showMultiVideoPreview, onDismiss: {
             // Reset caption when dialog is dismissed
@@ -221,47 +224,28 @@ struct WhatsAppLikeVideoPicker: View {
             HStack(spacing: 0) {
                 // Message input field container - layout_weight="1"
                 VStack(alignment: .leading, spacing: 0) {
-                    ZStack(alignment: .leading) {
-                        if captionText.isEmpty {
-                            Text("Add Caption")
-                                .font(.custom("Inter18pt-Medium", size: 17))
-                                .foregroundColor(Color(hex: "#9EA6B9"))
-                                .padding(.leading, 15)
-                                .padding(.trailing, 20)
-                                .padding(.top, 5)
-                                .padding(.bottom, 5)
+                    TextField("Add Caption", text: $captionText, axis: .vertical)
+                        .font(messageInputFont)
+                        .foregroundColor(Color("black_white_cross"))
+                        .lineLimit(4)
+                        .frame(maxWidth: 180, alignment: .leading)
+                        .padding(.leading, 10) // start padding 10px
+                        .padding(.trailing, 20)
+                        .padding(.top, 5)
+                        .padding(.bottom, 5)
+                        .background(Color.clear)
+                        .focused($isCaptionFocused)
+                        .onChange(of: isCaptionFocused) { focused in
+                            isMessageBoxFocused = focused
                         }
-                        
-                        TextField("", text: $captionText, axis: .vertical)
-                            .font(.custom("Inter18pt-Medium", size: 17))
-                            .foregroundColor(.white)
-                            .lineLimit(4)
-                            .lineSpacing(4)
-                            .frame(maxWidth: 180, alignment: .leading)
-                            .padding(.leading, 15)
-                            .padding(.trailing, 20)
-                            .padding(.top, 5)
-                            .padding(.bottom, 5)
-                            .background(Color.clear)
-                            .focused($isCaptionFocused)
-                            .accentColor(Color("black_white_crossEmoji"))
-                            .onChange(of: isCaptionFocused) { focused in
-                                isMessageBoxFocused = focused
-                            }
-                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(height: 50) // Match send button height (50dp)
             .background(
                 RoundedRectangle(cornerRadius: 20)
-                    .fill(Color(hex: "#1B1C1C")) // match preview caption background
+                    .fill(Color("circlebtnhover")) // match Android backgroundTint on message_box_bg
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(isCaptionFocused ? Color("TextColor") : Color.gray, lineWidth: isCaptionFocused ? 1.5 : 1.0)
-            )
-            .animation(.easeInOut(duration: 0.2), value: isCaptionFocused)
             .padding(.leading, 10)
             .padding(.trailing, 5)
             
@@ -389,30 +373,6 @@ struct WhatsAppLikeVideoPicker: View {
                 self.isLoading = false
             }
         }
-    }
-    
-    private func setupKeyboardObservers() {
-        NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillShowNotification,
-            object: nil,
-            queue: .main
-        ) { notification in
-            if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
-                keyboardHeight = keyboardFrame.height
-            }
-        }
-        
-        NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillHideNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            keyboardHeight = 0
-        }
-    }
-    
-    private func removeKeyboardObservers() {
-        NotificationCenter.default.removeObserver(self)
     }
     
     private func openAppSettings() {

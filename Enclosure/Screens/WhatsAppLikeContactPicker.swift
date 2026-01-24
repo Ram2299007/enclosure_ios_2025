@@ -39,7 +39,6 @@ struct WhatsAppLikeContactPicker: View {
     @State private var isLoading: Bool = true
     @State private var searchText: String = ""
     @State private var isMessageBoxFocused: Bool = false
-    @State private var keyboardHeight: CGFloat = 0
     @State private var isPressed: Bool = false
     @FocusState private var isCaptionFocused: Bool
     @FocusState private var isSearchFocused: Bool
@@ -68,6 +67,9 @@ struct WhatsAppLikeContactPicker: View {
     
     // Helper function to hide keyboard
     private func hideKeyboard() {
+        isCaptionFocused = false
+        isSearchFocused = false
+        isMessageBoxFocused = false
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
     
@@ -179,17 +181,21 @@ struct WhatsAppLikeContactPicker: View {
                 
                 // Caption bar + Done button (matching Android captionlyt and WhatsAppLikeImagePicker)
                 captionBarView
-                    .padding(.bottom, keyboardHeight > 0 ? keyboardHeight - 20 : 10)
+                    .padding(.bottom, 10)
             }
         }
         .navigationBarHidden(true)
         .background(NavigationGestureEnabler())
+        .ignoresSafeArea(.keyboard)
+        .simultaneousGesture(
+            TapGesture().onEnded { _ in
+                hideKeyboard()
+            }
+        )
         .onAppear {
             requestContactsAndLoad()
-            setupKeyboardObservers()
         }
         .onDisappear {
-            removeKeyboardObservers()
         }
     }
     
@@ -477,28 +483,5 @@ struct WhatsAppLikeContactPicker: View {
         }
     }
     
-    private func setupKeyboardObservers() {
-        NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillShowNotification,
-            object: nil,
-            queue: .main
-        ) { notification in
-            if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
-                keyboardHeight = keyboardFrame.height
-            }
-        }
-        
-        NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillHideNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            keyboardHeight = 0
-        }
-    }
-    
-    private func removeKeyboardObservers() {
-        NotificationCenter.default.removeObserver(self)
-    }
 }
 
