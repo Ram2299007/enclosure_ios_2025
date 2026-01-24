@@ -191,39 +191,71 @@ struct ShowImageScreen: View {
             }
             .zIndex(1)
             
-            // Save menu dialog (matching Android refresh_ly layout)
+            // Save menu dialog (match InviteScreen refresh menu)
             if showSaveMenu {
-                Color.black.opacity(0.5)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        showSaveMenu = false
-                    }
-                
-                VStack {
-                    Spacer()
-                    
-                    VStack(spacing: 0) {
-                        Button(action: {
-                            saveImageToGallery()
-                            showSaveMenu = false
-                        }) {
-                            HStack {
-                                Text("Save")
-                                    .font(.system(size: 16, weight: .medium))
-                                    .foregroundColor(.white)
-                                Spacer()
+                ZStack {
+                    Color.black.opacity(0.01)
+                        .background(.ultraThinMaterial)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showSaveMenu = false
                             }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(Color(red: 0x1B/255.0, green: 0x1C/255.0, blue: 0x1C/255.0)) // #1B1C1C
                         }
+                    
+                    VStack {
+                        HStack {
+                            Spacer()
+                            
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(
+                                        colorScheme == .light
+                                            ? Color.black.opacity(0.25)
+                                            : Color.black.opacity(0.15)
+                                    )
+                                    .frame(width: 130, height: 50)
+                                    .offset(x: 0, y: 4)
+                                    .blur(radius: colorScheme == .light ? 10 : 8)
+                                    .allowsHitTesting(false)
+                                
+                                if colorScheme == .light {
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(Color.black.opacity(0.1))
+                                        .frame(width: 130, height: 50)
+                                        .offset(x: 0, y: 2)
+                                        .blur(radius: 6)
+                                        .allowsHitTesting(false)
+                                }
+                                
+                                Button(action: {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        showSaveMenu = false
+                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        saveImageToGallery()
+                                    }
+                                }) {
+                                    Text("Save")
+                                        .font(.custom("Inter18pt-SemiBold", size: 16))
+                                        .foregroundColor(Color("TextColor"))
+                                        .frame(width: 130, height: 50)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 10)
+                                                .fill(Color("menuRect"))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.trailing, 10)
+                            .padding(.top, 65)
+                        }
+                        
+                        Spacer()
                     }
-                    .background(Color.white)
-                    .cornerRadius(12)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 50)
                 }
-                .transition(.move(edge: .bottom))
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                .animation(.easeInOut(duration: 0.2), value: showSaveMenu)
                 .zIndex(2)
             }
             
