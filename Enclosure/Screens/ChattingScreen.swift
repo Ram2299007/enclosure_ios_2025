@@ -10775,7 +10775,7 @@ struct DocumentPreviewView: View {
                     GeometryReader { geometry in
                         Image(uiImage: image)
                             .resizable()
-                            .scaledToFit()
+                            .scaledToFill()
                             .frame(width: geometry.size.width, height: geometry.size.height)
                             .clipped()
                     }
@@ -14094,8 +14094,9 @@ struct MultiImagePreviewDialog: View {
                                     if index < previewImages.count, let image = previewImages[index] {
                                         Image(uiImage: image)
                                             .resizable()
-                                            .scaledToFit()
+                                            .scaledToFill()
                                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                            .clipped()
                                     } else {
                                         ProgressView()
                                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
@@ -19811,8 +19812,9 @@ struct BunchImagePreviewDialog: View {
                                                     print("✅ [BunchPreview] Image \(index) loaded successfully from: \(imageURL.absoluteString)")
                                                     return image
                                                         .resizable()
-                                                        .scaledToFit()
+                                                        .scaledToFill()
                                                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                                        .clipped()
                                                 },
                                                 placeholder: {
                                                     print("⏳ [BunchPreview] Image \(index) loading from: \(imageURL.absoluteString)")
