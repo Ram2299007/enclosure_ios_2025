@@ -2955,6 +2955,7 @@ struct ChattingScreen: View {
                         // Check if message actually changed (matching Android)
                         let isChanged = oldModel.message != updatedModel.message ||
                                       oldModel.emojiCount != updatedModel.emojiCount ||
+                                      oldModel.emojiModel != updatedModel.emojiModel ||
                                       oldModel.timestamp != updatedModel.timestamp ||
                                       oldModel.document != updatedModel.document ||
                                       oldModel.receiverLoader != updatedModel.receiverLoader // Check receiverLoader changes
