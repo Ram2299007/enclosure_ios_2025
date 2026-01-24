@@ -4786,7 +4786,7 @@ struct GroupMessageLongPressDialog: View {
                                             Spacer() // Push to end (right side gravity)
                                         }
                                         textMessagePreviewView
-                                            .padding(.trailing, isSentByMe ? 16 : 0) // Match emoji and action buttons spacing
+                                            .padding(.trailing, isSentByMe ? 0 : 0) // No outer side spacing for preview
                                             .padding(.leading, isSentByMe ? 0 : 0)
                                             .padding(.vertical, 10) // Vertical spacing for preview bubble
                                         if !isSentByMe {
@@ -4833,7 +4833,7 @@ struct GroupMessageLongPressDialog: View {
                                         RoundedRectangle(cornerRadius: 20)
                                             .fill(isSentByMe ? getSenderMessageBackgroundColor(colorScheme: colorScheme) : getReceiverMessageBackgroundColor())
                                     )
-                                    .padding(.trailing, isSentByMe ? 16 : 0)
+                                    .padding(.trailing, isSentByMe ? 0 : 0)
                                     .padding(.leading, isSentByMe ? 0 : 0)
                                     .padding(.vertical, 10)
                                 }
@@ -4936,7 +4936,7 @@ struct GroupMessageLongPressDialog: View {
                                         .fill(Color("cardBackgroundColornew")) // style="@style/cardBackgroundColor"
                                         .shadow(color: Color.black.opacity(0.2), radius: 5, x: 0, y: 2) // cardElevation="5dp"
                                 )
-                                .padding(.trailing, isSentByMe ? 16 : 0) // layout_marginEnd="16dp"
+                                .padding(.trailing, isSentByMe ? 0 : 0) // No outer side spacing for action card
                                 .padding(.leading, isSentByMe ? 0 : 0)
                                 .padding(.top, 5) // 3rd container top margin: 5px
                                 .padding(.bottom, 20) // layout_marginBottom="20dp"
@@ -5135,7 +5135,7 @@ struct GroupMessageLongPressDialog: View {
                         } else {
                             if isSentByMe {
                                 Text(messageContent)
-                                    .font(.custom("Inter18pt-Regular", size: 13))
+                                    .font(.custom("Inter18pt-Regular", size: 15))
                                     .fontWeight(.light)
                                     .foregroundColor(Color(hex: "#e7ebf4"))
                                     .lineLimit(1)
@@ -5149,15 +5149,16 @@ struct GroupMessageLongPressDialog: View {
                                     )
                             } else {
                                 Text(messageContent)
-                                    .font(.custom("Inter18pt-Regular", size: 13))
-                                    .fontWeight(.regular)
+                                    .font(.custom("Inter18pt-Regular", size: 15))
+                                    .fontWeight(.light)
                                     .foregroundColor(Color("TextColor"))
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
+                                    .lineSpacing(7)
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true)
                                     .padding(.horizontal, 12)
                                     .padding(.top, 5)
                                     .padding(.bottom, 6)
-                                    .background(getReceiverGlassBackground(cornerRadius: 12))
+                                    .background(getReceiverGlassBackground(cornerRadius: 20))
                             }
                         }
                     }
@@ -5757,7 +5758,7 @@ struct GroupMessageLongPressDialog: View {
                 .fill(Color("cardBackgroundColornew"))
         )
         .clipShape(RoundedRectangle(cornerRadius: 20))
-        .padding(.trailing, isSentByMe ? 16 : 0)
+        .padding(.trailing, isSentByMe ? 0 : 0)
         .padding(.leading, isSentByMe ? 0 : 0)
         .padding(.vertical, 10)
         .onAppear {

@@ -12298,7 +12298,6 @@ struct MessageBubbleView: View {
     @State private var isDragging: Bool = false
     @State private var viewFrame: CGRect = .zero
     @State private var receiverProgressCompleted: Bool = false
-    // Removed longPressLocation - no longer needed with onLongPressGesture
     private let halfSwipeThreshold: CGFloat = 60
     @Environment(\.colorScheme) private var colorScheme
     
@@ -17816,7 +17815,7 @@ struct MessageLongPressDialog: View {
                         } else {
                             if isSentByMe {
                                 Text(messageContent)
-                                    .font(.custom("Inter18pt-Regular", size: 13))
+                                    .font(.custom("Inter18pt-Regular", size: 15))
                                     .fontWeight(.light)
                                     .foregroundColor(Color(hex: "#e7ebf4"))
                                     .lineLimit(1)
@@ -17830,11 +17829,12 @@ struct MessageLongPressDialog: View {
                                     )
                             } else {
                                 Text(messageContent)
-                                    .font(.custom("Inter18pt-Regular", size: 13))
-                                    .fontWeight(.regular)
+                                    .font(.custom("Inter18pt-Regular", size: 15))
+                                    .fontWeight(.light)
                                     .foregroundColor(Color("TextColor"))
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
+                                    .lineSpacing(7)
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true)
                                     .padding(.horizontal, 12)
                                     .padding(.top, 5)
                                     .padding(.bottom, 6)
@@ -18559,7 +18559,7 @@ struct MessageLongPressDialog: View {
                                             Spacer() // Push to end (right side gravity)
                                         }
                                         textMessagePreviewView
-                                            .padding(.trailing, isSentByMe ? 16 : 0) // Match emoji and action buttons spacing
+                                            .padding(.trailing, isSentByMe ? 0 : 0) // No outer side spacing for preview
                                             .padding(.leading, isSentByMe ? 0 : 0)
                                             .padding(.vertical, 10) // Vertical spacing for preview bubble
                                         if !isSentByMe {
@@ -18606,7 +18606,7 @@ struct MessageLongPressDialog: View {
                                 RoundedRectangle(cornerRadius: 20)
                                     .fill(isSentByMe ? getSenderMessageBackgroundColor(colorScheme: colorScheme) : getReceiverMessageBackgroundColor())
                             )
-                                    .padding(.trailing, isSentByMe ? 16 : 0)
+                            .padding(.trailing, isSentByMe ? 0 : 0)
                                     .padding(.leading, isSentByMe ? 0 : 0)
                             .padding(.vertical, 10)
                                 }
@@ -18798,7 +18798,7 @@ struct MessageLongPressDialog: View {
                                     .fill(Color("cardBackgroundColornew")) // style="@style/cardBackgroundColor"
                                     .shadow(color: Color.black.opacity(0.2), radius: 5, x: 0, y: 2) // cardElevation="5dp"
                             )
-                            .padding(.trailing, isSentByMe ? 16 : 0) // layout_marginEnd="16dp"
+                            .padding(.trailing, isSentByMe ? 0 : 0) // No outer side spacing for action card
                                 .padding(.leading, isSentByMe ? 0 : 0)
                             .padding(.top, 5) // 3rd container top margin: 5px
                             .padding(.bottom, 20) // layout_marginBottom="20dp"
@@ -18883,7 +18883,7 @@ struct MessageLongPressDialog: View {
     
     // Horizontal spacing constant - exactly 10px from edges
     private let horizontalSpacing: CGFloat = 10
-    
+
     // Calculate adjusted offset Y - position dialog at exact touch location
     private func adjustedOffsetY(in geometry: GeometryProxy) -> CGFloat {
         // Estimate message preview height (similar to contactCardHeight in ChatLongPressDialog)
@@ -18981,7 +18981,7 @@ struct MessageLongPressDialog: View {
                 .fill(Color("cardBackgroundColornew")) // style="@style/cardBackgroundColor"
         )
         .clipShape(RoundedRectangle(cornerRadius: 20)) // Clip content to rounded corners
-        .padding(.trailing, isSentByMe ? 16 : 0) // android:layout_marginEnd="16dp" (for sender)
+        .padding(.trailing, isSentByMe ? 0 : 0) // No outer side spacing for emoji card
         .padding(.leading, isSentByMe ? 0 : 0)
         .padding(.top, 2) // android:layout_marginTop="2dp"
         .padding(.bottom, 2) // android:layout_marginBottom="2dp"
