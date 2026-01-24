@@ -221,28 +221,47 @@ struct WhatsAppLikeVideoPicker: View {
             HStack(spacing: 0) {
                 // Message input field container - layout_weight="1"
                 VStack(alignment: .leading, spacing: 0) {
-                    TextField("Add Caption", text: $captionText, axis: .vertical)
-                        .font(messageInputFont)
-                        .foregroundColor(Color("black_white_cross"))
-                        .lineLimit(4)
-                        .frame(maxWidth: 180, alignment: .leading)
-                        .padding(.leading, 10) // start padding 10px
-                        .padding(.trailing, 20)
-                        .padding(.top, 5)
-                        .padding(.bottom, 5)
-                        .background(Color.clear)
-                        .focused($isCaptionFocused)
-                        .onChange(of: isCaptionFocused) { focused in
-                            isMessageBoxFocused = focused
+                    ZStack(alignment: .leading) {
+                        if captionText.isEmpty {
+                            Text("Add Caption")
+                                .font(.custom("Inter18pt-Medium", size: 17))
+                                .foregroundColor(Color(hex: "#9EA6B9"))
+                                .padding(.leading, 15)
+                                .padding(.trailing, 20)
+                                .padding(.top, 5)
+                                .padding(.bottom, 5)
                         }
+                        
+                        TextField("", text: $captionText, axis: .vertical)
+                            .font(.custom("Inter18pt-Medium", size: 17))
+                            .foregroundColor(.white)
+                            .lineLimit(4)
+                            .lineSpacing(4)
+                            .frame(maxWidth: 180, alignment: .leading)
+                            .padding(.leading, 15)
+                            .padding(.trailing, 20)
+                            .padding(.top, 5)
+                            .padding(.bottom, 5)
+                            .background(Color.clear)
+                            .focused($isCaptionFocused)
+                            .accentColor(Color("black_white_crossEmoji"))
+                            .onChange(of: isCaptionFocused) { focused in
+                                isMessageBoxFocused = focused
+                            }
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(height: 50) // Match send button height (50dp)
             .background(
                 RoundedRectangle(cornerRadius: 20)
-                    .fill(Color("circlebtnhover")) // match Android backgroundTint on message_box_bg
+                    .fill(Color(hex: "#1B1C1C")) // match preview caption background
             )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(isCaptionFocused ? Color("TextColor") : Color.gray, lineWidth: isCaptionFocused ? 1.5 : 1.0)
+            )
+            .animation(.easeInOut(duration: 0.2), value: isCaptionFocused)
             .padding(.leading, 10)
             .padding(.trailing, 5)
             

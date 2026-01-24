@@ -22,7 +22,6 @@ struct GroupMultiDocumentPreviewDialog: View {
     let onMessageAdded: ((ChatMessage) -> Void)? = nil // Callback to add message immediately to list (optional, defaults to nil)
     
     @State private var currentIndex: Int = 0
-    @State private var keyboardHeight: CGFloat = 0
     @FocusState private var isCaptionFocused: Bool
     
     // Typography (match Android messageBox sizing prefs)
@@ -42,6 +41,7 @@ struct GroupMultiDocumentPreviewDialog: View {
     
     // Helper function to hide keyboard
     private func hideKeyboard() {
+        isCaptionFocused = false
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
     
@@ -159,6 +159,11 @@ struct GroupMultiDocumentPreviewDialog: View {
                             RoundedRectangle(cornerRadius: 20)
                                 .fill(Color(hex: "#1B1C1C")) // Use specified color for caption message box
                         )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20)
+                                .stroke(isCaptionFocused ? Color("TextColor") : Color.gray, lineWidth: isCaptionFocused ? 1.5 : 1.0)
+                        )
+                        .animation(.easeInOut(duration: 0.2), value: isCaptionFocused)
                         .padding(.leading, 10)
                         .padding(.trailing, 5)
                         
@@ -200,22 +205,26 @@ struct GroupMultiDocumentPreviewDialog: View {
                         }
                         .padding(.horizontal, 5)
                     }
-                    .padding(.bottom, keyboardHeight > 0 ? keyboardHeight - 20 : 10)
+                    .padding(.bottom, 10)
                     .background(Color.black)
                 }
             }
         }
+        .simultaneousGesture(
+            TapGesture().onEnded { _ in
+                hideKeyboard()
+            }
+        )
+        .ignoresSafeArea(.keyboard)
         .onAppear {
             print("GroupMultiDocumentPreviewDialog: onAppear - documents count: \(selectedDocuments.count)")
             print("GroupMultiDocumentPreviewDialog: documents: \(selectedDocuments.map { $0.lastPathComponent })")
             print("GroupMultiDocumentPreviewDialog: onAppear - Initial caption: '\(caption)' (length: \(caption.count))")
-            setupKeyboardObservers()
         }
         .onDisappear {
-            removeKeyboardObservers()
         }
         .gesture(
-            DragGesture(minimumDistance: 0)
+            DragGesture(minimumDistance: 20)
                 .onEnded { value in
                     // Handle swipe down to dismiss (optional)
                     if value.translation.height > 100 {
@@ -223,30 +232,6 @@ struct GroupMultiDocumentPreviewDialog: View {
                     }
                 }
         )
-    }
-    
-    private func setupKeyboardObservers() {
-        NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillShowNotification,
-            object: nil,
-            queue: .main
-        ) { notification in
-            if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
-                keyboardHeight = keyboardFrame.height
-            }
-        }
-        
-        NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillHideNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            keyboardHeight = 0
-        }
-    }
-    
-    private func removeKeyboardObservers() {
-        NotificationCenter.default.removeObserver(self)
     }
     
     // MARK: - Document Upload Functions (matching Android sendMultipleDocuments)
