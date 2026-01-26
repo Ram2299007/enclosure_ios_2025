@@ -1,0 +1,298 @@
+body {
+            margin: 0;
+            height: 100vh;
+            overflow: hidden;
+            background-color:  url('file:///android_asset/bg_blur.png') no-repeat center center fixed;
+            background-size: cover;
+            font-family: sans-serif;
+            overflow: hidden;
+            position: fixed;
+            touch-action: none;
+            user-select: none;
+            overscroll-behavior: none;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color : url('file:///android_asset/bg_blur.png') no-repeat center center fixed; /* removed static bg image */
+            background-size: cover;
+        }
+
+        .remote-videos {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            background-color: transparent;
+        }
+
+        .remote-videos.three-participants,
+        .remote-videos.four-participants {
+            gap: 4px;
+        }
+
+        .remote-videos .top-row {
+            display: flex;
+            flex-direction: row;
+            width: 100%;
+            height: 100%;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .remote-videos.three-participants .top-row,
+        .remote-videos.four-participants .top-row,
+        .remote-videos.three-participants .bottom-row,
+        .remote-videos.four-participants .bottom-row {
+            display: flex;
+            flex-direction: row;
+            width: 100%;
+            height: 50%;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .remote-video {
+            position: relative;
+            background: transparent;
+            overflow: hidden;
+            flex: 1;
+            max-width: 50%;
+            height: 100%;
+            box-sizing: border-box;
+            margin: 2px;
+            border-radius: 0;
+        }
+
+        .remote-video video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 0;
+        }
+
+        .remote-videos.three-participants .bottom-row .remote-video {
+            max-width: 100%;
+            flex: 1;
+        }
+
+        .remote-videos.three-participants .remote-video,
+        .remote-videos.four-participants .remote-video {
+            border-radius: 10px;
+        }
+
+        .remote-videos.three-participants .remote-video video,
+        .remote-videos.four-participants .remote-video video {
+            border-radius: 10px;
+        }
+
+        .local-video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+            border-radius: 0;
+        }
+
+        .secondary-video {
+            position: absolute;
+            max-width: 50%;
+            right: 10px;
+            bottom: 140px;
+            height: auto;
+            overflow: hidden;
+            border-radius: 16px;
+            cursor: move;
+            z-index: 22;
+            display: block;
+            transition: all 0.3s ease-in-out;
+            display: none;
+        }
+
+       .secondary-video.compact {
+           position: absolute;
+           max-width: 20%;
+           bottom: 20px;
+           right: 20px; /* ✅ stick to bottom-right */
+           border-radius: 16px;
+           box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+       }
+
+        .local-video.mirrored,
+        .secondary-video.mirrored,
+        .remote-video[data-peer-id="local"] video.mirrored {
+            transform: scaleX(-1);
+
+        }
+
+        .status-bar {
+            display: none !important;
+        }
+
+        .controls-container {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 80px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border-top-left-radius: 50px;
+            border-top-right-radius: 50px;
+            z-index: 19;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: transform 0.4s ease, opacity 0.4s ease;
+            transform: translateY(0%);
+            opacity: 1;
+        }
+
+        .controls-container.hidden {
+            transform: translateY(100%);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .controls {
+            position: absolute;
+            top: -28px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 35px;
+            z-index: 20;
+        }
+
+        .control-btn {
+            width: 64px;
+            height: 64px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            outline: none;
+            box-shadow: none;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .control-btn img {
+            width: 28px;
+            height: 28px;
+            pointer-events: none;
+        }
+
+        .end-call {
+            background-color: red;
+        }
+
+        .control-btn:hover {
+            background-color: rgba(255,255,255,0.1);
+        }
+
+        .control-btn.end-call {
+            background-color: rgba(211, 47, 47, 0.7);
+        }
+
+        .top-bar {
+            position: absolute;
+            top: 20px;
+            left: 10px;
+            right: 10px;
+            padding: 0 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 25;
+            pointer-events: auto;
+            user-select: none;
+            box-sizing: border-box;
+            transition: transform 0.4s ease, opacity 0.4s ease;
+            transform: translateY(0%);
+            opacity: 1;
+        }
+
+        .top-bar.hidden {
+            transform: translateY(-100%);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .top-btn {
+            width: 44px;
+            height: 44px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            outline: none;
+            box-shadow: none;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .top-btn:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .top-btn img {
+            width: 24px;
+            height: 24px;
+            pointer-events: none;
+        }
+
+        .control-btn.muted {
+            background-color: var(--theme-color);
+            opacity: 0.7 !important;
+        }
+
+        :root {
+            --theme-color: #ff0000;
+        }
+
+        video::-webkit-media-controls {
+            display: none !important;
+        }
+
+        video::-webkit-media-controls-start-playback-button {
+            display: none !important;
+        }
+
+        video {
+            background-color:  url('file:///android_asset/bg_blur.png') no-repeat center center fixed; /* fallback for when poster is not set */
+            background-size: cover;
+            object-fit: cover;
+        }
+
+        .caller-name {
+            margin-top: 80px; /* Adds top margin */
+            color: white; /* Sets text color to white */
+            font-family: 'Inter', sans-serif; /* Uses Inter font */
+            font-size: 20px; /* Increases font size */
+             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5); /* Adds text shadow */
+
+        }

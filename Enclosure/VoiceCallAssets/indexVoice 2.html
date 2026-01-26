@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Group Voice Call</title>
-    <link rel="stylesheet" href="stylesVoice.css">
+    <link rel="stylesheet" href="file:///android_asset/stylesVoice.css">
 </head>
 <body>
 
@@ -30,14 +30,14 @@
     <div class="controls-container">
         <div class="controls">
             <button class="control-btn" id="muteMic" title="Mute Mic">
-                <img src="mic.png" alt="Mute Mic" width="24" height="24">
+                <img src="file:///android_asset/mic.png" alt="Mute Mic" width="24" height="24">
             </button>
             <button class="control-btn end-call" id="endCall" title="End Call">
-                <img src="end_call.png" alt="End Call" width="24" height="24">
+                <img src="file:///android_asset/end_call.png" alt="End Call" width="24" height="24">
             </button>
             <div class="audio-output-container">
                 <button class="control-btn audio-output-btn" id="audioOutputBtn" title="Audio Output">
-                    <img id="audioOutputIcon" src="speaker.png" alt="Earpiece" width="24" height="24">
+                    <img id="audioOutputIcon" src="file:///android_asset/speaker.png" alt="Earpiece" width="24" height="24">
                 </button>
                 <div class="audio-output-menu" id="audioOutputMenu">
                     <button class="audio-option" data-output="earpiece">Normal</button>
@@ -49,10 +49,10 @@
     </div>
     <div class="top-bar">
         <button class="top-btn" id="backBtn" title="Go Back">
-            <img src="back_arrow.png" alt="Back" width="24" height="24">
+            <img src="file:///android_asset/back_arrow.png" alt="Back" width="24" height="24">
         </button>
         <button class="top-btn" id="addMemberBtn" title="Add Member">
-            <img src="add_member.png" alt="Add Member" width="24" height="24">
+            <img src="file:///android_asset/add_member.png" alt="Add Member" width="24" height="24">
         </button>
     </div>
     <div class="custom-toast-container" id="customToastContainer">
@@ -61,7 +61,7 @@
         </div>
     </div>
 </div>
-<script src="peerjs.js"></script>
-<script src="scriptVoice.js"></script>
+<script src="file:///android_asset/peerjs.js"></script>
+<script src="file:///android_asset/scriptVoice.js"></script>
 </body>
 </html>
