@@ -35,6 +35,7 @@ struct callView: View {
     @State private var selectedTab: CallTab = .log
     @State private var isSearchVisible = false
     @State private var searchText = ""
+    @FocusState private var isSearchFieldFocused: Bool
     @State private var isBackLayoutVisible = false
     @State private var isContactLayoutVisible = false
     @State private var isBottomCallerVisible = false
@@ -112,17 +113,18 @@ struct callView: View {
                         HStack(spacing: 0) {
                             // Search bar - slides in from trailing edge when visible (matching MainActivityOld.swift)
                             if isSearchVisible {
-                                HStack(spacing: 0) {
+                                HStack {
                                     Rectangle()
                                         .fill(themeColor) // Dynamic theme color
                                         .frame(width: 1, height: 19.24)
-                                        .padding(.leading, 23)
+                                        .padding(.leading, 13)
                                     
                                     TextField("Search Name or Number", text: $searchText)
                                         .font(.custom("Inter18pt-Regular", size: 15))
                                         .foregroundColor(Color("TextColor"))
                                         .padding(.leading, 13)
                                         .textFieldStyle(PlainTextFieldStyle())
+                                        .focused($isSearchFieldFocused)
                                 }
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
                             }
@@ -136,6 +138,20 @@ struct callView: View {
                                     if !isSearchVisible {
                                         searchText = ""
                                     }
+                                    if isSearchVisible {
+                                        isMainContentVisible = false
+                                        isTopHeaderVisible = true
+                                        isBackLayoutVisible = true
+                                        isButtonVisible = true
+                                    }
+                                }
+
+                                if isSearchVisible {
+                                    DispatchQueue.main.async {
+                                        isSearchFieldFocused = true
+                                    }
+                                } else {
+                                    hideKeyboard()
                                 }
                             }) {
                                 Image("search")
@@ -399,12 +415,26 @@ struct callView: View {
             isTopHeaderVisible = false
             callLogViewModel.fetchCallLogs(uid: Constant.SenderIdMy, force: true)
         }
+        .onChange(of: isSearchVisible) { isVisible in
+            if isVisible {
+                DispatchQueue.main.async {
+                    isSearchFieldFocused = true
+                }
+            } else {
+                hideKeyboard()
+            }
+        }
         }
     }
 
 
 // MARK: - Tab handling helpers
 extension callView {
+    private func hideKeyboard() {
+        isSearchFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
     private func handleLogTabClick() {
         withAnimation {
             selectedTab = .log
@@ -573,6 +603,12 @@ extension callView {
     }
 
     private func handleBackArrowTap() {
+        if isSearchVisible {
+            isSearchVisible = false
+            searchText = ""
+            hideKeyboard()
+        }
+
         if isShowingCallHistory {
             clearHistorySelection()
             return

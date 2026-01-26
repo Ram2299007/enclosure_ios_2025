@@ -8,6 +8,7 @@ struct MainActivityOld: View {
     @Environment(\.scenePhase) var scenePhase
     @State private var searchText = ""
     @State private var isSearchActive = false
+    @FocusState private var isSearchFieldFocused: Bool
     @State private var isCallEnabled = true
     @State private var isVideoCallEnabled = true
     @State private var isTapped = false
@@ -142,6 +143,7 @@ struct MainActivityOld: View {
                                             .foregroundColor(Color("TextColor"))
                                             .padding(.leading, 13)
                                             .textFieldStyle(PlainTextFieldStyle())
+                                            .focused($isSearchFieldFocused)
                                     }
                                     .transition(
                                         .move(edge: .trailing).combined(with: .opacity)
@@ -150,9 +152,18 @@ struct MainActivityOld: View {
 
                                 Button(action: {
                                     withAnimation {
-                                        isSearchActive.toggle()
-                                        if !isSearchActive {
-                                            searchText = ""
+                                        if isSearchActive {
+                                            if isSearchFieldFocused {
+                                                isSearchActive = false
+                                                searchText = ""
+                                                isSearchFieldFocused = false
+                                                hideKeyboard()
+                                            } else {
+                                                isSearchFieldFocused = true
+                                            }
+                                        } else {
+                                            isSearchActive = true
+                                            isSearchFieldFocused = true
                                         }
                                     }
                                 }) {
@@ -165,31 +176,8 @@ struct MainActivityOld: View {
                                 .buttonStyle(CircularRippleStyle())
                             }
 
-                            // Menu button - using simpler approach for better tap responsiveness
-                            ZStack {
-                                // Background circle for visual feedback
-                                if isMenuButtonPressed {
-                                    Circle()
-                                        .fill(Color("circlebtnhover").opacity(0.3))
-                                        .frame(width: 44, height: 44)
-                                        .transition(.opacity)
-                                }
-                                
-                                VStack(spacing: 3) {
-                                    Circle()
-                                        .fill(Color("menuPointColor"))
-                                        .frame(width: 4, height: 4)
-                                    Circle()
-                                        .fill(Color(hex: Constant.themeColor))
-                                        .frame(width: 4, height: 4)
-                                    Circle()
-                                        .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
-                                        .frame(width: 4, height: 4)
-                                }
-                            }
-                            .frame(width: 44, height: 44) // Standard iOS touch target size
-                            .contentShape(Rectangle()) // Ensure entire area is tappable
-                            .onTapGesture {
+                            // Menu button - ripple effect + haptics
+                            Button(action: {
                                 // Add haptic feedback for better UX
                                 let impactFeedback = UIImpactFeedbackGenerator(style: .light)
                                 impactFeedback.impactOccurred()
@@ -210,7 +198,32 @@ struct MainActivityOld: View {
                                         isMenuButtonPressed = false
                                     }
                                 }
+                            }) {
+                                ZStack {
+                                    // Background circle for visual feedback
+                                    if isMenuButtonPressed {
+                                        Circle()
+                                            .fill(Color("circlebtnhover").opacity(0.3))
+                                            .frame(width: 44, height: 44)
+                                            .transition(.opacity)
+                                    }
+                                    
+                                    VStack(spacing: 3) {
+                                        Circle()
+                                            .fill(Color("menuPointColor"))
+                                            .frame(width: 4, height: 4)
+                                        Circle()
+                                            .fill(Color(hex: Constant.themeColor))
+                                            .frame(width: 4, height: 4)
+                                        Circle()
+                                            .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                                            .frame(width: 4, height: 4)
+                                    }
+                                }
+                                .frame(width: 44, height: 44) // Standard iOS touch target size
+                                .contentShape(Rectangle()) // Ensure entire area is tappable
                             }
+                            .buttonStyle(CircularRippleStyle())
                             .padding(.trailing,8)
                         }
                     }

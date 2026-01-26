@@ -12,6 +12,7 @@ struct messageLmtView: View {
 
     @State private var isSearchActive = false
     @State private var searchText = ""
+    @FocusState private var isSearchFieldFocused: Bool
     @State private var isScrollEnabled = false
     @State private var limitText: String = ""
     @State private var showAlertBinding: Bool = false
@@ -89,16 +90,17 @@ struct messageLmtView: View {
                 HStack(spacing: 0) {
                     Spacer()
                     if isSearchActive {
-                        HStack(spacing: 0) {
+                        HStack {
                             Rectangle()
                                 .fill(Color(hex: Constant.themeColor)) // Use original theme color in both light and dark mode
                                 .frame(width: 1, height: 19.24)
-                                .padding(.leading, 23) // marginStart="23dp"
+                                .padding(.leading, 13)
                             TextField("Search Name or Number", text: $searchText)
                                 .font(.custom("Inter18pt-Regular", size: 15))
                                 .foregroundColor(Color("TextColor"))
-                                .padding(.leading, 13) // marginStart="13dp"
+                                .padding(.leading, 13)
                                 .textFieldStyle(PlainTextFieldStyle())
+                                .focused($isSearchFieldFocused)
                                 .onChange(of: searchText) { newValue in
                                     viewModel.filterChatList(searchText: newValue)
                                 }
@@ -112,6 +114,20 @@ struct messageLmtView: View {
                                 searchText = ""
                                 viewModel.filterChatList(searchText: "")
                             }
+                            if isSearchActive {
+                                isMainContentVisible = false
+                                isTopHeaderVisible = true
+                                isBackHeaderVisible = true
+                                isScrollEnabled = true
+                            }
+                        }
+
+                        if isSearchActive {
+                            DispatchQueue.main.async {
+                                isSearchFieldFocused = true
+                            }
+                        } else {
+                            hideKeyboard()
                         }
                     }) {
                         Image("search")
@@ -288,7 +304,21 @@ struct messageLmtView: View {
         }
     }
     
+    private func hideKeyboard() {
+        isSearchFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
     private func handleBackTap() {
+        hideKeyboard()
+        if isSearchActive {
+            isSearchActive = false
+            searchText = ""
+            viewModel.filterChatList(searchText: "")
+            isBackHeaderVisible = false
+            isScrollEnabled = false
+        }
+
         withAnimation {
             isPressed = true
             isStretchedUp = false

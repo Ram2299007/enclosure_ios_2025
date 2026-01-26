@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import FirebaseDatabase
+import UIKit
 
 struct chatView: View {
     @StateObject private var viewModel = ChatViewModel()
@@ -21,6 +22,8 @@ struct chatView: View {
     
     // Firebase listener handle
     @State private var firebaseListenerHandle: DatabaseHandle?
+    @State private var showSessionEndedDialog: Bool = false
+    @State private var didCheckSessionStatus: Bool = false
 
     private var trimmedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -94,11 +97,27 @@ struct chatView: View {
             
             // Set up Firebase Realtime Database listener for chattingSocket (matching Android)
             setupChattingSocketListener(uid: Constant.SenderIdMy)
+            
+            // Check if current session is still active on this device
+            checkSessionStatus()
         }
         .onDisappear {
             // Remove Firebase listener when view disappears
             removeChattingSocketListener()
         }
+        .overlay(
+            ConfirmationDialogView(
+                isPresented: $showSessionEndedDialog,
+                message: "Session ended:\nThis number is now active on another device.",
+                showCancel: false,
+                confirmTitle: "Sure",
+                cancelTitle: "Cancel",
+                onConfirm: {
+                    handleSessionEndedConfirmation()
+                },
+                onCancel: {}
+            )
+        )
         .background(
             // Hidden NavigationLink for UserInfoScreen
             NavigationLink(
@@ -487,6 +506,90 @@ struct chatView: View {
         firebaseListenerHandle = nil
     }
     
+    private func checkSessionStatus() {
+        guard !didCheckSessionStatus else { return }
+        didCheckSessionStatus = true
+        
+        let mobileNo = UserDefaults.standard.string(forKey: Constant.PHONE_NUMBERKEY) ?? ""
+        let phoneId = UIDevice.current.identifierForVendor?.uuidString ?? ""
+        print("🟠 [chatView] checkSessionStatus - mobile: '\(mobileNo)', phoneId: '\(phoneId)'")
+        
+        guard !mobileNo.isEmpty, !phoneId.isEmpty else {
+            print("🟠 [chatView] checkSessionStatus skipped - missing mobile or phoneId")
+            return
+        }
+        
+        let allowedQuery = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "+"))
+        let encodedMobile = mobileNo.addingPercentEncoding(withAllowedCharacters: allowedQuery) ?? mobileNo
+        
+        var components = URLComponents(string: Constant.baseURL + "get_phone_id_by_mobile")
+        components?.percentEncodedQuery = "mobile_no=\(encodedMobile)"
+        
+        guard let url = components?.url else {
+            print("🟠 [chatView] checkSessionStatus invalid URL")
+            return
+        }
+        print("🟠 [chatView] checkSessionStatus request: \(url.absoluteString)")
+        
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            if let error = error {
+                print("🟠 [chatView] checkSessionStatus error: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let data = data else {
+                print("🟠 [chatView] checkSessionStatus no data")
+                return
+            }
+            
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    print("🟠 [chatView] checkSessionStatus response: \(json)")
+                    let errorCode: Int? = {
+                        if let codeInt = json["error_code"] as? Int {
+                            return codeInt
+                        }
+                        if let codeString = json["error_code"] as? String {
+                            return Int(codeString)
+                        }
+                        return nil
+                    }()
+                    
+                    if errorCode == 200,
+                       let dataDict = json["data"] as? [String: Any],
+                       let serverPhoneId = dataDict["phone_id"] as? String {
+                        if serverPhoneId != phoneId {
+                            DispatchQueue.main.async {
+                                print("🟠 [chatView] Session mismatch detected - showing dialog")
+                                showSessionEndedDialog = true
+                            }
+                        } else {
+                            print("🟠 [chatView] Session OK - phoneId matches")
+                        }
+                    } else {
+                        print("🟠 [chatView] checkSessionStatus no valid match - errorCode: \(String(describing: errorCode))")
+                    }
+                }
+            } catch {
+                print("🟠 [chatView] checkSessionStatus parse error: \(error.localizedDescription)")
+                return
+            }
+        }.resume()
+    }
+    
+    private func handleSessionEndedConfirmation() {
+        let defaults = UserDefaults.standard
+        defaults.set("0", forKey: Constant.UID_KEY)
+        defaults.set("", forKey: Constant.PHONE_NUMBERKEY)
+        defaults.set("", forKey: Constant.country_Code)
+        defaults.set("0", forKey: "lockKey")
+        defaults.set("sleepKeyCheckOFF", forKey: "sleepKeyCheckOFF")
+        defaults.removeObject(forKey: Constant.loggedInKey)
+        defaults.synchronize()
+        
+        NotificationCenter.default.post(name: NSNotification.Name("ForceLogout"), object: nil)
+    }
+    
     struct PlaceholderContactCardView: View {
         @State private var isPressed = false
         
@@ -773,6 +876,82 @@ struct chatView: View {
 
 }
 
+struct ConfirmationDialogView: View {
+    @Binding var isPresented: Bool
+    let message: String
+    let showCancel: Bool
+    let confirmTitle: String
+    let cancelTitle: String
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+    
+    private var dialogWidth: CGFloat {
+        min(UIScreen.main.bounds.width - 80, 320)
+    }
+    
+    var body: some View {
+        if isPresented {
+            ZStack {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                
+                VStack(spacing: 0) {
+                    Text(message)
+                        .font(.custom("Inter18pt-Regular", size: 17))
+                        .foregroundColor(Color("TextColor"))
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(25)
+                        .padding(.top, 20)
+                        .padding(.horizontal, 10)
+                    
+                    HStack(spacing: 20) {
+                        if showCancel {
+                            Button(action: {
+                                isPresented = false
+                                onCancel()
+                            }) {
+                                Text(cancelTitle)
+                                    .font(.custom("Inter18pt-Medium", size: 15))
+                                    .foregroundColor(.white)
+                                    .frame(height: 36)
+                                    .padding(.horizontal, 20)
+                                    .background(Color.black)
+                                    .cornerRadius(8)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                        
+                        Button(action: {
+                            isPresented = false
+                            onConfirm()
+                        }) {
+                            Text(confirmTitle)
+                                .font(.custom("Inter18pt-Medium", size: 15))
+                                .foregroundColor(.white)
+                                .frame(height: 36)
+                                .padding(.horizontal, 20)
+                                .background(Color.red)
+                                .cornerRadius(8)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 20)
+                    .padding(.bottom, 20)
+                }
+                .padding(20)
+                .frame(width: dialogWidth)
+                .background(
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(Color("cardBackgroundColornew"))
+                )
+            }
+            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isPresented)
+        }
+    }
+}
+
 #Preview {
     chatView(
         selectedChatForDialog: .constant(nil),
@@ -785,6 +964,3 @@ struct chatView: View {
          PersistenceController.preview.container.viewContext
     )
 }
-
-
-

@@ -19,6 +19,7 @@ struct whatsYourNumber: View {
     @State private var shakeOffset: CGFloat = 0
     @State private var phoneError: String? = nil  // Error message for phone number
     @FocusState private var isFocused: Bool
+    @State private var showNumberInUseDialog: Bool = false
     
     // Helper function to hide keyboard
     private func hideKeyboard() {
@@ -198,31 +199,20 @@ struct whatsYourNumber: View {
 
                     Button(
                         action: {
-                            if phoneNumber.isEmpty {
-                                Constant.showToast(message: "Invalid number") // Show toast
-                            } else if selectedCountryCode == "+91" && phoneNumber.count < 10 {
-                                Constant.showToast(message: "Invalid number") // Show toast
+                            if isChecked {
+                                handlePhoneIdCheckAndSend()
                             } else {
-                                if isChecked {
-                                    viewModel
-                                        .sendOTP(
-                                            mobileNo: selectedCountryCode + phoneNumber,
-                                            cID: selectedCountryID,
-                                            cCode: selectedCountryCode
-                                        )
-                                } else {
+                                withAnimation {
+                                    shakeOffset = 10
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                     withAnimation {
-                                        shakeOffset = 10
+                                        shakeOffset = -10
                                     }
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                        withAnimation {
-                                            shakeOffset = -10
-                                        }
-                                    }
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                                        withAnimation {
-                                            shakeOffset = 0
-                                        }
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                    withAnimation {
+                                        shakeOffset = 0
                                     }
                                 }
                             }
@@ -242,6 +232,20 @@ struct whatsYourNumber: View {
                 }
                 .ignoresSafeArea(.keyboard, edges: .bottom)
                 }
+                .overlay(
+                    ConfirmationDialogView(
+                        isPresented: $showNumberInUseDialog,
+                        message: "This number is in use on another device.\nLogging in will end that session.",
+                        showCancel: true,
+                        confirmTitle: "Sure",
+                        cancelTitle: "Cancel",
+                        onConfirm: {
+                            performSendOtp()
+                        },
+                        onCancel: {}
+                    )
+                    .zIndex(2)
+                )
             }
             .ignoresSafeArea(.keyboard)
             .simultaneousGesture(
@@ -269,7 +273,39 @@ struct whatsYourNumber: View {
                 }
             }
         }
+    
+    private func performSendOtp() {
+        if phoneNumber.isEmpty {
+            Constant.showToast(message: "Invalid number")
+        } else if selectedCountryCode == "+91" && phoneNumber.count < 10 {
+            Constant.showToast(message: "Invalid number")
+        } else {
+            viewModel.sendOTP(
+                mobileNo: selectedCountryCode + phoneNumber,
+                cID: selectedCountryID,
+                cCode: selectedCountryCode
+            )
+        }
     }
+    
+    private func handlePhoneIdCheckAndSend() {
+        let fullNumber = selectedCountryCode + phoneNumber
+        print("🟠 [whatsYourNumber] checkPhoneIdMatch start - mobile: \(fullNumber)")
+        viewModel.checkPhoneIdMatch(mobileNo: fullNumber) { status in
+            switch status {
+            case .match:
+                print("🟠 [whatsYourNumber] checkPhoneIdMatch MATCH")
+                performSendOtp()
+            case .partialMatch:
+                print("🟠 [whatsYourNumber] checkPhoneIdMatch PARTIAL - showing dialog")
+                showNumberInUseDialog = true
+            case .failure:
+                print("🟠 [whatsYourNumber] checkPhoneIdMatch FAIL - proceeding with OTP")
+                performSendOtp()
+            }
+        }
+    }
+}
 
 #Preview {
     whatsYourNumber()

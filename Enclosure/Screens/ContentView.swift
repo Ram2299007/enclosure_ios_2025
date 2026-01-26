@@ -71,6 +71,12 @@ struct ContentView: View {
                         }
                     }
                 }
+                .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ForceLogout"))) { _ in
+                    print("🔐 [ContentView] ForceLogout received - navigating to onboarding")
+                    isNavigatingToMain = false
+                    isNavigating = false
+                    isNavigatingToOnboarding = true
+                }
             }
             
             // Show MainActivityOld directly with smooth fade-in transition

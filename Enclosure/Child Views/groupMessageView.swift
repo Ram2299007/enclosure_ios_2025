@@ -17,6 +17,7 @@ struct groupMessageView: View {
     @State private var isPressed = false
     @State private var isSearchVisible = false
     @State private var searchText = ""
+    @FocusState private var isSearchFieldFocused: Bool
     @StateObject private var viewModel = GroupMessageViewModel()
     @State private var hasLoadedGroups = false
     @State private var isNewGroupPresented = false
@@ -243,23 +244,19 @@ struct groupMessageView: View {
     private var searchToggleSection: some View {
         HStack(alignment: .center, spacing: 12) {
             if isSearchVisible {
-                HStack(spacing: 12) {
+                HStack {
                     Rectangle()
                         .fill(Color(hex: Constant.themeColor)) // Use original theme color in both light and dark mode
                         .frame(width: 1, height: 19.24)
-                        .padding(.leading, 3)
+                        .padding(.leading, 13)
                     
                     TextField("Search Name or Number", text: $searchText)
                         .font(.custom("Inter18pt-Regular", size: 15))
                         .foregroundColor(Color("TextColor"))
+                        .padding(.leading, 13)
                         .textFieldStyle(PlainTextFieldStyle())
+                        .focused($isSearchFieldFocused)
                 }
-                .padding(.vertical, 8)
-                .padding(.horizontal, 16)
-                .background(
-                    RoundedRectangle(cornerRadius: 50)
-                        .fill(Color("cardBackgroundColornew"))
-                )
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
             
@@ -271,6 +268,20 @@ struct groupMessageView: View {
                     if !isSearchVisible {
                         searchText = ""
                     }
+                    if isSearchVisible {
+                        isStretchedUp = true
+                        isMainContentVisible = false
+                        isBackHeaderVisible = true
+                        isTopHeaderVisible = true
+                    }
+                }
+                
+                if isSearchVisible {
+                    DispatchQueue.main.async {
+                        isSearchFieldFocused = true
+                    }
+                } else {
+                    hideKeyboard()
                 }
             }) {
                 Image("search")
@@ -424,12 +435,23 @@ struct groupMessageView: View {
 }
 
 extension groupMessageView {
+    private func hideKeyboard() {
+        isSearchFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
     private func handleBackArrowTap() {
         // Check if button is enabled
         guard isBackButtonEnabled && !isBackActionInProgress && !isNewGroupPresented else {
             return
         }
         
+        if isSearchVisible {
+            isSearchVisible = false
+            searchText = ""
+            hideKeyboard()
+        }
+
         let now = Date()
         
         // Simple debounce: prevent multiple presses within 1.5 seconds

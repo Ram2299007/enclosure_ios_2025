@@ -116,34 +116,20 @@ struct ShareExternalDataContactScreen: View {
                     
                     // Search bar (matching Android searchLytNew LinearLayout)
                     // layout_marginTop="20dp" padding="8dp" layout_weight="1" layout_marginEnd="10dp"
-                    HStack(alignment: .center, spacing: 0) {
+                    HStack {
                         // Blue indicator line (matching Android viewnewnn)
-                    Rectangle()
-                        .fill(Color("blue"))
+                        Rectangle()
+                            .fill(Color("blue"))
                             .frame(width: 1, height: 19.24) // layout_height="19.24dp"
-                            .padding(.leading, 23) // layout_marginStart="23dp"
+                            .padding(.leading, 13)
                     
                         // Search field (matching Android searchview AutoCompleteTextView)
-                        HStack(alignment: .center, spacing: 0) {
-                    TextField("Search Name", text: $searchText)
-                                .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp"
-                        .foregroundColor(Color("TextColor"))
-                        .focused($isSearchFocused)
-                                .lineSpacing(0) // lineHeight="22.5dp"
-                                .padding(.leading, 13) // layout_marginStart="13dp"
-                
-                            Spacer()
-                            
-                            // Search icon (matching Android searchIcon)
-                            // layout_weight="3.9" layout_gravity="end|center_vertical"
-                    Image("search")
-                                .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                                .frame(width: 20, height: 20) // layout_width="20dp" layout_height="20dp"
-                                .foregroundColor(Color("TextColor"))
-                }
-                        .frame(maxWidth: .infinity) // layout_weight="1"
+                        TextField("Search Name", text: $searchText)
+                            .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp"
+                            .foregroundColor(Color("TextColor"))
+                            .focused($isSearchFocused)
+                            .lineSpacing(0) // lineHeight="22.5dp"
+                            .padding(.leading, 13)
             }
                     .padding(.top, 20) // layout_marginTop="20dp"
                     .padding(.leading, 8) // padding="8dp" (left only)

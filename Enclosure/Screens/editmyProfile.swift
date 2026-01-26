@@ -389,6 +389,11 @@ struct EditmyProfile: View {
 
 
                 }
+                .simultaneousGesture(
+                    TapGesture().onEnded {
+                        hideKeyboard()
+                    }
+                )
 
                 // Custom Alert
                 if showAlert {

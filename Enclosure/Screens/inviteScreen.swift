@@ -142,13 +142,15 @@ struct InviteScreen: View {
                             .animation(.easeOut(duration: 0.3), value: isBackPressed)
                     }
                     
-                Image("leftvector")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 25, height: 18)
-                    .foregroundColor(Color("icontintGlobal"))
+                    Image("leftvector")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 25, height: 18)
+                        .foregroundColor(Color("icontintGlobal"))
                 }
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
             }
             .simultaneousGesture(
                 DragGesture(minimumDistance: 0)
@@ -171,41 +173,21 @@ struct InviteScreen: View {
                 Spacer()
                 
                 if isSearchVisible {
-                    HStack(spacing: 5) {
+                    HStack {
                         Rectangle()
                             .fill(Color(hex: Constant.themeColor)) // Use original theme color in both light and dark mode
                             .frame(width: 1, height: 19.24)
-                            .padding(.leading, 0)
+                            .padding(.leading, 13)
             
                         TextField("Search Name", text: $searchText)
-                .font(.custom("Inter18pt-Regular", size: 15))
-                .foregroundColor(Color("TextColor"))
-                .disableAutocorrection(true)
-                .textInputAutocapitalization(.never)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .font(.custom("Inter18pt-Regular", size: 15))
+                            .foregroundColor(Color("TextColor"))
+                            .disableAutocorrection(true)
+                            .textInputAutocapitalization(.never)
+                            .padding(.leading, 13)
+                            .textFieldStyle(PlainTextFieldStyle())
                             .focused($isSearchFieldFocused)
-            
-            if !searchText.isEmpty {
-                            Button {
-                                searchText = ""
-                                viewModel.resetSearch()
-                            } label: {
-                    Image(systemName: "xmark.circle.fill")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 16, height: 16)
-                        .foregroundColor(Color("gray"))
-                }
-                            .buttonStyle(.plain)
-            }
-        }
-                    .frame(height: 40)
-                    .padding(.trailing, 12)
-                    .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 30)
-                .fill(Color("cardBackgroundColornew"))
-        )
+                    }
                     .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
                 

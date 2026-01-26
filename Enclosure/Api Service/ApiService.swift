@@ -534,6 +534,97 @@ class ApiService {
             }
     }
     
+    // Get individual chatting details (matching Android Webservice.get_individual_chatting)
+    static func get_individual_chatting(
+        uid: String,
+        friendId: String,
+        completion: @escaping (Bool, String, String, String) -> Void
+    ) {
+        let url = Constant.baseURL + "reset_notification_count"
+        let parameters: [String: Any] = ["uid": uid, "friend_id": friendId]
+        
+        print("🟢 [ApiService] get_individual_chatting - URL: \(url)")
+        print("🟢 [ApiService] get_individual_chatting - Parameters: \(parameters)")
+        
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseJSON { response in
+                print("🟢 [ApiService] get_individual_chatting - Status: \(response.response?.statusCode ?? 0)")
+                
+                switch response.result {
+                case .success(let value):
+                    guard let json = value as? [String: Any] else {
+                        print("🔴 [ApiService] get_individual_chatting - Invalid response format")
+                        completion(false, "Invalid response format", "0", "0")
+                        return
+                    }
+                    
+                    let errorCode: Int
+                    if let errorCodeInt = json["error_code"] as? Int {
+                        errorCode = errorCodeInt
+                    } else if let errorCodeString = json["error_code"] as? String,
+                              let errorCodeInt = Int(errorCodeString) {
+                        errorCode = errorCodeInt
+                    } else {
+                        errorCode = 0
+                    }
+                    
+                    let message = json["message"] as? String ?? ""
+                    
+                    func stringValue(_ value: Any?) -> String? {
+                        if let str = value as? String { return str }
+                        if let intVal = value as? Int { return String(intVal) }
+                        if let doubleVal = value as? Double { return String(Int(doubleVal)) }
+                        return nil
+                    }
+                    
+                    let dataDict = json["data"] as? [String: Any]
+                    let dataArrayFirst = (json["data"] as? [[String: Any]])?.first
+                    
+                    let limitStatusCandidates: [Any?] = [
+                        dataDict?["limit_status"],
+                        dataDict?["limitStatus"],
+                        dataArrayFirst?["limit_status"],
+                        dataArrayFirst?["limitStatus"],
+                        json["limit_status"],
+                        json["limitStatus"]
+                    ]
+                    
+                    let totalMsgLimitCandidates: [Any?] = [
+                        dataDict?["total_msg_limit"],
+                        dataDict?["totalMsgLimit"],
+                        dataDict?["msg_limit"],
+                        dataArrayFirst?["total_msg_limit"],
+                        dataArrayFirst?["totalMsgLimit"],
+                        dataArrayFirst?["msg_limit"],
+                        json["total_msg_limit"],
+                        json["totalMsgLimit"],
+                        json["msg_limit"]
+                    ]
+                    
+                    let limitStatus = limitStatusCandidates
+                        .compactMap { stringValue($0) }
+                        .first ?? "0"
+                    
+                    let totalMsgLimit = totalMsgLimitCandidates
+                        .compactMap { stringValue($0) }
+                        .first ?? "0"
+                    
+                    print("🟢 [ApiService] get_individual_chatting - limitStatus: \(limitStatus), totalMsgLimit: \(totalMsgLimit)")
+                    
+                    if errorCode == 200 {
+                        completion(true, message, limitStatus, totalMsgLimit)
+                    } else {
+                        completion(false, message, limitStatus, totalMsgLimit)
+                    }
+                    
+                case .failure(let error):
+                    print("🔴 [ApiService] get_individual_chatting - Request error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription, "0", "0")
+                }
+            }
+    }
+    
     // Delete individual user chat
     static func delete_individual_user_chatting(uid: String, friendId: String, completion: @escaping (Bool, String) -> Void) {
         let url = Constant.baseURL + "delete_individual_user_chatting"

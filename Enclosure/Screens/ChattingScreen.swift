@@ -42,6 +42,7 @@ struct ChattingScreen: View {
     @State private var showFilePickerActionSheet: Bool = false
     @State private var wasGalleryPickerOpenBeforeContactPicker: Bool = false
     @State private var showSearch: Bool = false
+    @FocusState private var isSearchFieldFocused: Bool
     @State private var showForwardContactPicker: Bool = false // Show forward contact picker
     @State private var selectedMessagesForForward: [ChatMessage] = [] // Store selected messages for forwarding
     @State private var searchText: String = ""
@@ -758,6 +759,9 @@ struct ChattingScreen: View {
             let uid = Constant.SenderIdMy
             let receiverRoom = receiverUid + uid
             
+            // Fetch limit status (matching Android Webservice.get_individual_chatting)
+            fetchIndividualChattingLimit(senderId: uid, receiverUid: receiverUid)
+            
             // Fetch messages (matching Android fetchMessages)
             fetchMessages(receiverRoom: receiverRoom) {
                 print("✅ Messages fetched successfully")
@@ -766,6 +770,11 @@ struct ChattingScreen: View {
         .onDisappear {
             // Remove Firebase listeners when leaving screen
             removeFirebaseListeners()
+            
+            // Refresh limit status on exit (Android onBackPressed/onDestroy)
+            let receiverUid = contact.uid
+            let uid = Constant.SenderIdMy
+            fetchIndividualChattingLimit(senderId: uid, receiverUid: receiverUid)
             
             // Clean up work items
             hideDateWorkItem?.cancel()
@@ -785,6 +794,24 @@ struct ChattingScreen: View {
         let receiverUid = contact.uid
         let uid = Constant.SenderIdMy
         return uid + receiverUid
+    }
+    
+    // MARK: - Fetch individual chatting limit (matching Android Webservice.get_individual_chatting)
+    private func fetchIndividualChattingLimit(senderId: String, receiverUid: String) {
+        ApiService.get_individual_chatting(uid: senderId, friendId: receiverUid) { success, message, limitStatusValue, totalMsgLimitValue in
+            DispatchQueue.main.async {
+                self.limitStatus = limitStatusValue
+                self.totalMsgLimit = totalMsgLimitValue
+                self.showLimitStatus = !limitStatusValue.isEmpty && limitStatusValue != "0"
+                self.showTotalMsgLimit = !totalMsgLimitValue.isEmpty && totalMsgLimitValue != "0"
+                
+                if success {
+                    print("✅ [ChattingScreen] get_individual_chatting success - limitStatus: \(limitStatusValue), totalMsgLimit: \(totalMsgLimitValue)")
+                } else {
+                    print("🚫 [ChattingScreen] get_individual_chatting failed - message: \(message)")
+                }
+            }
+        }
     }
     
     // MARK: - Scroll to target message and highlight it (matching Android scrollToTargetModelId)
@@ -944,22 +971,32 @@ struct ChattingScreen: View {
                 
                 // Search field (full width when active - matching Android binding.searchlyt.setVisibility(View.VISIBLE))
                 if showSearch {
-                    TextField("Search...", text: $searchText)
-                        .font(.custom("Inter18pt-Medium", size: 16))
-                        .foregroundColor(Color("TextColor"))
-                        .textFieldStyle(PlainTextFieldStyle())
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.trailing, 10)
-                        .onAppear {
-                            // Focus search field (matching Android binding.searchEt.requestFocus())
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                isMessageFieldFocused = false
+                    HStack {
+                        Rectangle()
+                            .fill(Color(hex: Constant.themeColor)) // Use original theme color in both light and dark mode
+                            .frame(width: 1, height: 19.24)
+                            .padding(.leading, 13)
+                        
+                        TextField("Search...", text: $searchText)
+                            .font(.custom("Inter18pt-Medium", size: 16))
+                            .foregroundColor(Color("TextColor"))
+                            .padding(.leading, 13)
+                            .textFieldStyle(PlainTextFieldStyle())
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .focused($isSearchFieldFocused)
+                            .onAppear {
+                                // Focus search field (matching Android binding.searchEt.requestFocus())
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    isMessageFieldFocused = false
+                                    isSearchFieldFocused = true
+                                }
                             }
-                        }
-                        .onChange(of: searchText) { newValue in
-                            // Handle search text changes (matching Android TextWatcher)
-                            handleSearchTextChanged(newValue)
-                        }
+                            .onChange(of: searchText) { newValue in
+                                // Handle search text changes (matching Android TextWatcher)
+                                handleSearchTextChanged(newValue)
+                            }
+                    }
+                    .padding(.trailing, 10)
                 } else {
                     // Profile section (hidden when search is active - matching Android binding.name.setVisibility(View.GONE))
                     NavigationLink(destination: UserInfoScreen(
@@ -1627,8 +1664,9 @@ struct ChattingScreen: View {
                             TextField("Message on Ec", text: $messageText, axis: .vertical)
                                 .font(messageInputFont)
                                 .foregroundColor(Color("black_white_cross"))
-                                .lineLimit(4)
+                                .lineLimit(1...4)
                                 .frame(maxWidth: 180, alignment: .leading)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .padding(.leading, 0)
                                 .padding(.trailing, 20)
                                 .padding(.top, 5)
@@ -1672,7 +1710,7 @@ struct ChattingScreen: View {
                         }
                         .padding(.trailing, 5)
                     }
-                    .frame(height: 50) // Match send button height (50dp)
+                    .frame(minHeight: 44, alignment: .center) // Allow wrap_content height
                         .padding(.horizontal, 7) // Inner padding matching reply layout inner margin="7dp"
                     }
                     .padding(.horizontal, 2) // Outer margin matching reply layout marginStart/End="2dp" for width alignment
@@ -2304,6 +2342,7 @@ struct ChattingScreen: View {
                         // Focus search field (matching Android binding.searchEt.requestFocus())
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                             isMessageFieldFocused = false
+                            isSearchFieldFocused = true
                         }
                     }) {
                         HStack {
@@ -2418,6 +2457,8 @@ struct ChattingScreen: View {
                     isSearching = false
                     filteredMessages.removeAll()
                 }
+                isSearchFieldFocused = false
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                 isPressed = false
                 return
             }
@@ -2448,6 +2489,9 @@ struct ChattingScreen: View {
             }
             
             // If gallery picker is closed, navigate back
+            let receiverUid = contact.uid
+            let uid = Constant.SenderIdMy
+            fetchIndividualChattingLimit(senderId: uid, receiverUid: receiverUid)
             dismiss()
             isPressed = false
         }

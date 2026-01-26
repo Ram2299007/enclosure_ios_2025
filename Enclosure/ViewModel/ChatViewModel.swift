@@ -38,6 +38,7 @@ class ChatViewModel: ObservableObject {
     // Firebase listener handle
     private var firebaseListenerHandle: DatabaseHandle?
     private var isRefreshingFromSocket = false // Prevent recursive calls
+    private var isFetchInFlight = false // Prevent duplicate API calls
     
     init() {
         // Listen for immediate delete notifications
@@ -50,6 +51,17 @@ class ChatViewModel: ObservableObject {
                 self?.removeFromList(uid: uid)
             }
         }
+
+        // Refresh chat list when returning from ChattingScreen
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("RefreshChatListAfterChattingScreen"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            print("🔵 [ChatViewModel] Refresh requested after ChattingScreen")
+            self.fetchChatList(uid: Constant.SenderIdMy)
+        }
     }
     
     deinit {
@@ -59,17 +71,25 @@ class ChatViewModel: ObservableObject {
 
     // Internal method to fetch chat list without setting up listener (used by socket refresh)
     private func fetchChatListInternal(uid: String) {
+        if isFetchInFlight {
+            print("🔵 [ChatViewModel] fetchChatListInternal skipped (already in flight)")
+            return
+        }
+        isFetchInFlight = true
+
         // Populate cached data immediately so UI can reuse it while fresh data loads.
         loadCachedChats(reason: .prefetch, shouldStopLoading: false)
 
         guard networkMonitor.isConnected else {
             print("🔵 [ChatViewModel] No internet connection, loading cached chats")
             loadCachedChats(reason: .offline)
+            isFetchInFlight = false
             return
         }
         
         ApiService.get_user_active_chat_list(uid: uid) { success, message, data in
             DispatchQueue.main.async {
+                self.isFetchInFlight = false
                 print("🔵 [ChatViewModel] API callback received - success: \(success), message: '\(message)', data count: \(data?.count ?? 0)")
                 // Reset socket refresh flag
                 self.isRefreshingFromSocket = false

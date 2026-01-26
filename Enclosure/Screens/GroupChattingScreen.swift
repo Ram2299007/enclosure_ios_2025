@@ -515,22 +515,30 @@ struct GroupChattingScreen: View {
                 
                 // Search field (full width when active - matching Android binding.searchlyt.setVisibility(View.VISIBLE))
                 if showSearch {
-                    TextField("Search...", text: $searchText)
-                        .font(.custom("Inter18pt-Medium", size: 16))
-                        .foregroundColor(Color("TextColor"))
-                        .textFieldStyle(PlainTextFieldStyle())
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.trailing, 10)
-                        .onAppear {
-                            // Focus search field (matching Android binding.searchEt.requestFocus())
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                isMessageFieldFocused = false
+                    HStack {
+                        Rectangle()
+                            .fill(Color(hex: Constant.themeColor)) // Use original theme color in both light and dark mode
+                            .frame(width: 1, height: 19.24)
+                            .padding(.leading, 13)
+                        
+                        TextField("Search...", text: $searchText)
+                            .font(.custom("Inter18pt-Medium", size: 16))
+                            .foregroundColor(Color("TextColor"))
+                            .padding(.leading, 13)
+                            .textFieldStyle(PlainTextFieldStyle())
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .onAppear {
+                                // Focus search field (matching Android binding.searchEt.requestFocus())
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    isMessageFieldFocused = false
+                                }
                             }
-                        }
-                        .onChange(of: searchText) { newValue in
-                            // Handle search text changes (matching Android TextWatcher)
-                            handleSearchTextChanged(newValue)
-                        }
+                            .onChange(of: searchText) { newValue in
+                                // Handle search text changes (matching Android TextWatcher)
+                                handleSearchTextChanged(newValue)
+                            }
+                    }
+                    .padding(.trailing, 10)
                 } else {
                     // Group section (hidden when search is active, clickable to open ForGroupVisibleScreen)
                     Button(action: {
@@ -721,8 +729,9 @@ struct GroupChattingScreen: View {
                                 TextField("Message on Ec", text: $messageText, axis: .vertical)
                                     .font(messageInputFont)
                                     .foregroundColor(Color("black_white_cross"))
-                                    .lineLimit(4)
+                                    .lineLimit(1...4)
                                     .frame(maxWidth: 180, alignment: .leading)
+                                    .fixedSize(horizontal: false, vertical: true)
                                     .padding(.leading, 0)
                                     .padding(.trailing, 20)
                                     .padding(.top, 5)
@@ -767,7 +776,7 @@ struct GroupChattingScreen: View {
                             }
                             .padding(.trailing, 5)
                         }
-                        .frame(height: 50) // Match send button height (50dp)
+                        .frame(minHeight: 44, alignment: .center) // Allow wrap_content height
                         .padding(.horizontal, 7) // Inner padding matching reply layout inner margin="7dp"
                     }
                     .padding(.horizontal, 2) // Outer margin matching reply layout marginStart/End="2dp" for width alignment

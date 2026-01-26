@@ -7,6 +7,13 @@
 
 
 import Foundation
+import UIKit
+
+enum PhoneIdMatchStatus {
+    case match
+    case partialMatch
+    case failure(String)
+}
 
 class SendOTPViewModel: ObservableObject {
     @Published var isNavigating = false
@@ -16,6 +23,82 @@ class SendOTPViewModel: ObservableObject {
     @Published var c_id = ""
     @Published var mobile_no = ""
     @Published var country_Code = ""
+    
+    func checkPhoneIdMatch(mobileNo: String, completion: @escaping (PhoneIdMatchStatus) -> Void) {
+        let phoneId = UIDevice.current.identifierForVendor?.uuidString ?? ""
+        guard !phoneId.isEmpty else {
+            completion(.failure("Missing phone ID"))
+            return
+        }
+        
+        let allowedQuery = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "+"))
+        let encodedMobile = mobileNo.addingPercentEncoding(withAllowedCharacters: allowedQuery) ?? mobileNo
+        let encodedPhoneId = phoneId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? phoneId
+        
+        var components = URLComponents(string: Constant.baseURL + "check_phone_id_match")
+        components?.percentEncodedQuery = "mobile_no=\(encodedMobile)&phone_id=\(encodedPhoneId)"
+        
+        guard let url = components?.url else {
+            completion(.failure("Invalid URL"))
+            return
+        }
+        
+        print("🟠 [SendOTPViewModel] checkPhoneIdMatch request: \(url.absoluteString)")
+        
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            if let error = error {
+                DispatchQueue.main.async {
+                    print("🟠 [SendOTPViewModel] checkPhoneIdMatch error: \(error.localizedDescription)")
+                    completion(.failure(error.localizedDescription))
+                }
+                return
+            }
+            
+            guard let data = data else {
+                DispatchQueue.main.async {
+                    print("🟠 [SendOTPViewModel] checkPhoneIdMatch no data")
+                    completion(.failure("No data received"))
+                }
+                return
+            }
+            
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    print("🟠 [SendOTPViewModel] checkPhoneIdMatch response: \(json)")
+                    let errorCode: Int? = {
+                        if let codeInt = json["error_code"] as? Int {
+                            return codeInt
+                        }
+                        if let codeString = json["error_code"] as? String {
+                            return Int(codeString)
+                        }
+                        return nil
+                    }()
+                    
+                    let message = json["message"] as? String ?? ""
+                    
+                    DispatchQueue.main.async {
+                        switch errorCode {
+                        case 200:
+                            completion(.match)
+                        case 409:
+                            completion(.partialMatch)
+                        default:
+                            completion(.failure(message.isEmpty ? "Unknown error" : message))
+                        }
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        completion(.failure("Invalid response format"))
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    completion(.failure(error.localizedDescription))
+                }
+            }
+        }.resume()
+    }
 
     func sendOTP(mobileNo: String, cID: String,cCode:String) {
         isLoading = true
