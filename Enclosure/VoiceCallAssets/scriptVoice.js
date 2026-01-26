@@ -366,16 +366,16 @@ function updateAudioOutputUI(output) {
     audioOutputBtn.classList.toggle('active', output !== 'earpiece');
     switch (output) {
         case 'earpiece':
-            audioOutputIcon.src = 'file:///android_asset/speaker.png';
+            audioOutputIcon.src = 'speaker.png';
             break;
         case 'speaker':
-            audioOutputIcon.src = 'file:///android_asset/speaker.png';
+            audioOutputIcon.src = 'speaker.png';
             break;
         case 'bluetooth':
-            audioOutputIcon.src = 'file:///android_asset/bluetooth.png';
+            audioOutputIcon.src = 'bluetooth.png';
             break;
         default:
-            audioOutputIcon.src = 'file:///android_asset/speaker.png';
+            audioOutputIcon.src = 'speaker.png';
     }
 }
 
@@ -510,7 +510,7 @@ function setCallerInfo(name, photo, uid) {
     if (!participantData[uid] || participantData[uid].name !== name || participantData[uid].photo !== photo) {
         participantData[uid] = {
             name: name || 'Unknown',
-            photo: photo || 'file:///android_asset/user.png'
+            photo: photo || 'user.png'
         };
         console.log(`[setCallerInfo] Updated participant data for ${uid}:`, participantData[uid]);
     }
@@ -569,7 +569,7 @@ function updateParticipantsUI() {
     if (participantCount === 1) {
         console.log("Remote Caller Photo URL:", remoteCallerPhoto);
         console.log("Participant Data Photo:", participantData[myUid]?.photo);
-        const localPhoto = remoteCallerPhoto || participantData[myUid]?.photo || 'file:///android_asset/user.png';
+        const localPhoto = remoteCallerPhoto || participantData[myUid]?.photo || 'user.png';
         const localName = remoteCallerName || participantData[myUid]?.name || 'Name';
 
         singleCallerInfo.innerHTML = `
@@ -583,7 +583,7 @@ function updateParticipantsUI() {
     // Handle 2 participants (you + one)
     else if (participantCount === 2) {
         const remoteUid = uidList.find(uid => uid !== myUid);
-        const remotePhoto = remoteCallerPhoto || participantData[remoteUid]?.photo || 'file:///android_asset/user.png';
+        const remotePhoto = remoteCallerPhoto || participantData[remoteUid]?.photo || 'user.png';
         const remoteName = remoteCallerName || participantData[remoteUid]?.name || 'Name';
 
         console.log(`[updateParticipantsUI] 2 participants - Remote UID: ${remoteUid}, Photo: ${remotePhoto}, Name: ${remoteName}`);
@@ -604,7 +604,7 @@ function updateParticipantsUI() {
             };
             callerImage.onerror = () => {
                 console.error(`[updateParticipantsUI] Failed to load image: ${remotePhoto}, using default`);
-                callerImage.src = 'file:///android_asset/user.png';
+                callerImage.src = 'user.png';
             };
         }
     }
@@ -625,7 +625,7 @@ function updateParticipantsUI() {
         const localParticipant = document.createElement('div');
         localParticipant.className = 'participant';
         localParticipant.innerHTML = `
-            <img id="localImage" src="${participantData[myUid]?.photo || 'file:///android_asset/user.png'}" alt="Name" style="border-radius: 50%; width: 100px; height: 100px;">
+            <img id="localImage" src="${participantData[myUid]?.photo || 'user.png'}" alt="Name" style="border-radius: 50%; width: 100px; height: 100px;">
             <div class="caller-name">${participantData[myUid]?.name || 'Name'}</div>
         `;
         topDiv.appendChild(localParticipant);
@@ -1081,16 +1081,16 @@ function updateAudioOutputButtonUI() {
     // Update icon based on currentAudioOutput
     switch (currentAudioOutput) {
         case 'earpiece':
-            icon.src = 'file:///android_asset/speaker.png';
+            icon.src = 'speaker.png';
             break;
         case 'speaker':
-            icon.src = 'file:///android_asset/speaker.png';
+            icon.src = 'speaker.png';
             break;
         case 'bluetooth':
-            icon.src = 'file:///android_asset/bluetooth.png';
+            icon.src = 'bluetooth.png';
             break;
         default:
-            icon.src = 'file:///android_asset/speaker.png';
+            icon.src = 'speaker.png';
     }
 }
 
@@ -1232,7 +1232,7 @@ function endCall() {
     }
 
     // Reset UI
-    document.body.style.background = "url('file:///android_asset/callnewmodernbg.png') no-repeat center center fixed";
+    document.body.style.background = "url('callnewmodernbg.png') no-repeat center center fixed";
     document.body.style.backgroundSize = "cover";
     document.body.style.backgroundColor = "#000";
 }
@@ -1500,7 +1500,7 @@ function initializeCallerInfo() {
 
     // जर photo नाही किंवा रिकामी string असेल
     if (!remoteCallerPhoto || remoteCallerPhoto.trim() === '') {
-        img.src = 'file:///android_asset/user.png';
+        img.src = 'user.png';
         img.style.visibility = 'visible';
         return;
     }
@@ -1514,7 +1514,7 @@ function initializeCallerInfo() {
     };
     tempImage.onerror = () => {
         console.error("Failed to load caller image, showing default");
-        img.src = 'file:///android_asset/user.png';
+        img.src = 'user.png';
         img.style.visibility = 'visible';
     };
 }
@@ -1638,8 +1638,8 @@ function recreatePeer() {
     console.log('========================================');
 
     console.log('[PeerJS Reconnect] Destroying previous peer instance...');
-    try {
-        peer.destroy();
+    try { 
+        peer.destroy(); 
         console.log('[PeerJS Reconnect] Previous peer destroyed successfully');
     } catch (e) {
         console.warn('[PeerJS Reconnect] Error destroying previous peer:', e);

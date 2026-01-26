@@ -2,7 +2,7 @@ body {
             margin: 0;
             height: 100vh;
             overflow: hidden;
-            background-color:  url('file:///android_asset/bg_blur.png') no-repeat center center fixed;
+            background-color:  url('bg_blur.webp') no-repeat center center fixed;
             background-size: cover;
             font-family: sans-serif;
             overflow: hidden;
@@ -17,7 +17,7 @@ body {
             width: 100vw;
             height: 100vh;
             overflow: hidden;
-            background-color : url('file:///android_asset/bg_blur.png') no-repeat center center fixed; /* removed static bg image */
+            background-color : url('bg_blur.webp') no-repeat center center fixed; /* removed static bg image */
             background-size: cover;
         }
 
@@ -283,7 +283,7 @@ body {
         }
 
         video {
-            background-color:  url('file:///android_asset/bg_blur.png') no-repeat center center fixed; /* fallback for when poster is not set */
+            background-color:  url('bg_blur.webp') no-repeat center center fixed; /* fallback for when poster is not set */
             background-size: cover;
             object-fit: cover;
         }

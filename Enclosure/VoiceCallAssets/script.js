@@ -576,7 +576,7 @@ function switchVideos(peerId, remoteStream) {
         const video = document.createElement('video');
         video.autoplay = true;
         video.playsInline = true;
-        video.poster = "file:///android_asset/bg_blur.webp";
+        video.poster = "bg_blur.webp";
         video.srcObject = remoteStream;
 
         video.onloadedmetadata = () => {
@@ -584,7 +584,7 @@ function switchVideos(peerId, remoteStream) {
             video.play().catch(err => {
                 console.error('Error playing remote video for peer:', peerId, err);
                 statusBar.textContent = `Error playing video for peer ${peerId}`;
-                video.poster = "file:///android_asset/bg_blur.webp";
+                video.poster = "bg_blur.webp";
             });
         };
         container.appendChild(video);
@@ -602,7 +602,7 @@ function switchVideos(peerId, remoteStream) {
         let container = document.createElement('div');
         container.className = 'remote-video';
         container.setAttribute('data-peer-id', peerId);
-        container.style.background = "url('file:///android_asset/bg_blur.webp') center center / cover no-repeat";
+        container.style.background = "url('bg_blur.webp') center center / cover no-repeat";
         remoteVideos.appendChild(container);
     }
     updateVideoMirroring();
@@ -617,7 +617,7 @@ function updateRemotePoster(videoElement) {
         if (lastPosters.has(videoElement)) {
             videoElement.poster = lastPosters.get(videoElement);
         } else {
-            videoElement.poster = "file:///android_asset/bg_blur.webp";
+            videoElement.poster = "bg_blur.webp";
             lastPosters.set(videoElement, videoElement.poster);
         }
     }
@@ -700,7 +700,7 @@ function updateVideoLayout() {
             localVideoClone.srcObject = localStream;
 
             if (!isCameraOn) {
-                localVideoClone.poster = captureBlurFrame(localVideo) || "file:///android_asset/bg_blur.webp";
+                localVideoClone.poster = captureBlurFrame(localVideo) || "bg_blur.webp";
             }
 
             localContainer.appendChild(localVideoClone);
@@ -832,7 +832,7 @@ function adjustForPiPMode() {
             const video = document.createElement('video');
             video.autoplay = true;
             video.playsInline = true;
-            video.poster = "file:///android_asset/bg_blur.webp";
+            video.poster = "bg_blur.webp";
 
             const remoteStream = peers[peerId].remoteStream;
             if (remoteStream) {
@@ -842,7 +842,7 @@ function adjustForPiPMode() {
                     video.play().catch(err => {
                         console.error('Error playing remote video for peer:', peerId, err);
                         statusBar.textContent = `Error playing video for peer ${peerId}`;
-                        video.poster = "file:///android_asset/bg_blur.webp";
+                        video.poster = "bg_blur.webp";
                     });
                 };
             }
@@ -1166,7 +1166,7 @@ function initializeCallerInfo() {
     singleCallerInfo.style.display = 'flex';
     gridContainer.style.display = 'none';
 
-    const photo = remoteCallerPhoto || 'file:///android_asset/inviteimg.png';
+    const photo = remoteCallerPhoto || 'user.png';
     const name = remoteCallerName || 'Name';
 
     singleCallerInfo.innerHTML = `
@@ -1473,7 +1473,7 @@ function updateLocalPoster() {
             // Try to preload the blur image to ensure it's available
             const preloadImg = new Image();
             preloadImg.onload = () => {
-                localVideo.poster = "file:///android_asset/bg_blur.webp";
+                localVideo.poster = "bg_blur.webp";
                 localVideo.srcObject = null;
                 localVideo.load();
                 console.log('Android 15: Applied preloaded default blur to localVideo');
@@ -1481,14 +1481,14 @@ function updateLocalPoster() {
             preloadImg.onerror = () => {
                 // If blur image fails to load, try again with direct assignment
                 console.warn('Android 15: Blur image failed to load, trying direct assignment');
-                localVideo.poster = "file:///android_asset/bg_blur.webp";
+                localVideo.poster = "bg_blur.webp";
                 localVideo.srcObject = null;
                 localVideo.load();
             };
-            preloadImg.src = "file:///android_asset/bg_blur.webp";
+            preloadImg.src = "bg_blur.webp";
         } else {
             // Final fallback: use default blur
-            localVideo.poster = "file:///android_asset/bg_blur.webp";
+            localVideo.poster = "bg_blur.webp";
             localVideo.srcObject = null;
             localVideo.load();
             console.log('Applied default blur to localVideo');
@@ -1605,7 +1605,7 @@ function generateBlurStreamFromLocal() {
     }
 
     // Final fallback: use default blur
-    return generateBlurStreamFromImageSync("file:///android_asset/bg_blur.webp");
+    return generateBlurStreamFromImageSync("bg_blur.webp");
 }
 
 function generateBlurStreamFromImageSync(imageSrc) {
@@ -1639,7 +1639,7 @@ function generateBlurStreamFromImageSync(imageSrc) {
                 ctx.fillStyle = "rgba(0,0,0,0.3)";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
             };
-            fallbackImg.src = "file:///android_asset/bg_blur.webp";
+            fallbackImg.src = "bg_blur.webp";
         };
         img.src = imageSrc;
 
@@ -1677,7 +1677,7 @@ function generateBlurStreamFromImageSync(imageSrc) {
             ctx.fillStyle = "rgba(0,0,0,0.3)";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
         };
-        fallbackImg.src = "file:///android_asset/bg_blur.webp";
+        fallbackImg.src = "bg_blur.webp";
     };
     img.src = imageSrc;
 
@@ -1713,7 +1713,7 @@ function generateAndroid15FallbackStream() {
         console.warn('Android 15: bg_blur.webp failed to load in fallback stream');
         // If even bg_blur.webp fails, we'll return null
     };
-    img.src = "file:///android_asset/bg_blur.webp";
+    img.src = "bg_blur.webp";
 
     // Try to create stream, fallback to null if not supported
     try {
@@ -1812,9 +1812,9 @@ function generateBlurStreamFromImage(imageSrc) {
                     console.error('All blur image fallbacks failed');
                     resolve(null);
                 };
-                finalFallbackImg.src = "file:///android_asset/bg_blur.webp";
+                finalFallbackImg.src = "bg_blur.webp";
             };
-            fallbackImg.src = "file:///android_asset/bg_blur.webp";
+            fallbackImg.src = "bg_blur.webp";
         };
         img.src = imageSrc;
     });
@@ -1855,7 +1855,7 @@ function applyBlurToSecondaryVideo() {
         const preloadImg = new Image();
         preloadImg.onload = () => {
             secondaryVideo.srcObject = null;
-            secondaryVideo.poster = "file:///android_asset/bg_blur.webp";
+            secondaryVideo.poster = "bg_blur.webp";
             secondaryVideo.load();
             console.log('Android 15: Applied preloaded default blur to secondaryVideo');
         };
@@ -1863,14 +1863,14 @@ function applyBlurToSecondaryVideo() {
             // If blur image fails to load, try again with direct assignment
             console.warn('Android 15: Blur image failed to load for secondary video, trying direct assignment');
             secondaryVideo.srcObject = null;
-            secondaryVideo.poster = "file:///android_asset/bg_blur.webp";
+            secondaryVideo.poster = "bg_blur.webp";
             secondaryVideo.load();
         };
-        preloadImg.src = "file:///android_asset/bg_blur.webp";
+        preloadImg.src = "bg_blur.webp";
     } else {
         // Final fallback: use default blur
         secondaryVideo.srcObject = null;
-        secondaryVideo.poster = "file:///android_asset/bg_blur.webp";
+        secondaryVideo.poster = "bg_blur.webp";
         secondaryVideo.load();
         console.log('Applied default blur to secondaryVideo');
     }
