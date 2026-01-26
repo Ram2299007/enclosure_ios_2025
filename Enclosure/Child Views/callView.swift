@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import AVFoundation
 
 struct callView: View {
     @StateObject private var viewModel = CallViewModel()
@@ -45,6 +46,7 @@ struct callView: View {
     @State private var selectedHistoryDateLabel: String = ""
     @State private var wasBackLayoutVisibleBeforeHistory = false
     @State private var wasTopHeaderVisibleBeforeHistory = false
+    @State private var activeVoiceCallPayload: VoiceCallPayload?
     
     enum CallTab {
         case log, contact
@@ -292,6 +294,9 @@ struct callView: View {
                                             selectedCallLogForDialog = callLog
                                             callDialogPosition = position
                                             showCallLogDialog = true
+                                        },
+                                        onCallTapped: { entry in
+                                            startVoiceCall(for: entry)
                                         }
                                     )
                                 }
@@ -344,7 +349,9 @@ struct callView: View {
                                 ScrollView {
                                     VStack(spacing: 0) {
                                         ForEach(filteredContacts, id: \.uid) { contact in
-                                            CallingContactRowView(contact: contact)
+                                            CallingContactRowView(contact: contact) { selectedContact in
+                                                startVoiceCall(for: selectedContact)
+                                            }
                                         }
                                     }
                                 }
@@ -423,6 +430,9 @@ struct callView: View {
             } else {
                 hideKeyboard()
             }
+        }
+        .fullScreenCover(item: $activeVoiceCallPayload) { payload in
+            VoiceCallScreen(payload: payload)
         }
         }
     }
@@ -642,6 +652,104 @@ extension callView {
             }
         }
     }
+
+    private func startVoiceCall(for contact: CallingContactModel) {
+        requestMicrophonePermission { granted in
+            guard granted else {
+                Constant.showToast(message: "Microphone permission is required for voice calls.")
+                return
+            }
+            let roomId = generateRoomId()
+            activeVoiceCallPayload = VoiceCallPayload(
+                receiverId: contact.uid,
+                receiverName: contact.fullName,
+                receiverPhoto: contact.photo,
+                receiverToken: contact.fToken,
+                receiverDeviceType: contact.deviceType,
+                receiverPhone: contact.mobileNo,
+                roomId: roomId,
+                isSender: true
+            )
+            sendVoiceCallNotificationIfNeeded(
+                receiverToken: contact.fToken,
+                receiverDeviceType: contact.deviceType,
+                receiverId: contact.uid,
+                receiverPhone: contact.mobileNo,
+                roomId: roomId
+            )
+        }
+    }
+
+    private func startVoiceCall(for entry: CallLogUserInfo) {
+        requestMicrophonePermission { granted in
+            guard granted else {
+                Constant.showToast(message: "Microphone permission is required for voice calls.")
+                return
+            }
+            let roomId = generateRoomId()
+            activeVoiceCallPayload = VoiceCallPayload(
+                receiverId: entry.friendId,
+                receiverName: entry.fullName,
+                receiverPhoto: entry.photo,
+                receiverToken: entry.fToken,
+                receiverDeviceType: entry.deviceType,
+                receiverPhone: entry.mobileNo,
+                roomId: roomId,
+                isSender: true
+            )
+            sendVoiceCallNotificationIfNeeded(
+                receiverToken: entry.fToken,
+                receiverDeviceType: entry.deviceType,
+                receiverId: entry.friendId,
+                receiverPhone: entry.mobileNo,
+                roomId: roomId
+            )
+        }
+    }
+
+    private func requestMicrophonePermission(_ completion: @escaping (Bool) -> Void) {
+        let session = AVAudioSession.sharedInstance()
+        switch session.recordPermission {
+        case .granted:
+            completion(true)
+        case .denied:
+            completion(false)
+        case .undetermined:
+            session.requestRecordPermission { granted in
+                DispatchQueue.main.async {
+                    completion(granted)
+                }
+            }
+        @unknown default:
+            completion(false)
+        }
+    }
+    
+    private func sendVoiceCallNotificationIfNeeded(
+        receiverToken: String,
+        receiverDeviceType: String,
+        receiverId: String,
+        receiverPhone: String,
+        roomId: String
+    ) {
+        let sleepKey = UserDefaults.standard.string(forKey: Constant.sleepKey) ?? ""
+        guard sleepKey != Constant.sleepKey else { return }
+        guard !receiverToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        
+        MessageUploadService.shared.sendVoiceCallNotification(
+            receiverToken: receiverToken,
+            receiverDeviceType: receiverDeviceType,
+            receiverId: receiverId,
+            receiverPhone: receiverPhone,
+            roomId: roomId
+        )
+    }
+    
+    private func generateRoomId() -> String {
+        let timestamp = Int(Date().timeIntervalSince1970 * 1000)
+        let random = Int.random(in: 1000...9999)
+        return "\(timestamp)\(random)"
+    }
     
     private func backArrowButton() -> some View {
         Button(action: handleBackArrowTap) {
@@ -843,6 +951,7 @@ struct CallHistoryRowView: View {
 // Contact row view matching Android get_calling_contact_voice_row.xml
 struct CallingContactRowView: View {
     let contact: CallingContactModel
+    var onCallTapped: ((CallingContactModel) -> Void)? = nil
     @State private var isExpanded = false
     @State private var callButtonWidth: CGFloat = 0
     
@@ -896,7 +1005,7 @@ struct CallingContactRowView: View {
                             Button(action: {
                                 // Call action - matching Android clickView onClick
                                 print("📞 Calling: \(contact.fullName)")
-                                // TODO: Implement actual call functionality
+                                onCallTapped?(contact)
                             }) {
                                 ZStack {
                                     UnevenRoundedRectangle(

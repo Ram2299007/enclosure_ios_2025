@@ -778,6 +778,99 @@ class MessageUploadService {
         }
     }
     
+    // MARK: - Send Voice Call Notification (matching Android FcmNotificationsSender)
+    func sendVoiceCallNotification(
+        receiverToken: String,
+        receiverDeviceType: String,
+        receiverId: String,
+        receiverPhone: String,
+        roomId: String
+    ) {
+        let trimmedToken = receiverToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedToken.isEmpty, trimmedToken != "apns_missing" else {
+            print("⚠️ [VOICE_CALL_NOTIFICATION] Skipping - invalid receiver token")
+            return
+        }
+        
+        let myUid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        let myName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
+        let myPhoto = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
+        
+        let extraData: [String: Any] = [
+            "name": myName,
+            "title": "Enclosure",
+            "body": Constant.incomingVoiceCall,
+            "icon": "notification_icon",
+            "click_action": "OPEN_VOICE_CALL",
+            "meetingId": "meetingId",
+            "phone": receiverPhone,
+            "photo": myPhoto,
+            "token": "",
+            "uid": myUid,
+            "receiverId": receiverId,
+            "device_type": receiverDeviceType,
+            "userFcmToken": trimmedToken,
+            "username": myUid,
+            "createdBy": myUid,
+            "incoming": myUid,
+            "bodyKey": Constant.incomingVoiceCall,
+            "roomId": roomId
+        ]
+        
+        getAccessToken { [weak self] accessToken in
+            guard let self = self else { return }
+            guard let token = accessToken, !token.isEmpty else {
+                print("⚠️ [VOICE_CALL_NOTIFICATION] Access token missing - cannot send")
+                return
+            }
+            
+            var messagePayload: [String: Any] = [
+                "token": trimmedToken,
+                "data": extraData
+            ]
+            
+            if receiverDeviceType.trimmingCharacters(in: .whitespacesAndNewlines) == "2" {
+                messagePayload["notification"] = [
+                    "title": "Enclosure",
+                    "body": Constant.incomingVoiceCall,
+                    "sound": "default"
+                ]
+            }
+            
+            let requestJson: [String: Any] = [
+                "message": messagePayload
+            ]
+            
+            guard let url = URL(string: "https://fcm.googleapis.com/v1/projects/enclosure-30573/messages:send") else {
+                print("⚠️ [VOICE_CALL_NOTIFICATION] Invalid FCM URL")
+                return
+            }
+            
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            
+            do {
+                request.httpBody = try JSONSerialization.data(withJSONObject: requestJson)
+            } catch {
+                print("⚠️ [VOICE_CALL_NOTIFICATION] Failed to encode payload: \(error.localizedDescription)")
+                return
+            }
+            
+            URLSession.shared.dataTask(with: request) { data, response, error in
+                if let error = error {
+                    print("🚫 [VOICE_CALL_NOTIFICATION] Failed: \(error.localizedDescription)")
+                    return
+                }
+                if let httpResponse = response as? HTTPURLResponse {
+                    let responseBody = data != nil ? String(data: data!, encoding: .utf8) ?? "" : ""
+                    print("📲 [VOICE_CALL_NOTIFICATION] Status \(httpResponse.statusCode): \(responseBody)")
+                }
+            }.resume()
+        }
+    }
+    
     // MARK: - Send Group Notification API (matching Android end_notification_api_group)
     private func sendGroupNotificationAPI(
         model: GroupChatMessage,

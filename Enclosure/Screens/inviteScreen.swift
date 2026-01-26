@@ -9,13 +9,13 @@ struct InviteScreen: View {
     @State private var searchText = ""
     @State private var isSearchVisible = false
     @State private var showMenu = false
-    @State private var isSharePresented = false
-    @State private var shareItems: [Any] = []
     @State private var searchWorkItem: DispatchWorkItem?
     @FocusState private var isSearchFieldFocused: Bool
     @State private var isBackPressed = false
     @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic background tint color (darker theme color)
     @State private var isMenuButtonPressed = false // Track menu button press state
+    @State private var selectedChatContact: UserActiveContactModel?
+    @State private var navigateToChattingScreen = false
     
     // Computed property for background tint: appThemeColor in light mode, darker tint in dark mode
     private var backgroundTintColor: Color {
@@ -80,9 +80,6 @@ struct InviteScreen: View {
         }
         .navigationBarHidden(true)
         .background(NavigationGestureEnabler())
-        .sheet(isPresented: $isSharePresented) {
-            InviteShareSheet(activityItems: shareItems)
-        }
         .overlay(alignment: .topTrailing) {
             if showMenu {
                 RefreshContactsDialog(
@@ -91,6 +88,20 @@ struct InviteScreen: View {
                         viewModel.syncContacts()
                     }
                 )
+            }
+        }
+        .navigationDestination(isPresented: $navigateToChattingScreen) {
+            if let contact = selectedChatContact {
+                ChattingScreen(contact: contact)
+            } else {
+                EmptyView()
+            }
+        }
+        .onChange(of: navigateToChattingScreen) { isPresented in
+            if !isPresented {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    selectedChatContact = nil
+                }
             }
         }
         .onAppear {
@@ -294,10 +305,14 @@ struct InviteScreen: View {
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                         .onAppear { viewModel.loadMoreIfNeeded(currentContact: contact) }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            openChat(contact: contact)
+                        }
                 }
                 
                 ForEach(inviteContacts, id: \.uniqueKey) { contact in
-                    InviteContactCard(contact: contact) { share(contact: contact) }
+                    InviteContactCard(contact: contact) { sendInviteSMS(to: contact) }
                         .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
@@ -346,14 +361,52 @@ struct InviteScreen: View {
         }
     }
     
-    private func share(contact: InviteContactModel) {
-        let inviteURL = "https://enclosureapp.com/invite"
+    private func openChat(contact: InviteContactModel) {
+        let activeContact = UserActiveContactModel(
+            photo: contact.photo,
+            fullName: contact.fullName,
+            mobileNo: contact.mobileNo,
+            caption: contact.caption,
+            uid: contact.uid,
+            sentTime: "",
+            dataType: "",
+            message: "",
+            fToken: contact.fToken,
+            notification: 0,
+            msgLimit: 0,
+            deviceType: contact.deviceType,
+            messageId: "",
+            createdAt: "",
+            block: contact.block,
+            iamblocked: contact.iamBlocked
+        )
+        selectedChatContact = activeContact
+        navigateToChattingScreen = true
+    }
+    
+    private func sendInviteSMS(to contact: InviteContactModel) {
         let message = """
-        Hey \(contact.displayName.isEmpty ? "there" : contact.displayName)! 👋
-        I'm using Enclosure to stay connected securely. Download the app and join me: \(inviteURL)
+        Inviting you to Download Enclosure !
+        Your message will become more valuable here
+        New messaging app -
+        for billion people https://enclosureapp.com
         """
-        shareItems = [message]
-        isSharePresented = true
+        
+        var components = URLComponents()
+        components.scheme = "sms"
+        components.path = contact.displayNumber
+        components.queryItems = [URLQueryItem(name: "body", value: message)]
+        
+        guard let url = components.url else {
+            Constant.showToast(message: "Unable to open Messages.")
+            return
+        }
+        
+        if UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
+        } else {
+            Constant.showToast(message: "Messages is not available on this device.")
+        }
     }
     
     private func getMainvectorTintColor(for themeColor: String) -> Color {

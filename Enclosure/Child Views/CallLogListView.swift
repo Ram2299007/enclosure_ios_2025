@@ -5,6 +5,7 @@ struct CallLogListView: View {
     let logType: CallLogViewModel.LogType
     var onEntrySelected: ((CallLogUserInfo) -> Void)? = nil
     var onLongPress: ((CallLogUserInfo, CGPoint) -> Void)? = nil
+    var onCallTapped: ((CallLogUserInfo) -> Void)? = nil
     
     var body: some View {
         VStack(spacing: 12) {
@@ -13,7 +14,8 @@ struct CallLogListView: View {
                     section: section,
                     logType: logType,
                     onEntrySelected: onEntrySelected,
-                    onLongPress: onLongPress
+                    onLongPress: onLongPress,
+                    onCallTapped: onCallTapped
                 )
             }
         }
@@ -26,6 +28,7 @@ struct CallLogSectionView: View {
     let logType: CallLogViewModel.LogType
     var onEntrySelected: ((CallLogUserInfo) -> Void)? = nil
     var onLongPress: ((CallLogUserInfo, CGPoint) -> Void)? = nil
+    var onCallTapped: ((CallLogUserInfo) -> Void)? = nil
     
     private var formattedTitle: String {
         let dateFormatter = DateFormatter()
@@ -60,7 +63,8 @@ struct CallLogSectionView: View {
                             entry: entry,
                             logType: logType,
                             onEntrySelected: onEntrySelected,
-                            onLongPress: onLongPress
+                            onLongPress: onLongPress,
+                            onCallTapped: onCallTapped
                         )
                             .padding(.bottom, 2)
                     }
@@ -77,6 +81,7 @@ struct CallLogUserRowView: View {
     let logType: CallLogViewModel.LogType
     var onEntrySelected: ((CallLogUserInfo) -> Void)? = nil
     var onLongPress: ((CallLogUserInfo, CGPoint) -> Void)? = nil
+    var onCallTapped: ((CallLogUserInfo) -> Void)? = nil
     
     @State private var isExpanded: Bool = false
     @State private var callButtonWidth: CGFloat = 0
@@ -230,7 +235,7 @@ struct CallLogUserRowView: View {
                                 if isExpanded {
                                     Button(action: {
                                         print("📞 Call log action -> \(entry.fullName)")
-                                        // TODO: Hook actual call flow
+                                        onCallTapped?(entry)
                                     }) {
                                         ZStack {
                                             // Matching Android curve_left_bg: rounded left corners 100dp, right corners 0dp
