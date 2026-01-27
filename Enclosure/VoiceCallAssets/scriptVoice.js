@@ -936,11 +936,39 @@ function setupCallStreamListener(call) {
             // Track if we've already triggered vibration for this specific call
             let hasTriggeredVibration = false;
 
+            const markConnectedIfNeeded = (reason) => {
+                if (hasTriggeredVibration || callStatus?.textContent === 'Connected') {
+                    return;
+                }
+                callStatus.textContent = 'Connected';
+                startCallTimer();
+                console.log(`[CallConnected] ${reason}`);
+
+                // Trigger vibration on BOTH sides when call is connected
+                if (Object.keys(peers).length > 0 && typeof Android !== 'undefined') {
+                    if (Android.onCallConnected) {
+                        Android.onCallConnected(); // This triggers vibration
+                    }
+                    Android.sendBroadcast('com.enclosure.START_TIMER');
+
+                    // Force earpiece when call connects to ensure audio goes to earpiece
+                    setTimeout(() => {
+                        console.log('[CallConnected] Forcing earpiece audio after call connection...');
+                        forceEarpieceAudio();
+                    }, 1000);
+                }
+                hasTriggeredVibration = true;
+            };
+
             // Enhanced error handling for audio playback
             audioElement.onloadedmetadata = () => {
                 console.log('Remote audio metadata loaded for peer:', call.peer);
                 audioElement.play().catch(err => {
                     console.error('Audio playback error for peer:', call.peer, err);
+                    if (err && (err.name === 'NotAllowedError' || err.name === 'NotSupportedError')) {
+                        // Autoplay blocked on iOS; stream is still connected.
+                        markConnectedIfNeeded('Autoplay blocked, stream active');
+                    }
                     // Retry playback with user interaction
                     setTimeout(() => {
                         audioElement.play().catch(retryErr => {
@@ -964,51 +992,23 @@ function setupCallStreamListener(call) {
             // Only set Connected when stream is actually received and playing
             // Wait for audio to be ready before showing Connected
             audioElement.addEventListener('playing', () => {
-                if (!hasTriggeredVibration) {
-                    callStatus.textContent = 'Connected';
-                    startCallTimer();
-                    console.log('[CallConnected] Audio is playing - call is actually connected on BOTH sides');
-                    
-                    // Trigger vibration on BOTH sides when call is connected
-                    if (Object.keys(peers).length > 0 && typeof Android !== 'undefined') {
-                        if (Android.onCallConnected) {
-                            Android.onCallConnected(); // This triggers vibration
-                        }
-                        Android.sendBroadcast('com.enclosure.START_TIMER');
-
-                        // Force earpiece when call connects to ensure audio goes to earpiece
-                        setTimeout(() => {
-                            console.log('[CallConnected] Forcing earpiece audio after call connection...');
-                            forceEarpieceAudio();
-                        }, 1000);
-                    }
-                    hasTriggeredVibration = true;
-                }
+                markConnectedIfNeeded('Audio is playing - call is actually connected on BOTH sides');
             }, { once: true });
             
             // Fallback: if playing event doesn't fire, set Connected after metadata loads
             audioElement.addEventListener('loadedmetadata', () => {
                 setTimeout(() => {
-                    if (!hasTriggeredVibration && callStatus.textContent !== 'Connected') {
-                        callStatus.textContent = 'Connected';
-                        startCallTimer();
-                        console.log('[CallConnected] Fallback - setting Connected after metadata loaded on BOTH sides');
-                        
-                        // Trigger vibration on BOTH sides when call is connected
-                        if (Object.keys(peers).length > 0 && typeof Android !== 'undefined') {
-                            if (Android.onCallConnected) {
-                                Android.onCallConnected(); // This triggers vibration
-                            }
-                            Android.sendBroadcast('com.enclosure.START_TIMER');
-
-                            setTimeout(() => {
-                                forceEarpieceAudio();
-                            }, 1000);
-                        }
-                        hasTriggeredVibration = true;
-                    }
+                    markConnectedIfNeeded('Fallback - metadata loaded, marking connected');
                 }, 500);
             }, { once: true });
+
+            // iOS may block autoplay; mark connected when stream is live.
+            const hasLiveAudio = remoteStream.getAudioTracks().some(track => track.readyState === 'live');
+            if (remoteStream.active && hasLiveAudio) {
+                setTimeout(() => {
+                    markConnectedIfNeeded('Remote stream active (autoplay may be blocked)');
+                }, 300);
+            }
             
             updateParticipantsUI(); // no arguments now
 
