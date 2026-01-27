@@ -1,6 +1,7 @@
 import Foundation
 import FirebaseDatabase
 import AVFoundation
+import AudioToolbox
 import WebKit
 
 final class VoiceCallSession: ObservableObject {
@@ -22,6 +23,12 @@ final class VoiceCallSession: ObservableObject {
     private var interruptionObserver: NSObjectProtocol?
     private var isAudioInterrupted = false
     private var lastAudioActivationTime: TimeInterval = 0
+    private var ringtonePlayer: AVAudioPlayer?
+    private var ringtoneKeepAliveTimer: Timer?
+    private var isCallConnected = false
+    private var ringtoneAttemptedSpeakerFallback = false
+    private var ringtoneSystemSoundId: SystemSoundID = 0
+    private var ringtoneSystemSoundTimer: Timer?
 
     init(payload: VoiceCallPayload) {
         self.payload = payload
@@ -36,15 +43,21 @@ final class VoiceCallSession: ObservableObject {
     }
 
     func start() {
+        isCallConnected = false
+        ringtoneAttemptedSpeakerFallback = false
         requestMicrophoneAccess()
         databaseRef = Database.database().reference()
         setupFirebaseListeners()
         startObservingAudioInterruptions()
+        if payload.isSender {
+            startRingtone()
+        }
     }
 
     func stop() {
         cleanupFirebaseListeners()
         stopObservingAudioInterruptions()
+        stopRingtone(reason: "session_stop")
     }
 
     func handleMessage(_ message: [String: Any]) {
@@ -71,13 +84,16 @@ final class VoiceCallSession: ObservableObject {
         case "onPeerConnected":
             requestMicrophonePermissionIfNeeded()
         case "onCallConnected":
+            isCallConnected = true
             ensureAudioSessionActive()
+            stopRingtone(reason: "call_connected")
         case "sendBroadcast":
             break
         case "endCall":
             endCall()
         case "callOnBackPressed":
             shouldDismiss = true
+            stopRingtone(reason: "back_pressed")
         case "addMemberBtn":
             break
         case "onPageReady":
@@ -333,6 +349,7 @@ final class VoiceCallSession: ObservableObject {
     }
 
     private func endCall() {
+        stopRingtone(reason: "end_call")
         cleanupFirebaseListeners()
         shouldDismiss = true
     }
@@ -341,6 +358,171 @@ final class VoiceCallSession: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             self?.webView?.evaluateJavaScript("javascript:\(javascript)", completionHandler: nil)
         }
+    }
+
+    private func startRingtone() {
+        guard ringtonePlayer == nil else { return }
+        print("🔔 [VoiceCallRingtone] Starting ringtone for sender...")
+
+        let mp3Url = Bundle.main.url(forResource: "ringtone", withExtension: "mp3", subdirectory: "VoiceCallAssets")
+            ?? Bundle.main.url(forResource: "ringtone", withExtension: "mp3")
+        let wavUrl = Bundle.main.url(forResource: "ringtone", withExtension: "wav", subdirectory: "VoiceCallAssets")
+            ?? Bundle.main.url(forResource: "ringtone", withExtension: "wav")
+
+        let candidateUrls = [mp3Url, wavUrl].compactMap { $0 }
+        guard let ringtoneUrl = candidateUrls.first else {
+            print("⚠️ [VoiceCallRingtone] Ringtone asset not found in bundle.")
+            return
+        }
+        print("🔔 [VoiceCallRingtone] Using asset: \(ringtoneUrl.lastPathComponent)")
+        if let size = fileSize(at: ringtoneUrl) {
+            print("🔔 [VoiceCallRingtone] Asset size: \(size) bytes")
+        }
+
+        do {
+            // Configure audio routing for ringtone playback (speaker).
+            try audioSession.setCategory(
+                .playback,
+                mode: .default,
+                options: [.duckOthers]
+            )
+            try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+            let route = audioSession.currentRoute
+            let outputs = route.outputs.map { "\($0.portType.rawValue)" }.joined(separator: ", ")
+            let inputs = route.inputs.map { "\($0.portType.rawValue)" }.joined(separator: ", ")
+            print("🔔 [VoiceCallRingtone] Audio route inputs: \(inputs) outputs: \(outputs)")
+
+            var lastError: Error?
+            var player: AVAudioPlayer?
+            for url in candidateUrls {
+                do {
+                    let candidatePlayer = try AVAudioPlayer(contentsOf: url)
+                    candidatePlayer.numberOfLoops = -1
+                    candidatePlayer.volume = 1.0
+                    candidatePlayer.prepareToPlay()
+                    player = candidatePlayer
+                    print("🔔 [VoiceCallRingtone] AVAudioPlayer ready: \(url.lastPathComponent)")
+                    break
+                } catch {
+                    lastError = error
+                    print("⚠️ [VoiceCallRingtone] AVAudioPlayer failed for \(url.lastPathComponent): \(error.localizedDescription)")
+                }
+            }
+
+            guard let activePlayer = player else {
+                if let lastError {
+                    print("⚠️ [VoiceCallRingtone] Failed to start ringtone: \(lastError.localizedDescription)")
+                } else {
+                    print("⚠️ [VoiceCallRingtone] Failed to start ringtone: unknown error")
+                }
+                startSystemRingtoneFallback()
+                return
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                guard let self else { return }
+                if !activePlayer.isPlaying {
+                    activePlayer.play()
+                }
+                self.ringtonePlayer = activePlayer
+                print("🔔 [VoiceCallRingtone] isPlaying=\(activePlayer.isPlaying)")
+                self.startRingtoneKeepAlive()
+            }
+        } catch {
+            print("⚠️ [VoiceCallRingtone] Failed to start ringtone: \(error.localizedDescription)")
+            startSystemRingtoneFallback()
+        }
+    }
+
+    private func stopRingtone(reason: String) {
+        if ringtonePlayer != nil {
+            print("🔕 [VoiceCallRingtone] Stopping ringtone (reason=\(reason))")
+        }
+        ringtoneKeepAliveTimer?.invalidate()
+        ringtoneKeepAliveTimer = nil
+        ringtonePlayer?.stop()
+        ringtonePlayer = nil
+        stopSystemRingtoneFallback()
+    }
+
+    private func startRingtoneKeepAlive() {
+        ringtoneKeepAliveTimer?.invalidate()
+        ringtoneKeepAliveTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            guard !self.isCallConnected else { return }
+            guard let player = self.ringtonePlayer else { return }
+            if !player.isPlaying {
+                print("🔔 [VoiceCallRingtone] Restarting ringtone (was stopped)")
+                do {
+                    try self.audioSession.setCategory(.playback, mode: .default, options: [.duckOthers])
+                    try self.audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+                } catch {
+                    print("⚠️ [VoiceCallRingtone] Failed to reconfigure audio session: \(error.localizedDescription)")
+                }
+                player.play()
+            } else if !self.ringtoneAttemptedSpeakerFallback {
+                let outputs = self.audioSession.currentRoute.outputs
+                let isReceiver = outputs.contains(where: { $0.portType == .builtInReceiver })
+                let isSpeaker = outputs.contains(where: { $0.portType == .builtInSpeaker })
+                if isReceiver && !isSpeaker {
+                    self.ringtoneAttemptedSpeakerFallback = true
+                    self.forceRingtoneToSpeaker(player: player)
+                }
+            }
+        }
+    }
+
+    private func forceRingtoneToSpeaker(player: AVAudioPlayer) {
+        do {
+            print("🔔 [VoiceCallRingtone] Forcing speaker fallback for ringtone")
+            try audioSession.setCategory(.playback, mode: .default, options: [.duckOthers])
+            try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+            player.play()
+        } catch {
+            print("⚠️ [VoiceCallRingtone] Failed to force speaker: \(error.localizedDescription)")
+        }
+    }
+
+    private func startSystemRingtoneFallback() {
+        if ringtoneSystemSoundId != 0 || ringtoneSystemSoundTimer != nil {
+            return
+        }
+
+        let wavUrl = Bundle.main.url(forResource: "ringtone", withExtension: "wav", subdirectory: "VoiceCallAssets")
+            ?? Bundle.main.url(forResource: "ringtone", withExtension: "wav")
+        guard let soundUrl = wavUrl else {
+            print("⚠️ [VoiceCallRingtone] System sound fallback failed: wav not found")
+            return
+        }
+
+        let status = AudioServicesCreateSystemSoundID(soundUrl as CFURL, &ringtoneSystemSoundId)
+        if status != kAudioServicesNoError || ringtoneSystemSoundId == 0 {
+            if let size = fileSize(at: soundUrl) {
+                print("⚠️ [VoiceCallRingtone] System sound wav size: \(size) bytes")
+            }
+            print("⚠️ [VoiceCallRingtone] System sound fallback failed: status=\(status)")
+            return
+        }
+
+        print("🔔 [VoiceCallRingtone] Using system sound fallback")
+        ringtoneSystemSoundTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            guard !self.isCallConnected else { return }
+            AudioServicesPlaySystemSound(self.ringtoneSystemSoundId)
+        }
+    }
+
+    private func stopSystemRingtoneFallback() {
+        ringtoneSystemSoundTimer?.invalidate()
+        ringtoneSystemSoundTimer = nil
+        if ringtoneSystemSoundId != 0 {
+            AudioServicesDisposeSystemSoundID(ringtoneSystemSoundId)
+            ringtoneSystemSoundId = 0
+        }
+    }
+
+    private func fileSize(at url: URL) -> Int? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int
     }
 
     private func jsEscaped(_ value: String) -> String {
