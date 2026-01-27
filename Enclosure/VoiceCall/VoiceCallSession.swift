@@ -19,6 +19,9 @@ final class VoiceCallSession: ObservableObject {
     private weak var webView: WKWebView?
 
     private let audioSession = AVAudioSession.sharedInstance()
+    private var interruptionObserver: NSObjectProtocol?
+    private var isAudioInterrupted = false
+    private var lastAudioActivationTime: TimeInterval = 0
 
     init(payload: VoiceCallPayload) {
         self.payload = payload
@@ -33,12 +36,15 @@ final class VoiceCallSession: ObservableObject {
     }
 
     func start() {
+        requestMicrophoneAccess()
         databaseRef = Database.database().reference()
         setupFirebaseListeners()
+        startObservingAudioInterruptions()
     }
 
     func stop() {
         cleanupFirebaseListeners()
+        stopObservingAudioInterruptions()
     }
 
     func handleMessage(_ message: [String: Any]) {
@@ -205,16 +211,88 @@ final class VoiceCallSession: ObservableObject {
         }
     }
 
+    private func requestMicrophoneAccess() {
+        switch audioSession.recordPermission {
+        case .granted:
+            ensureAudioSessionActive()
+        case .denied:
+            DispatchQueue.main.async {
+                Constant.showToast(message: "Microphone permission is required for voice calls.")
+            }
+        case .undetermined:
+            audioSession.requestRecordPermission { [weak self] granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        self?.ensureAudioSessionActive()
+                    } else {
+                        Constant.showToast(message: "Microphone permission is required for voice calls.")
+                    }
+                }
+            }
+        @unknown default:
+            break
+        }
+    }
+
+    private func startObservingAudioInterruptions() {
+        guard interruptionObserver == nil else { return }
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self else { return }
+            guard let info = notification.userInfo,
+                  let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+            
+            switch type {
+            case .began:
+                // Interruption began (e.g., phone call, system)
+                self.isAudioInterrupted = true
+            case .ended:
+                self.isAudioInterrupted = false
+                // Resume audio when interruption ends
+                if let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt {
+                    let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+                    if options.contains(.shouldResume) {
+                        self.ensureAudioSessionActive()
+                    }
+                } else {
+                    self.ensureAudioSessionActive()
+                }
+            @unknown default:
+                break
+            }
+        }
+    }
+
+    private func stopObservingAudioInterruptions() {
+        if let observer = interruptionObserver {
+            NotificationCenter.default.removeObserver(observer)
+            interruptionObserver = nil
+        }
+    }
+
     private func ensureAudioSessionActive() {
+        guard audioSession.recordPermission == .granted else { return }
+        guard !isAudioInterrupted else { return }
+        let now = Date().timeIntervalSince1970
+        if now - lastAudioActivationTime < 0.5 {
+            return
+        }
+        lastAudioActivationTime = now
         do {
-            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP])
-            try audioSession.setActive(true)
+            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker])
+            try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
         } catch {
             print("⚠️ [VoiceCallSession] Audio session error: \(error.localizedDescription)")
         }
     }
 
     private func setAudioOutput(_ output: String) {
+        guard audioSession.recordPermission == .granted else { return }
+        guard !isAudioInterrupted else { return }
         ensureAudioSessionActive()
 
         do {
