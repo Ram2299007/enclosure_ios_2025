@@ -1627,113 +1627,9 @@ struct ChattingScreen: View {
         VStack(spacing: 0) {
             // Inner horizontal container - padding="2dp"
             HStack(alignment: .bottom, spacing: 0) {
-                // Vertical container with layout_weight="1" containing reply and edit layouts
-                VStack(spacing: 0) {
-                    // Reply layout (replylyout) - marginStart="2dp" marginTop="2dp" marginEnd="2dp"
-                    // Note: replyLayoutView already has .padding(.horizontal, 2) inside, so no need to add it here
-                    if showReplyLayout {
-                        replyLayoutView
-                            .padding(.top, 2) // Only add top margin, horizontal is already in replyLayoutView
-                    }
-                    
-                    // Main input layout (editLyt) - marginStart="2dp" marginEnd="2dp"
-                    // Structure matches reply layout: outer margin, then background, then inner padding
-                    VStack(spacing: 0) {
-                    HStack(alignment: .center, spacing: 0) {
-                        // Attach button (gallary) - marginStart="5dp"
-                        Button(action: {
-                            handleGalleryButtonClick()
-                        }) {
-                            ZStack {
-                                Circle()
-                                    .fill(Color("chattingMessageBox"))
-                                    .frame(width: 40, height: 40)
-                                
-                                Image("attachsvg")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 20, height: 20)
-                                    .foregroundColor(Color("chtbtncolor"))
-                            }
-                        }
-                        .padding(.leading, 5)
-                        
-                        // Message input field container - layout_weight="1"
-                        VStack(alignment: .leading, spacing: 0) {
-                            TextField("Message on Ec", text: $messageText, axis: .vertical)
-                                .font(messageInputFont)
-                                .foregroundColor(Color("black_white_cross"))
-                                .lineLimit(1...4)
-                                .frame(maxWidth: 180, alignment: .leading)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .padding(.leading, 0)
-                                .padding(.trailing, 20)
-                                .padding(.top, 5)
-                                .padding(.bottom, 5)
-                                .background(Color.clear)
-                                .focused($isMessageFieldFocused)
-                                .onChange(of: messageText) { newValue in
-                                    updateMessageText(newValue)
-                                }
-                                .onTapGesture {
-                                    print("🔵 [MESSAGE_BOX_TAP] TextField tapped")
-                                    handleMessageBoxTap()
-                                }
-                                .simultaneousGesture(
-                                    TapGesture()
-                                        .onEnded {
-                                            print("🔵 [MESSAGE_BOX_TAP] Simultaneous tap gesture detected")
-                                            handleMessageBoxTap()
-                                        }
-                                )
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            print("🔵 [MESSAGE_BOX_TAP] VStack container tapped")
-                            handleMessageBoxTap()
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        
-                        // Emoji button (emoji) - marginEnd="5dp"
-                        Button(action: {
-                            handleEmojiButtonClick()
-                        }) {
-                            ZStack {
-                                Circle()
-                                    .fill(Color("chattingMessageBox"))
-                                    .frame(width: 40, height: 40)
-                                
-                                EmojiIconView()
-                                    .frame(width: 20, height: 20)
-                            }
-                        }
-                        .padding(.trailing, 5)
-                    }
-                    .frame(minHeight: 44, alignment: .center) // Allow wrap_content height
-                        .padding(.horizontal, 7) // Inner padding matching reply layout inner margin="7dp"
-                    }
-                    .padding(.horizontal, 2) // Outer margin matching reply layout marginStart/End="2dp" for width alignment
-                    .background(
-                        // When reply layout is visible: bottom corners only (to connect with reply layout)
-                        // When reply layout is hidden: all corners rounded (matching message_box_bg.xml)
-                        // Background applied after padding to match reply layout structure
-                        Group {
-                            if showReplyLayout {
-                                // Bottom corners only (matching Android when replylyout is visible)
-                                RoundedCorner(radius: 20, corners: [.bottomLeft, .bottomRight])
-                                    .fill(Color("message_box_bg"))
-                            } else {
-                                // All corners rounded (matching message_box_bg.xml with 20dp radius)
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(Color("message_box_bg"))
-                            }
-                        }
-                    )
-                    .zIndex(1) // Ensure TextField area has higher z-index than gallery picker
-                }
-                .frame(maxWidth: .infinity) // layout_weight="1"
-                .contentShape(Rectangle()) // Ensure clear hit testing boundary
+                AnyView(messageInputStack)
+                    .frame(maxWidth: .infinity) // layout_weight="1"
+                    .contentShape(Rectangle()) // Ensure clear hit testing boundary
                 
                 // Send button (sendGrpLyt) - layout_gravity="center_vertical|bottom"
                 ZStack(alignment: .topTrailing) {
@@ -1814,6 +1710,113 @@ struct ChattingScreen: View {
         }
         // Note: Removed .clipped() from outer VStack to allow badge to be visible above send button
     }
+
+    private var messageInputStack: some View {
+        VStack(spacing: 0) {
+            // Reply layout (replylyout) - marginStart="2dp" marginTop="2dp" marginEnd="2dp"
+            // Note: replyLayoutView already has .padding(.horizontal, 2) inside, so no need to add it here
+            if showReplyLayout {
+                replyLayoutView
+                    .padding(.top, 2) // Only add top margin, horizontal is already in replyLayoutView
+            }
+            
+            messageInputRow
+        }
+    }
+    
+    private var messageInputRow: some View {
+        // Main input layout (editLyt) - marginStart="2dp" marginEnd="2dp"
+        // Structure matches reply layout: outer margin, then background, then inner padding
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 0) {
+                // Attach button (gallary) - marginStart="5dp"
+                Button(action: {
+                    handleGalleryButtonClick()
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(Color("chattingMessageBox"))
+                            .frame(width: 40, height: 40)
+                        
+                        Image("attachsvg")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 20, height: 20)
+                            .foregroundColor(Color("chtbtncolor"))
+                    }
+                }
+                .padding(.leading, 5)
+                
+                // Message input field container - layout_weight="1"
+                VStack(alignment: .leading, spacing: 0) {
+                    TextField("Message on Ec", text: $messageText, axis: .vertical)
+                        .font(messageInputFont)
+                        .foregroundColor(Color("black_white_cross"))
+                        .lineLimit(1...4)
+                        .frame(maxWidth: 180, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, 0)
+                        .padding(.trailing, 20)
+                        .padding(.top, 5)
+                        .padding(.bottom, 5)
+                        .background(Color.clear)
+                        .focused($isMessageFieldFocused)
+                        .onChange(of: messageText) { newValue in
+                            updateMessageText(newValue)
+                        }
+                        .onTapGesture {
+                            print("🔵 [MESSAGE_BOX_TAP] TextField tapped")
+                            handleMessageBoxTap()
+                        }
+                        .simultaneousGesture(
+                            TapGesture()
+                                .onEnded {
+                                    print("🔵 [MESSAGE_BOX_TAP] Simultaneous tap gesture detected")
+                                    handleMessageBoxTap()
+                                }
+                        )
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    print("🔵 [MESSAGE_BOX_TAP] VStack container tapped")
+                    handleMessageBoxTap()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                
+                // Emoji button (emoji) - marginEnd="5dp"
+                Button(action: {
+                    handleEmojiButtonClick()
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(Color("chattingMessageBox"))
+                            .frame(width: 40, height: 40)
+                        
+                        EmojiIconView()
+                            .frame(width: 20, height: 20)
+                    }
+                }
+                .padding(.trailing, 5)
+            }
+            .frame(minHeight: 44, alignment: .center) // Allow wrap_content height
+            .padding(.horizontal, 7) // Inner padding matching reply layout inner margin="7dp"
+        }
+        .padding(.horizontal, 2) // Outer margin matching reply layout marginStart/End="2dp" for width alignment
+        .background(
+            // Use native uneven corners to avoid UIBezierPath issues
+            UnevenRoundedRectangle(
+                cornerRadii: .init(
+                    topLeading: showReplyLayout ? 0 : 20,
+                    bottomLeading: 20,
+                    bottomTrailing: 20,
+                    topTrailing: showReplyLayout ? 0 : 20
+                )
+            )
+            .fill(Color("message_box_bg"))
+        )
+        .zIndex(1) // Ensure TextField area has higher z-index than gallery picker
+    }
     
     private var replyLayoutView: some View {
         // Get color based on sender/receiver (matching Android HalfSwipeCallback logic)
@@ -1823,8 +1826,10 @@ struct ChattingScreen: View {
             // Layer 1: Blue background layer (matching Android LinearLayout id="view")
             // marginHorizontal="6dp" marginVertical="7dp" backgroundTint="@color/blue"
             // This layer is larger (6dp margins) and creates the blue border effect
-            RoundedCorner(radius: 20, corners: [.topLeft, .topRight])
-                .fill(replyColor.opacity(0.2)) // Blue tint for sender, black_white_cross tint for receiver
+            UnevenRoundedRectangle(
+                cornerRadii: .init(topLeading: 20, bottomLeading: 0, bottomTrailing: 0, topTrailing: 20)
+            )
+            .fill(replyColor.opacity(0.2)) // Blue tint for sender, black_white_cross tint for receiver
                 .frame(height: 55) // height="55dp"
                 .padding(.horizontal, 6) // marginHorizontal="6dp" - creates larger blue layer
                 .padding(.vertical, 7) // marginVertical="7dp"
@@ -1982,10 +1987,12 @@ struct ChattingScreen: View {
                 .frame(height: 55) // height="55dp"
             }
         .background(
-                // White layer background (matching backgroundTint="@color/circlebtnhover")
-                RoundedCorner(radius: 20, corners: [.topLeft, .topRight])
-                    .fill(Color("message_box_bg_3"))
+            // White layer background (matching backgroundTint="@color/circlebtnhover")
+            UnevenRoundedRectangle(
+                cornerRadii: .init(topLeading: 20, bottomLeading: 0, bottomTrailing: 0, topTrailing: 20)
             )
+            .fill(Color("message_box_bg_3"))
+        )
             .padding(.horizontal, 7) // margin="7dp" - creates smaller white layer on top
             .padding(.vertical, 7) // margin="7dp"
         }
@@ -1993,8 +2000,10 @@ struct ChattingScreen: View {
         .padding(.top, 2) // marginTop="2dp"
         .background(
             // Outer background (matching Android replylyout background)
-            RoundedCorner(radius: 20, corners: [.topLeft, .topRight])
-                .fill(Color("message_box_bg_3"))
+            UnevenRoundedRectangle(
+                cornerRadii: .init(topLeading: 20, bottomLeading: 0, bottomTrailing: 0, topTrailing: 20)
+            )
+            .fill(Color("message_box_bg_3"))
         )
     }
     
@@ -11855,6 +11864,11 @@ struct BunchImageView: View {
     }
     
     var body: some View {
+        let topLeft = corners.contains(.topLeft) ? cornerRadius : 0
+        let topRight = corners.contains(.topRight) ? cornerRadius : 0
+        let bottomLeft = corners.contains(.bottomLeft) ? cornerRadius : 0
+        let bottomRight = corners.contains(.bottomRight) ? cornerRadius : 0
+        
         Group {
             if let url = sourceURL {
                 CachedAsyncImage(
@@ -11884,7 +11898,16 @@ struct BunchImageView: View {
             }
         }
         .frame(width: width, height: height)
-        .clipShape(RoundedCorner(radius: cornerRadius, corners: corners))
+        .clipShape(
+            UnevenRoundedRectangle(
+                cornerRadii: .init(
+                    topLeading: topLeft,
+                    bottomLeading: bottomLeft,
+                    bottomTrailing: bottomRight,
+                    topTrailing: topRight
+                )
+            )
+        )
     }
 }
 
@@ -11911,8 +11934,10 @@ struct ReplyView: View {
                 // Layer 1: replyTheme - Blue background layer (matching Android replyTheme)
                 // android:layout_marginVertical="1dp", backgroundTint="@color/blue"
                 // message_box_bg_3 has rounded corners only on top (20dp topLeft/topRight, 0dp bottom)
-                RoundedCorner(radius: 20, corners: [.topLeft, .topRight])
-                    .fill(Color(hex: Constant.themeColor))
+                UnevenRoundedRectangle(
+                    cornerRadii: .init(topLeading: 20, bottomLeading: 0, bottomTrailing: 0, topTrailing: 20)
+                )
+                .fill(Color(hex: Constant.themeColor))
                     .frame(width: 150, height: 50) // 150dp height
                     .padding(.vertical, 1) // marginVertical="1dp"
                 
@@ -11920,8 +11945,10 @@ struct ReplyView: View {
                 // android:layout_marginStart="1dp" marginTop="1dp" marginEnd="1dp"
                 // android:backgroundTint="@color/circlebtnhover" (chattingMessageBox color)
                 // This layer sits inside Layer 1 with 1dp margins
-                RoundedCorner(radius: 20, corners: [.topLeft, .topRight])
-                    .fill(Color("chattingMessageBox")) // circlebtnhover = chattingMessageBox
+                UnevenRoundedRectangle(
+                    cornerRadii: .init(topLeading: 20, bottomLeading: 0, bottomTrailing: 0, topTrailing: 20)
+                )
+                .fill(Color("chattingMessageBox")) // circlebtnhover = chattingMessageBox
                     .frame(width: 148, height: 50) // 150 - 1dp start - 1dp end = 148
                     .offset(x: 1, y: 1) // marginStart="1dp" marginTop="1dp"
                     .overlay(
@@ -12071,8 +12098,15 @@ struct ReplyView: View {
                                 
                                 // Draw box border with 20dp corner radius at bottom corners only
                                 // Use RoundedCorner shape with bottom corners rounded, then mask top border
-                                RoundedCorner(radius: cornerRadius, corners: [.bottomLeft, .bottomRight])
-                                    .stroke(getGlassBorder(), lineWidth: borderWidth)
+                                UnevenRoundedRectangle(
+                                    cornerRadii: .init(
+                                        topLeading: 0,
+                                        bottomLeading: cornerRadius,
+                                        bottomTrailing: cornerRadius,
+                                        topTrailing: 0
+                                    )
+                                )
+                                .stroke(getGlassBorder(), lineWidth: borderWidth)
                                     .frame(width: width, height: height)
                                     .mask(
                                         // Mask to hide top border - show everything except top edge

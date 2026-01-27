@@ -26,9 +26,11 @@ struct VoiceCallWebView: UIViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
+        webView.uiDelegate = context.coordinator
         webView.scrollView.isScrollEnabled = false
-        webView.isOpaque = false
-        webView.backgroundColor = .clear
+        webView.isOpaque = true
+        webView.backgroundColor = UIColor.black
+        webView.scrollView.backgroundColor = UIColor.black
 
         session.attach(webView: webView)
 
@@ -61,7 +63,7 @@ struct VoiceCallWebView: UIViewRepresentable {
         session.attach(webView: uiView)
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, WKUIDelegate {
         static let messageHandlerName = "voiceCall"
         static let bridgeScript = """
         window.__muteState = window.__muteState || false;
@@ -132,6 +134,15 @@ struct VoiceCallWebView: UIViewRepresentable {
             guard message.name == Self.messageHandlerName,
                   let body = message.body as? [String: Any] else { return }
             session.handleMessage(body)
+        }
+
+        @available(iOS 15.0, *)
+        func webView(_ webView: WKWebView,
+                     requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+                     initiatedByFrame frame: WKFrameInfo,
+                     type: WKMediaCaptureType,
+                     decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+            decisionHandler(.grant)
         }
     }
 }

@@ -9,6 +9,10 @@ let audioOutputInitialized = false; // Global flag to track first-time setup
 let audioContext = null; // Audio context for better audio processing
 let audioWorkletNode = null; // Audio worklet for processing
 let isAudioInitialized = false; // Track audio initialization state
+let callTimerInterval = null;
+let callStartTimestamp = null;
+
+const isIOSDevice = () => /iphone|ipad|ipod/i.test(navigator.userAgent || '');
 
 // PeerJS server configuration constants
 // Use public PeerJS servers by default, fallback to custom server
@@ -289,6 +293,10 @@ const initializeLocalStream = async () => {
     } catch (err) {
         console.error('Failed to initialize enhanced audio stream:', err);
 
+        if (isIOSDevice()) {
+            showMicPermissionOverlay();
+        }
+
         // Try fallback constraints - CRITICAL: Always include echo cancellation
         if (err.name === 'OverconstrainedError' || err.name === 'ConstraintNotSatisfiedError') {
             console.log('Trying fallback audio constraints with echo cancellation...');
@@ -324,10 +332,46 @@ const initializeLocalStream = async () => {
                 return stream;
             } catch (fallbackErr) {
                 console.error('Fallback audio constraints also failed:', fallbackErr);
+                if (isIOSDevice()) {
+                    showMicPermissionOverlay();
+                }
                 throw fallbackErr;
             }
         }
         throw err;
+    }
+};
+
+const showMicPermissionOverlay = () => {
+    if (document.getElementById('ios-mic-overlay')) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'ios-mic-overlay';
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.background = 'rgba(0,0,0,0.75)';
+    overlay.style.display = 'flex';
+    overlay.style.flexDirection = 'column';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.style.zIndex = '9999';
+    overlay.style.color = '#fff';
+    overlay.style.fontFamily = '-apple-system, BlinkMacSystemFont, sans-serif';
+    overlay.innerHTML = `
+        <div style="font-size:16px;margin-bottom:10px;">Tap to enable microphone</div>
+        <button id="ios-mic-button" style="padding:12px 20px;border-radius:20px;border:none;background:#0aa; color:#fff;font-size:15px;">Enable</button>
+    `;
+    document.body.appendChild(overlay);
+    const button = document.getElementById('ios-mic-button');
+    if (button) {
+        button.addEventListener('click', () => {
+            initializeLocalStream()
+                .then(() => {
+                    overlay.remove();
+                })
+                .catch(() => {
+                    // keep overlay if still failing
+                });
+        }, { once: true });
     }
 };
 
@@ -358,8 +402,27 @@ const participantsContainer = document.getElementById('participantsContainer');
 const singleCallerInfo = document.getElementById('singleCallerInfo');
 const gridContainer = document.getElementById('gridContainer');
 
+function startCallTimer() {
+    if (!callTimer) return;
+    if (callTimerInterval) return;
+    callStartTimestamp = Date.now();
+    callTimerInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - callStartTimestamp) / 1000);
+        const minutes = String(Math.floor(elapsed / 60)).padStart(2, '0');
+        const seconds = String(elapsed % 60).padStart(2, '0');
+        callTimer.textContent = `${minutes}:${seconds}`;
+    }, 1000);
+}
+
 function stopCallTimer() {
-    callTimer.textContent = '00:00';
+    if (callTimerInterval) {
+        clearInterval(callTimerInterval);
+        callTimerInterval = null;
+    }
+    callStartTimestamp = null;
+    if (callTimer) {
+        callTimer.textContent = '00:00';
+    }
 }
 
 function updateAudioOutputUI(output) {
@@ -903,6 +966,7 @@ function setupCallStreamListener(call) {
             audioElement.addEventListener('playing', () => {
                 if (!hasTriggeredVibration) {
                     callStatus.textContent = 'Connected';
+                    startCallTimer();
                     console.log('[CallConnected] Audio is playing - call is actually connected on BOTH sides');
                     
                     // Trigger vibration on BOTH sides when call is connected
@@ -927,6 +991,7 @@ function setupCallStreamListener(call) {
                 setTimeout(() => {
                     if (!hasTriggeredVibration && callStatus.textContent !== 'Connected') {
                         callStatus.textContent = 'Connected';
+                        startCallTimer();
                         console.log('[CallConnected] Fallback - setting Connected after metadata loaded on BOTH sides');
                         
                         // Trigger vibration on BOTH sides when call is connected
@@ -1764,6 +1829,7 @@ function setCallStatus(statusText) {
             // कनेक्शन सक्रिय ठेवा, कोणतेही क्लीनअप करू नका
         } else if (statusText === 'Connected') {
             console.log('App resumed, checking PeerJS connection');
+            startCallTimer();
             if (isDisconnected) {
                 reconnectPeer(); // कनेक्शन पुन्हा जोडा
             }
@@ -2038,6 +2104,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (callStatus) {
         callStatus.textContent = 'Connecting';
     }
+
+    document.documentElement.style.background = "url('callnewmodernbg.png') center center / cover no-repeat";
+    document.body.style.background = "url('callnewmodernbg.png') center center / cover no-repeat";
+    document.body.style.backgroundColor = "#000";
     
     // Start audio health monitoring
     monitorAudioHealth();
@@ -2059,6 +2129,17 @@ document.addEventListener('DOMContentLoaded', () => {
         topBar.classList.toggle('hidden');
         audioOutputMenu.classList.remove('show');
     });
+
+    if (isIOSDevice()) {
+        document.body.addEventListener('click', () => {
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume().catch(() => {});
+            }
+            if (!localStream) {
+                initializeLocalStream().catch(() => {});
+            }
+        }, { passive: true });
+    }
 
     if (typeof Android !== 'undefined') {
         try {
