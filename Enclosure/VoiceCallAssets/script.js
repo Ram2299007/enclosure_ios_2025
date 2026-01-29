@@ -194,7 +194,7 @@ let isCameraOn = true;
 const lastPosters = new WeakMap();
 let lastLocalBlur = null;
 
-// Ensure global exposure of functions for Android WebView
+// Ensure global exposure of functions for Android WebView and iOS native
 window.setRoomId = setRoomId;
 window.setRemoteCallerInfo = setRemoteCallerInfo;
 window.setThemeColor = setThemeColor;
@@ -264,6 +264,8 @@ const initializeLocalStream = async () => {
         statusBar.textContent = 'High-quality camera ready';
 
         // Log enhanced stream details for debugging
+        const videoTrack = stream.getVideoTracks()[0];
+        const audioTrack = stream.getAudioTracks()[0];
         if (videoTrack) {
             const settings = videoTrack.getSettings();
             console.log('Enhanced video track settings:', settings);
@@ -305,9 +307,25 @@ const initializeLocalStream = async () => {
         }
     }
 };
+window.initializeLocalStream = initializeLocalStream;
 
-// Initialize camera on page load
-initializeLocalStream();
+// Initialize camera on page load (with retry for iOS WebView permission timing)
+function startLocalStreamWithRetry(retryCount) {
+    retryCount = retryCount || 0;
+    const maxRetries = 3;
+    initializeLocalStream().catch(function(err) {
+        console.warn('initializeLocalStream failed (attempt ' + (retryCount + 1) + '):', err.name, err.message);
+        if (retryCount < maxRetries) {
+            console.log('Retrying in 800ms...');
+            setTimeout(function() { startLocalStreamWithRetry(retryCount + 1); }, 800);
+        }
+    });
+}
+window.startLocalStreamWithRetry = startLocalStreamWithRetry;
+
+// Delay first attempt so native iOS can request camera/mic before WebView calls getUserMedia (shorter on iOS so camera is ready before call connects)
+const isIOS = /iPad|iPhone|iPod|Mac/.test(navigator.userAgent);
+setTimeout(function() { startLocalStreamWithRetry(0); }, isIOS ? 600 : 1200);
 
 function updateVideoMirroring(retryCount = 3) {
     const isSelfie = currentFacingMode === 'user';
@@ -388,7 +406,9 @@ peer.on('open', id => {
 
 peer.on('call', call => {
     console.log('Received call from peer:', call.peer);
-    if (!localStream) {
+    const needsVideo = !localStream || localStream.getVideoTracks().length === 0;
+    const needsStream = !localStream || localStream.getTracks().length === 0 || localStream.getTracks().every(track => !track.enabled || track.readyState !== 'live');
+    if (needsVideo || needsStream) {
         // Use enhanced constraints for WebView camera
         const constraints = getOptimalCameraConstraints();
         constraints.video.facingMode = currentFacingMode;
@@ -397,6 +417,9 @@ peer.on('call', call => {
             .then(stream => {
                 localStream = stream;
                 localVideo.srcObject = stream;
+                localVideo.muted = true;
+                localVideo.autoplay = true;
+                localVideo.playsInline = true;
                 console.log('Local stream set for answering call');
                 call.answer(stream);
                 peers[call.peer] = { call, remoteStream: null };
@@ -409,6 +432,12 @@ peer.on('call', call => {
                 statusBar.textContent = 'Error: Camera/Mic access denied';
             });
     } else {
+        // Ensure tracks are enabled
+        localStream.getTracks().forEach(track => {
+            if (!track.enabled) {
+                track.enabled = true;
+            }
+        });
         call.answer(localStream);
         console.log('Answering call with existing local stream');
         peers[call.peer] = { call, remoteStream: null };
@@ -439,7 +468,9 @@ function handleSignalingData(data) {
     const sender = data.sender;
     console.log('Received signaling data:', data);
     if (type === 'offer' && !peers[sender]) {
-        if (!localStream) {
+        const needsVideo = !localStream || localStream.getVideoTracks().length === 0;
+        const needsStream = !localStream || localStream.getTracks().length === 0 || localStream.getTracks().every(track => !track.enabled || track.readyState !== 'live');
+        if (needsVideo || needsStream) {
             // Use enhanced constraints for WebView camera
             const constraints = getOptimalCameraConstraints();
             constraints.video.facingMode = currentFacingMode;
@@ -448,6 +479,9 @@ function handleSignalingData(data) {
                 .then(stream => {
                     localStream = stream;
                     localVideo.srcObject = stream;
+                    localVideo.muted = true;
+                    localVideo.autoplay = true;
+                    localVideo.playsInline = true;
                     console.log('Local stream set for offer');
                     const call = peer.call(sender, stream);
                     peers[sender] = { call, remoteStream: null };
@@ -464,6 +498,12 @@ function handleSignalingData(data) {
                     statusBar.textContent = 'Error: Camera/Mic access denied';
                 });
         } else {
+            // Ensure tracks are enabled
+            localStream.getTracks().forEach(track => {
+                if (!track.enabled) {
+                    track.enabled = true;
+                }
+            });
             const call = peer.call(sender, localStream);
             console.log('Calling peer with existing local stream:', sender);
             peers[sender] = { call, remoteStream: null };
@@ -497,7 +537,9 @@ function updatePeers(data) {
 
 function connectToPeer(peerId, retries = 3, delay = 5000) {
     console.log('Connecting to peer:', peerId, 'Attempts left:', retries);
-    if (!localStream) {
+    const needsVideo = !localStream || localStream.getVideoTracks().length === 0;
+    const needsStream = !localStream || localStream.getTracks().length === 0 || localStream.getTracks().every(track => !track.enabled || track.readyState !== 'live');
+    if (needsVideo || needsStream) {
         // Use enhanced constraints for WebView camera
         const constraints = getOptimalCameraConstraints();
         constraints.video.facingMode = currentFacingMode;
@@ -506,6 +548,9 @@ function connectToPeer(peerId, retries = 3, delay = 5000) {
             .then(stream => {
                 localStream = stream;
                 localVideo.srcObject = stream;
+                localVideo.muted = true;
+                localVideo.autoplay = true;
+                localVideo.playsInline = true;
                 const call = peer.call(peerId, stream);
                 peers[peerId] = { call, remoteStream: null };
                 setupCallStreamListener(call);
@@ -525,6 +570,12 @@ function connectToPeer(peerId, retries = 3, delay = 5000) {
                 }
             });
     } else {
+        // Ensure tracks are enabled
+        localStream.getTracks().forEach(track => {
+            if (!track.enabled) {
+                track.enabled = true;
+            }
+        });
         const call = peer.call(peerId, localStream);
         console.log('Calling peer with existing local stream:', peerId);
         peers[peerId] = { call, remoteStream: null };
@@ -546,9 +597,62 @@ function setupCallStreamListener(call) {
             switchVideos(call.peer, remoteStream);
             updateVideoLayout();
             updateVideoMirroring();
+            
+            // Ensure local stream is initialized when call connects (include case where we only have audio, no video)
+            const hasNoVideo = !localStream || localStream.getVideoTracks().length === 0;
+            const hasNoLiveTracks = !localStream || localStream.getTracks().length === 0 || localStream.getTracks().every(track => !track.enabled);
+            if (hasNoVideo || hasNoLiveTracks) {
+                console.log('Local stream not initialized, disabled, or missing video track, initializing now...');
+                const constraints = getOptimalCameraConstraints();
+                constraints.video.facingMode = currentFacingMode;
+                
+                navigator.mediaDevices.getUserMedia(constraints)
+                    .then(stream => {
+                        localStream = stream;
+                        localVideo.srcObject = stream;
+                        localVideo.muted = true;
+                        localVideo.autoplay = true;
+                        localVideo.playsInline = true;
+                        
+                        // Update all peer connections with new stream
+                        Object.values(peers).forEach(peer => {
+                            if (peer.call && peer.call.peerConnection) {
+                                const senders = peer.call.peerConnection.getSenders();
+                                senders.forEach(sender => {
+                                    if (sender.track) {
+                                        if (sender.track.kind === 'video') {
+                                            const videoTrack = stream.getVideoTracks()[0];
+                                            if (videoTrack) {
+                                                sender.replaceTrack(videoTrack).catch(err => {
+                                                    console.error('Failed to replace video track:', err);
+                                                });
+                                            }
+                                        } else if (sender.track.kind === 'audio') {
+                                            const audioTrack = stream.getAudioTracks()[0];
+                                            if (audioTrack) {
+                                                sender.replaceTrack(audioTrack).catch(err => {
+                                                    console.error('Failed to replace audio track:', err);
+                                                });
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                        
+                        updateVideoLayout();
+                        updateVideoMirroring();
+                        console.log('Local stream initialized successfully on call connect');
+                    })
+                    .catch(err => {
+                        console.error('Failed to initialize local stream on call connect:', err);
+                        statusBar.textContent = 'Error: Camera/Mic access denied';
+                    });
+            }
+            
             if (Object.keys(peers).length > 0 && typeof Android !== 'undefined') {
-                       Android.onCallConnected();
-                        }
+                Android.onCallConnected();
+            }
         } else {
             console.warn('Received null or undefined stream from peer:', call.peer);
             statusBar.textContent = `No stream from peer ${call.peer}`;

@@ -102,8 +102,10 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Allow Enclosure to access your camera for video calls.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Allow Enclosure to access your microphone for voice calls.</string>
+	<string>Allow Enclosure to access your microphone for voice and video calls.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Inter-Bold.ttf</string>

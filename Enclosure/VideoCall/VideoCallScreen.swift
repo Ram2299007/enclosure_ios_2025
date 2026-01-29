@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import WebKit
+import AVFoundation
 
 struct VideoCallScreen: View {
     @Environment(\.dismiss) private var dismiss
@@ -217,6 +218,9 @@ class VideoCallWebViewCoordinator: NSObject, WKNavigationDelegate, WKScriptMessa
     }
     
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // Request camera + mic so WKWebView getUserMedia sees granted state (especially camera)
+        session.requestCameraAndMicrophonePermissionIfNeeded()
+
         // Force full screen again after page load including status bar area
         let js = """
         (function() {
@@ -251,6 +255,19 @@ class VideoCallWebViewCoordinator: NSObject, WKNavigationDelegate, WKScriptMessa
         })();
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
+
+        // Start local stream (camera + mic) after page is ready and permissions may have been granted
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak webView] in
+            guard let webView else { return }
+            let startStreamJS = "if (typeof startLocalStreamWithRetry === 'function') { startLocalStreamWithRetry(0); } else if (typeof initializeLocalStream === 'function') { initializeLocalStream().catch(function(){}); }"
+            webView.evaluateJavaScript(startStreamJS) { _, error in
+                if let error = error {
+                    print("⚠️ [VideoCallScreen] Failed to trigger startLocalStreamWithRetry: \(error.localizedDescription)")
+                } else {
+                    print("📹 [VideoCallScreen] Triggered startLocalStreamWithRetry after page load")
+                }
+            }
+        }
     }
     
     @available(iOS 15.0, *)
@@ -259,7 +276,45 @@ class VideoCallWebViewCoordinator: NSObject, WKNavigationDelegate, WKScriptMessa
                  initiatedByFrame frame: WKFrameInfo,
                  type: WKMediaCaptureType,
                  decisionHandler: @escaping (WKPermissionDecision) -> Void) {
-        decisionHandler(.grant)
+        let isCamera = (type == .camera)
+        print("📹 [VideoCallScreen] Media capture permission requested - type: \(isCamera ? "camera" : "microphone")")
+        
+        func complete(_ decision: WKPermissionDecision) {
+            DispatchQueue.main.async {
+                decisionHandler(decision)
+            }
+        }
+        
+        if isCamera {
+            let status = AVCaptureDevice.authorizationStatus(for: .video)
+            if status == .authorized {
+                print("✅ [VideoCallScreen] Camera permission granted")
+                complete(.grant)
+            } else if status == .notDetermined {
+                AVCaptureDevice.requestAccess(for: .video) { granted in
+                    print("📹 [VideoCallScreen] Camera permission result: \(granted)")
+                    complete(granted ? .grant : .deny)
+                }
+            } else {
+                print("⚠️ [VideoCallScreen] Camera denied (status: \(status.rawValue))")
+                complete(.deny)
+            }
+        } else {
+            let session = AVAudioSession.sharedInstance()
+            let status = session.recordPermission
+            if status == .granted {
+                print("✅ [VideoCallScreen] Microphone permission granted")
+                complete(.grant)
+            } else if status == .undetermined {
+                session.requestRecordPermission { granted in
+                    print("🎤 [VideoCallScreen] Microphone permission result: \(granted)")
+                    complete(granted ? .grant : .deny)
+                }
+            } else {
+                print("⚠️ [VideoCallScreen] Microphone denied")
+                complete(.deny)
+            }
+        }
     }
 }
 
@@ -430,6 +485,15 @@ class FullScreenVideoCallViewController: UIViewController {
         configuration.allowsInlineMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
         
+        if #available(iOS 14.0, *) {
+            let prefs = WKWebpagePreferences()
+            prefs.allowsContentJavaScript = true
+            configuration.defaultWebpagePreferences = prefs
+        }
+        if #available(iOS 15.0, *) {
+            configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        }
+        
         let controller = WKUserContentController()
         let coordinator = VideoCallWebViewCoordinator(session: session)
         controller.add(coordinator, name: "videoCall")
@@ -522,46 +586,17 @@ class FullScreenVideoCallViewController: UIViewController {
         session.attach(webView: webView)
         self.webView = webView
         
-        // Load HTML
+        // Request camera/mic before loading so WKWebView getUserMedia sees granted permissions
+        session.requestCameraAndMicrophonePermissionIfNeeded()
+        
+        // Load via file URL so the page has a proper origin (required for getUserMedia on iOS)
         let assetURL = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "VoiceCallAssets")
             ?? Bundle.main.url(forResource: "index", withExtension: "html")
         
         if let url = assetURL {
-            // Read and modify HTML to add viewport-fit=cover and ensure full screen
-            if var html = try? String(contentsOf: url, encoding: .utf8) {
-                // Replace viewport meta tag to include viewport-fit=cover
-                html = html.replacingOccurrences(
-                    of: "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">",
-                    with: "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no\">"
-                )
-                
-                // Add style tag to ensure full screen coverage
-                let fullScreenStyle = """
-                <style>
-                    html, body {
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        width: 100% !important;
-                        height: 100% !important;
-                        overflow: hidden !important;
-                        position: fixed !important;
-                        top: 0 !important;
-                        left: 0 !important;
-                        right: 0 !important;
-                        bottom: 0 !important;
-                    }
-                </style>
-                """
-                
-                // Insert style tag right after head tag
-                if let headRange = html.range(of: "</head>") {
-                    html.insert(contentsOf: fullScreenStyle, at: headRange.lowerBound)
-                }
-                
-                webView.loadHTMLString(html, baseURL: url.deletingLastPathComponent())
-            } else {
-                webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
-            }
+            let baseDir = url.deletingLastPathComponent()
+            // Grant read access only to VoiceCallAssets dir to avoid sandbox "no access" / unresponsive WebContent
+            webView.loadFileURL(url, allowingReadAccessTo: baseDir)
         } else {
             let fallbackHTML = """
             <!doctype html>

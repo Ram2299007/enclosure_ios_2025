@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import AVFoundation
 
 struct VideoCallWebView: UIViewRepresentable {
     @ObservedObject var session: VideoCallSession
@@ -12,6 +13,18 @@ struct VideoCallWebView: UIViewRepresentable {
         let configuration = WKWebViewConfiguration()
         configuration.allowsInlineMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
+        
+        // Enable media capture permissions for camera and microphone
+        if #available(iOS 15.0, *) {
+            configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        }
+        
+        // Set preferences for media capture
+        let preferences = WKWebpagePreferences()
+        if #available(iOS 14.0, *) {
+            preferences.allowsContentJavaScript = true
+        }
+        configuration.defaultWebpagePreferences = preferences
 
         let controller = WKUserContentController()
         controller.add(context.coordinator, name: Coordinator.messageHandlerName)
@@ -46,15 +59,15 @@ struct VideoCallWebView: UIViewRepresentable {
 
         session.attach(webView: webView)
 
+        // Load via file URL so the page has a proper origin (required for getUserMedia on iOS)
         let assetURL = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "VoiceCallAssets")
             ?? Bundle.main.url(forResource: "index", withExtension: "html")
         
         if let url = assetURL {
-            if let html = try? String(contentsOf: url, encoding: .utf8) {
-                webView.loadHTMLString(html, baseURL: url.deletingLastPathComponent())
-            } else {
-                webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
-            }
+            let baseDir = url.deletingLastPathComponent()
+            // Allow read access to bundle root so all assets (script.js, peerjs.js, etc.) load
+            let readAccessURL = baseDir.deletingLastPathComponent()
+            webView.loadFileURL(url, allowingReadAccessTo: readAccessURL)
         } else {
             let fallbackHTML = """
             <!doctype html>
@@ -217,6 +230,38 @@ struct VideoCallWebView: UIViewRepresentable {
                   let body = message.body as? [String: Any] else { return }
             session.handleMessage(body)
         }
+        
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            print("📹 [VideoCallWebView] Page finished loading")
+            // Ensure permissions are requested when page loads
+            session.requestCameraAndMicrophonePermissionIfNeeded()
+            
+            // Inject script to ensure getUserMedia is called
+            let initScript = """
+            (function() {
+                console.log('📹 [VideoCallWebView] Checking for getUserMedia availability...');
+                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    console.log('✅ [VideoCallWebView] getUserMedia is available');
+                    // Trigger initialization if not already done
+                    if (typeof initializeLocalStream === 'function' && !localStream) {
+                        console.log('📹 [VideoCallWebView] Calling initializeLocalStream...');
+                        initializeLocalStream().catch(err => {
+                            console.error('❌ [VideoCallWebView] Failed to initialize stream:', err);
+                        });
+                    }
+                } else {
+                    console.error('❌ [VideoCallWebView] getUserMedia is not available');
+                }
+            })();
+            """
+            webView.evaluateJavaScript(initScript, completionHandler: { result, error in
+                if let error = error {
+                    print("⚠️ [VideoCallWebView] Error injecting init script: \(error.localizedDescription)")
+                } else {
+                    print("✅ [VideoCallWebView] Init script injected successfully")
+                }
+            })
+        }
 
         @available(iOS 15.0, *)
         func webView(_ webView: WKWebView,
@@ -224,7 +269,44 @@ struct VideoCallWebView: UIViewRepresentable {
                      initiatedByFrame frame: WKFrameInfo,
                      type: WKMediaCaptureType,
                      decisionHandler: @escaping (WKPermissionDecision) -> Void) {
-            decisionHandler(.grant)
+            let isCamera = (type == .camera)
+            print("📹 [VideoCallWebView] Media capture permission requested - type: \(isCamera ? "camera" : "microphone")")
+            
+            func complete(_ decision: WKPermissionDecision) {
+                DispatchQueue.main.async {
+                    decisionHandler(decision)
+                }
+            }
+            
+            if isCamera {
+                let cameraStatus = AVCaptureDevice.authorizationStatus(for: .video)
+                if cameraStatus == .authorized {
+                    print("✅ [VideoCallWebView] Camera permission granted")
+                    complete(.grant)
+                } else if cameraStatus == .notDetermined {
+                    AVCaptureDevice.requestAccess(for: .video) { granted in
+                        print("📹 [VideoCallWebView] Camera permission request result: \(granted)")
+                        complete(granted ? .grant : .deny)
+                    }
+                } else {
+                    print("⚠️ [VideoCallWebView] Camera permission denied (status: \(cameraStatus.rawValue))")
+                    complete(.deny)
+                }
+            } else {
+                let micStatus = AVAudioSession.sharedInstance().recordPermission
+                if micStatus == .granted {
+                    print("✅ [VideoCallWebView] Microphone permission granted")
+                    complete(.grant)
+                } else if micStatus == .undetermined {
+                    AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                        print("🎤 [VideoCallWebView] Microphone permission request result: \(granted)")
+                        complete(granted ? .grant : .deny)
+                    }
+                } else {
+                    print("⚠️ [VideoCallWebView] Microphone permission denied")
+                    complete(.deny)
+                }
+            }
         }
     }
 }

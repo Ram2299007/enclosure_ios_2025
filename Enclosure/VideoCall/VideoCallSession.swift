@@ -24,6 +24,7 @@ final class VideoCallSession: ObservableObject {
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
     private var isAudioInterrupted = false
+    private var isReconfiguringAudioForCall = false
     private var ringtonePlayer: AVAudioPlayer?
     private var ringtoneKeepAliveTimer: Timer?
     private var isCallConnected = false
@@ -41,6 +42,11 @@ final class VideoCallSession: ObservableObject {
 
     func attach(webView: WKWebView) {
         self.webView = webView
+    }
+
+    /// Call before loading the WebView URL so camera/mic are requested and WKWebView getUserMedia sees granted state.
+    func requestCameraAndMicrophoneAccessIfNeeded() {
+        requestCameraAndMicrophoneAccess()
     }
 
     func start() {
@@ -83,7 +89,18 @@ final class VideoCallSession: ObservableObject {
             stopRingtone(reason: "call_connected")
             // Enable proximity sensor when call connects
             enableProximitySensor()
-            ensureAudioSessionActive()
+            // Clear "session already interrupted" state: deactivate, then reconfigure after a short delay
+            reconfigureAudioSessionForCall()
+            // Re-request camera/mic and start local stream so selfie camera opens when call connects
+            requestCameraAndMicrophonePermissionIfNeeded()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.sendToWebView("if (typeof startLocalStreamWithRetry === 'function') { startLocalStreamWithRetry(0); }")
+            }
+            // Force (re-)initialize local stream so selfie camera is requested if it wasn't yet (iOS may have only requested mic first)
+            requestCameraAndMicrophonePermissionIfNeeded()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.sendToWebView("if (typeof initializeLocalStream === 'function') { initializeLocalStream().catch(function(){}); }")
+            }
         case "endCall":
             endCall()
         case "callOnBackPressed":
@@ -116,6 +133,10 @@ final class VideoCallSession: ObservableObject {
         let safeName = payload.receiverName.isEmpty ? "Name" : payload.receiverName
         sendToWebView("setRemoteCallerInfo('\(jsEscaped(safePhoto))', '\(jsEscaped(safeName))')")
         sendToWebView("setThemeColor('\(jsEscaped(Constant.themeColor))')")
+        // Re-trigger camera/mic after page is ready so getUserMedia runs with permissions and bridge set up
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.sendToWebView("if (typeof startLocalStreamWithRetry === 'function') { startLocalStreamWithRetry(0); }")
+        }
     }
 
     private func handleSendPeerId(_ peerId: String) {
@@ -201,16 +222,24 @@ final class VideoCallSession: ObservableObject {
         }
     }
 
-    private func requestCameraAndMicrophonePermissionIfNeeded() {
+    func requestCameraAndMicrophonePermissionIfNeeded() {
         let cameraStatus = AVCaptureDevice.authorizationStatus(for: .video)
         let micStatus = audioSession.recordPermission
         
+        print("📹 [VideoCallSession] Checking permissions - Camera: \(cameraStatus.rawValue), Mic: \(micStatus.rawValue)")
+        
         if cameraStatus == .notDetermined {
-            AVCaptureDevice.requestAccess(for: .video) { _ in }
+            print("📹 [VideoCallSession] Requesting camera permission...")
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                print("📹 [VideoCallSession] Camera permission result: \(granted)")
+            }
         }
         
         if micStatus == .undetermined {
-            audioSession.requestRecordPermission { _ in }
+            print("🎤 [VideoCallSession] Requesting microphone permission...")
+            audioSession.requestRecordPermission { granted in
+                print("🎤 [VideoCallSession] Microphone permission result: \(granted)")
+            }
         }
     }
 
@@ -277,6 +306,7 @@ final class VideoCallSession: ObservableObject {
             
             switch type {
             case .began:
+                if self.isReconfiguringAudioForCall { return }
                 if !self.isAudioInterrupted {
                     self.isAudioInterrupted = true
                     print("🔇 [VideoCallSession] Audio interruption began")
@@ -316,6 +346,23 @@ final class VideoCallSession: ObservableObject {
         }
     }
 
+    /// Call when the call connects: deactivate session to clear "already interrupted" state, then reconfigure for video chat.
+    private func reconfigureAudioSessionForCall() {
+        guard audioSession.recordPermission == .granted else { return }
+        isReconfiguringAudioForCall = true
+        do {
+            try audioSession.setActive(false, options: [.notifyOthersOnDeactivation])
+        } catch {
+            // Ignore
+        }
+        isAudioInterrupted = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard let self else { return }
+            self.ensureAudioSessionActive()
+            self.isReconfiguringAudioForCall = false
+        }
+    }
+
     private func ensureAudioSessionActive() {
         guard audioSession.recordPermission == .granted else { return }
         
@@ -325,14 +372,8 @@ final class VideoCallSession: ObservableObject {
         }
         
         do {
-            // Check if session is already active to avoid conflicts
-            if !audioSession.isOtherAudioPlaying {
-                try audioSession.setCategory(.playAndRecord, mode: .videoChat, options: [.allowBluetooth, .defaultToSpeaker])
-            }
-            // Only activate if not already active to avoid "already interrupted" errors
-            if !audioSession.isOtherAudioPlaying {
-                try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
-            }
+            try audioSession.setCategory(.playAndRecord, mode: .videoChat, options: [.allowBluetooth, .defaultToSpeaker])
+            try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
         } catch {
             // Ignore "already active" or "already interrupted" errors as they're harmless
             let errorDescription = error.localizedDescription
