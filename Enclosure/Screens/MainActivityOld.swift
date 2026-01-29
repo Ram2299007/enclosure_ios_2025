@@ -1293,7 +1293,7 @@ struct MainActivityOld: View {
             var textData: String?
             
             NSLog("📤 [MainActivityOld] Step 1: Checking file container...")
-            if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.enclosure") {
+            if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.enclosure.data") {
                 NSLog("📤 [MainActivityOld] ✅ File container accessible: \(containerURL.path)")
                 let sharedFileURL = containerURL.appendingPathComponent("sharedContent.json")
                 NSLog("📤 [MainActivityOld] Looking for file at: \(sharedFileURL.path)")
@@ -1338,7 +1338,7 @@ struct MainActivityOld: View {
             NSLog("📤 [MainActivityOld] Step 2: Checking UserDefaults...")
             NSLog("📤 [MainActivityOld] Current contentType before UserDefaults check: \(contentType ?? "nil")")
             // Always check UserDefaults (primary method since file container might not be accessible)
-            let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure")
+            let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure.data")
             
             if sharedDefaults == nil {
                 NSLog("🔴🔴🔴 [MainActivityOld] CRITICAL: App Group UserDefaults is nil!")
@@ -1381,7 +1381,7 @@ struct MainActivityOld: View {
                 // ALSO check CFPreferences as fallback (more reliable for App Groups)
                 if contentType == nil {
                     NSLog("📤 [MainActivityOld] UserDefaults empty - checking CFPreferences...")
-                    let appGroupID = "group.com.enclosure" as CFString
+                    let appGroupID = "group.com.enclosure.data" as CFString
                     // Force synchronize CFPreferences first
                     CFPreferencesSynchronize(appGroupID, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
                     NSLog("📤 [MainActivityOld] CFPreferences synchronized, checking for keys...")
@@ -1521,7 +1521,7 @@ struct MainActivityOld: View {
         }
         
         // Clear shared content from UserDefaults (if it exists)
-        if let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure") {
+        if let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure.data") {
             sharedDefaults.removeObject(forKey: "sharedContentType")
             sharedDefaults.removeObject(forKey: "sharedImageUrls")
             sharedDefaults.removeObject(forKey: "sharedVideoUrls")

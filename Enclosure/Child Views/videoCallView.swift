@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import AVFoundation
 
 struct videoCallView: View {
     @StateObject private var viewModel = CallViewModel()
@@ -45,6 +46,7 @@ struct videoCallView: View {
     @State private var selectedHistoryDateLabel: String = ""
     @State private var wasBackLayoutVisibleBeforeHistory = false
     @State private var wasTopHeaderVisibleBeforeHistory = false
+    @State private var activeVideoCallPayload: VideoCallPayload?
     
     enum VideoCallTab {
         case log, contact
@@ -344,7 +346,9 @@ struct videoCallView: View {
                                 ScrollView {
                                     VStack(spacing: 0) {
                                         ForEach(filteredContacts, id: \.uid) { contact in
-                                            VideoCallingContactRowView(contact: contact)
+                                            VideoCallingContactRowView(contact: contact) { selectedContact in
+                                                startVideoCall(for: selectedContact)
+                                            }
                                         }
                                     }
                                 }
@@ -422,6 +426,9 @@ struct videoCallView: View {
             } else {
                 hideKeyboard()
             }
+        }
+        .fullScreenCover(item: $activeVideoCallPayload) { payload in
+            VideoCallScreen(payload: payload)
         }
     }
 }
@@ -508,6 +515,7 @@ extension videoCallView {
 // Video call contact row view matching Android get_calling_contact_list_row.xml
 struct VideoCallingContactRowView: View {
     let contact: CallingContactModel
+    var onCallTapped: ((CallingContactModel) -> Void)? = nil
     @State private var isExpanded = false
     @State private var callButtonWidth: CGFloat = 0
     
@@ -571,7 +579,7 @@ struct VideoCallingContactRowView: View {
                             Button(action: {
                                 // Call action - matching Android clickView onClick
                                 print("📹 Video Calling: \(contact.fullName)")
-                                // TODO: Implement actual video call functionality
+                                onCallTapped?(contact)
                             }) {
                                 ZStack {
                                     UnevenRoundedRectangle(
@@ -793,6 +801,126 @@ extension videoCallView {
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity) // layout_centerInParent="true" equivalent
+    }
+    
+    private func startVideoCall(for contact: CallingContactModel) {
+        requestCameraAndMicrophonePermission { granted in
+            guard granted else {
+                Constant.showToast(message: "Camera and microphone permissions are required for video calls.")
+                return
+            }
+            let roomId = generateRoomId()
+            activeVideoCallPayload = VideoCallPayload(
+                receiverId: contact.uid,
+                receiverName: contact.fullName,
+                receiverPhoto: contact.photo,
+                receiverToken: contact.fToken,
+                receiverDeviceType: contact.deviceType,
+                receiverPhone: contact.mobileNo,
+                roomId: roomId,
+                isSender: true
+            )
+            sendVideoCallNotificationIfNeeded(
+                receiverToken: contact.fToken,
+                receiverDeviceType: contact.deviceType,
+                receiverId: contact.uid,
+                receiverPhone: contact.mobileNo,
+                roomId: roomId
+            )
+        }
+    }
+    
+    private func startVideoCall(for entry: CallLogUserInfo) {
+        requestCameraAndMicrophonePermission { granted in
+            guard granted else {
+                Constant.showToast(message: "Camera and microphone permissions are required for video calls.")
+                return
+            }
+            let roomId = generateRoomId()
+            activeVideoCallPayload = VideoCallPayload(
+                receiverId: entry.friendId,
+                receiverName: entry.fullName,
+                receiverPhoto: entry.photo,
+                receiverToken: entry.fToken,
+                receiverDeviceType: entry.deviceType,
+                receiverPhone: entry.mobileNo,
+                roomId: roomId,
+                isSender: true
+            )
+            sendVideoCallNotificationIfNeeded(
+                receiverToken: entry.fToken,
+                receiverDeviceType: entry.deviceType,
+                receiverId: entry.friendId,
+                receiverPhone: entry.mobileNo,
+                roomId: roomId
+            )
+        }
+    }
+    
+    private func requestCameraAndMicrophonePermission(_ completion: @escaping (Bool) -> Void) {
+        let cameraStatus = AVCaptureDevice.authorizationStatus(for: .video)
+        let micStatus = AVAudioSession.sharedInstance().recordPermission
+        
+        if cameraStatus == .denied || micStatus == .denied {
+            completion(false)
+            return
+        }
+        
+        if cameraStatus == .notDetermined {
+            AVCaptureDevice.requestAccess(for: .video) { cameraGranted in
+                if cameraGranted {
+                    if micStatus == .undetermined {
+                        AVAudioSession.sharedInstance().requestRecordPermission { micGranted in
+                            DispatchQueue.main.async {
+                                completion(micGranted)
+                            }
+                        }
+                    } else {
+                        DispatchQueue.main.async {
+                            completion(micStatus == .granted)
+                        }
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        completion(false)
+                    }
+                }
+            }
+        } else if micStatus == .undetermined {
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                DispatchQueue.main.async {
+                    completion(granted)
+                }
+            }
+        } else {
+            completion(cameraStatus == .authorized && micStatus == .granted)
+        }
+    }
+    
+    private func sendVideoCallNotificationIfNeeded(
+        receiverToken: String,
+        receiverDeviceType: String,
+        receiverId: String,
+        receiverPhone: String,
+        roomId: String
+    ) {
+        let sleepKey = UserDefaults.standard.string(forKey: Constant.sleepKey) ?? ""
+        guard sleepKey != Constant.sleepKey else { return }
+        guard !receiverToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        
+        MessageUploadService.shared.sendVideoCallNotification(
+            receiverToken: receiverToken,
+            receiverDeviceType: receiverDeviceType,
+            receiverId: receiverId,
+            receiverPhone: receiverPhone,
+            roomId: roomId
+        )
+    }
+    
+    private func generateRoomId() -> String {
+        let timestamp = Int(Date().timeIntervalSince1970 * 1000)
+        let random = Int.random(in: 1000...9999)
+        return "\(timestamp)\(random)"
     }
 }
 

@@ -90,10 +90,10 @@ class ShareViewController: UIViewController {
         ])
         
         // Check if App Group is accessible
-        let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure")
+        let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure.data")
         if sharedDefaults == nil {
             NSLog("🔴 [ShareExtension] CRITICAL: App Group UserDefaults is nil!")
-            NSLog("🔴 [ShareExtension] App Group 'group.com.enclosure' is NOT configured!")
+            NSLog("🔴 [ShareExtension] App Group 'group.com.enclosure.data' is NOT configured!")
             fputs("🔴 App Group nil\n", stderr)
             fflush(stderr)
             label.text = "Error: App Group not configured"
@@ -572,7 +572,7 @@ class ShareViewController: UIViewController {
         // Try to save to shared file container first (more reliable than UserDefaults for cross-process sync)
         var savedToFile = false
         var containerURL: URL?
-        if let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.enclosure") {
+        if let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.enclosure.data") {
             containerURL = url
             NSLog("✅ [ShareExtension] App Group container accessible: \(url.path)")
             savedToFile = true
@@ -582,7 +582,7 @@ class ShareViewController: UIViewController {
             NSLog("⚠️ [ShareExtension] Attempting alternative method to access container...")
             // Try alternative: check if we can create the directory
             if let altURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-                let sharedPath = altURL.deletingLastPathComponent().appendingPathComponent("Shared/AppGroup/group.com.enclosure")
+                let sharedPath = altURL.deletingLastPathComponent().appendingPathComponent("Shared/AppGroup/group.com.enclosure.data")
                 NSLog("📤 [ShareExtension] Trying alternative path: \(sharedPath.path)")
                 if FileManager.default.fileExists(atPath: sharedPath.path) {
                     containerURL = sharedPath
@@ -594,9 +594,9 @@ class ShareViewController: UIViewController {
         }
         
         // Always save to UserDefaults as primary method (works even if container fails)
-        guard let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure") else {
+        guard let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure.data") else {
             NSLog("🔴 [ShareExtension] CRITICAL: App Group UserDefaults is nil!")
-            NSLog("🔴 [ShareExtension] App Group 'group.com.enclosure' is NOT properly configured!")
+            NSLog("🔴 [ShareExtension] App Group 'group.com.enclosure.data' is NOT properly configured!")
             fputs("🔴 App Group UserDefaults nil\n", stderr)
             fflush(stderr)
             completeRequest()
@@ -624,7 +624,7 @@ class ShareViewController: UIViewController {
         NSLog("📤 [ShareExtension] synchronize() result: \(syncResult)")
         
         // ALSO use CFPreferences for more reliable cross-process sync
-        let appGroupID = "group.com.enclosure" as CFString
+        let appGroupID = "group.com.enclosure.data" as CFString
         CFPreferencesSetValue("sharedContentType" as CFString, contentType as CFString, appGroupID, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
         if let text = textData {
             CFPreferencesSetValue("sharedTextData" as CFString, text as CFString, appGroupID, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
@@ -644,7 +644,7 @@ class ShareViewController: UIViewController {
         }
         
         // Also try to save to file container if accessible (optional backup method)
-        if savedToFile, let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.enclosure") {
+        if savedToFile, let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.enclosure.data") {
             NSLog("📤 [ShareExtension] Also saving to file container as backup...")
             NSLog("📤 [ShareExtension] Container path: \(containerURL.path)")
             
@@ -693,7 +693,7 @@ class ShareViewController: UIViewController {
         fflush(stderr)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             // Verify data is still there before opening app
-            if let verifyDefaults = UserDefaults(suiteName: "group.com.enclosure") {
+            if let verifyDefaults = UserDefaults(suiteName: "group.com.enclosure.data") {
                 let verifyContentType = verifyDefaults.string(forKey: "sharedContentType")
                 NSLog("📤 [ShareExtension] Final verification before opening app - contentType: \(verifyContentType ?? "nil")")
                 if verifyContentType == nil {
@@ -791,7 +791,7 @@ class ShareViewController: UIViewController {
     // Save document data to permanent location
     func saveDocumentDataToPermanentLocation(data: Data, extension ext: String, fileName: String) -> URL? {
         // Use app group container for shared access between extension and main app
-        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.enclosure") else {
+        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.enclosure.data") else {
             NSLog("🚫 [ShareExtension] Cannot access app group container, using documents directory")
             // Fallback to documents directory
             guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
@@ -840,7 +840,7 @@ class ShareViewController: UIViewController {
     // Generic function to copy file to permanent location
     private func copyFileToPermanentLocation(sourceUrl: URL, subdirectory: String, defaultExtension: String) -> URL? {
         // Use app group container for shared access between extension and main app
-        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.enclosure") else {
+        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.enclosure.data") else {
             NSLog("🚫 [ShareExtension] Cannot access app group container, using documents directory")
             // Fallback to documents directory
             guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {

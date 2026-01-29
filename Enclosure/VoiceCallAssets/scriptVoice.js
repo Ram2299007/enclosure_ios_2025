@@ -287,6 +287,7 @@ const initializeLocalStream = async () => {
         }
 
         isAudioInitialized = true;
+        applyMuteStateToStream('local_stream_ready');
         console.log('Enhanced local audio stream initialized successfully');
         return stream;
 
@@ -328,6 +329,7 @@ const initializeLocalStream = async () => {
                 });
                 
                 isAudioInitialized = true;
+                applyMuteStateToStream('local_stream_fallback_ready');
                 console.log('Audio initialized with fallback constraints (echo cancellation enforced)');
                 return stream;
             } catch (fallbackErr) {
@@ -384,6 +386,7 @@ let isBluetoothAvailable = false;
 let previousAudioOutput = null;
 let isSpeakerOn = false; // default earpiece
 let userManuallySetSpeaker = false; // Track if user manually chose speaker
+let callStatusObserver = null;
 
 let participantData = {}; // Store participant names and photos
 
@@ -401,6 +404,133 @@ const callStatus = document.getElementById('callStatus');
 const participantsContainer = document.getElementById('participantsContainer');
 const singleCallerInfo = document.getElementById('singleCallerInfo');
 const gridContainer = document.getElementById('gridContainer');
+
+function getSavedMuteState() {
+    try {
+        if (typeof Android !== 'undefined' && Android.getMuteState) {
+            return !!Android.getMuteState();
+        }
+    } catch (err) {
+        console.warn('[MuteState] Failed to read saved mute state:', err);
+    }
+    return false;
+}
+
+function applyMuteStateToStream(reason, shouldSyncNative = true) {
+    let nativeOk = true;
+    if (localStream) {
+        localStream.getAudioTracks().forEach(track => {
+            track.enabled = !isMicMuted;
+        });
+    }
+    if (shouldSyncNative && typeof Android !== 'undefined' && Android.toggleMicrophone) {
+        try {
+            Android.toggleMicrophone(isMicMuted);
+        } catch (err) {
+            nativeOk = false;
+            console.warn('[MuteState] Failed to sync mute with native:', err);
+        }
+    }
+    if (muteMicBtn) {
+        muteMicBtn.classList.toggle('muted', isMicMuted);
+    }
+    console.log('[MuteState] Applied mute state:', isMicMuted, 'Reason:', reason);
+    return nativeOk;
+}
+
+function ensureMicVisibleDuringConnecting() {
+    if (!callStatus) return;
+    const statusText = (callStatus.textContent || '').toLowerCase();
+    if (statusText.includes('connecting')) {
+        const controlsContainer = document.querySelector('.controls-container');
+        const topBar = document.querySelector('.top-bar');
+        if (controlsContainer) controlsContainer.classList.remove('hidden');
+        if (topBar) topBar.classList.remove('hidden');
+    }
+}
+
+function enforceDefaultEarpiece(reason) {
+    if (userManuallySetSpeaker) {
+        return;
+    }
+    if (currentAudioOutput !== 'earpiece') {
+        console.log('[AudioOutput] Enforcing default earpiece:', reason);
+        setAudioOutput('earpiece');
+        setTimeout(() => {
+            forceEarpieceAudio();
+        }, 200);
+    }
+}
+
+function refreshOutgoingAudio(stream) {
+    const newTrack = stream?.getAudioTracks?.()[0] || null;
+    Object.values(peers).forEach(peerEntry => {
+        const callObj = peerEntry?.call || peerEntry;
+        if (!callObj) return;
+
+        if (typeof callObj.replaceStream === 'function') {
+            try {
+                callObj.replaceStream(stream);
+                console.log('[MicRecovery] replaceStream used for peer:', callObj.peer);
+                return;
+            } catch (err) {
+                console.warn('[MicRecovery] replaceStream failed, falling back:', err);
+            }
+        }
+
+        const pc = callObj.peerConnection;
+        if (!pc) return;
+
+        if (newTrack && pc.getSenders) {
+            const sender = pc.getSenders().find(s => s.track && s.track.kind === 'audio');
+            if (sender && sender.replaceTrack) {
+                sender.replaceTrack(newTrack).catch(err => {
+                    console.warn('[MicRecovery] Failed to replace outgoing track:', err);
+                });
+                return;
+            }
+        }
+
+        if (newTrack && pc.addTrack) {
+            try {
+                pc.addTrack(newTrack, stream);
+                console.log('[MicRecovery] Added track to peer:', callObj.peer);
+            } catch (err) {
+                console.warn('[MicRecovery] Failed to add track:', err);
+            }
+        }
+    });
+}
+
+function ensureLocalMicActive(reason) {
+    const hasStream = !!localStream;
+    const tracks = localStream ? localStream.getAudioTracks() : [];
+    const hasLiveTrack = tracks.some(t => t.readyState === 'live');
+    const hasMutedLiveTrack = tracks.some(t => t.readyState === 'live' && t.muted);
+
+    if (!hasStream || !hasLiveTrack || (!isMicMuted && hasMutedLiveTrack)) {
+        console.warn('[MicRecovery] Local stream missing or ended, reinitializing:', reason);
+        initializeLocalStream()
+            .then(stream => {
+                localStream = stream;
+                refreshOutgoingAudio(stream);
+                applyMuteStateToStream('mic_recovered');
+            })
+            .catch(err => {
+                console.error('[MicRecovery] Failed to reinitialize local stream:', err);
+            });
+        return;
+    }
+
+    if (!isMicMuted) {
+        tracks.forEach(track => {
+            if (!track.enabled) {
+                console.warn('[MicRecovery] Enabling muted track:', reason);
+                track.enabled = true;
+            }
+        });
+    }
+}
 
 function startCallTimer() {
     if (!callTimer) return;
@@ -942,6 +1072,8 @@ function setupCallStreamListener(call) {
                 }
                 callStatus.textContent = 'Connected';
                 startCallTimer();
+                applyMuteStateToStream('call_connected');
+                ensureLocalMicActive('call_connected');
                 console.log(`[CallConnected] ${reason}`);
 
                 // Trigger vibration on BOTH sides when call is connected
@@ -954,6 +1086,9 @@ function setupCallStreamListener(call) {
                     // Force earpiece when call connects to ensure audio goes to earpiece
                     setTimeout(() => {
                         console.log('[CallConnected] Forcing earpiece audio after call connection...');
+                        userManuallySetSpeaker = false;
+                        isSpeakerOn = false;
+                        setAudioOutput('earpiece');
                         forceEarpieceAudio();
                     }, 1000);
                 }
@@ -1100,23 +1235,17 @@ function setupCallStreamListener(call) {
 
 muteMicBtn.addEventListener('click', () => {
     isMicMuted = !isMicMuted;
-    if (typeof Android !== 'undefined' && Android.toggleMicrophone) {
-        try {
-            Android.toggleMicrophone(isMicMuted);
+    const nativeOk = applyMuteStateToStream('user_toggle', true);
+    if (nativeOk) {
+        if (typeof Android !== 'undefined' && Android.saveMuteState) {
             Android.saveMuteState(isMicMuted);
-            console.log('Microphone mute state sent to Android:', isMicMuted);
-            muteMicBtn.classList.toggle('muted', isMicMuted);
-        } catch (err) {
-            console.error('Failed to toggle microphone via Android:', err);
-            callStatus.textContent = 'Microphone toggle failed';
-            isMicMuted = !isMicMuted; // Revert state on failure
-            muteMicBtn.classList.toggle('muted', isMicMuted);
         }
+        console.log('Microphone mute state applied:', isMicMuted);
     } else {
-        console.warn('Android interface or toggleMicrophone method not available');
-        callStatus.textContent = 'Microphone not available';
-        isMicMuted = !isMicMuted; // Revert state
-        muteMicBtn.classList.toggle('muted', isMicMuted);
+        console.error('Failed to toggle microphone via native bridge');
+        callStatus.textContent = 'Microphone toggle failed';
+        isMicMuted = !isMicMuted; // Revert state on failure
+        applyMuteStateToStream('user_toggle_revert', false);
     }
 });
 
@@ -1703,8 +1832,8 @@ function recreatePeer() {
     console.log('========================================');
 
     console.log('[PeerJS Reconnect] Destroying previous peer instance...');
-    try { 
-        peer.destroy(); 
+    try {
+        peer.destroy();
         console.log('[PeerJS Reconnect] Previous peer destroyed successfully');
     } catch (e) {
         console.warn('[PeerJS Reconnect] Error destroying previous peer:', e);
@@ -1833,6 +1962,7 @@ function setCallStatus(statusText) {
             if (isDisconnected) {
                 reconnectPeer(); // कनेक्शन पुन्हा जोडा
             }
+            ensureLocalMicActive('status_connected');
         }
     } else {
         console.error('XXXCallStatus element not found');
@@ -1855,8 +1985,8 @@ function highlightAudioOption(output, themeColor) {
 }
 
 function restoreMuteState() {
-    isMicMuted = Android.getMuteState();
-    muteMicBtn.classList.toggle('muted', isMicMuted);
+    isMicMuted = getSavedMuteState();
+    applyMuteStateToStream('restore');
 }
 
 
@@ -1993,9 +2123,7 @@ function monitorAudioHealth() {
             const audioTrack = localStream.getAudioTracks()[0];
             if (audioTrack.readyState === 'ended') {
                 console.warn('[AudioHealth] Local audio track ended, reinitializing...');
-                initializeLocalStream().catch(err => {
-                    console.error('[AudioHealth] Failed to reinitialize local stream:', err);
-                });
+                ensureLocalMicActive('audio_health_track_ended');
             }
         }
 
@@ -2129,6 +2257,22 @@ document.addEventListener('DOMContentLoaded', () => {
         topBar.classList.toggle('hidden');
         audioOutputMenu.classList.remove('show');
     });
+
+    const onStatusChange = () => {
+        ensureMicVisibleDuringConnecting();
+        if (callStatus && /connecting/i.test(callStatus.textContent || '')) {
+            enforceDefaultEarpiece('call_status_connecting');
+        }
+    };
+
+    if (callStatus) {
+        if (callStatusObserver) {
+            callStatusObserver.disconnect();
+        }
+        callStatusObserver = new MutationObserver(onStatusChange);
+        callStatusObserver.observe(callStatus, { childList: true, characterData: true, subtree: true });
+        onStatusChange();
+    }
 
     if (isIOSDevice()) {
         document.body.addEventListener('click', () => {

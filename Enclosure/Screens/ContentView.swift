@@ -193,7 +193,7 @@ struct ContentView: View {
     private func checkForSharedContentOnLaunch() {
         // Add delay to ensure Share Extension has finished saving to UserDefaults
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure")
+            let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure.data")
             
             if let contentType = sharedDefaults?.string(forKey: "sharedContentType") {
                 print("📤 [ContentView] Found shared content on launch: \(contentType)")

@@ -3,6 +3,7 @@ import FirebaseDatabase
 import AVFoundation
 import AudioToolbox
 import WebKit
+import UIKit
 
 final class VoiceCallSession: ObservableObject {
     @Published var shouldDismiss = false
@@ -21,14 +22,19 @@ final class VoiceCallSession: ObservableObject {
 
     private let audioSession = AVAudioSession.sharedInstance()
     private var interruptionObserver: NSObjectProtocol?
+    private var routeChangeObserver: NSObjectProtocol?
     private var isAudioInterrupted = false
     private var lastAudioActivationTime: TimeInterval = 0
+    private var shouldForceEarpiece = true
+    private var isSettingEarpiece = false
+    private var lastEarpieceSetTime: TimeInterval = 0
     private var ringtonePlayer: AVAudioPlayer?
     private var ringtoneKeepAliveTimer: Timer?
     private var isCallConnected = false
-    private var ringtoneAttemptedSpeakerFallback = false
     private var ringtoneSystemSoundId: SystemSoundID = 0
     private var ringtoneSystemSoundTimer: Timer?
+    private var earpieceMonitorTimer: Timer?
+    private var proximityObserver: NSObjectProtocol?
 
     init(payload: VoiceCallPayload) {
         self.payload = payload
@@ -44,11 +50,15 @@ final class VoiceCallSession: ObservableObject {
 
     func start() {
         isCallConnected = false
-        ringtoneAttemptedSpeakerFallback = false
         requestMicrophoneAccess()
         databaseRef = Database.database().reference()
         setupFirebaseListeners()
         startObservingAudioInterruptions()
+        startEarpieceMonitor()
+        // Set earpiece as default when session starts
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.setAudioOutput("earpiece")
+        }
         if payload.isSender {
             startRingtone()
         }
@@ -57,7 +67,9 @@ final class VoiceCallSession: ObservableObject {
     func stop() {
         cleanupFirebaseListeners()
         stopObservingAudioInterruptions()
+        stopEarpieceMonitor()
         stopRingtone(reason: "session_stop")
+        disableProximitySensor()
     }
 
     func handleMessage(_ message: [String: Any]) {
@@ -85,8 +97,21 @@ final class VoiceCallSession: ObservableObject {
             requestMicrophonePermissionIfNeeded()
         case "onCallConnected":
             isCallConnected = true
-            ensureAudioSessionActive()
             stopRingtone(reason: "call_connected")
+            // Enable proximity sensor when call connects
+            enableProximitySensor()
+            // Aggressively set earpiece when call connects - do this multiple times to ensure it sticks
+            DispatchQueue.main.async { [weak self] in
+                self?.setAudioOutput("earpiece")
+                // Force again after a short delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    self?.setAudioOutput("earpiece")
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self?.setAudioOutput("earpiece")
+                }
+            }
+            ensureAudioSessionActive()
         case "sendBroadcast":
             break
         case "endCall":
@@ -94,6 +119,7 @@ final class VoiceCallSession: ObservableObject {
         case "callOnBackPressed":
             shouldDismiss = true
             stopRingtone(reason: "back_pressed")
+            disableProximitySensor()
         case "addMemberBtn":
             break
         case "onPageReady":
@@ -121,6 +147,10 @@ final class VoiceCallSession: ObservableObject {
         sendToWebView("setRemoteCallerInfo('\(jsEscaped(safePhoto))', '\(jsEscaped(safeName))')")
         sendToWebView("setThemeColor('\(jsEscaped(Constant.themeColor))')")
         updateBluetoothAvailability()
+        // Set earpiece as default when page is ready
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.setAudioOutput("earpiece")
+        }
     }
 
     private func handleSendPeerId(_ peerId: String) {
@@ -273,12 +303,69 @@ final class VoiceCallSession: ObservableObject {
                     let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
                     if options.contains(.shouldResume) {
                         self.ensureAudioSessionActive()
+                        if self.shouldForceEarpiece {
+                            self.setAudioOutput("earpiece")
+                        }
                     }
                 } else {
                     self.ensureAudioSessionActive()
+                    if self.shouldForceEarpiece {
+                        self.setAudioOutput("earpiece")
+                    }
                 }
             @unknown default:
                 break
+            }
+        }
+        
+        // Observe route changes to ensure earpiece is maintained
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self else { return }
+            guard let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                  let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
+            
+            // Prevent recursive calls - if we're already setting earpiece, ignore
+            if self.isSettingEarpiece {
+                return
+            }
+            
+            // Debounce - don't react to route changes too frequently
+            let now = Date().timeIntervalSince1970
+            if now - self.lastEarpieceSetTime < 0.5 {
+                return
+            }
+            
+            let route = self.audioSession.currentRoute
+            let outputs = route.outputs.map { $0.portType }
+            let outputStrings = route.outputs.map { $0.portType.rawValue }
+            print("🔊 [VoiceCallSession] Route changed (reason: \(reason.rawValue)). Outputs: \(outputStrings)")
+            
+            // If route changed to speaker and we want earpiece, force it back
+            let hasSpeaker = outputs.contains(.builtInSpeaker)
+            let hasReceiver = outputs.contains(.builtInReceiver)
+            
+            // For reason 8 (category change), be more aggressive since WebRTC might be changing it
+            let isCategoryChange = reason == .categoryChange
+            let minDelay: TimeInterval = isCategoryChange ? 0.3 : 0.5
+            
+            if self.shouldForceEarpiece && hasSpeaker && !hasReceiver {
+                // Only react if it's been a while since we last set earpiece
+                if now - self.lastEarpieceSetTime > minDelay {
+                    print("⚠️ [VoiceCallSession] Route changed to speaker (reason: \(reason.rawValue)), forcing back to earpiece...")
+                    self.lastEarpieceSetTime = now
+                    // For category changes, force immediately without delay
+                    if isCategoryChange {
+                        self.forceEarpieceImmediate()
+                    } else {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            self.forceEarpieceImmediate()
+                        }
+                    }
+                }
             }
         }
     }
@@ -288,6 +375,42 @@ final class VoiceCallSession: ObservableObject {
             NotificationCenter.default.removeObserver(observer)
             interruptionObserver = nil
         }
+        if let observer = routeChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            routeChangeObserver = nil
+        }
+    }
+    
+    private func startEarpieceMonitor() {
+        stopEarpieceMonitor()
+        // Periodically check and enforce earpiece routing - check more frequently
+        earpieceMonitorTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            guard self.shouldForceEarpiece else { return }
+            guard !self.isSettingEarpiece else { return }
+            guard self.audioSession.recordPermission == .granted else { return }
+            guard self.isCallConnected else { return } // Only monitor when call is active
+            
+            let route = self.audioSession.currentRoute
+            let outputs = route.outputs.map { $0.portType }
+            let hasSpeaker = outputs.contains(.builtInSpeaker)
+            let hasReceiver = outputs.contains(.builtInReceiver)
+            
+            // If routing to speaker instead of receiver, force earpiece
+            if hasSpeaker && !hasReceiver {
+                let now = Date().timeIntervalSince1970
+                // Only force if it's been a while since last attempt (reduce spam)
+                if now - self.lastEarpieceSetTime > 0.5 {
+                    print("⚠️ [VoiceCallSession] Monitor detected speaker routing, forcing earpiece...")
+                    self.forceEarpieceImmediate()
+                }
+            }
+        }
+    }
+    
+    private func stopEarpieceMonitor() {
+        earpieceMonitorTimer?.invalidate()
+        earpieceMonitorTimer = nil
     }
 
     private func ensureAudioSessionActive() {
@@ -299,24 +422,127 @@ final class VoiceCallSession: ObservableObject {
         }
         lastAudioActivationTime = now
         do {
-            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker])
+            // Use .voiceChat mode but ensure earpiece routing
+            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
             try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+            // Route to earpiece by default - must be called after setActive
+            if shouldForceEarpiece {
+                if let builtInMic = audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
+                    try audioSession.setPreferredInput(builtInMic)
+                }
+                try audioSession.overrideOutputAudioPort(.none)
+                lastEarpieceSetTime = now
+            }
+            // Verify the route is set correctly and enforce earpiece if needed
+            let route = audioSession.currentRoute
+            let outputs = route.outputs.map { $0.portType }
+            let outputStrings = route.outputs.map { $0.portType.rawValue }
+            print("🔊 [VoiceCallSession] Audio route outputs: \(outputStrings)")
+            let hasReceiver = outputs.contains(.builtInReceiver)
+            let hasSpeaker = outputs.contains(.builtInSpeaker)
+            if shouldForceEarpiece && !hasReceiver && hasSpeaker {
+                print("⚠️ [VoiceCallSession] Warning: Audio still routing to speaker, forcing earpiece immediately...")
+                // Force immediately and retry multiple times
+                forceEarpieceImmediate()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                    self?.forceEarpieceImmediate()
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.forceEarpieceImmediate()
+                }
+            }
         } catch {
             print("⚠️ [VoiceCallSession] Audio session error: \(error.localizedDescription)")
         }
     }
 
+    private func forceEarpieceImmediate() {
+        guard audioSession.recordPermission == .granted else { return }
+        guard !isAudioInterrupted else { return }
+        guard !isSettingEarpiece else { return }
+        
+        isSettingEarpiece = true
+        defer { 
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.isSettingEarpiece = false
+            }
+        }
+        
+        do {
+            // Set category first to ensure proper configuration, then override port
+            // Use .voiceChat mode which is optimized for voice calls
+            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+            try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+            // Override to earpiece - must be called after setActive
+            if let builtInMic = audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
+                try audioSession.setPreferredInput(builtInMic)
+            }
+            try audioSession.overrideOutputAudioPort(.none)
+            lastEarpieceSetTime = Date().timeIntervalSince1970
+            
+            // Verify after a short delay to ensure it stuck
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                guard let self = self else { return }
+                let route = self.audioSession.currentRoute
+                let outputs = route.outputs.map { $0.portType }
+                let outputStrings = route.outputs.map { $0.portType.rawValue }
+                let hasReceiver = outputs.contains(.builtInReceiver)
+                let hasSpeaker = outputs.contains(.builtInSpeaker)
+                print("🔊 [VoiceCallSession] Force earpiece immediate. Route: \(outputStrings), hasReceiver: \(hasReceiver), hasSpeaker: \(hasSpeaker)")
+                
+                // If still on speaker, try one more time
+                if hasSpeaker && !hasReceiver {
+                    print("⚠️ [VoiceCallSession] Still on speaker after force, retrying...")
+                    do {
+                        try self.audioSession.overrideOutputAudioPort(.none)
+                    } catch {
+                        print("⚠️ [VoiceCallSession] Retry failed: \(error.localizedDescription)")
+                    }
+                }
+            }
+        } catch {
+            print("⚠️ [VoiceCallSession] Failed to force earpiece immediate: \(error.localizedDescription)")
+        }
+    }
+    
     private func setAudioOutput(_ output: String) {
         guard audioSession.recordPermission == .granted else { return }
         guard !isAudioInterrupted else { return }
-        ensureAudioSessionActive()
-
+        
         do {
             switch output {
             case "speaker":
+                shouldForceEarpiece = false
+                isSettingEarpiece = false
                 try audioSession.overrideOutputAudioPort(.speaker)
+                print("🔊 [VoiceCallSession] Audio output set to SPEAKER")
             case "earpiece":
+                shouldForceEarpiece = true
+                guard !isSettingEarpiece else { return }
+                
+                isSettingEarpiece = true
+                defer { isSettingEarpiece = false }
+                
+                // Ensure category is set correctly for earpiece
+                try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+                try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+                if let builtInMic = audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
+                    try audioSession.setPreferredInput(builtInMic)
+                }
                 try audioSession.overrideOutputAudioPort(.none)
+                lastEarpieceSetTime = Date().timeIntervalSince1970
+                
+                // Verify it's actually set to earpiece
+                let route = audioSession.currentRoute
+                let outputs = route.outputs.map { $0.portType }
+                let outputStrings = route.outputs.map { $0.portType.rawValue }
+                print("🔊 [VoiceCallSession] Audio output set to EARPIECE. Current route: \(outputStrings)")
+                let hasSpeaker = outputs.contains(.builtInSpeaker)
+                let hasReceiver = outputs.contains(.builtInReceiver)
+                if hasSpeaker && !hasReceiver {
+                    print("⚠️ [VoiceCallSession] Earpiece override failed, will retry via route observer...")
+                    // Don't retry here to avoid loops - let route observer handle it
+                }
             case "bluetooth":
                 try audioSession.overrideOutputAudioPort(.none)
                 if let bluetoothInput = audioSession.availableInputs?.first(where: { $0.portType == .bluetoothHFP || $0.portType == .bluetoothA2DP }) {
@@ -351,6 +577,7 @@ final class VoiceCallSession: ObservableObject {
     private func endCall() {
         stopRingtone(reason: "end_call")
         cleanupFirebaseListeners()
+        disableProximitySensor()
         shouldDismiss = true
     }
 
@@ -380,13 +607,19 @@ final class VoiceCallSession: ObservableObject {
         }
 
         do {
-            // Configure audio routing for ringtone playback (speaker).
+            // Configure audio routing for ringtone playback (earpiece).
+            // Use .playAndRecord with .voiceChat mode to ensure earpiece routing
             try audioSession.setCategory(
-                .playback,
-                mode: .default,
-                options: [.duckOthers]
+                .playAndRecord,
+                mode: .voiceChat,
+                options: [.allowBluetooth]
             )
             try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+            // Route to earpiece - this works better with .playAndRecord category
+            if let builtInMic = audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
+                try audioSession.setPreferredInput(builtInMic)
+            }
+            try audioSession.overrideOutputAudioPort(.none)
             let route = audioSession.currentRoute
             let outputs = route.outputs.map { "\($0.portType.rawValue)" }.joined(separator: ", ")
             let inputs = route.inputs.map { "\($0.portType.rawValue)" }.joined(separator: ", ")
@@ -421,6 +654,30 @@ final class VoiceCallSession: ObservableObject {
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                 guard let self else { return }
+                // Verify earpiece routing before playing
+                do {
+                    // Ensure we're using the right category for earpiece
+                    try self.audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+                    try self.audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+                    if let builtInMic = self.audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
+                        try self.audioSession.setPreferredInput(builtInMic)
+                    }
+                    
+                    let route = self.audioSession.currentRoute
+                    let outputs = route.outputs.map { $0.portType }
+                    let hasSpeaker = outputs.contains(.builtInSpeaker)
+                    let hasReceiver = outputs.contains(.builtInReceiver)
+                    if hasSpeaker && !hasReceiver {
+                        print("🔔 [VoiceCallRingtone] Ensuring earpiece before play...")
+                        try self.audioSession.overrideOutputAudioPort(.none)
+                    } else {
+                        // Still override to ensure it stays on earpiece
+                        try self.audioSession.overrideOutputAudioPort(.none)
+                    }
+                } catch {
+                    print("⚠️ [VoiceCallRingtone] Failed to verify earpiece: \(error.localizedDescription)")
+                }
+                
                 if !activePlayer.isPlaying {
                     activePlayer.play()
                 }
@@ -447,41 +704,60 @@ final class VoiceCallSession: ObservableObject {
 
     private func startRingtoneKeepAlive() {
         ringtoneKeepAliveTimer?.invalidate()
+        var lastRouteCheckTime: TimeInterval = 0
         ringtoneKeepAliveTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             guard let self else { return }
             guard !self.isCallConnected else { return }
             guard let player = self.ringtonePlayer else { return }
+            
+            let now = Date().timeIntervalSince1970
+            
+            // Check audio route and force earpiece if needed (but not too frequently)
+            if now - lastRouteCheckTime > 1.0 {
+                lastRouteCheckTime = now
+                let route = self.audioSession.currentRoute
+                let outputs = route.outputs.map { $0.portType }
+                let hasSpeaker = outputs.contains(.builtInSpeaker)
+                let hasReceiver = outputs.contains(.builtInReceiver)
+                
+                // If routing to speaker instead of earpiece, force earpiece
+                if hasSpeaker && !hasReceiver {
+                    print("🔔 [VoiceCallRingtone] Route changed to speaker, forcing earpiece...")
+                    do {
+                        // Use .playAndRecord with .voiceChat for earpiece routing
+                        try self.audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+                        try self.audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+                        if let builtInMic = self.audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
+                            try self.audioSession.setPreferredInput(builtInMic)
+                        }
+                        try self.audioSession.overrideOutputAudioPort(.none)
+                        print("🔔 [VoiceCallRingtone] Earpiece forced for ringtone")
+                    } catch {
+                        print("⚠️ [VoiceCallRingtone] Failed to force earpiece: \(error.localizedDescription)")
+                    }
+                }
+            }
+            
+            // Restart player if stopped
             if !player.isPlaying {
                 print("🔔 [VoiceCallRingtone] Restarting ringtone (was stopped)")
                 do {
-                    try self.audioSession.setCategory(.playback, mode: .default, options: [.duckOthers])
+                    // Use .playAndRecord with .voiceChat for earpiece routing
+                    try self.audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
                     try self.audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+                    // Ensure earpiece routing before playing
+                    if let builtInMic = self.audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
+                        try self.audioSession.setPreferredInput(builtInMic)
+                    }
+                    try self.audioSession.overrideOutputAudioPort(.none)
                 } catch {
                     print("⚠️ [VoiceCallRingtone] Failed to reconfigure audio session: \(error.localizedDescription)")
                 }
                 player.play()
-            } else if !self.ringtoneAttemptedSpeakerFallback {
-                let outputs = self.audioSession.currentRoute.outputs
-                let isReceiver = outputs.contains(where: { $0.portType == .builtInReceiver })
-                let isSpeaker = outputs.contains(where: { $0.portType == .builtInSpeaker })
-                if isReceiver && !isSpeaker {
-                    self.ringtoneAttemptedSpeakerFallback = true
-                    self.forceRingtoneToSpeaker(player: player)
-                }
             }
         }
     }
 
-    private func forceRingtoneToSpeaker(player: AVAudioPlayer) {
-        do {
-            print("🔔 [VoiceCallRingtone] Forcing speaker fallback for ringtone")
-            try audioSession.setCategory(.playback, mode: .default, options: [.duckOthers])
-            try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
-            player.play()
-        } catch {
-            print("⚠️ [VoiceCallRingtone] Failed to force speaker: \(error.localizedDescription)")
-        }
-    }
 
     private func startSystemRingtoneFallback() {
         if ringtoneSystemSoundId != 0 || ringtoneSystemSoundTimer != nil {
@@ -505,9 +781,51 @@ final class VoiceCallSession: ObservableObject {
         }
 
         print("🔔 [VoiceCallRingtone] Using system sound fallback")
+        // Configure audio session for earpiece before starting system sound
+        // Use .playAndRecord with .voiceChat for earpiece routing
+        do {
+            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+            try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+            if let builtInMic = audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
+                try audioSession.setPreferredInput(builtInMic)
+            }
+            try audioSession.overrideOutputAudioPort(.none)
+        } catch {
+            print("⚠️ [VoiceCallRingtone] Failed to configure audio session for system sound: \(error.localizedDescription)")
+        }
+        
         ringtoneSystemSoundTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: true) { [weak self] _ in
             guard let self else { return }
             guard !self.isCallConnected else { return }
+            
+            // Check route and force earpiece if needed
+            let route = self.audioSession.currentRoute
+            let outputs = route.outputs.map { $0.portType }
+            let hasSpeaker = outputs.contains(.builtInSpeaker)
+            let hasReceiver = outputs.contains(.builtInReceiver)
+            
+            // If on speaker, reconfigure to earpiece
+            if hasSpeaker && !hasReceiver {
+                do {
+                    // Use .playAndRecord with .voiceChat for earpiece routing
+                    try self.audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+                    try self.audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+                    if let builtInMic = self.audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
+                        try self.audioSession.setPreferredInput(builtInMic)
+                    }
+                    try self.audioSession.overrideOutputAudioPort(.none)
+                    print("🔔 [VoiceCallRingtone] System sound: forced earpiece")
+                } catch {
+                    print("⚠️ [VoiceCallRingtone] Failed to route system sound to earpiece: \(error.localizedDescription)")
+                }
+            } else {
+                // Just ensure earpiece routing before each playback
+                do {
+                    try self.audioSession.overrideOutputAudioPort(.none)
+                } catch {
+                    print("⚠️ [VoiceCallRingtone] Failed to route system sound to earpiece: \(error.localizedDescription)")
+                }
+            }
             AudioServicesPlaySystemSound(self.ringtoneSystemSoundId)
         }
     }
@@ -536,5 +854,39 @@ final class VoiceCallSession: ObservableObject {
         let timestamp = Int(Date().timeIntervalSince1970 * 1000)
         let random = Int.random(in: 1000...9999)
         return "\(timestamp)\(random)"
+    }
+    
+    // MARK: - Proximity Sensor Management
+    
+    private func enableProximitySensor() {
+        guard UIDevice.current.isProximityMonitoringEnabled == false else { return }
+        
+        UIDevice.current.isProximityMonitoringEnabled = true
+        print("📱 [VoiceCallSession] Proximity sensor enabled")
+        
+        // Observe proximity state changes
+        proximityObserver = NotificationCenter.default.addObserver(
+            forName: UIDevice.proximityStateDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            let isNear = UIDevice.current.proximityState
+            print("📱 [VoiceCallSession] Proximity state changed: \(isNear ? "Near" : "Far")")
+            // The system automatically handles screen on/off based on proximity state
+        }
+    }
+    
+    private func disableProximitySensor() {
+        guard UIDevice.current.isProximityMonitoringEnabled == true else { return }
+        
+        // Remove observer first
+        if let observer = proximityObserver {
+            NotificationCenter.default.removeObserver(observer)
+            proximityObserver = nil
+        }
+        
+        UIDevice.current.isProximityMonitoringEnabled = false
+        print("📱 [VoiceCallSession] Proximity sensor disabled")
     }
 }
