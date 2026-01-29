@@ -1,24 +1,36 @@
 body {
             margin: 0;
+            padding: 0;
             height: 100vh;
+            min-height: 100vh;
             overflow: hidden;
             background-color:  url('bg_blur.webp') no-repeat center center fixed;
             background-size: cover;
             font-family: sans-serif;
-            overflow: hidden;
             position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             touch-action: none;
             user-select: none;
             overscroll-behavior: none;
+            box-sizing: border-box;
         }
 
         .video-container {
             position: relative;
             width: 100vw;
+            max-width: 100vw;
             height: 100vh;
+            max-height: 100vh;
+            min-height: 100vh;
+            padding-top: env(safe-area-inset-top, 0);
+            padding-bottom: env(safe-area-inset-bottom, 0);
             overflow: hidden;
             background-color : url('bg_blur.webp') no-repeat center center fixed; /* removed static bg image */
             background-size: cover;
+            box-sizing: border-box;
         }
 
         .remote-videos {
@@ -108,7 +120,7 @@ body {
             position: absolute;
             max-width: 50%;
             right: 10px;
-            bottom: 140px;
+            bottom: calc(120px + env(safe-area-inset-bottom, 0) + 85px);
             height: auto;
             overflow: hidden;
             border-radius: 16px;
@@ -122,8 +134,8 @@ body {
        .secondary-video.compact {
            position: absolute;
            max-width: 20%;
-           bottom: 20px;
-           right: 20px; /* ✅ stick to bottom-right */
+           bottom: calc(120px + env(safe-area-inset-bottom, 0) + 75px);
+           right: 20px;
            border-radius: 16px;
            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
        }
@@ -141,10 +153,18 @@ body {
 
         .controls-container {
             position: absolute;
-            bottom: 0;
+            bottom: 65px;
             left: 0;
+            right: 0;
             width: 100%;
-            height: 80px;
+            max-width: 100vw;
+            min-height: 100px;
+            height: auto;
+            padding-top: 20px;
+            padding-bottom: max(env(safe-area-inset-bottom, 0), 10px);
+            padding-left: 10px;
+            padding-right: 10px;
+            margin-bottom: 0;
             background-color: rgba(0, 0, 0, 0.5);
             border-top-left-radius: 50px;
             border-top-right-radius: 50px;
@@ -155,6 +175,8 @@ body {
             transition: transform 0.4s ease, opacity 0.4s ease;
             transform: translateY(0%);
             opacity: 1;
+            box-sizing: border-box;
+            overflow: visible;
         }
 
         .controls-container.hidden {
@@ -164,20 +186,27 @@ body {
         }
 
         .controls {
-            position: absolute;
-            top: -28px;
-            left: 50%;
-            transform: translateX(-50%);
+            position: relative;
+            top: 0;
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 35px;
+            gap: clamp(12px, 4vw, 35px);
             z-index: 20;
+            width: 100%;
+            max-width: calc(100% - 20px);
+            padding: 0;
+            margin: 0;
+            box-sizing: border-box;
+            flex-wrap: nowrap;
+            overflow: visible;
         }
 
         .control-btn {
-            width: 64px;
-            height: 64px;
+            width: clamp(56px, 15vw, 64px);
+            height: clamp(56px, 15vw, 64px);
+            min-width: 56px;
+            min-height: 56px;
             background-color: rgba(255, 255, 255, 0.1);
             border-radius: 50%;
             border: none;
@@ -193,6 +222,7 @@ body {
             -webkit-tap-highlight-color: transparent;
             user-select: none;
             -webkit-user-select: none;
+            flex-shrink: 0;
         }
 
         .control-btn img {
@@ -215,13 +245,14 @@ body {
 
         .top-bar {
             position: absolute;
-            top: 20px;
+            top: calc(env(safe-area-inset-top, 0) + 50px);
             left: 10px;
             right: 10px;
             padding: 0 12px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 10px;
             z-index: 25;
             pointer-events: auto;
             user-select: none;
@@ -229,6 +260,7 @@ body {
             transition: transform 0.4s ease, opacity 0.4s ease;
             transform: translateY(0%);
             opacity: 1;
+            min-height: 44px;
         }
 
         .top-bar.hidden {
@@ -240,6 +272,8 @@ body {
         .top-btn {
             width: 44px;
             height: 44px;
+            min-width: 44px;
+            min-height: 44px;
             background-color: rgba(255, 255, 255, 0.1);
             border: none;
             border-radius: 50%;
@@ -253,6 +287,7 @@ body {
             -webkit-tap-highlight-color: transparent;
             user-select: none;
             -webkit-user-select: none;
+            flex-shrink: 0;
         }
 
         .top-btn:hover {
@@ -289,10 +324,81 @@ body {
         }
 
         .caller-name {
-            margin-top: 80px; /* Adds top margin */
-            color: white; /* Sets text color to white */
-            font-family: 'Inter', sans-serif; /* Uses Inter font */
-            font-size: 20px; /* Increases font size */
-             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5); /* Adds text shadow */
+            position: relative;
+            flex: 1;
+            text-align: center;
+            color: white;
+            font-family: 'Inter', sans-serif;
+            font-size: clamp(16px, 4vw, 20px);
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            z-index: 26;
+        }
 
+        /* Responsive adjustments for smaller screens */
+        @media screen and (max-width: 375px) {
+            .controls-container {
+                min-height: 110px;
+                max-height: 110px;
+                padding-top: 15px;
+                padding-bottom: max(env(safe-area-inset-bottom, 0), 8px);
+                bottom: 65px;
+            }
+            
+            .controls {
+                gap: 10px;
+                padding: 0;
+                max-width: calc(100% - 20px);
+            }
+            
+            .control-btn {
+                width: 56px;
+                height: 56px;
+                min-width: 56px;
+                min-height: 56px;
+            }
+            
+            .top-bar {
+                top: calc(env(safe-area-inset-top, 0) + 50px);
+                padding: 0 8px;
+                gap: 10px;
+                min-height: 44px;
+            }
+        }
+
+        @media screen and (max-width: 320px) {
+            .controls-container {
+                min-height: 105px;
+                max-height: 105px;
+                padding-top: 12px;
+                padding-bottom: max(env(safe-area-inset-bottom, 0), 5px);
+                bottom: 65px;
+            }
+            
+            .controls {
+                gap: 8px;
+                padding: 0;
+                max-width: calc(100% - 20px);
+            }
+            
+            .control-btn {
+                width: 52px;
+                height: 52px;
+                min-width: 52px;
+                min-height: 52px;
+            }
+            
+            .control-btn img {
+                width: 24px;
+                height: 24px;
+            }
+            
+            .top-bar {
+                top: calc(env(safe-area-inset-top, 0) + 50px);
+                padding: 0 6px;
+                gap: 10px;
+                min-height: 44px;
+            }
         }

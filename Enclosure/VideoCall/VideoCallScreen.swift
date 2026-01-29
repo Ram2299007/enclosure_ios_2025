@@ -425,7 +425,7 @@ class FullScreenVideoCallViewController: UIViewController {
     
     private func setupWebView() {
         guard let session = session else { return }
-        
+    
         let configuration = WKWebViewConfiguration()
         configuration.allowsInlineMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []

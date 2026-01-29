@@ -153,6 +153,7 @@ struct VideoCallWebView: UIViewRepresentable {
                     width: 100vw !important;
                     height: 100vh !important;
                     min-height: 100vh !important;
+                    max-height: 100vh !important;
                     background-image: url('bg_blur.webp') !important;
                     background-repeat: no-repeat !important;
                     background-position: center center !important;
@@ -164,9 +165,44 @@ struct VideoCallWebView: UIViewRepresentable {
                     left: 0 !important;
                     right: 0 !important;
                     bottom: 0 !important;
+                    overflow: hidden !important;
+                }
+                .controls-container {
+                    bottom: 65px !important;
+                    max-width: 100vw !important;
+                    box-sizing: border-box !important;
+                    overflow: visible !important;
+                }
+                .top-bar {
+                    top: calc(env(safe-area-inset-top, 0) + 50px) !important;
+                    gap: 10px !important;
                 }
             `;
             document.head.appendChild(style);
+            
+            // Ensure controls container stays within viewport
+            function ensureControlsInBounds() {
+                var container = document.querySelector('.controls-container');
+                if (container) {
+                    var safeAreaBottom = getComputedStyle(document.documentElement).getPropertyValue('env(safe-area-inset-bottom)') || '0px';
+                    var bottomInset = parseInt(safeAreaBottom) || 0;
+                    var viewportHeight = window.innerHeight || window.screen.height;
+                    var containerRect = container.getBoundingClientRect();
+                    
+                    if (containerRect.bottom > viewportHeight) {
+                        container.style.bottom = '65px';
+                        container.style.paddingBottom = Math.max(bottomInset, 10) + 'px';
+                    }
+                }
+            }
+            
+            // Run on load and resize
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', ensureControlsInBounds);
+            } else {
+                ensureControlsInBounds();
+            }
+            window.addEventListener('resize', ensureControlsInBounds);
         })();
         """
 
