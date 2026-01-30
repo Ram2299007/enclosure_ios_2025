@@ -189,7 +189,7 @@ const switchCameraBtn = document.getElementById('switchCamera');
 const addMemberBtn = document.getElementById('addMemberBtn');
 const endCallBtn = document.getElementById('endCall');
 const pipButton = document.getElementById('pipButton');
-let isMicMuted = true; // Default: start muted; user taps to unmute
+let isMicMuted = false; // Default: start unmuted; user taps to mute
 let isCameraOn = true;
 const lastPosters = new WeakMap();
 let lastLocalBlur = null;
@@ -426,7 +426,6 @@ peer.on('call', call => {
         navigator.mediaDevices.getUserMedia(constraints)
             .then(stream => {
                 localStream = stream;
-                localVideo.srcObject = stream;
                 localVideo.muted = true;
                 localVideo.autoplay = true;
                 localVideo.playsInline = true;
@@ -434,7 +433,7 @@ peer.on('call', call => {
                 call.answer(stream);
                 peers[call.peer] = { call, remoteStream: null };
                 setupCallStreamListener(call);
-                updateVideoLayout();
+                updateVideoLayout(); // Decides: no remote yet => localVideo = my video; when remote arrives => localVideo = receiver
                 updateVideoMirroring();
             })
             .catch(err => {
@@ -487,7 +486,6 @@ function handleSignalingData(data) {
             navigator.mediaDevices.getUserMedia(constraints)
                 .then(stream => {
                     localStream = stream;
-                    localVideo.srcObject = stream;
                     localVideo.muted = true;
                     localVideo.autoplay = true;
                     localVideo.playsInline = true;
@@ -555,14 +553,13 @@ function connectToPeer(peerId, retries = 3, delay = 5000) {
         navigator.mediaDevices.getUserMedia(constraints)
             .then(stream => {
                 localStream = stream;
-                localVideo.srcObject = stream;
                 localVideo.muted = true;
                 localVideo.autoplay = true;
                 localVideo.playsInline = true;
                 const call = peer.call(peerId, stream);
                 peers[peerId] = { call, remoteStream: null };
                 setupCallStreamListener(call);
-                updateVideoLayout();
+                updateVideoLayout(); // No remote yet => localVideo = my video; when remote arrives => localVideo = receiver
                 updateVideoMirroring();
                 const conn = peer.connect(peerId);
                 conn.on('open', () => {
@@ -601,12 +598,12 @@ function setupCallStreamListener(call) {
         console.log('Received remote stream from peer:', call.peer);
         if (remoteStream) {
             peers[call.peer].remoteStream = remoteStream;
+            applyConnectedLayout(call.peer, remoteStream);
             switchVideos(call.peer, remoteStream);
             updateVideoLayout();
             updateVideoMirroring();
-            applyConnectedLayout(call.peer, remoteStream);
-            setTimeout(function() { updateVideoLayout(); updateVideoMirroring(); applyConnectedLayout(call.peer, remoteStream); }, 200);
-            setTimeout(function() { updateVideoLayout(); updateVideoMirroring(); applyConnectedLayout(call.peer, remoteStream); }, 500);
+            setTimeout(function() { applyConnectedLayout(call.peer, remoteStream); updateVideoLayout(); updateVideoMirroring(); }, 200);
+            setTimeout(function() { applyConnectedLayout(call.peer, remoteStream); updateVideoLayout(); updateVideoMirroring(); }, 500);
             
             // Ensure local stream is initialized when call connects (include case where we only have audio, no video)
             const hasNoVideo = !localStream || localStream.getVideoTracks().length === 0;
@@ -619,6 +616,10 @@ function setupCallStreamListener(call) {
                 navigator.mediaDevices.getUserMedia(constraints)
                     .then(stream => {
                         localStream = stream;
+                        // Apply current mute state to new stream so we don't overwrite mute
+                        if (stream.getAudioTracks().length) {
+                            stream.getAudioTracks().forEach(t => { t.enabled = !isMicMuted; });
+                        }
                         // Do not set localVideo.srcObject here - primary must stay receiver; updateVideoLayout will set secondary = this stream
                         
                         // Update all peer connections with new stream
@@ -736,10 +737,9 @@ function updateRemotePoster(videoElement) {
     }
 }
 
-/** When call is connected: force primary = receiver, secondary = my video (like Android). Call after remote stream arrives. */
+/** When call is connected: force primary (localVideo) = RECEIVER, secondary = MY video. Call after remote stream arrives. */
 function applyConnectedLayout(peerId, remoteStream) {
     if (!remoteStream || !peerId) return;
-    if (!localStream) return;
     localVideo.srcObject = null;
     localVideo.srcObject = remoteStream;
     localVideo.muted = false;
@@ -749,20 +749,25 @@ function applyConnectedLayout(peerId, remoteStream) {
     localVideo.classList.remove('mirrored');
     localVideo.play().catch(function() {});
 
-    secondaryVideo.classList.add('secondary-visible');
-    secondaryVideo.srcObject = null;
-    secondaryVideo.srcObject = localStream;
-    secondaryVideo.muted = true;
-    secondaryVideo.playsInline = true;
-    secondaryVideo.autoplay = true;
-    secondaryVideo.style.display = 'block';
-    secondaryVideo.style.visibility = 'visible';
-    secondaryVideo.style.opacity = '1';
-    secondaryVideo.style.width = '';
-    secondaryVideo.style.height = '';
-    secondaryVideo.style.minWidth = '120px';
-    secondaryVideo.style.minHeight = '160px';
-    secondaryVideo.play().catch(function() {});
+    if (localStream) {
+        secondaryVideo.classList.add('secondary-visible');
+        secondaryVideo.srcObject = null;
+        secondaryVideo.srcObject = localStream;
+        secondaryVideo.muted = true;
+        secondaryVideo.playsInline = true;
+        secondaryVideo.autoplay = true;
+        secondaryVideo.style.display = 'block';
+        secondaryVideo.style.visibility = 'visible';
+        secondaryVideo.style.opacity = '1';
+        secondaryVideo.style.width = '';
+        secondaryVideo.style.height = '';
+        secondaryVideo.style.minWidth = '120px';
+        secondaryVideo.style.minHeight = '160px';
+        secondaryVideo.play().catch(function() {});
+    } else {
+        secondaryVideo.style.display = 'none';
+        secondaryVideo.srcObject = null;
+    }
 }
 
 /** Call from native when onCallConnected: apply primary=receiver, secondary=my video using current peers. */
@@ -783,6 +788,7 @@ function updateVideoLayout() {
     remoteVideos.style.display = 'none';
     remoteVideos.innerHTML = '';
     localVideo.style.display = 'none';
+    localVideo.srcObject = null; // Clear so we never show my video on primary when we should show receiver
     secondaryVideo.classList.remove('secondary-visible');
     secondaryVideo.style.display = 'none';
     secondaryVideo.style.visibility = '';
@@ -806,11 +812,11 @@ function updateVideoLayout() {
     } else if (peerCount === 1) {
        callerName.style.display = 'block';
         const peerId = peerIds[0];
-        const remoteStream = peers[peerId].remoteStream;
+        const remoteStream = peers[peerId] && peers[peerId].remoteStream;
 
         if (remoteStream) {
-            /* Call connected: primary (localVideo) = receiver full screen, secondary = my video PiP - like Android */
-            localVideo.srcObject = null; // iOS: clear first so srcObject swap takes effect
+            /* Call connected: localVideo = RECEIVER (full screen), secondaryVideo = MY video only */
+            localVideo.srcObject = null;
             localVideo.srcObject = remoteStream;
             localVideo.muted = false;
             localVideo.playsInline = true;
@@ -836,8 +842,15 @@ function updateVideoLayout() {
                 }
                 secondaryVideo.play().catch(function() {});
             }
+            applyConnectedLayout(peerId, remoteStream);
+            setTimeout(function() {
+                localVideo.srcObject = null;
+                localVideo.srcObject = remoteStream;
+                localVideo.muted = false;
+                localVideo.play().catch(function() {});
+            }, 100);
         } else {
-            /* Before connect (e.g. sender waiting): primary = my video only (full screen), no secondary */
+            /* Before connect: localVideo = MY video (sender), no secondary */
             console.warn('No remote stream yet from:', peerId);
             localVideo.style.display = 'block';
             localVideo.srcObject = localStream;
@@ -1047,14 +1060,21 @@ function adjustForPiPMode() {
     }, 0);
 }
 
-/** Update mute button appearance to match isMicMuted */
+/** Theme color for mute button (used in both states so button always shows theme) */
+function getMuteButtonThemeColor() {
+    const theme = getComputedStyle(document.documentElement).getPropertyValue('--theme-color').trim();
+    return (theme && theme !== '') ? theme : '#00A3E9';
+}
+
+/** Update mute button appearance to match isMicMuted; always use theme color so button is visible */
 function updateMuteButtonUI() {
     if (!muteMicBtn) return;
+    const themeColor = getMuteButtonThemeColor();
     if (isMicMuted) {
         muteMicBtn.classList.add('muted');
         muteMicBtn.title = 'Unmute Mic';
-        muteMicBtn.style.backgroundColor = getComputedStyle(document.documentElement).getPropertyValue('--theme-color').trim() || '#00A3E9';
-        muteMicBtn.style.opacity = '0.7';
+        muteMicBtn.style.backgroundColor = themeColor;
+        muteMicBtn.style.opacity = '0.9';
     } else {
         muteMicBtn.classList.remove('muted');
         muteMicBtn.title = 'Mute Mic';
@@ -1083,32 +1103,35 @@ function applyInitialMuteState(muted) {
 
 muteMicBtn.addEventListener('click', () => {
     isMicMuted = !isMicMuted;
+    const enableAudio = !isMicMuted;
 
     // 1) Mute voice immediately: local stream audio tracks
-    if (localStream && localStream.getAudioTracks) {
-        const tracks = localStream.getAudioTracks();
-        for (let i = 0; i < tracks.length; i++) {
-            tracks[i].enabled = !isMicMuted;
+    if (localStream) {
+        const audioTracks = localStream.getAudioTracks ? localStream.getAudioTracks() : [];
+        for (let i = 0; i < audioTracks.length; i++) {
+            audioTracks[i].enabled = enableAudio;
         }
-        console.log('WebRTC Microphone muted:', isMicMuted, 'localStream audio tracks:', tracks.length);
+        if (audioTracks.length) console.log('WebRTC Microphone muted:', isMicMuted, 'localStream audio tracks:', audioTracks.length);
     }
 
-    // 2) Also mute audio on every peer connection (tracks actually being sent)
+    // 2) Mute audio on every peer connection (tracks actually being sent to remote)
     Object.values(peers).forEach(p => {
         if (p.call && p.call.peerConnection) {
-            const senders = p.call.peerConnection.getSenders();
-            senders.forEach(s => {
-                if (s.track && s.track.kind === 'audio') {
-                    s.track.enabled = !isMicMuted;
-                }
-            });
+            try {
+                const senders = p.call.peerConnection.getSenders();
+                senders.forEach(s => {
+                    if (s.track && s.track.kind === 'audio') {
+                        s.track.enabled = enableAudio;
+                    }
+                });
+            } catch (e) { console.warn('Mute: peer senders error', e); }
         }
     });
 
-    // 3) Update button (theme color) at same time
+    // 3) Update button (theme color when muted, transparent when unmuted)
     updateMuteButtonUI();
 
-    // 4) Notify native (iOS/Android) so system mic can mute too
+    // 4) Notify native (iOS/Android)
     if (typeof Android !== 'undefined') {
         try {
             if (Android.toggleMicrophone) Android.toggleMicrophone(isMicMuted);
@@ -1181,13 +1204,13 @@ switchCameraBtn.addEventListener('click', () => {
             localStream = newStream;
             currentFacingMode = newFacingMode;
 
-            localVideo.srcObject = newStream;
             secondaryVideo.srcObject = newStream;
             const localVideoClone = document.querySelector('.remote-video[data-peer-id="local"] video');
             if (localVideoClone) {
                 localVideoClone.srcObject = newStream;
                 console.log('Updated local video clone with new stream');
             }
+            // Do not set localVideo.srcObject here – updateVideoLayout() sets localVideo = receiver when connected, secondary = my video
 
             Object.values(peers).forEach(peer => {
                 const sender = peer.call.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
@@ -1522,8 +1545,6 @@ function recreatePeer() {
         navigator.mediaDevices.getUserMedia(constraints)
             .then(stream => {
                 localStream = stream;
-                localVideo.srcObject = stream;
-                localVideo.style.display = 'block';
                 updateVideoLayout();
                 updateVideoMirroring();
                 console.log('Local stream reinitialized');
@@ -1618,18 +1639,28 @@ function reinitializeLocalStream() {
         navigator.mediaDevices.getUserMedia(constraints)
             .then(stream => {
                 localStream = stream;
-                localVideo.srcObject = stream;
+                stream.getAudioTracks().forEach(t => { t.enabled = !isMicMuted; });
                 secondaryVideo.srcObject = stream;
                 const localVideoClone = document.querySelector('.remote-video[data-peer-id="local"] video');
                 if (localVideoClone) {
                     localVideoClone.srcObject = stream;
                 }
                 Object.values(peers).forEach(peer => {
-                    const sender = peer.call.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-                    if (sender) {
-                        const videoTrack = stream.getVideoTracks()[0];
-                        sender.replaceTrack(videoTrack);
-                    }
+                    if (!peer.call || !peer.call.peerConnection) return;
+                    const senders = peer.call.peerConnection.getSenders();
+                    senders.forEach(s => {
+                        if (!s.track) return;
+                        if (s.track.kind === 'video') {
+                            const videoTrack = stream.getVideoTracks()[0];
+                            if (videoTrack) s.replaceTrack(videoTrack);
+                        } else if (s.track.kind === 'audio') {
+                            const audioTrack = stream.getAudioTracks()[0];
+                            if (audioTrack) {
+                                audioTrack.enabled = !isMicMuted;
+                                s.replaceTrack(audioTrack);
+                            }
+                        }
+                    });
                 });
                 updateVideoLayout();
                 updateVideoMirroring();
