@@ -87,19 +87,25 @@ final class VideoCallSession: ObservableObject {
         case "onCallConnected":
             isCallConnected = true
             stopRingtone(reason: "call_connected")
-            // Enable proximity sensor when call connects
             enableProximitySensor()
-            // Clear "session already interrupted" state: deactivate, then reconfigure after a short delay
             reconfigureAudioSessionForCall()
-            // Re-request camera/mic and start local stream so selfie camera opens when call connects
-            requestCameraAndMicrophonePermissionIfNeeded()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                self?.sendToWebView("if (typeof startLocalStreamWithRetry === 'function') { startLocalStreamWithRetry(0); }")
-            }
-            // Force (re-)initialize local stream so selfie camera is requested if it wasn't yet (iOS may have only requested mic first)
             requestCameraAndMicrophonePermissionIfNeeded()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 self?.sendToWebView("if (typeof initializeLocalStream === 'function') { initializeLocalStream().catch(function(){}); }")
+            }
+            // Force WebView to show receiver in primary, my video in secondary (like Android)
+            let layoutJS = "updateVideoLayout(); updateVideoMirroring(); if (typeof applyConnectedLayoutFromPeers === 'function') applyConnectedLayoutFromPeers();"
+            DispatchQueue.main.async { [weak self] in
+                self?.sendToWebView(layoutJS)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                self?.sendToWebView(layoutJS)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.sendToWebView(layoutJS)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in
+                self?.sendToWebView(layoutJS)
             }
         case "endCall":
             endCall()

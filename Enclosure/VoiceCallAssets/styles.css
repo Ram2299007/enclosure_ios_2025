@@ -105,6 +105,7 @@ body {
             border-radius: 10px;
         }
 
+        /* Same as Android: primary (local-video) = full screen, shows receiver when 1 peer */
         .local-video {
             position: absolute;
             top: 0;
@@ -116,25 +117,35 @@ body {
             border-radius: 0;
         }
 
+        /* PiP for my camera: above controls (controls ~65px bottom + ~130px height = ~195px), so PiP bottom above that */
         .secondary-video {
             position: absolute;
             max-width: 50%;
+            min-width: 100px;
+            min-height: 133px;
             right: 10px;
-            bottom: calc(120px + env(safe-area-inset-bottom, 0) + 85px);
+            bottom: calc(210px + env(safe-area-inset-bottom, 0));
             height: auto;
             overflow: hidden;
             border-radius: 16px;
             cursor: move;
             z-index: 22;
-            display: block;
             transition: all 0.3s ease-in-out;
             display: none;
+            object-fit: cover;
+        }
+
+        /* Force secondary visible when call connected (iOS WKWebView) */
+        .secondary-video.secondary-visible {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
         }
 
        .secondary-video.compact {
            position: absolute;
            max-width: 20%;
-           bottom: calc(120px + env(safe-area-inset-bottom, 0) + 75px);
+           bottom: calc(210px + env(safe-area-inset-bottom, 0));
            right: 20px;
            border-radius: 16px;
            box-shadow: 0 4px 10px rgba(0,0,0,0.3);

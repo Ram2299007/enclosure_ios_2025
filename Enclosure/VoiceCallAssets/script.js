@@ -201,6 +201,7 @@ window.setThemeColor = setThemeColor;
 window.updatePeers = updatePeers;
 window.updateVideoLayout = updateVideoLayout;
 window.updateVideoMirroring = updateVideoMirroring;
+window.applyConnectedLayoutFromPeers = applyConnectedLayoutFromPeers;
 window.reconnectPeer = reconnectPeer;
 window.handleNetworkResume = handleNetworkResume;
 
@@ -597,6 +598,9 @@ function setupCallStreamListener(call) {
             switchVideos(call.peer, remoteStream);
             updateVideoLayout();
             updateVideoMirroring();
+            applyConnectedLayout(call.peer, remoteStream);
+            setTimeout(function() { updateVideoLayout(); updateVideoMirroring(); applyConnectedLayout(call.peer, remoteStream); }, 200);
+            setTimeout(function() { updateVideoLayout(); updateVideoMirroring(); applyConnectedLayout(call.peer, remoteStream); }, 500);
             
             // Ensure local stream is initialized when call connects (include case where we only have audio, no video)
             const hasNoVideo = !localStream || localStream.getVideoTracks().length === 0;
@@ -609,10 +613,7 @@ function setupCallStreamListener(call) {
                 navigator.mediaDevices.getUserMedia(constraints)
                     .then(stream => {
                         localStream = stream;
-                        localVideo.srcObject = stream;
-                        localVideo.muted = true;
-                        localVideo.autoplay = true;
-                        localVideo.playsInline = true;
+                        // Do not set localVideo.srcObject here - primary must stay receiver; updateVideoLayout will set secondary = this stream
                         
                         // Update all peer connections with new stream
                         Object.values(peers).forEach(peer => {
@@ -642,6 +643,8 @@ function setupCallStreamListener(call) {
                         
                         updateVideoLayout();
                         updateVideoMirroring();
+                        var rstream = peers[call.peer] && peers[call.peer].remoteStream;
+                        if (rstream) applyConnectedLayout(call.peer, rstream);
                         console.log('Local stream initialized successfully on call connect');
                     })
                     .catch(err => {
@@ -727,6 +730,44 @@ function updateRemotePoster(videoElement) {
     }
 }
 
+/** When call is connected: force primary = receiver, secondary = my video (like Android). Call after remote stream arrives. */
+function applyConnectedLayout(peerId, remoteStream) {
+    if (!remoteStream || !peerId) return;
+    if (!localStream) return;
+    localVideo.srcObject = null;
+    localVideo.srcObject = remoteStream;
+    localVideo.muted = false;
+    localVideo.playsInline = true;
+    localVideo.autoplay = true;
+    localVideo.style.display = 'block';
+    localVideo.classList.remove('mirrored');
+    localVideo.play().catch(function() {});
+
+    secondaryVideo.classList.add('secondary-visible');
+    secondaryVideo.srcObject = null;
+    secondaryVideo.srcObject = localStream;
+    secondaryVideo.muted = true;
+    secondaryVideo.playsInline = true;
+    secondaryVideo.autoplay = true;
+    secondaryVideo.style.display = 'block';
+    secondaryVideo.style.visibility = 'visible';
+    secondaryVideo.style.opacity = '1';
+    secondaryVideo.style.width = '';
+    secondaryVideo.style.height = '';
+    secondaryVideo.style.minWidth = '120px';
+    secondaryVideo.style.minHeight = '160px';
+    secondaryVideo.play().catch(function() {});
+}
+
+/** Call from native when onCallConnected: apply primary=receiver, secondary=my video using current peers. */
+function applyConnectedLayoutFromPeers() {
+    var ids = Object.keys(peers);
+    if (ids.length !== 1 || !localStream) return;
+    var peerId = ids[0];
+    var remoteStream = peers[peerId] && peers[peerId].remoteStream;
+    if (remoteStream) applyConnectedLayout(peerId, remoteStream);
+}
+
 function updateVideoLayout() {
     const peerIds = Object.keys(peers);
     const peerCount = peerIds.length;
@@ -736,7 +777,10 @@ function updateVideoLayout() {
     remoteVideos.style.display = 'none';
     remoteVideos.innerHTML = '';
     localVideo.style.display = 'none';
+    secondaryVideo.classList.remove('secondary-visible');
     secondaryVideo.style.display = 'none';
+    secondaryVideo.style.visibility = '';
+    secondaryVideo.style.opacity = '';
     secondaryVideo.srcObject = null;
 
     if (peerCount === 0) {
@@ -744,6 +788,9 @@ function updateVideoLayout() {
         if (localStream && isCameraOn) {
             hideLocalBlur();
             localVideo.srcObject = localStream;
+            localVideo.playsInline = true;
+            localVideo.autoplay = true;
+            localVideo.play().catch(function() {}); // iOS: so my video shows before call
         } else {
             showLocalBlur();
             updateLocalPoster(); // Apply blur to localVideo
@@ -756,32 +803,48 @@ function updateVideoLayout() {
         const remoteStream = peers[peerId].remoteStream;
 
         if (remoteStream) {
-            localVideo.style.display = 'block';
+            /* Call connected: primary (localVideo) = receiver full screen, secondary = my video PiP - like Android */
+            localVideo.srcObject = null; // iOS: clear first so srcObject swap takes effect
             localVideo.srcObject = remoteStream;
             localVideo.muted = false;
+            localVideo.playsInline = true;
+            localVideo.autoplay = true;
             localVideo.classList.remove('mirrored');
-            console.log('[Layout] Showing remote full screen for peer:', peerId);
+            localVideo.style.display = 'block';
+            localVideo.play().catch(function() {});
+
+            if (localStream) {
+                secondaryVideo.classList.add('secondary-visible');
+                secondaryVideo.srcObject = null;
+                secondaryVideo.srcObject = localStream;
+                secondaryVideo.muted = true;
+                secondaryVideo.playsInline = true;
+                secondaryVideo.autoplay = true;
+                secondaryVideo.style.display = 'block';
+                secondaryVideo.style.visibility = 'visible';
+                secondaryVideo.style.opacity = '1';
+                if (!isCameraOn) {
+                    applyBlurToSecondaryVideo();
+                } else {
+                    removeBlurFromSecondaryVideo();
+                }
+                secondaryVideo.play().catch(function() {});
+            }
         } else {
+            /* Before connect (e.g. sender waiting): primary = my video only (full screen), no secondary */
             console.warn('No remote stream yet from:', peerId);
             localVideo.style.display = 'block';
             localVideo.srcObject = localStream;
             localVideo.muted = true;
+            localVideo.playsInline = true;
+            localVideo.autoplay = true;
             if (!isCameraOn) {
-                updateLocalPoster(); // Apply blur to localVideo
+                updateLocalPoster();
+            } else if (localStream) {
+                localVideo.play().catch(function() {}); // iOS: so sender sees themselves
             }
-        }
-
-        if (localStream) {
-            secondaryVideo.srcObject = localStream;
-            secondaryVideo.style.display = 'block';
-            secondaryVideo.muted = true;
-
-            if (!isCameraOn) {
-                applyBlurToSecondaryVideo(); // Apply blur to secondaryVideo when camera is off
-            } else {
-                removeBlurFromSecondaryVideo(); // Ensure no blur when camera is on
-            }
-            console.log('[Layout] Showing local as PiP');
+            secondaryVideo.style.display = 'none';
+            secondaryVideo.srcObject = null;
         }
     } else {
        callerName.style.display = 'none';
@@ -1983,10 +2046,10 @@ function applyBlurToSecondaryVideo() {
 function removeBlurFromSecondaryVideo() {
     if (secondaryVideo.poster) {
         secondaryVideo.poster = null; // Remove poster
-        secondaryVideo.srcObject = localStream; // Restore live stream
-        secondaryVideo.load(); // Force reload to display stream
+    }
+    if (localStream) {
+        secondaryVideo.srcObject = localStream; // Restore live stream (do not call load() - breaks MediaStream on iOS)
+        secondaryVideo.play().catch(function() {});
         console.log('Removed blur from secondaryVideo');
     }
-
-
 }
