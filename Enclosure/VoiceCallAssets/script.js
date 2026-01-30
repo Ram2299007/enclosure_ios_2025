@@ -1066,7 +1066,7 @@ muteMicBtn.addEventListener('click', () => {
     // Update UI
     if (isMicMuted) {
         muteMicBtn.classList.add('muted');
-        muteMicBtn.style.backgroundColor = getComputedStyle(document.documentElement).getPropertyValue('--theme-color').trim() || '#ff0000';
+        muteMicBtn.style.backgroundColor = getComputedStyle(document.documentElement).getPropertyValue('--theme-color').trim() || '#00A3E9';
         muteMicBtn.style.opacity = '0.7';
     } else {
         muteMicBtn.classList.remove('muted');
@@ -1090,7 +1090,7 @@ toggleCameraBtn.addEventListener('click', () => {
             }
 
             toggleCameraBtn.classList.add('muted');
-            toggleCameraBtn.style.backgroundColor = getComputedStyle(document.documentElement).getPropertyValue('--theme-color').trim() || '#ff0000';
+            toggleCameraBtn.style.backgroundColor = getComputedStyle(document.documentElement).getPropertyValue('--theme-color').trim() || '#00A3E9';
             toggleCameraBtn.style.opacity = '0.7';
             localStream.getVideoTracks().forEach(t => t.enabled = false);
             applyBlurToSecondaryVideo(); // Apply blur to secondaryVideo
@@ -1156,7 +1156,7 @@ switchCameraBtn.addEventListener('click', () => {
 
             if (currentFacingMode === 'environment') {
                 switchCameraBtn.style.backgroundColor = getComputedStyle(document.documentElement)
-                    .getPropertyValue('--theme-color').trim() || '#ff0000';
+                    .getPropertyValue('--theme-color').trim() || '#00A3E9';
                 switchCameraBtn.style.opacity = '0.7';
             } else {
                 switchCameraBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
@@ -1285,7 +1285,7 @@ document.addEventListener("DOMContentLoaded", () => {
             console.log('Add member button clicked');
             if (typeof Android !== 'undefined') {
                 addMemberBtn.style.backgroundColor = getComputedStyle(document.documentElement)
-                    .getPropertyValue('--theme-color').trim() || '#ff0000';
+                    .getPropertyValue('--theme-color').trim() || '#00A3E9';
                 Android.addMemberBtn();
             } else {
                 console.warn('Android interface not available');
@@ -1301,7 +1301,7 @@ document.addEventListener("DOMContentLoaded", () => {
             console.log('PiP button clicked');
             if (typeof Android !== 'undefined') {
                 pipButton.style.backgroundColor = getComputedStyle(document.documentElement)
-                    .getPropertyValue('--theme-color').trim() || '#ff0000';
+                    .getPropertyValue('--theme-color').trim() || '#00A3E9';
                 Android.enterPiPModes();
                 adjustForPiPMode();
             } else {
