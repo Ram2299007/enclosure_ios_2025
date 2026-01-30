@@ -1778,7 +1778,7 @@ function showLocalBlur() {
             blurImg.style.height = "100%";
             blurImg.style.objectFit = "cover";
             blurImg.style.zIndex = "5";
-            blurImg.style.background = "#000";
+            blurImg.style.background = "url('bg_blur.webp') center center / cover no-repeat";
             localVideo.parentElement.style.position = "relative";
             localVideo.parentElement.appendChild(blurImg);
         }

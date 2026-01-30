@@ -44,6 +44,14 @@ final class VideoCallSession: ObservableObject {
         self.webView = webView
     }
 
+    /// Call from WKNavigationDelegate didFinish so caller name/photo show as soon as page loads (before onPageReady from script).
+    func sendCallerInfoToWebViewIfNeeded() {
+        let safePhoto = payload.receiverPhoto.isEmpty ? "user.png" : payload.receiverPhoto
+        let safeName = payload.receiverName.isEmpty ? "Name" : payload.receiverName
+        sendToWebView("if (typeof setRemoteCallerInfo === 'function') { setRemoteCallerInfo('\(jsEscaped(safePhoto))', '\(jsEscaped(safeName))'); }")
+        sendToWebView("if (typeof setThemeColor === 'function') { setThemeColor('\(jsEscaped(Constant.themeColor))'); }")
+    }
+
     /// Call before loading the WebView URL so camera/mic are requested and WKWebView getUserMedia sees granted state.
     func requestCameraAndMicrophoneAccessIfNeeded() {
         requestCameraAndMicrophoneAccess()
@@ -140,7 +148,7 @@ final class VideoCallSession: ObservableObject {
         sendToWebView("setRemoteCallerInfo('\(jsEscaped(safePhoto))', '\(jsEscaped(safeName))')")
         sendToWebView("setThemeColor('\(jsEscaped(Constant.themeColor))')")
         // Default: start unmuted (do not restore saved mute state so mic is unmuted by default)
-        // Re-trigger camera/mic after page is ready so getUserMedia runs with permissions and bridge set up
+        // Re-trigger camera/mic after page is ready (guard in JS prevents double init)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.sendToWebView("if (typeof startLocalStreamWithRetry === 'function') { startLocalStreamWithRetry(0); }")
         }

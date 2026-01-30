@@ -4,7 +4,7 @@ body {
             height: 100vh;
             min-height: 100vh;
             overflow: hidden;
-            background-color:  url('bg_blur.webp') no-repeat center center fixed;
+            background: url('bg_blur.webp') no-repeat center center fixed;
             background-size: cover;
             font-family: sans-serif;
             position: fixed;
@@ -28,7 +28,7 @@ body {
             padding-top: env(safe-area-inset-top, 0);
             padding-bottom: env(safe-area-inset-bottom, 0);
             overflow: hidden;
-            background-color : url('bg_blur.webp') no-repeat center center fixed; /* removed static bg image */
+            background: url('bg_blur.webp') no-repeat center center fixed; /* removed static bg image */
             background-size: cover;
             box-sizing: border-box;
         }
@@ -335,8 +335,7 @@ body {
         }
 
         video {
-            background-color:  url('bg_blur.webp') no-repeat center center fixed; /* fallback for when poster is not set */
-            background-size: cover;
+            background: url('bg_blur.webp') no-repeat center center / cover; /* fallback for when poster is not set */
             object-fit: cover;
         }
 

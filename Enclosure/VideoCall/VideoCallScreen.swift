@@ -256,7 +256,10 @@ class VideoCallWebViewCoordinator: NSObject, WKNavigationDelegate, WKScriptMessa
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
 
-        // Start local stream (camera + mic) after page is ready and permissions may have been granted
+        // Show caller name/photo as soon as page loads (from videoCallView payload: receiverName = contact fullName)
+        session.sendCallerInfoToWebViewIfNeeded()
+
+        // Start local stream after page is ready (page also runs at 600ms; guard in JS prevents double init)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak webView] in
             guard let webView else { return }
             let startStreamJS = "if (typeof startLocalStreamWithRetry === 'function') { startLocalStreamWithRetry(0); } else if (typeof initializeLocalStream === 'function') { initializeLocalStream().catch(function(){}); }"
