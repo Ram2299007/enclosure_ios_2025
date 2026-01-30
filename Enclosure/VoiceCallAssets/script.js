@@ -189,7 +189,7 @@ const switchCameraBtn = document.getElementById('switchCamera');
 const addMemberBtn = document.getElementById('addMemberBtn');
 const endCallBtn = document.getElementById('endCall');
 const pipButton = document.getElementById('pipButton');
-let isMicMuted = false;
+let isMicMuted = true; // Default: start muted; user taps to unmute
 let isCameraOn = true;
 const lastPosters = new WeakMap();
 let lastLocalBlur = null;
@@ -204,6 +204,7 @@ window.updateVideoMirroring = updateVideoMirroring;
 window.applyConnectedLayoutFromPeers = applyConnectedLayoutFromPeers;
 window.reconnectPeer = reconnectPeer;
 window.handleNetworkResume = handleNetworkResume;
+window.applyInitialMuteState = applyInitialMuteState;
 
 // Initialize local stream as early as possible for faster camera startup
 // Enhanced WebView camera constraints for better compatibility
@@ -248,6 +249,11 @@ const initializeLocalStream = async () => {
         localVideo.muted = true; // Mute local video to prevent echo
         localVideo.autoplay = true; // Ensure autoplay
         localVideo.playsInline = true; // Ensure plays inline on mobile
+
+        // Apply saved mute state to audio tracks (e.g. restored from previous session)
+        if (isMicMuted && stream.getAudioTracks().length) {
+            stream.getAudioTracks().forEach(t => t.enabled = false);
+        }
 
         // Force play with error handling
         try {
@@ -296,6 +302,9 @@ const initializeLocalStream = async () => {
                 localVideo.style.display = 'block';
                 secondaryVideo.style.display = 'none';
                 remoteVideos.style.display = 'none';
+                if (isMicMuted && stream.getAudioTracks().length) {
+                    stream.getAudioTracks().forEach(t => t.enabled = false);
+                }
                 updateVideoMirroring();
                 console.log('WebView camera initialized with fallback constraints');
                 statusBar.textContent = 'Camera ready (fallback mode)';
@@ -433,11 +442,10 @@ peer.on('call', call => {
                 statusBar.textContent = 'Error: Camera/Mic access denied';
             });
     } else {
-        // Ensure tracks are enabled
+        // Ensure tracks match mute/camera state (don't force-enable and overwrite mute)
         localStream.getTracks().forEach(track => {
-            if (!track.enabled) {
-                track.enabled = true;
-            }
+            if (track.kind === 'video') track.enabled = isCameraOn;
+            else if (track.kind === 'audio') track.enabled = !isMicMuted;
         });
         call.answer(localStream);
         console.log('Answering call with existing local stream');
@@ -499,11 +507,10 @@ function handleSignalingData(data) {
                     statusBar.textContent = 'Error: Camera/Mic access denied';
                 });
         } else {
-            // Ensure tracks are enabled
+            // Ensure tracks match mute/camera state (don't force-enable and overwrite mute)
             localStream.getTracks().forEach(track => {
-                if (!track.enabled) {
-                    track.enabled = true;
-                }
+                if (track.kind === 'video') track.enabled = isCameraOn;
+                else if (track.kind === 'audio') track.enabled = !isMicMuted;
             });
             const call = peer.call(sender, localStream);
             console.log('Calling peer with existing local stream:', sender);
@@ -571,11 +578,10 @@ function connectToPeer(peerId, retries = 3, delay = 5000) {
                 }
             });
     } else {
-        // Ensure tracks are enabled
+        // Ensure tracks match mute/camera state (don't force-enable and overwrite mute)
         localStream.getTracks().forEach(track => {
-            if (!track.enabled) {
-                track.enabled = true;
-            }
+            if (track.kind === 'video') track.enabled = isCameraOn;
+            else if (track.kind === 'audio') track.enabled = !isMicMuted;
         });
         const call = peer.call(peerId, localStream);
         console.log('Calling peer with existing local stream:', peerId);
@@ -1041,37 +1047,75 @@ function adjustForPiPMode() {
     }, 0);
 }
 
-muteMicBtn.addEventListener('click', () => {
-    isMicMuted = !isMicMuted;
-
-    // Mute WebRTC stream
-    if (localStream) {
-        localStream.getAudioTracks().forEach(t => t.enabled = !isMicMuted);
-        console.log('WebRTC Microphone muted:', isMicMuted);
-    }
-
-    // Mute system microphone via Android interface
-    if (typeof Android !== 'undefined' && Android.toggleMicrophone) {
-        try {
-            Android.toggleMicrophone(isMicMuted);
-            Android.saveMuteState(isMicMuted);
-            console.log('System Microphone mute state sent to Android:', isMicMuted);
-        } catch (err) {
-            console.error('Failed to call Android.toggleMicrophone:', err);
-        }
-    } else {
-        console.warn('Android interface or toggleMicrophone method not available');
-    }
-
-    // Update UI
+/** Update mute button appearance to match isMicMuted */
+function updateMuteButtonUI() {
+    if (!muteMicBtn) return;
     if (isMicMuted) {
         muteMicBtn.classList.add('muted');
+        muteMicBtn.title = 'Unmute Mic';
         muteMicBtn.style.backgroundColor = getComputedStyle(document.documentElement).getPropertyValue('--theme-color').trim() || '#00A3E9';
         muteMicBtn.style.opacity = '0.7';
     } else {
         muteMicBtn.classList.remove('muted');
+        muteMicBtn.title = 'Mute Mic';
         muteMicBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
         muteMicBtn.style.opacity = '1';
+    }
+}
+
+/** Apply mute state (e.g. from native when page loads). Muted = true means mic is off. */
+function applyInitialMuteState(muted) {
+    isMicMuted = !!muted;
+    if (localStream && localStream.getAudioTracks().length) {
+        localStream.getAudioTracks().forEach(t => t.enabled = !isMicMuted);
+        console.log('Applied initial mute state to WebRTC:', isMicMuted);
+    }
+    updateMuteButtonUI();
+    if (typeof Android !== 'undefined') {
+        try {
+            if (Android.toggleMicrophone) Android.toggleMicrophone(isMicMuted);
+            if (Android.saveMuteState) Android.saveMuteState(isMicMuted);
+        } catch (err) {
+            console.warn('applyInitialMuteState: Android bridge error', err);
+        }
+    }
+}
+
+muteMicBtn.addEventListener('click', () => {
+    isMicMuted = !isMicMuted;
+
+    // 1) Mute voice immediately: local stream audio tracks
+    if (localStream && localStream.getAudioTracks) {
+        const tracks = localStream.getAudioTracks();
+        for (let i = 0; i < tracks.length; i++) {
+            tracks[i].enabled = !isMicMuted;
+        }
+        console.log('WebRTC Microphone muted:', isMicMuted, 'localStream audio tracks:', tracks.length);
+    }
+
+    // 2) Also mute audio on every peer connection (tracks actually being sent)
+    Object.values(peers).forEach(p => {
+        if (p.call && p.call.peerConnection) {
+            const senders = p.call.peerConnection.getSenders();
+            senders.forEach(s => {
+                if (s.track && s.track.kind === 'audio') {
+                    s.track.enabled = !isMicMuted;
+                }
+            });
+        }
+    });
+
+    // 3) Update button (theme color) at same time
+    updateMuteButtonUI();
+
+    // 4) Notify native (iOS/Android) so system mic can mute too
+    if (typeof Android !== 'undefined') {
+        try {
+            if (Android.toggleMicrophone) Android.toggleMicrophone(isMicMuted);
+            if (Android.saveMuteState) Android.saveMuteState(isMicMuted);
+        } catch (err) {
+            console.error('Failed to call Android.toggleMicrophone:', err);
+        }
     }
 });
 
@@ -1234,6 +1278,14 @@ peer.on('error', err => {
 });
 
 document.addEventListener("DOMContentLoaded", () => {
+    // Show muted state on load (default is muted)
+    updateMuteButtonUI();
+
+    // Notify native (iOS/Android) that page is ready so it can send roomId, theme, and initial mute state
+    if (typeof Android !== 'undefined' && Android.onPageReady) {
+        try { Android.onPageReady(); } catch (e) { console.warn('onPageReady failed', e); }
+    }
+
     const backBtn = document.getElementById('backBtn');
     const addMemberBtn = document.getElementById('addMemberBtn');
     const pipButton = document.getElementById('pipButton');

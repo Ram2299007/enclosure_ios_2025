@@ -139,6 +139,9 @@ final class VideoCallSession: ObservableObject {
         let safeName = payload.receiverName.isEmpty ? "Name" : payload.receiverName
         sendToWebView("setRemoteCallerInfo('\(jsEscaped(safePhoto))', '\(jsEscaped(safeName))')")
         sendToWebView("setThemeColor('\(jsEscaped(Constant.themeColor))')")
+        // Restore saved mute state so mic starts muted if user left it muted last time
+        let savedMuted = UserDefaults.standard.bool(forKey: "video_call_muted")
+        sendToWebView("if (typeof applyInitialMuteState === 'function') applyInitialMuteState(\(savedMuted));")
         // Re-trigger camera/mic after page is ready so getUserMedia runs with permissions and bridge set up
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.sendToWebView("if (typeof startLocalStreamWithRetry === 'function') { startLocalStreamWithRetry(0); }")
