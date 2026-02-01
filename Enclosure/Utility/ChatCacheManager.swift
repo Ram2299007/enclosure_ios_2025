@@ -127,6 +127,26 @@ final class ChatCacheManager {
         }
     }
     
+    /// Upserts a single contact so device_type and f_token are available for send_notification_api when ChattingScreen is opened from chatView.
+    func upsertContact(_ contact: UserActiveContactModel) {
+        queue.async {
+            guard let db = self.db else { return }
+            let insertSQL = """
+            INSERT OR REPLACE INTO chats
+            (uid, photo, full_name, mobile_no, caption, sent_time, data_type, message, f_token, notification, msg_limit, device_type, message_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """
+            var statement: OpaquePointer?
+            if sqlite3_prepare_v2(db, insertSQL, -1, &statement, nil) == SQLITE_OK {
+                self.bind(chat: contact, to: statement)
+                if sqlite3_step(statement) == SQLITE_DONE {
+                    print("🔑 [ChatCacheManager] Upserted contact for uid: \(contact.uid), device_type: \(contact.deviceType)")
+                }
+                sqlite3_finalize(statement)
+            }
+        }
+    }
+    
     /// Returns receiver's device_type from cache (e.g. "1" = Android, "2" = iOS). Backend uses this to build FCM payload (iOS needs notification block).
     func getDeviceType(for uid: String, completion: @escaping (String?) -> Void) {
         queue.async {

@@ -57,7 +57,7 @@ final class NewGroupViewModel: ObservableObject {
             return
         }
         
-        ApiService.get_user_active_chat_list(uid: uid) { success, message, data in
+        ApiService.get_user_active_chat_list(uid: uid) { success, message, data, _ in
             DispatchQueue.main.async {
                 self.isLoading = false
                 if success {

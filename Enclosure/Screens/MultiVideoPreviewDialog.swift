@@ -618,8 +618,7 @@ struct MultiVideoPreviewDialog: View {
                 MessageUploadService.shared.uploadMessage(
                     model: newMessage,
                     filePath: nil,
-                    userFTokenKey: userFTokenKey,
-                    deviceType: "2"
+                    userFTokenKey: userFTokenKey
                 ) { success, errorMessage in
                     if success {
                         print("✅ [MULTI_VIDEO] Uploaded video \(result.index + 1)/\(sortedResults.count) for modelId=\(videoModelId)")

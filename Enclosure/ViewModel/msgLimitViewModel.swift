@@ -51,7 +51,7 @@ class MsgLimitViewModel: ObservableObject {
             return
         }
         
-        ApiService.get_user_active_chat_list_for_msgLmt(uid: uid) { success, message, data in
+        ApiService.get_user_active_chat_list_for_msgLmt(uid: uid) { success, message, data, _ in
             DispatchQueue.main.async {
                 self.isLoading = false
                 if success {

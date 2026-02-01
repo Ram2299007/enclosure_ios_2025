@@ -28,6 +28,7 @@ struct Constant{
     static let profilePic = "profilePic"
     static let full_name = "full_name"
     static let ThemeColorKey = "ThemeColorKey"
+    static let DEVICE_TYPE_KEY = "DEVICE_TYPE_KEY"
     
     // Firebase constants (matching Android Constant.java)
     static let CHAT = "chats"
@@ -46,6 +47,10 @@ struct Constant{
     static let TYPEINDICATOR = "typingIndicator"
     static let incomingVoiceCall = "Incoming voice call"
 
+    /// Current user device type from API (get_profile / verify_otp). "2" = iOS, "1" = Android. Fallback "2" if not yet fetched.
+    static var deviceType: String {
+        UserDefaults.standard.string(forKey: Constant.DEVICE_TYPE_KEY) ?? "2"
+    }
 
     static var SenderIdMy: String {
         return UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? "0"

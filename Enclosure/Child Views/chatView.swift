@@ -245,6 +245,9 @@ struct chatView: View {
                             // Single tap - only execute if not a long press and profile image wasn't tapped
                             if !isLongPressing && !profileImageTapped {
                                 print("Tapped: \(chat.fullName)") // Handle single tap
+                                // Store selected user's device_type so notification sends original value (Priti "1", Ram "CED8A147-..." etc.)
+                                ChatCacheManager.shared.upsertContact(chat)
+                                print("[NOTIF_RECEIVER_DEVICE] selected receiver_uid=\(chat.uid) full_name=\(chat.fullName) device_type=\(chat.deviceType)")
                                 // Navigate to chatting screen
                                 DispatchQueue.main.async {
                                     selectedChatForNavigation = chat

@@ -392,8 +392,7 @@ struct GroupMultiContactPreviewDialog: View {
             MessageUploadService.shared.uploadGroupMessage(
                 model: newMessage,
                 filePath: nil,
-                userFTokenKey: userFTokenKey,
-                deviceType: "2"
+                userFTokenKey: userFTokenKey
             ) { success, errorMessage in
                 if success {
                     print("✅ [GROUP_MULTI_CONTACT] Uploaded contact \(index + 1)/\(selectedContacts.count) for modelId=\(contactModelId) using GROUP API")

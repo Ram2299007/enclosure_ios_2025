@@ -421,6 +421,7 @@ struct callView: View {
         .onAppear {
             isTopHeaderVisible = false
             callLogViewModel.fetchCallLogs(uid: Constant.SenderIdMy, force: true)
+            viewModel.fetchContactList(uid: Constant.SenderIdMy)
         }
         .onChange(of: isSearchVisible) { isVisible in
             if isVisible {
@@ -458,9 +459,7 @@ extension callView {
         withAnimation {
             selectedTab = .contact
         }
-        if viewModel.contactList.isEmpty {
-            viewModel.fetchContactList(uid: Constant.SenderIdMy)
-        }
+        viewModel.fetchContactList(uid: Constant.SenderIdMy)
     }
     
     private func handleCallHistorySelection(entry: CallLogUserInfo) {

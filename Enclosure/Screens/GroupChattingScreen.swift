@@ -2346,8 +2346,7 @@ struct GroupChattingScreen: View {
             MessageUploadService.shared.uploadGroupMessage(
                 model: updatedMessage,
                 filePath: nil,
-                userFTokenKey: userFTokenKey,
-                deviceType: "2"
+                userFTokenKey: userFTokenKey
             ) { success, errorMessage in
                 if success {
                     print("✅ [GROUP_MULTI_IMAGE] Uploaded \(sortedResults.count) images for modelId=\(modelId) using GROUP API")
@@ -2979,15 +2978,12 @@ struct GroupChattingScreen: View {
                 DispatchQueue.main.async {
                     // Get user FCM token
                     let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
-                    let deviceType = "2" // iOS device type
-                    
                     // Use MessageUploadService.uploadGroupMessage (matching Android GroupMessageUploadService)
-                    // Use GroupChatMessage for upload (matching Android group_messageModel)
+                    // Use GroupChatMessage for upload (matching Android group_messageModel); device_type from API only
                     MessageUploadService.shared.uploadGroupMessage(
                         model: newMessage, // GroupChatMessage
                         filePath: nil, // Text messages don't have files
-                        userFTokenKey: userFTokenKey,
-                        deviceType: deviceType
+                        userFTokenKey: userFTokenKey
                     ) { success, errorMessage in
                         if success {
                             print("✅ MessageUploadService: Group message uploaded successfully with ID: \(modelId)")
@@ -4297,8 +4293,7 @@ struct GroupChattingScreen: View {
                 MessageUploadService.shared.uploadGroupMessage(
                     model: newMessage,
                     filePath: fileURL.path,
-                    userFTokenKey: userFTokenKey,
-                    deviceType: "2"
+                    userFTokenKey: userFTokenKey
                 ) { success, errorMessage in
                     if success {
                         print("✅ [VOICE_RECORDING] Uploaded group audio for modelId=\(modelId)")

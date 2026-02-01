@@ -251,6 +251,10 @@ extension youView {
         profile = newProfile
         UserDefaults.standard.set(newProfile.photo, forKey: Constant.profilePic)
         UserDefaults.standard.set(newProfile.full_name, forKey: Constant.full_name)
+        // Only save device_type when it matches get_user_active_chat_list format ("1" or "2"), not UUID
+        if !newProfile.device_type.isEmpty, (newProfile.device_type == "1" || newProfile.device_type == "2") {
+            UserDefaults.standard.set(newProfile.device_type, forKey: Constant.DEVICE_TYPE_KEY)
+        }
         if let newThemeColor = newProfile.themeColor, !newThemeColor.isEmpty {
             themeColorHex = newThemeColor
             UserDefaults.standard.set(newThemeColor, forKey: Constant.ThemeColorKey)

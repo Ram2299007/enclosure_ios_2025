@@ -87,7 +87,7 @@ class ChatViewModel: ObservableObject {
             return
         }
         
-        ApiService.get_user_active_chat_list(uid: uid) { success, message, data in
+        ApiService.get_user_active_chat_list(uid: uid) { success, message, data, myDeviceType in
             DispatchQueue.main.async {
                 self.isFetchInFlight = false
                 print("🔵 [ChatViewModel] API callback received - success: \(success), message: '\(message)', data count: \(data?.count ?? 0)")
@@ -100,6 +100,12 @@ class ChatViewModel: ObservableObject {
                     self.hasCachedChats = !self.chatList.isEmpty
                     print("🔵 [ChatViewModel] SUCCESS - chatList count: \(self.chatList.count), errorMessage: \(self.errorMessage ?? "nil")")
                     
+                    // Sender device_type from get_user_active_chat_list (for send_notification_api) - do not use static "2"
+                    if let dt = myDeviceType, !dt.isEmpty {
+                        UserDefaults.standard.set(dt, forKey: Constant.DEVICE_TYPE_KEY)
+                        print("🔵 [ChatViewModel] device_type from get_user_active_chat_list (my_device_type): \(dt)")
+                    }
+                    
                     // Print FCM tokens for all contacts
                     print("🔵 [ChatViewModel] ===== CONTACT FCM TOKENS =====")
                     for (index, contact) in self.chatList.enumerated() {
@@ -111,6 +117,16 @@ class ChatViewModel: ObservableObject {
                     
                     self.cacheManager.cacheChats(self.chatList)
                     print("🔵 [ChatViewModel] Contacts cached to SQLite database")
+                    
+                    // Optionally refresh device_type from get_profile only when value is "1" or "2" (same format as get_user_active_chat_list)
+                    if myDeviceType == nil || myDeviceType?.isEmpty == true {
+                        ApiService.get_profile(uid: uid) { _, profile, _ in
+                            if let dt = profile?.device_type, !dt.isEmpty, (dt == "1" || dt == "2") {
+                                UserDefaults.standard.set(dt, forKey: Constant.DEVICE_TYPE_KEY)
+                                print("🔵 [ChatViewModel] device_type from get_profile (1/2): \(dt)")
+                            }
+                        }
+                    }
                 } else {
                     // Only set error message if message is not empty
                     self.errorMessage = message.isEmpty ? nil : message

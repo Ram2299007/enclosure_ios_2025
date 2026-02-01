@@ -233,6 +233,9 @@ struct ChattingScreen: View {
                 .onAppear {
                     // Mark chat screen active for this receiver (matching Android chattingScreen.isChatScreenActive / isChatScreenActiveUid) to suppress FCM chat notifications
                     FirebaseManager.shared.chatScreenActiveUid = contact.uid
+                    // Store selected user's device_type so notification sends original value
+                    ChatCacheManager.shared.upsertContact(contact)
+                    print("[NOTIF_RECEIVER_DEVICE] on_appear receiver_uid=\(contact.uid) full_name=\(contact.fullName) device_type=\(contact.deviceType)")
                     print("🚫 [BLOCK] ChattingScreen appeared - showBlockCard: \(showBlockCard), isUserBlocked: \(isUserBlocked)")
                     print("🚫 [BLOCK] Contact: \(contact.fullName), UID: \(contact.uid)")
                     print("🚫 [BLOCK] Contact block status from API - block: \(contact.block), iamblocked: \(contact.iamblocked)")
@@ -4725,7 +4728,7 @@ struct ChattingScreen: View {
         // Get user FCM token (matching Android)
         let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
         let myUID = Constant.SenderIdMy
-        let deviceType = "2" // iOS device type
+        let deviceType = Constant.deviceType
         
         // Get user name and photo
         let userName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
@@ -4807,8 +4810,7 @@ struct ChattingScreen: View {
                 MessageUploadService.shared.uploadMessage(
                     model: forwardedMessage,
                     filePath: nil, // Forwarded messages use existing URLs
-                    userFTokenKey: contactToken.isEmpty ? userFTokenKey : contactToken,
-                    deviceType: deviceType
+                    userFTokenKey: contactToken.isEmpty ? userFTokenKey : contactToken
                 ) { success, errorMessage in
                     DispatchQueue.main.async {
                         if success {
@@ -5079,14 +5081,13 @@ struct ChattingScreen: View {
                     DispatchQueue.main.async {
                         // Get user FCM token
                         let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
-                        let deviceType = "2" // iOS device type
+                        let deviceType = Constant.deviceType
                         
                         // Use MessageUploadService (matching Android MessageUploadService)
                         MessageUploadService.shared.uploadMessage(
                             model: newMessage,
                             filePath: nil, // Text messages don't have files
-                            userFTokenKey: userFTokenKey,
-                            deviceType: deviceType
+                            userFTokenKey: userFTokenKey
                         ) { success, errorMessage in
                             if success {
                                 print("✅ MessageUploadService: Message uploaded successfully with ID: \(modelId)")
@@ -5984,8 +5985,7 @@ struct ChattingScreen: View {
             MessageUploadService.shared.uploadMessage(
                         model: updatedMessage,
                 filePath: nil,
-                userFTokenKey: userFTokenKey,
-                deviceType: "2"
+                userFTokenKey: userFTokenKey
             ) { success, errorMessage in
                 if success {
                     print("✅ [MULTI_IMAGE] Uploaded \(sortedResults.count) images for modelId=\(modelId)")
@@ -6539,8 +6539,7 @@ struct ChattingScreen: View {
                 MessageUploadService.shared.uploadMessage(
                     model: newMessage,
                     filePath: fileURL.path,
-                    userFTokenKey: userFTokenKey,
-                    deviceType: "2"
+                    userFTokenKey: userFTokenKey
                 ) { success, errorMessage in
                     if success {
                         print("✅ [VOICE_RECORDING] Uploaded audio for modelId=\(modelId)")

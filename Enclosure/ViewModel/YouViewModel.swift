@@ -58,6 +58,10 @@ class YouViewModel: ObservableObject {
                     self.list = profiles
                     self.hasCachedProfile = !profiles.isEmpty
                     self.cacheManager.cacheYouProfiles(profiles)
+                    // Only save device_type when it matches get_user_active_chat_list format ("1" or "2"), not UUID
+                    if let first = profiles.first, !first.device_type.isEmpty, (first.device_type == "1" || first.device_type == "2") {
+                        UserDefaults.standard.set(first.device_type, forKey: Constant.DEVICE_TYPE_KEY)
+                    }
                 } else {
                     if !self.hasCachedProfile {
                         self.loadCachedProfile(reason: .error(message))

@@ -26,9 +26,11 @@ class MessageUploadService {
         model: ChatMessage,
         filePath: String? = nil,
         userFTokenKey: String,
-        deviceType: String = "2", // iOS device type
+        deviceType: String? = nil,
         completion: @escaping (Bool, String?) -> Void
     ) {
+        // Use value from API (get_user_active_chat_list my_device_type / verify_otp / get_profile "1"|"2") only; do not send static "2"
+        let senderDeviceType = deviceType ?? UserDefaults.standard.string(forKey: Constant.DEVICE_TYPE_KEY) ?? ""
         print("📤 MessageUploadService: Starting upload for modelId=\(model.id)")
         
         // Check if selectionBunch has URLs (indicating pre-uploaded files)
@@ -149,7 +151,7 @@ class MessageUploadService {
                     if let data = json["data"] as? [String: Any] {
                         self.updateFirebaseDatabase(model: model) { success in
                             if success {
-                                // Get receiver's FCM token from contact database (not sender's token)
+                                // Get receiver's FCM token and device_type from cache (populated when user opens ChattingScreen from chatView or from get_user_active_chat_list)
                                 ChatCacheManager.shared.getFCMToken(for: model.receiverId) { receiverFCMToken in
                                     let finalReceiverFCMToken = receiverFCMToken ?? userFTokenKey
                                     ChatCacheManager.shared.getDeviceType(for: model.receiverId) { receiverDeviceType in
@@ -160,13 +162,13 @@ class MessageUploadService {
                                             print("⚠️ [SEND_NOTIFICATION_API] Using fallback token: \(userFTokenKey.prefix(50))...")
                                         }
                                         if let rdt = receiverDeviceType {
-                                            print("🔑 [SEND_NOTIFICATION_API] Receiver device type: \(rdt) (\(rdt == "2" ? "iOS" : "Android"))")
+                                            print("[NOTIF_RECEIVER_DEVICE] from_cache receiver_uid=\(model.receiverId) device_type=\(rdt)")
                                         }
                                         if !finalReceiverFCMToken.isEmpty {
                                             self.sendPushNotificationIfNeeded(
                                                 model: model,
                                                 userFTokenKey: finalReceiverFCMToken,
-                                                deviceType: deviceType,
+                                                deviceType: senderDeviceType,
                                                 receiverDeviceType: receiverDeviceType
                                             )
                                         }
@@ -203,9 +205,10 @@ class MessageUploadService {
         model: GroupChatMessage,
         filePath: String? = nil,
         userFTokenKey: String,
-        deviceType: String = "2", // iOS device type
+        deviceType: String? = nil,
         completion: @escaping (Bool, String?) -> Void
     ) {
+        let senderDeviceType = deviceType ?? UserDefaults.standard.string(forKey: Constant.DEVICE_TYPE_KEY) ?? ""
         print("📤 MessageUploadService: Starting group upload for modelId=\(model.id)")
         
         // Check if selectionBunch has URLs (indicating pre-uploaded files)
@@ -355,7 +358,7 @@ class MessageUploadService {
                                     self.sendGroupNotificationAPI(
                                         model: model,
                                         userFTokenKey: userFTokenKey,
-                                        deviceType: deviceType,
+                                        deviceType: senderDeviceType,
                                         groupMembers: groupMembers
                                     )
                                 } else {
@@ -568,6 +571,13 @@ class MessageUploadService {
         return map
     }
     
+    /// Normalizes device_type for send_notification_api: backend expects "1" (Android) or "2" (iOS). If API returned a UUID (e.g. get_profile), send "2" for iOS app so backend adds FCM notification block.
+    private func normalizedSenderDeviceTypeForNotification(_ deviceType: String) -> String {
+        if deviceType == "1" || deviceType == "2" { return deviceType }
+        // UUID or other value from get_profile -> backend expects "2" for iOS
+        return "2"
+    }
+    
     // MARK: - Send Push Notification (matching Android sendPushNotification)
     private func sendPushNotificationIfNeeded(
         model: ChatMessage,
@@ -696,10 +706,25 @@ class MessageUploadService {
             requestJson["user_name"] = self.safeString(userName1)
             requestJson["photo"] = self.safeString(profile)
             requestJson["currentDateTimeString"] = self.safeString(sentTime)
-            requestJson["deviceType"] = self.safeString(deviceType)
-            // Backend uses receiverDeviceType to build FCM payload: for iOS ("2") include notification { title, body } so APNs shows it.
+            // device_type / deviceType = selected user's original device_type from get_user_active_chat_list (e.g. Priti "1", Ram "CED8A147-..."). Pass as-is.
+            let targetDeviceType: String
+            if let rdt = receiverDeviceType, !rdt.isEmpty {
+                targetDeviceType = rdt
+                print("[NOTIF_RECEIVER_DEVICE] receiver_uid=\(model.receiverId) device_type=\(rdt)")
+            } else {
+                targetDeviceType = normalizedSenderDeviceTypeForNotification(deviceType)
+                print("[NOTIF_RECEIVER_DEVICE] receiver_uid=\(model.receiverId) device_type=\(targetDeviceType) (fallback: not in cache)")
+            }
+            requestJson["deviceType"] = self.safeString(targetDeviceType)
+            requestJson["device_type"] = self.safeString(targetDeviceType)
             if let rdt = receiverDeviceType, !rdt.isEmpty {
                 requestJson["receiverDeviceType"] = self.safeString(rdt)
+                requestJson["receiver_device_type"] = self.safeString(rdt)
+            }
+            if !deviceType.isEmpty {
+                let normalizedSender = normalizedSenderDeviceTypeForNotification(deviceType)
+                requestJson["sender_device_type"] = self.safeString(normalizedSender)
+                requestJson["senderDeviceType"] = self.safeString(normalizedSender)
             }
             requestJson["click_action"] = "OPEN_ACTIVITY_1"
             requestJson["icon"] = "notification_icon"
@@ -1040,7 +1065,10 @@ class MessageUploadService {
         requestJson["user_name"] = self.safeString(userName)
         requestJson["photo"] = self.safeString(profilePic)
         requestJson["currentDateTimeString"] = self.safeString(model.time)
-        requestJson["deviceType"] = self.safeString(deviceType)
+        if !deviceType.isEmpty {
+            let normalizedSender = normalizedSenderDeviceTypeForNotification(deviceType)
+            requestJson["deviceType"] = self.safeString(normalizedSender)
+        }
         requestJson["bodyKey"] = Constant.chatting
         requestJson["click_action"] = "OPEN_ACTIVITY_1"
         requestJson["icon"] = "notification_icon"

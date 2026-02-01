@@ -652,8 +652,7 @@ struct GroupMultiVideoPreviewDialog: View {
                 MessageUploadService.shared.uploadGroupMessage(
                     model: newMessage,
                     filePath: nil,
-                    userFTokenKey: userFTokenKey,
-                    deviceType: "2"
+                    userFTokenKey: userFTokenKey
                 ) { success, errorMessage in
                     if success {
                         print("✅ [GROUP_MULTI_VIDEO] Uploaded video \(result.index + 1)/\(sortedResults.count) for modelId=\(videoModelId) using GROUP API")

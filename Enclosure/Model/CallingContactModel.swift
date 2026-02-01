@@ -33,7 +33,12 @@ struct CallingContactModel: Codable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
-        uid = try container.decode(String.self, forKey: .uid)
+        // API returns uid as Int or String
+        if let uidInt = try? container.decode(Int.self, forKey: .uid) {
+            uid = String(uidInt)
+        } else {
+            uid = try container.decode(String.self, forKey: .uid)
+        }
         photo = try container.decode(String.self, forKey: .photo)
         fullName = try container.decode(String.self, forKey: .fullName)
         mobileNo = try container.decode(String.self, forKey: .mobileNo)

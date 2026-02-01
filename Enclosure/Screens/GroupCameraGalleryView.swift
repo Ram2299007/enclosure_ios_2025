@@ -962,8 +962,7 @@ struct GroupCameraGalleryView: View {
             MessageUploadService.shared.uploadMessage(
                 model: newMessage,
                 filePath: nil,
-                userFTokenKey: userFTokenKey,
-                deviceType: "2"
+                userFTokenKey: userFTokenKey
             ) { success, errorMessage in
                 if success {
                     print("✅ [GROUP_CAMERA_MULTI_IMAGE] Uploaded \(sortedResults.count) images for modelId=\(modelId)")

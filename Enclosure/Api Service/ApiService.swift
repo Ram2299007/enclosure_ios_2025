@@ -409,7 +409,7 @@ class ApiService {
 
 
 
-    static func get_user_active_chat_list(uid: String, completion: @escaping (Bool, String, [UserActiveContactModel]?) -> Void) {
+    static func get_user_active_chat_list(uid: String, completion: @escaping (Bool, String, [UserActiveContactModel]?, String?) -> Void) {
         let url = Constant.baseURL+"get_user_active_chat_list"
         let parameters: [String: Any] = ["uid": uid]
         
@@ -437,8 +437,12 @@ class ApiService {
                         let decoded = try JSONDecoder().decode(UserContactResponse.self, from: data)
                         let chatList = decoded.data ?? []
                         let message = decoded.message.lowercased()
+                        let myDeviceType = decoded.myDeviceType
                         
                         print("🟢 [ApiService] Decoded - errorCode: '\(decoded.errorCode)', message: '\(decoded.message)', data count: \(chatList.count)")
+                        if let dt = myDeviceType, !dt.isEmpty {
+                            print("🟢 [ApiService] my_device_type from get_user_active_chat_list: \(dt)")
+                        }
                         
                         // Print detailed contact information including FCM tokens
                         print("🟢 [ApiService] ===== CONTACT LIST DETAILS =====")
@@ -459,13 +463,13 @@ class ApiService {
                         
                         // Treat "Data not found" as success with empty data, not an error
                         if decoded.errorCode == "200" || message.contains("data not found") || message.contains("no data") {
-                            // Success case: return empty array if no data
+                            // Success case: return empty array if no data; pass my_device_type from API for sender in send_notification_api
                             print("🟢 [ApiService] Treating as SUCCESS - calling completion(true, \"\", \(chatList.count) items)")
-                            completion(true, "", chatList)
+                            completion(true, "", chatList, myDeviceType)
                         } else {
                             // Actual error case
                             print("🟢 [ApiService] Treating as ERROR - calling completion(false, '\(decoded.message)', \(chatList.count) items)")
-                            completion(false, decoded.message, chatList)
+                            completion(false, decoded.message, chatList, nil)
                         }
                     } catch {
                         print("🔴 [ApiService] Decoding error: \(error.localizedDescription)")
@@ -514,21 +518,24 @@ class ApiService {
                                     
                                     print("🟢 [ApiService] Successfully parsed \(parsedChatList.count) items")
                                     print("🟢 [ApiService] ===== END CONTACT LIST (Manual Parse) =====")
-                                    completion(true, "", parsedChatList)
+                                    let myDeviceType = json["my_device_type"] as? String
+                                    completion(true, "", parsedChatList, myDeviceType)
                                 } else {
                                     print("🟢 [ApiService] No data array found or empty - treating as SUCCESS with empty array")
-                                    completion(true, "", [])
+                                    let myDeviceType = json["my_device_type"] as? String
+                                    completion(true, "", [], myDeviceType)
                                 }
                             } else if lowerMessage.contains("data not found") || lowerMessage.contains("no data") {
                                 print("🟢 [ApiService] Message contains 'data not found' - treating as SUCCESS")
-                                completion(true, "", [])
+                                let myDeviceType = json["my_device_type"] as? String
+                                completion(true, "", [], myDeviceType)
                             } else {
                                 print("🟢 [ApiService] Treating as ERROR - errorCode: '\(errorCode)', message: '\(message)'")
-                                completion(false, message.isEmpty ? "Decoding failed: \(error.localizedDescription)" : message, nil)
+                                completion(false, message.isEmpty ? "Decoding failed: \(error.localizedDescription)" : message, nil, nil)
                             }
                         } else {
                             print("🔴 [ApiService] Could not extract data from raw response")
-                            completion(false, "Decoding failed: \(error.localizedDescription)", nil)
+                            completion(false, "Decoding failed: \(error.localizedDescription)", nil, nil)
                         }
                     }
 
@@ -536,7 +543,7 @@ class ApiService {
                     let failBody = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
                     print("🔴 [get_user_active_chat_list] FAILED: \(error.localizedDescription), Body=\(failBody)")
                     print("🔴 [ApiService] Request error: \(error.localizedDescription)")
-                    completion(false, error.localizedDescription, nil)
+                    completion(false, error.localizedDescription, nil, nil)
                 }
             }
     }
@@ -1333,7 +1340,7 @@ class ApiService {
 
 
 
-    static func get_user_active_chat_list_for_msgLmt(uid: String, completion: @escaping (Bool, String, [UserActiveContactModel]?) -> Void) {
+    static func get_user_active_chat_list_for_msgLmt(uid: String, completion: @escaping (Bool, String, [UserActiveContactModel]?, String?) -> Void) {
         let url = Constant.baseURL+"get_user_active_chat_list"
         let parameters: [String: Any] = ["uid": uid]
         print("📤 [get_user_active_chat_list] REQUEST (msgLmt): POST \(url), uid=\(uid)")
@@ -1350,14 +1357,13 @@ class ApiService {
                         let decoded = try JSONDecoder().decode(UserContactResponse.self, from: data)
                         let chatList = decoded.data ?? []
                         let message = decoded.message.lowercased()
+                        let myDeviceType = decoded.myDeviceType
                         
                         // Treat "Data not found" as success with empty data, not an error
                         if decoded.errorCode == "200" || message.contains("data not found") || message.contains("no data") {
-                            // Success case: return empty array if no data
-                            completion(true, "", chatList)
+                            completion(true, "", chatList, myDeviceType)
                         } else {
-                            // Actual error case
-                            completion(false, decoded.message, chatList)
+                            completion(false, decoded.message, chatList, nil)
                         }
                     } catch {
                         print("Decoding error: \(error.localizedDescription)")
@@ -1367,20 +1373,20 @@ class ApiService {
                            let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
                            let message = json["message"] as? String {
                             let lowerMessage = message.lowercased()
-                            // If message is "Data not found", treat as success with empty data
+                            let myDeviceType = json["my_device_type"] as? String
                             if lowerMessage.contains("data not found") || lowerMessage.contains("no data") {
-                                completion(true, "", [])
+                                completion(true, "", [], myDeviceType)
                             } else {
-                                completion(false, message, nil)
+                                completion(false, message, nil, nil)
                             }
                         } else {
-                            completion(false, "Decoding failed: \(error.localizedDescription)", nil)
+                            completion(false, "Decoding failed: \(error.localizedDescription)", nil, nil)
                         }
                     }
 
                 case .failure(let error):
                     print("Request error: \(error.localizedDescription)")
-                    completion(false, error.localizedDescription, nil)
+                    completion(false, error.localizedDescription, nil, nil)
                 }
             }
     }
@@ -1941,7 +1947,7 @@ class ApiService {
         print("📞 [ApiService] get_calling_contact_list - URL: \(url), uid: \(uid)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
-            .validate()
+            .validate(statusCode: 200..<500)
             .responseData { response in
                 print("📞 [ApiService] Response received - Status: \(response.response?.statusCode ?? 0)")
                 

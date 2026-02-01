@@ -273,7 +273,10 @@ struct EditProfileView: View {
                     email = "" // Email not available in current model
                     phoneNumber = profile.mobile_no
                     bio = profile.caption
-                    
+                    // Only save device_type when it matches get_user_active_chat_list format ("1" or "2"), not UUID
+                    if !profile.device_type.isEmpty, (profile.device_type == "1" || profile.device_type == "2") {
+                        UserDefaults.standard.set(profile.device_type, forKey: Constant.DEVICE_TYPE_KEY)
+                    }
                     // Store original values
                     originalName = profile.full_name
                     originalEmail = ""

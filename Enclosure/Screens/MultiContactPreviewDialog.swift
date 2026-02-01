@@ -361,8 +361,7 @@ struct MultiContactPreviewDialog: View {
             MessageUploadService.shared.uploadMessage(
                 model: newMessage,
                 filePath: nil,
-                userFTokenKey: userFTokenKey,
-                deviceType: "2"
+                userFTokenKey: userFTokenKey
             ) { success, errorMessage in
                 if success {
                     print("✅ [MULTI_CONTACT] Uploaded contact \(index + 1)/\(selectedContacts.count) for modelId=\(contactModelId)")

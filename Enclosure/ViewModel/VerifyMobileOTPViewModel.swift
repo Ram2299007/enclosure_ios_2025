@@ -185,6 +185,7 @@ class VerifyMobileOTPViewModel: ObservableObject {
                        let firstObject = dataArray.first {
                         let phone = firstObject["mobile_no"] as? String ?? ""
                         let fcmToken = firstObject["f_token"] as? String ?? ""
+                        let deviceTypeFromApi = firstObject["device_type"] as? String ?? "2"
 
                         DispatchQueue.main.async {
                             // ✅ Start Loader immediately (matching Android - no delay)
@@ -198,7 +199,15 @@ class VerifyMobileOTPViewModel: ObservableObject {
                             UserDefaults.standard.set(phone, forKey: Constant.PHONE_NUMBERKEY)
                             UserDefaults.standard.set(uid, forKey: Constant.UID_KEY)
                             UserDefaults.standard.set(fcmToken, forKey: Constant.FCM_TOKEN)
+                            UserDefaults.standard.set(deviceTypeFromApi, forKey: Constant.DEVICE_TYPE_KEY)
                             self.errorMessage = nil
+                            
+                            // Fetch get_profile; only save device_type when it matches get_user_active_chat_list format ("1" or "2"), not UUID
+                            ApiService.get_profile(uid: uid) { _, profile, _ in
+                                if let dt = profile?.device_type, !dt.isEmpty, (dt == "1" || dt == "2") {
+                                    UserDefaults.standard.set(dt, forKey: Constant.DEVICE_TYPE_KEY)
+                                }
+                            }
                             
                             // ✅ Call upload_user_contact_list immediately (matching Android)
                             print("📂 Current fileURL: \(self.fileURL?.absoluteString ?? "nil")")

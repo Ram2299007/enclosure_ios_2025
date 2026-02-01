@@ -496,8 +496,7 @@ struct ShareExternalDataContactScreen: View {
             MessageUploadService.shared.uploadMessage(
                 model: chatMessage,
                 filePath: nil,
-                userFTokenKey: userFTokenKey,
-                deviceType: "2"
+                userFTokenKey: userFTokenKey
             ) { success, errorMessage in
                 if success {
                     print("✅ [SHARE_TEXT] Sent text to \(contact.fullName) (\(index + 1)/\(selectedContacts.count))")
@@ -624,8 +623,7 @@ struct ShareExternalDataContactScreen: View {
                 MessageUploadService.shared.uploadMessage(
                     model: chatMessage,
                     filePath: imageUrl.path,
-                    userFTokenKey: userFTokenKey,
-                    deviceType: "2"
+                    userFTokenKey: userFTokenKey
                 ) { success, errorMessage in
                     if success {
                         completedMessages += 1
@@ -752,8 +750,7 @@ struct ShareExternalDataContactScreen: View {
                 MessageUploadService.shared.uploadMessage(
                     model: chatMessage,
                     filePath: videoUrl.path,
-                    userFTokenKey: userFTokenKey,
-                    deviceType: "2"
+                    userFTokenKey: userFTokenKey
                 ) { success, errorMessage in
                     if success {
                         completedMessages += 1
@@ -881,8 +878,7 @@ struct ShareExternalDataContactScreen: View {
             MessageUploadService.shared.uploadMessage(
                 model: chatMessage,
                 filePath: documentUrl.path,
-                userFTokenKey: userFTokenKey,
-                deviceType: "2"
+                userFTokenKey: userFTokenKey
             ) { success, errorMessage in
                 if success {
                     completedMessages += 1
@@ -988,8 +984,7 @@ struct ShareExternalDataContactScreen: View {
             MessageUploadService.shared.uploadMessage(
                 model: chatMessage,
                 filePath: nil,
-                userFTokenKey: userFTokenKey,
-                deviceType: "2"
+                userFTokenKey: userFTokenKey
             ) { success, errorMessage in
                 if success {
                     completedMessages += 1
