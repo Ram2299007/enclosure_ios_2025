@@ -58,8 +58,8 @@ struct UserActiveContactModel: Codable, Identifiable, Hashable {
         dataType = try container.decode(String.self, forKey: .dataType)
         message = try container.decode(String.self, forKey: .message)
         fToken = try container.decode(String.self, forKey: .fToken)
-        notification = try container.decode(Int.self, forKey: .notification)
-        msgLimit = try container.decode(Int.self, forKey: .msgLimit)
+        notification = (try? container.decode(Int.self, forKey: .notification)) ?? 0
+        msgLimit = (try? container.decode(Int.self, forKey: .msgLimit)) ?? 0
         deviceType = try container.decode(String.self, forKey: .deviceType)
         createdAt = try container.decode(String.self, forKey: .createdAt)
         

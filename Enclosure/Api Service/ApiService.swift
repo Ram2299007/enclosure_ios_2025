@@ -413,13 +413,18 @@ class ApiService {
         let url = Constant.baseURL+"get_user_active_chat_list"
         let parameters: [String: Any] = ["uid": uid]
         
+        print("📤 [get_user_active_chat_list] REQUEST: POST \(url)")
+        print("📤 [get_user_active_chat_list] Parameters: uid=\(uid)")
         print("🟢 [ApiService] get_user_active_chat_list - URL: \(url)")
         print("🟢 [ApiService] get_user_active_chat_list - Parameters: \(parameters)")
 
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseData { response in
-                print("🟢 [ApiService] Response received - Status: \(response.response?.statusCode ?? 0)")
+                let statusCode = response.response?.statusCode ?? 0
+                let bodyString = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                print("📥 [get_user_active_chat_list] RESPONSE: Status=\(statusCode), Body=\(bodyString)")
+                print("🟢 [ApiService] Response received - Status: \(statusCode)")
                 
                 switch response.result {
                 case .success(let data):
@@ -528,6 +533,8 @@ class ApiService {
                     }
 
                 case .failure(let error):
+                    let failBody = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                    print("🔴 [get_user_active_chat_list] FAILED: \(error.localizedDescription), Body=\(failBody)")
                     print("🔴 [ApiService] Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, nil)
                 }
@@ -1329,10 +1336,14 @@ class ApiService {
     static func get_user_active_chat_list_for_msgLmt(uid: String, completion: @escaping (Bool, String, [UserActiveContactModel]?) -> Void) {
         let url = Constant.baseURL+"get_user_active_chat_list"
         let parameters: [String: Any] = ["uid": uid]
+        print("📤 [get_user_active_chat_list] REQUEST (msgLmt): POST \(url), uid=\(uid)")
 
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseData { response in
+                let statusCode = response.response?.statusCode ?? 0
+                let bodyString = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                print("📥 [get_user_active_chat_list] RESPONSE (msgLmt): Status=\(statusCode), Body=\(bodyString)")
                 switch response.result {
                 case .success(let data):
                     do {
