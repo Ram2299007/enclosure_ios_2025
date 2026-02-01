@@ -39,6 +39,8 @@ struct whatsTheCode: View {
     @State private var deviceId = UIDevice.current.identifierForVendor?.uuidString ?? "unknown"
     @Environment(\.colorScheme) var colorScheme
     @State private var isProcessingInput = false // Prevent concurrent input processing
+    /// When true, we are waiting for FCM token (via FCMTokenReceived) before calling performOTPVerification.
+    @State private var verificationPending = false
     
     // Helper to dismiss keyboard on tap
     private func hideKeyboard() {
@@ -309,6 +311,16 @@ struct whatsTheCode: View {
                     }
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("FCMTokenReceived"))) { notification in
+                if let token = notification.object as? String, !token.isEmpty {
+                    fcmToken = token
+                    UserDefaults.standard.set(token, forKey: Constant.FCM_TOKEN)
+                    if verificationPending {
+                        verificationPending = false
+                        performOTPVerification()
+                    }
+                }
+            }
     }
 
     private func handleBackTap() {
@@ -485,6 +497,7 @@ struct whatsTheCode: View {
                                     .trimmingCharacters(in: .whitespacesAndNewlines)
 
                                 let formattedNumber = phoneNumberWithoutCountryCode(phoneNumber: number)
+                                let contactNumber = normalizeContactNumber(countryCode: countryCodeKey, rawNumber: number)
 
                                 // Ensure uniqueness by checking formatted number
                                 if !mobileNoSet.contains(formattedNumber) {
@@ -495,7 +508,7 @@ struct whatsTheCode: View {
                                     obj["uid"] = uidKey
                                     obj["mobile_no"] = phoneKey
                                     obj["contact_name"] = name
-                                    obj["contact_number"] = countryCodeKey + formattedNumber
+                                    obj["contact_number"] = contactNumber
 
                                     verifyViewModel.countryCodeKey = countryCodeKey;
 
@@ -555,6 +568,54 @@ struct whatsTheCode: View {
         return cleanedNumber
     }
 
+    /// Returns contact_number with country code applied once and leading + (e.g. +911800407267864).
+    private func normalizeContactNumber(countryCode: String, rawNumber: String) -> String {
+        let digitsOnly = rawNumber.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
+        var numberDigits = digitsOnly
+        while numberDigits.hasPrefix("0") && numberDigits.count > 1 {
+            numberDigits.removeFirst()
+        }
+        guard !numberDigits.isEmpty else { return rawNumber }
+        let countryDigits = countryCode.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
+        let fullDigits: String
+        if countryDigits.isEmpty {
+            fullDigits = numberDigits
+        } else if numberDigits.hasPrefix(countryDigits) {
+            fullDigits = numberDigits
+        } else {
+            fullDigits = countryDigits + numberDigits
+        }
+        return "+" + fullDigits
+    }
+
+    /// When getFCMToken returned nil (APNs not ready), retry once after 2s then wait for FCMTokenReceived or 6s timeout.
+    private func waitForFCMTokenThenVerify() {
+        print("⚠️ [FCM_TOKEN] FCM token not ready - retrying in 2s, then waiting for FCMTokenReceived (max 6s)")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            FirebaseManager.shared.getFCMToken { token in
+                DispatchQueue.main.async {
+                    if let token = token, !token.isEmpty {
+                        print("✅ [FCM_TOKEN] FCM token retrieved on retry: \(token.prefix(50))...")
+                        self.fcmToken = token
+                        UserDefaults.standard.set(token, forKey: Constant.FCM_TOKEN)
+                        self.performOTPVerification()
+                        return
+                    }
+                    // Still nil - wait for FCMTokenReceived (EnclosureApp posts when APNs is set) or timeout
+                    self.verificationPending = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) {
+                        if self.verificationPending {
+                            self.verificationPending = false
+                            print("⚠️ [FCM_TOKEN] Timeout waiting for FCM token - proceeding with apns_missing")
+                            self.fcmToken = "apns_missing"
+                            self.performOTPVerification()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Ensure we have an FCM token before verifying; fetch if missing.
     private func ensureTokenAndVerify() {
         if otp.contains("") {
@@ -587,7 +648,7 @@ struct whatsTheCode: View {
                     UIApplication.shared.registerForRemoteNotifications()
                     print("📱 [FCM_TOKEN] registerForRemoteNotifications() CALLED - fetching FCM token immediately (no waiting)")
                     
-                    // Fetch FCM token immediately without waiting
+                    // Fetch FCM token; if APNs not ready yet, retry once then wait for FCMTokenReceived (or timeout)
                     FirebaseManager.shared.getFCMToken { token in
                         DispatchQueue.main.async {
                             if let token = token, !token.isEmpty {
@@ -596,9 +657,7 @@ struct whatsTheCode: View {
                                 UserDefaults.standard.set(token, forKey: Constant.FCM_TOKEN)
                                 self.performOTPVerification()
                             } else {
-                                print("⚠️ [FCM_TOKEN] FCM token not available - proceeding with placeholder")
-                                self.fcmToken = "apns_missing"
-                                self.performOTPVerification()
+                                self.waitForFCMTokenThenVerify()
                             }
                         }
                     }
@@ -609,9 +668,8 @@ struct whatsTheCode: View {
                         DispatchQueue.main.async {
                             if granted {
                                 UIApplication.shared.registerForRemoteNotifications()
-                                print("📱 [FCM_TOKEN] registerForRemoteNotifications() CALLED - fetching FCM token immediately (no waiting)")
+                                print("📱 [FCM_TOKEN] registerForRemoteNotifications() CALLED - fetching FCM token (retry + wait for FCMTokenReceived)")
                                 
-                                // Fetch FCM token immediately without waiting
                                 FirebaseManager.shared.getFCMToken { token in
                                     DispatchQueue.main.async {
                                         if let token = token, !token.isEmpty {
@@ -620,9 +678,7 @@ struct whatsTheCode: View {
                                             UserDefaults.standard.set(token, forKey: Constant.FCM_TOKEN)
                                             self.performOTPVerification()
                                         } else {
-                                            print("⚠️ [FCM_TOKEN] FCM token not available - proceeding with placeholder")
-                                            self.fcmToken = "apns_missing"
-                                            self.performOTPVerification()
+                                            self.waitForFCMTokenThenVerify()
                                         }
                                     }
                                 }

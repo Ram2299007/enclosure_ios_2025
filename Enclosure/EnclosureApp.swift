@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UserNotifications
 import FirebaseCore
 import FirebaseMessaging
 
@@ -55,6 +56,17 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // Configure Firebase Manager
         FirebaseManager.shared.configure()
         
+        // Register for remote notifications as soon as possible (if permission already granted).
+        // This helps APNs token be ready before user reaches OTP screen.
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            if settings.authorizationStatus == .authorized {
+                DispatchQueue.main.async {
+                    UIApplication.shared.registerForRemoteNotifications()
+                    print("📱 [APNS_TOKEN] registerForRemoteNotifications() called at launch (permission already granted)")
+                }
+            }
+        }
+        
         return true
     }
     
@@ -71,8 +83,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // Post notification that APNs token is available
         NotificationCenter.default.post(name: NSNotification.Name("APNsTokenReceived"), object: deviceToken)
         
-        // Force FCM token refresh after APNs token is set
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        // Force FCM token refresh after APNs token is set (short delay so token is ready sooner)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             Messaging.messaging().token { token, error in
                 if let error = error {
                     print("🚫 [APNS_TOKEN] Error fetching FCM token after APNs registration: \(error.localizedDescription)")
@@ -95,6 +107,18 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         
         // Post notification that registration failed
         NotificationCenter.default.post(name: NSNotification.Name("APNsTokenFailed"), object: error)
+    }
+    
+    /// Handle FCM data payload (matching Android FirebaseMessagingService.onMessageReceived). For bodyKey == Constant.chatting, show local chat notification.
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        let keys = userInfo.keys.map { "\($0)" }.joined(separator: ", ")
+        print("📱 [FCM] didReceiveRemoteNotification - keys: \(keys)")
+        if let bodyKey = userInfo["bodyKey"] as? String {
+            print("📱 [FCM] bodyKey = \(bodyKey)")
+        } else {
+            print("📱 [FCM] bodyKey missing in payload (notification may still show via system)")
+        }
+        FirebaseManager.shared.handleRemoteNotification(userInfo: userInfo, completionHandler: completionHandler)
     }
     
     // Handle URL schemes (for Share Extension)

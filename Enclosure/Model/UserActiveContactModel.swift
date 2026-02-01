@@ -133,6 +133,39 @@ struct UserActiveContactModel: Codable, Identifiable, Hashable {
     static func == (lhs: UserActiveContactModel, rhs: UserActiveContactModel) -> Bool {
         lhs.uid == rhs.uid
     }
+    
+    /// Build contact from chat FCM notification payload (matching Android Intent extras: friendUidKey, nameKey, device_type, etc.)
+    static func fromChatNotification(userInfo: [String: Any]) -> UserActiveContactModel? {
+        let friendUidKey = userInfo["friendUidKey"] as? String ?? ""
+        guard !friendUidKey.isEmpty else { return nil }
+        let name = userInfo["name"] as? String ?? ""
+        let user_nameKey = userInfo["user_nameKey"] as? String ?? ""
+        let fullName = user_nameKey.isEmpty ? (name.isEmpty ? "Unknown" : name) : user_nameKey
+        let phone = userInfo["phone"] as? String ?? ""
+        let photo = userInfo["photo"] as? String ?? ""
+        let device_type = userInfo["device_type"] as? String ?? ""
+        let msgKey = userInfo["msgKey"] as? String ?? ""
+        let currentDateTimeString = userInfo["currentDateTimeString"] as? String ?? ""
+        let token = userInfo["token"] as? String ?? ""
+        return UserActiveContactModel(
+            photo: photo,
+            fullName: fullName,
+            mobileNo: phone,
+            caption: "",
+            uid: friendUidKey,
+            sentTime: currentDateTimeString,
+            dataType: "Text",
+            message: msgKey,
+            fToken: token,
+            notification: 1,
+            msgLimit: 0,
+            deviceType: device_type,
+            messageId: "",
+            createdAt: currentDateTimeString,
+            block: false,
+            iamblocked: false
+        )
+    }
 }
 
 

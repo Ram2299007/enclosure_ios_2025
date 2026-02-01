@@ -189,7 +189,8 @@ final class ContactSyncManager {
             cleaned = countryDigits + cleaned
         }
         
-        return cleaned
+        // Return with leading + for international format (e.g. +911800407267864)
+        return cleaned.isEmpty ? nil : "+" + cleaned
     }
 }
 

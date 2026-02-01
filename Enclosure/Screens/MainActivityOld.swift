@@ -963,6 +963,16 @@ struct MainActivityOld: View {
                 }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenChatFromNotification"))) { notification in
+            // Open ChattingScreen when user taps chat notification (matching Android PendingIntent to chattingScreen with friendUidKey, nameKey, etc.)
+            guard let userInfo = notification.userInfo as? [String: Any],
+                  let contact = UserActiveContactModel.fromChatNotification(userInfo: userInfo) else {
+                print("🚫 [MainActivityOld] OpenChatFromNotification: invalid userInfo or contact")
+                return
+            }
+            print("📱 [MainActivityOld] OpenChatFromNotification: navigating to chat with \(contact.fullName) (\(contact.uid))")
+            selectedChatForNavigation = contact
+        }
     }
     
     // MARK: - Logo Helper Functions

@@ -151,22 +151,25 @@ class MessageUploadService {
                             if success {
                                 // Get receiver's FCM token from contact database (not sender's token)
                                 ChatCacheManager.shared.getFCMToken(for: model.receiverId) { receiverFCMToken in
-                                    let finalReceiverFCMToken = receiverFCMToken ?? userFTokenKey // Fallback to passed token if not found
-                                    
-                                    print("🔑 [SEND_NOTIFICATION_API] Receiver FCM token from database: \(receiverFCMToken != nil ? "Found" : "Not found")")
-                                    if let token = receiverFCMToken {
-                                        print("🔑 [SEND_NOTIFICATION_API] Receiver token: \(token.prefix(50))...")
-                                    } else {
-                                        print("⚠️ [SEND_NOTIFICATION_API] Using fallback token: \(userFTokenKey.prefix(50))...")
-                                    }
-                                    
-                                    // Send push notification if needed
-                                    if !finalReceiverFCMToken.isEmpty {
-                                        self.sendPushNotificationIfNeeded(
-                                            model: model,
-                                            userFTokenKey: finalReceiverFCMToken,
-                                            deviceType: deviceType
-                                        )
+                                    let finalReceiverFCMToken = receiverFCMToken ?? userFTokenKey
+                                    ChatCacheManager.shared.getDeviceType(for: model.receiverId) { receiverDeviceType in
+                                        print("🔑 [SEND_NOTIFICATION_API] Receiver FCM token from database: \(receiverFCMToken != nil ? "Found" : "Not found")")
+                                        if let token = receiverFCMToken {
+                                            print("🔑 [SEND_NOTIFICATION_API] Receiver token: \(token.prefix(50))...")
+                                        } else {
+                                            print("⚠️ [SEND_NOTIFICATION_API] Using fallback token: \(userFTokenKey.prefix(50))...")
+                                        }
+                                        if let rdt = receiverDeviceType {
+                                            print("🔑 [SEND_NOTIFICATION_API] Receiver device type: \(rdt) (\(rdt == "2" ? "iOS" : "Android"))")
+                                        }
+                                        if !finalReceiverFCMToken.isEmpty {
+                                            self.sendPushNotificationIfNeeded(
+                                                model: model,
+                                                userFTokenKey: finalReceiverFCMToken,
+                                                deviceType: deviceType,
+                                                receiverDeviceType: receiverDeviceType
+                                            )
+                                        }
                                     }
                                 }
                                 completion(true, nil)
@@ -569,7 +572,8 @@ class MessageUploadService {
     private func sendPushNotificationIfNeeded(
         model: ChatMessage,
         userFTokenKey: String,
-        deviceType: String
+        deviceType: String,
+        receiverDeviceType: String? = nil
     ) {
         let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         
@@ -608,7 +612,6 @@ class MessageUploadService {
             let profile = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
             let myFcmToken = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
             
-            // Call notification API (matching Android Webservice.end_notification_api)
             sendNotificationAPI(
                 userFTokenKey: userFTokenKey,
                 userName: model.userName ?? "",
@@ -618,6 +621,7 @@ class MessageUploadService {
                 profile: profile,
                 sentTime: model.time,
                 deviceType: deviceType,
+                receiverDeviceType: receiverDeviceType,
                 model: model,
                 myFcmToken: myFcmToken
             )
@@ -634,6 +638,7 @@ class MessageUploadService {
         profile: String,
         sentTime: String,
         deviceType: String,
+        receiverDeviceType: String? = nil,
         model: ChatMessage,
         myFcmToken: String
     ) {
@@ -692,6 +697,10 @@ class MessageUploadService {
             requestJson["photo"] = self.safeString(profile)
             requestJson["currentDateTimeString"] = self.safeString(sentTime)
             requestJson["deviceType"] = self.safeString(deviceType)
+            // Backend uses receiverDeviceType to build FCM payload: for iOS ("2") include notification { title, body } so APNs shows it.
+            if let rdt = receiverDeviceType, !rdt.isEmpty {
+                requestJson["receiverDeviceType"] = self.safeString(rdt)
+            }
             requestJson["click_action"] = "OPEN_ACTIVITY_1"
             requestJson["icon"] = "notification_icon"
             requestJson["selectionCount"] = self.safeString(model.selectionCount ?? "1")

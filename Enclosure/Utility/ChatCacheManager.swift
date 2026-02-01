@@ -126,6 +126,27 @@ final class ChatCacheManager {
             }
         }
     }
+    
+    /// Returns receiver's device_type from cache (e.g. "1" = Android, "2" = iOS). Backend uses this to build FCM payload (iOS needs notification block).
+    func getDeviceType(for uid: String, completion: @escaping (String?) -> Void) {
+        queue.async {
+            guard let db = self.db else {
+                DispatchQueue.main.async { completion(nil) }
+                return
+            }
+            let query = "SELECT device_type FROM chats WHERE uid = ? LIMIT 1;"
+            var statement: OpaquePointer?
+            var deviceType: String?
+            if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+                sqlite3_bind_text(statement, 1, uid, -1, SQLITE_TRANSIENT)
+                if sqlite3_step(statement) == SQLITE_ROW, let cString = sqlite3_column_text(statement, 0) {
+                    deviceType = String(cString: cString)
+                }
+                sqlite3_finalize(statement)
+            }
+            DispatchQueue.main.async { completion(deviceType) }
+        }
+    }
 }
 
 private extension ChatCacheManager {

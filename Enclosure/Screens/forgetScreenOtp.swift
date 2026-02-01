@@ -592,6 +592,7 @@ struct forgetScreenOtp: View {
                                     .trimmingCharacters(in: .whitespacesAndNewlines)
 
                                 let formattedNumber = phoneNumberWithoutCountryCode(phoneNumber: number)
+                                let contactNumber = normalizeContactNumber(countryCode: countryCodeKey, rawNumber: number)
 
                                 // Ensure uniqueness by checking formatted number
                                 if !mobileNoSet.contains(formattedNumber) {
@@ -602,7 +603,7 @@ struct forgetScreenOtp: View {
                                     obj["uid"] = uidKey
                                     obj["mobile_no"] = phoneKey
                                     obj["contact_name"] = name
-                                    obj["contact_number"] = countryCodeKey + formattedNumber
+                                    obj["contact_number"] = contactNumber
 
                                     verifyViewModel.countryCodeKey = countryCodeKey;
 
@@ -660,6 +661,26 @@ struct forgetScreenOtp: View {
         // फक्त अंक आणि + चिन्ह सोडून बाकीचे काढून टाका
         let cleanedNumber = phoneNumber.replacingOccurrences(of: "[^+0-9]", with: "", options: .regularExpression)
         return cleanedNumber
+    }
+
+    /// Returns contact_number with country code applied once and leading + (e.g. +911800407267864).
+    private func normalizeContactNumber(countryCode: String, rawNumber: String) -> String {
+        let digitsOnly = rawNumber.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
+        var numberDigits = digitsOnly
+        while numberDigits.hasPrefix("0") && numberDigits.count > 1 {
+            numberDigits.removeFirst()
+        }
+        guard !numberDigits.isEmpty else { return rawNumber }
+        let countryDigits = countryCode.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
+        let fullDigits: String
+        if countryDigits.isEmpty {
+            fullDigits = numberDigits
+        } else if numberDigits.hasPrefix(countryDigits) {
+            fullDigits = numberDigits
+        } else {
+            fullDigits = countryDigits + numberDigits
+        }
+        return "+" + fullDigits
     }
 
 

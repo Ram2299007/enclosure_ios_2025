@@ -231,6 +231,8 @@ struct ChattingScreen: View {
             Color("BackgroundColor")
                 .ignoresSafeArea()
                 .onAppear {
+                    // Mark chat screen active for this receiver (matching Android chattingScreen.isChatScreenActive / isChatScreenActiveUid) to suppress FCM chat notifications
+                    FirebaseManager.shared.chatScreenActiveUid = contact.uid
                     print("🚫 [BLOCK] ChattingScreen appeared - showBlockCard: \(showBlockCard), isUserBlocked: \(isUserBlocked)")
                     print("🚫 [BLOCK] Contact: \(contact.fullName), UID: \(contact.uid)")
                     print("🚫 [BLOCK] Contact block status from API - block: \(contact.block), iamblocked: \(contact.iamblocked)")
@@ -258,6 +260,10 @@ struct ChattingScreen: View {
                     
                     // Load pending messages from SQLite (matching Android loadPendingMessages on onResume)
                     loadPendingMessages()
+                }
+                .onDisappear {
+                    // Clear chat screen active (matching Android) so chat notifications show again
+                    FirebaseManager.shared.chatScreenActiveUid = nil
                 }
             
             VStack(spacing: 0) {

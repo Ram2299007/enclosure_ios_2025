@@ -124,14 +124,15 @@ class VerifyMobileOTPViewModel: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
 
-        // Matching Android parameters: uid, mob_otp, f_token, device_id, phone_id (+ country code)
+        // Matching Android parameters: uid, mob_otp, f_token, device_id, phone_id, country_code, device_type (2 = iOS for backend to store)
         let params: [String: String] = [
             "uid": uid,
             "mob_otp": otp,
             "f_token": finalToken,
             "device_id": deviceId,
             "phone_id": phoneId,
-            "country_code": cCode
+            "country_code": cCode,
+            "device_type": "2"  // iOS; backend stores this so send_notification_api can add FCM notification block for iOS receivers
         ]
 
         let bodyString = params
@@ -144,7 +145,7 @@ class VerifyMobileOTPViewModel: ObservableObject {
         request.httpBody = bodyString.data(using: .utf8)
 
         print("📤 API: verify_mobile_otp")
-        print("📤 Parameters: uid=\(uid), mob_otp=\(otp), f_token=\(resolvedToken), device_id=\(deviceId), phone_id=\(phoneId), country_code=\(cCode)")
+        print("📤 Parameters: uid=\(uid), mob_otp=\(otp), f_token=\(finalToken == "apns_missing" ? "apns_missing" : "\(finalToken.prefix(50))..."), device_id=\(deviceId), phone_id=\(phoneId), country_code=\(cCode)")
         print("📤 Full Request Body: \(bodyString)")
 
         URLSession.shared.dataTask(with: request) {
