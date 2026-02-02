@@ -51,7 +51,29 @@ class FirebaseManager: NSObject, ObservableObject {
         // Request notification permissions
         requestNotificationPermissions()
         
+        // Register chat notification category with Reply action (matching Android NotificationCompat.Action + RemoteInput)
+        registerChatNotificationCategory()
+        
         print("✅ Firebase Database initialized")
+    }
+    
+    /// Register CHAT_MESSAGE category with Reply text input action (matching Android replyBroadCastReciver + RemoteInput)
+    private func registerChatNotificationCategory() {
+        let replyAction = UNTextInputNotificationAction(
+            identifier: "REPLY_ACTION",
+            title: "Reply",
+            options: [],
+            textInputButtonTitle: "Send",
+            textInputPlaceholder: "Reply..."
+        )
+        let chatCategory = UNNotificationCategory(
+            identifier: "CHAT_MESSAGE",
+            actions: [replyAction],
+            intentIdentifiers: [],
+            options: []
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([chatCategory])
+        print("✅ [CHAT_NOTIFICATION] Registered CHAT_MESSAGE category with Reply action")
     }
     
     @objc private func handleAPNsTokenReceived(_ notification: Notification) {
@@ -233,7 +255,22 @@ extension FirebaseManager: UNUserNotificationCenterDelegate {
         let raw = response.notification.request.content.userInfo
         // Convert to [String: Any] for OpenChatFromNotification (keys may be AnyHashable)
         let userInfo: [String: Any] = Dictionary(uniqueKeysWithValues: raw.compactMap { k, v in (k as? String).map { ($0, v) } })
-        // If this was a chat notification, open ChattingScreen (matching Android PendingIntent to chattingScreen)
+        
+        // Handle Reply action (matching Android replyBroadCastReciver → UploadChatHelper.uploadContent)
+        if response.actionIdentifier == "REPLY_ACTION",
+           let textResponse = response as? UNTextInputNotificationResponse {
+            let replyText = textResponse.userText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !replyText.isEmpty {
+                handleNotificationReply(userInfo: userInfo, replyText: replyText)
+                // Dismiss the notification (matching Android notificationManager.cancel(notificationId))
+                let notifId = response.notification.request.identifier
+                UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [notifId])
+            }
+            completionHandler()
+            return
+        }
+        
+        // If this was a chat notification tap (not reply), open ChattingScreen (matching Android PendingIntent to chattingScreen)
         if (userInfo["bodyKey"] as? String) == Constant.chatting {
             DispatchQueue.main.async {
                 NotificationCenter.default.post(
@@ -244,6 +281,103 @@ extension FirebaseManager: UNUserNotificationCenterDelegate {
             }
         }
         completionHandler()
+    }
+    
+    /// Send reply from notification (matching Android replyBroadCastReciver → UploadChatHelper.uploadContent with reply keys)
+    private func handleNotificationReply(userInfo: [String: Any], replyText: String) {
+        let receiverKey = userInfo[ChatPayloadKey.friendUidKey] as? String ?? ""
+        guard !receiverKey.isEmpty else {
+            print("🚫 [CHAT_REPLY] Missing receiverKey in userInfo")
+            return
+        }
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !uid.isEmpty else {
+            print("🚫 [CHAT_REPLY] User not logged in")
+            return
+        }
+        let userFTokenKey = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? fcmToken ?? ""
+        let userNamePower = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
+        
+        // Reply keys from notification (matching Android intent extras)
+        let replyKeyPower = userInfo[ChatPayloadKey.replyKeyPower] as? String
+        let replyTypePower = userInfo[ChatPayloadKey.replyTypePower] as? String
+        let replyOldDataPower = userInfo[ChatPayloadKey.replyOldDataPower] as? String
+        let replyCrtPostionPower = userInfo[ChatPayloadKey.replyCrtPostionPower] as? String
+        let modelIdPower = userInfo[ChatPayloadKey.modelIdPower] as? String
+        let messagePower = userInfo[ChatPayloadKey.messagePower] as? String
+        
+        let timeFormatter: DateFormatter = {
+            let f = DateFormatter()
+            f.dateFormat = "hh:mm a"
+            f.locale = Locale(identifier: "en_US_POSIX")
+            return f
+        }()
+        let dateFormatter: DateFormatter = {
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd"
+            f.locale = Locale(identifier: "en_US_POSIX")
+            return f
+        }()
+        let now = Date()
+        let currentTimeString = timeFormatter.string(from: now)
+        let currentDateString = dateFormatter.string(from: now)
+        let modelId = UUID().uuidString
+        
+        let replyModel = ChatMessage(
+            id: modelId,
+            uid: uid,
+            message: replyText,
+            time: currentTimeString,
+            document: "",
+            dataType: Constant.Text,
+            fileExtension: nil,
+            name: nil,
+            phone: nil,
+            micPhoto: nil,
+            miceTiming: nil,
+            userName: userNamePower.isEmpty ? nil : userNamePower,
+            receiverId: receiverKey,
+            replytextData: messagePower,
+            replyKey: replyKeyPower ?? "ReplyKey",
+            replyType: replyTypePower ?? Constant.Text,
+            replyOldData: replyOldDataPower ?? messagePower,
+            replyCrtPostion: replyCrtPostionPower ?? modelIdPower,
+            forwaredKey: nil,
+            groupName: nil,
+            docSize: nil,
+            fileName: nil,
+            thumbnail: nil,
+            fileNameThumbnail: nil,
+            caption: nil,
+            notification: 1,
+            currentDate: currentDateString,
+            emojiModel: nil,
+            emojiCount: nil,
+            timestamp: Date().timeIntervalSince1970,
+            imageWidth: nil,
+            imageHeight: nil,
+            aspectRatio: nil,
+            selectionCount: "1",
+            selectionBunch: nil,
+            receiverLoader: 0,
+            linkTitle: nil,
+            linkDescription: nil,
+            linkImageUrl: nil,
+            favIconUrl: nil
+        )
+        
+        MessageUploadService.shared.uploadMessage(
+            model: replyModel,
+            filePath: nil,
+            userFTokenKey: userFTokenKey,
+            deviceType: nil
+        ) { success, message in
+            if success {
+                print("✅ [CHAT_REPLY] Reply sent via create_individual_chatting")
+            } else {
+                print("🚫 [CHAT_REPLY] Reply failed: \(message)")
+            }
+        }
     }
 }
 
@@ -309,10 +443,21 @@ extension FirebaseManager {
         let data = userInfo as? [String: Any] ?? [:]
         let bodyKey = data[ChatPayloadKey.bodyKey] as? String
         
+        // If APNs alert is present, system will show notification (Service Extension attaches image).
+        // Avoid creating a local notification to prevent duplicates.
+        if let aps = userInfo["aps"] as? [String: Any], aps["alert"] != nil {
+            print("📱 [CHAT_NOTIFICATION] APS alert present - skipping local notification (system handles banner)")
+            completionHandler(.noData)
+            return
+        }
+        
+        // Log so filter "CHAT_NOTIFICATION" shows whether chat path is reached
         if bodyKey == Constant.chatting {
+            print("📱 [CHAT_NOTIFICATION] Received chat payload - calling handleChatNotification")
             handleChatNotification(data: data, completionHandler: completionHandler)
             return
         }
+        print("📱 [CHAT_NOTIFICATION] Skipped - bodyKey is '\(bodyKey ?? "nil")' (expected '\(Constant.chatting)'). If you never see 'Received chat payload', FCM may be notification-only (use data-only for chat).")
         
         // Payload without bodyKey or with other type: show generic notification if we have title/body (e.g. from backend or FCM notification payload)
         if let aps = userInfo["aps"] as? [String: Any], let alert = aps["alert"] as? [String: Any] {
@@ -358,6 +503,11 @@ extension FirebaseManager {
         let message = data[ChatPayloadKey.msgKey] as? String ?? ""
         let receiverKey = data[ChatPayloadKey.friendUidKey] as? String ?? ""
         let user_nameKey = data[ChatPayloadKey.user_nameKey] as? String ?? ""
+        let photoUrlString = data[ChatPayloadKey.photo] as? String ?? ""
+        let selectionCount = data[ChatPayloadKey.selectionCount] as? String ?? "1"
+        let displayName = user_nameKey.isEmpty ? (userName.isEmpty ? "Unknown" : userName) : user_nameKey
+        
+        print("📱 [CHAT_NOTIFICATION] handleChatNotification started - receiverKey=\(receiverKey), displayName=\(displayName), msgLen=\(message.count), photoURL=\(photoUrlString.isEmpty ? "nil" : "set")")
         
         // Suppress if user is already on this chat (matching Android chattingScreen.isChatScreenActive && receiverKey.equals(chattingScreen.isChatScreenActiveUid))
         let activeUid = chatScreenActiveUid ?? ""
@@ -368,32 +518,85 @@ extension FirebaseManager {
         }
         
         let truncatedMessage = message.count > 500 ? String(message.prefix(500)) + "..." : message
-        let displayName = user_nameKey.isEmpty ? (userName.isEmpty ? "Unknown" : userName) : user_nameKey
         
-        // Build local notification with full payload in userInfo for tap handling (matching Android buildChatNotification intent extras)
-        let content = UNMutableNotificationContent()
-        content.title = displayName
-        content.body = truncatedMessage
-        content.sound = .default
-        content.categoryIdentifier = "CHAT_MESSAGE"
-        content.userInfo = data
-        content.threadIdentifier = receiverKey.isEmpty ? "chat" : receiverKey
+        // Display message text (matching Android buildChatNotification displayMessage: Photo, Contact, Audio, etc.)
+        let displayMessage = Self.displayMessageForNotification(message: truncatedMessage, selectionCount: selectionCount)
         
         let uidForNotification = (data[ChatPayloadKey.uidPower] as? String).flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
             ?? (receiverKey.isEmpty ? nil : receiverKey)
             ?? (data[ChatPayloadKey.uid] as? String)
             ?? "unknown"
         let notifId = abs(uidForNotification.hashValue)
-        let request = UNNotificationRequest(identifier: "chat_\(notifId)", content: content, trigger: nil)
+        let identifier = "chat_\(notifId)"
         
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("🚫 [CHAT_NOTIFICATION] Failed to add notification: \(error.localizedDescription)")
-            } else {
-                print("✅ [CHAT_NOTIFICATION] Chat notification shown for \(displayName)")
-            }
-            completionHandler(.newData)
+        // Show notification immediately so banner always appears (don't wait for profile image).
+        // Waiting for image download can delay or prevent the banner; image is optional.
+        let content = UNMutableNotificationContent()
+        content.title = displayName
+        content.body = displayMessage
+        content.sound = .default
+        content.categoryIdentifier = "CHAT_MESSAGE"
+        content.userInfo = data
+        content.threadIdentifier = receiverKey.isEmpty ? "chat" : receiverKey
+        content.summaryArgument = displayName
+        content.summaryArgumentCount = 1
+        if #available(iOS 15.0, *) {
+            content.interruptionLevel = .active
         }
+        
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
+        // Add on main thread so banner shows reliably (background delivery can miss display otherwise)
+        DispatchQueue.main.async {
+            UNUserNotificationCenter.current().add(request) { error in
+                if let error = error {
+                    print("🚫 [CHAT_NOTIFICATION] Failed to add notification: \(error.localizedDescription)")
+                } else {
+                    print("✅ [CHAT_NOTIFICATION] Chat notification shown for \(displayName)")
+                }
+                completionHandler(.newData)
+            }
+        }
+    }
+    
+    /// Map message to display string (matching Android buildChatNotification displayMessage switch)
+    private static func displayMessageForNotification(message: String, selectionCount: String) -> String {
+        let isMultiple = selectionCount != "1"
+        switch message {
+        case "You have a new Image": return "📷 " + (isMultiple ? "\(selectionCount) Photos" : "Photo")
+        case "You have a new Contact": return "👤 " + (isMultiple ? "\(selectionCount) Contacts" : "Contact")
+        case "You have a new Audio": return "🎙️ " + (isMultiple ? "\(selectionCount) Audios" : "Audio")
+        case "You have a new File": return "📄 " + (isMultiple ? "\(selectionCount) Files" : "File")
+        case "You have a new Video": return "📹 " + (isMultiple ? "\(selectionCount) Videos" : "Video")
+        default: return message
+        }
+    }
+    
+    /// Download profile image from URL and create UNNotificationAttachment (matching Android loadProfileImageFromUrl + largeIcon)
+    private func downloadProfileImageForNotification(photoUrlString: String, completion: @escaping (UNNotificationAttachment?) -> Void) {
+        guard let url = URL(string: photoUrlString), !photoUrlString.isEmpty else {
+            completion(nil)
+            return
+        }
+        let task = URLSession.shared.downloadTask(with: url) { localURL, _, error in
+            guard let localURL = localURL, error == nil else {
+                DispatchQueue.main.async { completion(nil) }
+                return
+            }
+            let tmp = FileManager.default.temporaryDirectory
+            let ext = url.pathExtension.isEmpty ? "jpg" : url.pathExtension
+            let destURL = tmp.appendingPathComponent("chat_profile_\(UUID().uuidString).\(ext)")
+            do {
+                if FileManager.default.fileExists(atPath: destURL.path) {
+                    try FileManager.default.removeItem(at: destURL)
+                }
+                try FileManager.default.moveItem(at: localURL, to: destURL)
+                let attachment = try UNNotificationAttachment(identifier: "profile", url: destURL, options: nil)
+                DispatchQueue.main.async { completion(attachment) }
+            } catch {
+                DispatchQueue.main.async { completion(nil) }
+            }
+        }
+        task.resume()
     }
     
     /// Static reply suggestions (matching Android getStaticReplies)

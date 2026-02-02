@@ -112,11 +112,13 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     /// Handle FCM data payload (matching Android FirebaseMessagingService.onMessageReceived). For bodyKey == Constant.chatting, show local chat notification.
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
         let keys = userInfo.keys.map { "\($0)" }.joined(separator: ", ")
+        let bodyKey = userInfo["bodyKey"] as? String
         print("📱 [FCM] didReceiveRemoteNotification - keys: \(keys)")
-        if let bodyKey = userInfo["bodyKey"] as? String {
-            print("📱 [FCM] bodyKey = \(bodyKey)")
-        } else {
-            print("📱 [FCM] bodyKey missing in payload (notification may still show via system)")
+        print("📱 [FCM] bodyKey = \(bodyKey ?? "nil")")
+        if bodyKey == Constant.chatting {
+            print("📱 [CHAT_NOTIFICATION] AppDelegate: chat payload received - forwarding to FirebaseManager")
+        } else if bodyKey == nil {
+            print("📱 [FCM] bodyKey missing (use data-only FCM for chat so this is called)")
         }
         FirebaseManager.shared.handleRemoteNotification(userInfo: userInfo, completionHandler: completionHandler)
     }

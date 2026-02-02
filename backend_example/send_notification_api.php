@@ -2,8 +2,12 @@
 /**
  * send_notification_api
  * Handles push notifications for both Android and iOS via FCM HTTP v1.
- * For iOS receivers: includes "notification" block so APNs shows the notification when app is in background.
- * 
+ * For iOS + chat (bodyKey=chatting): send DATA-ONLY (no "notification" block) so the app receives
+ * the payload in didReceiveRemoteNotification and can build the custom WhatsApp-style notification
+ * (profile pic, reply action). If we send "notification" for iOS, the system shows it and the app
+ * is never called, so [CHAT_NOTIFICATION] logs never appear.
+ * For Android: can keep notification block if desired.
+ *
  * Called by: Android (Webservice) and iOS (MessageUploadService.sendNotificationAPI)
  * Endpoint: POST .../EmojiController/send_notification_api
  * Content-Type: application/json
@@ -82,7 +86,8 @@ public function send_notification_api() {
     }
 
     // Determine receiver platform for FCM payload
-    // receiverDeviceType: "2" = iOS (needs "notification" block so APNs shows notification when app in background)
+    // receiverDeviceType: "2" = iOS → MUST use DATA-ONLY (no "notification" block). Same payload as send_notification_ios.
+    // If we add "notification" for iOS, only sound may play and banner does not show; app never receives payload.
     // If not in request, fetch from users table by receiverUid (stored at login via verify_mobile_otp / update_profile)
     if ($receiverDeviceType === '' && $receiverUid !== '') {
         $receiverDeviceType = $this->getUserDeviceTypeByUid($receiverUid);
@@ -141,18 +146,20 @@ public function send_notification_api() {
         ]
     ];
 
-    // iOS: add "notification" so APNs shows the notification when app is in background
+    // iOS chat: send APNs alert + mutable-content so the Notification Service Extension can attach image.
+    // Do NOT add "notification" for iOS chat – use APNs payload instead.
     if ($isReceiverIos) {
-        $fcmMessage["notification"] = [
-            "title" => $title,
-            "body" => $body,
-            "sound" => "default"
-        ];
         $fcmMessage["apns"] = [
             "payload" => [
                 "aps" => [
+                    "alert" => [
+                        "title" => !empty($groupName) ? $groupName : $user_name,
+                        "body" => $body
+                    ],
                     "sound" => "default",
-                    "content-available" => 1
+                    "badge" => 1,
+                    "mutable-content" => 1,
+                    "category" => "CHAT_MESSAGE"
                 ]
             ]
         ];
