@@ -849,7 +849,14 @@ struct MainActivityOld: View {
                 }
             }
             .onChange(of: selectedChatForNavigation) { newValue in
-                navigateToChattingScreen = newValue != nil
+                if let contact = newValue {
+                    print("✅ [MainActivityOld] selectedChatForNavigation changed - navigating to ChattingScreen")
+                    print("📱 [MainActivityOld] Contact: \(contact.fullName) (\(contact.uid))")
+                    navigateToChattingScreen = true
+                } else {
+                    print("📱 [MainActivityOld] selectedChatForNavigation cleared")
+                    navigateToChattingScreen = false
+                }
             }
             .onChange(of: navigateToChattingScreen) { isPresented in
                 if !isPresented {
@@ -965,12 +972,28 @@ struct MainActivityOld: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenChatFromNotification"))) { notification in
             // Open ChattingScreen when user taps chat notification (matching Android PendingIntent to chattingScreen with friendUidKey, nameKey, etc.)
-            guard let userInfo = notification.userInfo as? [String: Any],
-                  let contact = UserActiveContactModel.fromChatNotification(userInfo: userInfo) else {
-                print("🚫 [MainActivityOld] OpenChatFromNotification: invalid userInfo or contact")
+            print("📱 [MainActivityOld] OpenChatFromNotification received")
+            
+            guard let userInfo = notification.userInfo as? [String: Any] else {
+                print("🚫 [MainActivityOld] OpenChatFromNotification: userInfo is nil or invalid type")
                 return
             }
+            
+            print("📱 [MainActivityOld] OpenChatFromNotification: userInfo contains \(userInfo.count) keys")
+            print("📱 [MainActivityOld] OpenChatFromNotification: keys: \(userInfo.keys.joined(separator: ", "))")
+            
+            guard let contact = UserActiveContactModel.fromChatNotification(userInfo: userInfo) else {
+                print("🚫 [MainActivityOld] OpenChatFromNotification: failed to create contact from userInfo")
+                print("🚫 [MainActivityOld] OpenChatFromNotification: friendUidKey = \(userInfo["friendUidKey"] as? String ?? "nil")")
+                return
+            }
+            
+            print("✅ [MainActivityOld] OpenChatFromNotification: Successfully created contact")
             print("📱 [MainActivityOld] OpenChatFromNotification: navigating to chat with \(contact.fullName) (\(contact.uid))")
+            print("📱 [MainActivityOld] OpenChatFromNotification: deviceType = \(contact.deviceType)")
+            print("📱 [MainActivityOld] OpenChatFromNotification: photo = \(contact.photo.isEmpty ? "nil" : "set")")
+            
+            // Navigate to ChattingScreen (matching Android Intent to chattingScreen)
             selectedChatForNavigation = contact
         }
     }

@@ -245,16 +245,47 @@ extension FirebaseManager: UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        // Show notification even when app is in foreground
+        // Show notification even when app is in foreground (matching Android foreground notification display)
         completionHandler([[.banner, .sound, .badge]])
     }
     
+    /// Handle notification tap (works for both foreground and background notifications)
+    /// When user taps a chat notification, navigate to ChattingScreen (matching Android PendingIntent to chattingScreen)
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         let raw = response.notification.request.content.userInfo
         // Convert to [String: Any] for OpenChatFromNotification (keys may be AnyHashable)
-        let userInfo: [String: Any] = Dictionary(uniqueKeysWithValues: raw.compactMap { k, v in (k as? String).map { ($0, v) } })
+        // Handle both local notifications and FCM notifications (with or without APS alert)
+        var userInfo: [String: Any] = Dictionary(uniqueKeysWithValues: raw.compactMap { k, v in (k as? String).map { ($0, v) } })
+        
+        // If userInfo is empty or missing bodyKey, try to extract from APS payload (for FCM notifications with APS alert)
+        if userInfo.isEmpty || userInfo["bodyKey"] == nil {
+            // Check if this is an FCM notification with data in the root level
+            if let aps = raw["aps"] as? [String: Any] {
+                // Extract data from root level (FCM data payload is at root, not under "aps")
+                for (key, value) in raw {
+                    if let keyString = key as? String, keyString != "aps" {
+                        userInfo[keyString] = value
+                    }
+                }
+            }
+        }
+        
+        // Log all notification data for debugging (matching Android logging)
+        print("📱 [NOTIFICATION_TAP] Notification tapped - actionIdentifier: \(response.actionIdentifier)")
+        print("📱 [NOTIFICATION_TAP] App state: foreground/background (handled by system)")
+        print("📱 [NOTIFICATION_TAP] userInfo keys: \(userInfo.keys.joined(separator: ", "))")
+        if let bodyKey = userInfo["bodyKey"] as? String {
+            print("📱 [NOTIFICATION_TAP] bodyKey: '\(bodyKey)' (expected: '\(Constant.chatting)')")
+        } else {
+            print("📱 [NOTIFICATION_TAP] bodyKey not found in userInfo")
+            // Try alternative key names (case variations)
+            if let bodyKeyAlt = userInfo["bodykey"] as? String {
+                print("📱 [NOTIFICATION_TAP] Found 'bodykey' (lowercase): '\(bodyKeyAlt)'")
+                userInfo["bodyKey"] = bodyKeyAlt
+            }
+        }
         
         // Handle Reply action (matching Android replyBroadCastReciver → UploadChatHelper.uploadContent)
         if response.actionIdentifier == "REPLY_ACTION",
@@ -270,15 +301,43 @@ extension FirebaseManager: UNUserNotificationCenterDelegate {
             return
         }
         
-        // If this was a chat notification tap (not reply), open ChattingScreen (matching Android PendingIntent to chattingScreen)
-        if (userInfo["bodyKey"] as? String) == Constant.chatting {
+        // Handle default notification tap (when user taps notification banner, not a custom action)
+        // This works for both foreground and background notifications
+        // Check bodyKey case-insensitively to handle any case variations
+        let bodyKeyValue = (userInfo["bodyKey"] as? String)?.lowercased() ?? ""
+        let expectedBodyKey = Constant.chatting.lowercased()
+        
+        if bodyKeyValue == expectedBodyKey {
+            print("✅ [NOTIFICATION_TAP] Chat notification detected - navigating to ChattingScreen")
+            print("📱 [NOTIFICATION_TAP] friendUidKey: \(userInfo["friendUidKey"] as? String ?? "nil")")
+            print("📱 [NOTIFICATION_TAP] name: \(userInfo["name"] as? String ?? "nil")")
+            print("📱 [NOTIFICATION_TAP] user_nameKey: \(userInfo["user_nameKey"] as? String ?? "nil")")
+            print("📱 [NOTIFICATION_TAP] device_type: \(userInfo["device_type"] as? String ?? "nil")")
+            print("📱 [NOTIFICATION_TAP] photo: \(userInfo["photo"] as? String ?? "nil")")
+            print("📱 [NOTIFICATION_TAP] phone: \(userInfo["phone"] as? String ?? "nil")")
+            
+            // Navigate to ChattingScreen (works for both foreground and background)
+            // Add delay to ensure app UI is ready, especially when coming from background/terminated state
             DispatchQueue.main.async {
-                NotificationCenter.default.post(
-                    name: NSNotification.Name("OpenChatFromNotification"),
-                    object: nil,
-                    userInfo: userInfo
-                )
+                // Use a delay to ensure MainActivityOld is ready to receive the notification
+                // Longer delay for background/terminated state to ensure UI is fully loaded
+                let delay: TimeInterval = 1.0
+                
+                print("📱 [NOTIFICATION_TAP] Posting OpenChatFromNotification notification after \(delay)s delay to ensure UI is ready...")
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("OpenChatFromNotification"),
+                        object: nil,
+                        userInfo: userInfo
+                    )
+                    print("✅ [NOTIFICATION_TAP] OpenChatFromNotification notification posted")
+                }
             }
+        } else {
+            print("⚠️ [NOTIFICATION_TAP] Not a chat notification - bodyKey: '\(bodyKeyValue)' (expected: '\(expectedBodyKey)')")
+            // Log all keys for debugging
+            print("📱 [NOTIFICATION_TAP] Available keys in userInfo: \(userInfo.keys.sorted().joined(separator: ", "))")
         }
         completionHandler()
     }

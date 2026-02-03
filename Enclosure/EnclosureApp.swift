@@ -22,6 +22,34 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         NSLog("📤 [AppDelegate] Launch options: \(launchOptions ?? [:])")
         print("📤 [AppDelegate] Launch options: \(launchOptions ?? [:])")
         
+        // Check if app was launched from remote notification (when app is terminated and user taps notification)
+        if let remoteNotification = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
+            print("📱 [AppDelegate] App launched from remote notification tap")
+            print("📱 [AppDelegate] Remote notification keys: \(remoteNotification.keys.map { "\($0)" }.joined(separator: ", "))")
+            
+            // Convert to [String: Any] for processing
+            let userInfo: [String: Any] = Dictionary(uniqueKeysWithValues: remoteNotification.compactMap { k, v in (k as? String).map { ($0, v) } })
+            
+            // Check if it's a chat notification
+            let bodyKey = (userInfo["bodyKey"] as? String)?.lowercased() ?? ""
+            if bodyKey == "chatting" {
+                print("✅ [AppDelegate] Chat notification detected in launch options - will navigate after app is ready")
+                
+                // Store notification data and handle after app UI is ready
+                // Longer delay to ensure ContentView has navigated to MainActivityOld
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    print("📱 [AppDelegate] Posting OpenChatFromNotification from launch options...")
+                    print("📱 [AppDelegate] friendUidKey: \(userInfo["friendUidKey"] as? String ?? "nil")")
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("OpenChatFromNotification"),
+                        object: nil,
+                        userInfo: userInfo
+                    )
+                    print("✅ [AppDelegate] OpenChatFromNotification posted from launch")
+                }
+            }
+        }
+        
         // Check if app was launched from URL (this happens when app is terminated)
         // Note: When app launches from URL, iOS calls application(_:open:options:) AFTER this
         // But we also check here as a fallback
@@ -33,10 +61,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                     NotificationCenter.default.post(name: NSNotification.Name("HandleSharedContent"), object: url)
                 }
             }
-        } else {
+        } else if launchOptions?[.remoteNotification] == nil {
             // Fallback: If app was just launched and Share Extension might have saved data,
-            // check file container after a short delay
-            print("📤 [AppDelegate] No URL in launchOptions - will check file container as fallback")
+            // check file container after a short delay (only if not launched from notification)
+            print("📤 [AppDelegate] No URL or notification in launchOptions - will check file container as fallback")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 // Post notification without URL object to trigger UserDefaults check
                 print("📤 [AppDelegate] Fallback: Posting HandleSharedContent notification")

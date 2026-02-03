@@ -135,33 +135,59 @@ struct UserActiveContactModel: Codable, Identifiable, Hashable {
     }
     
     /// Build contact from chat FCM notification payload (matching Android Intent extras: friendUidKey, nameKey, device_type, etc.)
+    /// Extracts all available data from notification userInfo (matching Android FirebaseMessagingService.getData())
     static func fromChatNotification(userInfo: [String: Any]) -> UserActiveContactModel? {
+        // Extract friendUidKey (receiverKey) - required field (matching Android Intent "friendUidKey")
         let friendUidKey = userInfo["friendUidKey"] as? String ?? ""
-        guard !friendUidKey.isEmpty else { return nil }
+        guard !friendUidKey.isEmpty else {
+            print("🚫 [fromChatNotification] Missing friendUidKey in userInfo")
+            return nil
+        }
+        
+        // Extract name fields (matching Android Intent "nameKey")
         let name = userInfo["name"] as? String ?? ""
         let user_nameKey = userInfo["user_nameKey"] as? String ?? ""
         let fullName = user_nameKey.isEmpty ? (name.isEmpty ? "Unknown" : name) : user_nameKey
+        
+        // Extract other contact fields from notification payload
         let phone = userInfo["phone"] as? String ?? ""
         let photo = userInfo["photo"] as? String ?? ""
         let device_type = userInfo["device_type"] as? String ?? ""
         let msgKey = userInfo["msgKey"] as? String ?? ""
         let currentDateTimeString = userInfo["currentDateTimeString"] as? String ?? ""
         let token = userInfo["token"] as? String ?? ""
+        
+        // Extract additional fields that might be in notification (matching Android notification payload)
+        // These are available in userInfo but not always used for navigation
+        let uidPower = userInfo["uidPower"] as? String ?? ""
+        let messagePower = userInfo["messagePower"] as? String ?? ""
+        let timePower = userInfo["timePower"] as? String ?? ""
+        let dataTypePower = userInfo["dataTypePower"] as? String ?? ""
+        let selectionCount = userInfo["selectionCount"] as? String ?? "1"
+        
+        print("✅ [fromChatNotification] Creating contact from notification:")
+        print("   - friendUidKey: \(friendUidKey)")
+        print("   - fullName: \(fullName)")
+        print("   - phone: \(phone.isEmpty ? "nil" : phone)")
+        print("   - photo: \(photo.isEmpty ? "nil" : "set")")
+        print("   - device_type: \(device_type.isEmpty ? "nil" : device_type)")
+        print("   - msgKey: \(msgKey.isEmpty ? "nil" : "\(msgKey.prefix(50))...")")
+        
         return UserActiveContactModel(
             photo: photo,
             fullName: fullName,
             mobileNo: phone,
             caption: "",
             uid: friendUidKey,
-            sentTime: currentDateTimeString,
-            dataType: "Text",
-            message: msgKey,
+            sentTime: currentDateTimeString.isEmpty ? (timePower.isEmpty ? "" : timePower) : currentDateTimeString,
+            dataType: dataTypePower.isEmpty ? "Text" : dataTypePower,
+            message: msgKey.isEmpty ? messagePower : msgKey,
             fToken: token,
             notification: 1,
             msgLimit: 0,
             deviceType: device_type,
-            messageId: "",
-            createdAt: currentDateTimeString,
+            messageId: uidPower.isEmpty ? "" : uidPower,
+            createdAt: currentDateTimeString.isEmpty ? (userInfo["currentDatePower"] as? String ?? "") : currentDateTimeString,
             block: false,
             iamblocked: false
         )
