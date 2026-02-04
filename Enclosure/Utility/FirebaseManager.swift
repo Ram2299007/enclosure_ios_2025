@@ -58,6 +58,7 @@ class FirebaseManager: NSObject, ObservableObject {
     }
     
     /// Register CHAT_MESSAGE category with Reply text input action (matching Android replyBroadCastReciver + RemoteInput)
+    /// Updated to support Communication Notifications with INSendMessageIntent
     private func registerChatNotificationCategory() {
         let replyAction = UNTextInputNotificationAction(
             identifier: "REPLY_ACTION",
@@ -66,14 +67,15 @@ class FirebaseManager: NSObject, ObservableObject {
             textInputButtonTitle: "Send",
             textInputPlaceholder: "Reply..."
         )
+        // Include INSendMessageIntent in intentIdentifiers to enable Communication Notifications UI
         let chatCategory = UNNotificationCategory(
             identifier: "CHAT_MESSAGE",
             actions: [replyAction],
-            intentIdentifiers: [],
+            intentIdentifiers: ["INSendMessageIntent"], // Critical for Communication Notifications
             options: []
         )
         UNUserNotificationCenter.current().setNotificationCategories([chatCategory])
-        print("✅ [CHAT_NOTIFICATION] Registered CHAT_MESSAGE category with Reply action")
+        print("✅ [CHAT_NOTIFICATION] Registered CHAT_MESSAGE category with Reply action and INSendMessageIntent")
     }
     
     @objc private func handleAPNsTokenReceived(_ notification: Notification) {
@@ -502,12 +504,37 @@ extension FirebaseManager {
         let data = userInfo as? [String: Any] ?? [:]
         let bodyKey = data[ChatPayloadKey.bodyKey] as? String
         
-        // If APNs alert is present, system will show notification (Service Extension attaches image).
-        // Avoid creating a local notification to prevent duplicates.
+        // If APNs alert is present with mutable-content, Notification Service Extension will process it
+        // and create Communication Notification. Don't create local notification to avoid duplicates.
+        // Check mutable-content as Int, Bool, or String (FCM might send it in different formats)
+        if let aps = userInfo["aps"] as? [String: Any], 
+           aps["alert"] != nil {
+            let mutableContent: Bool = {
+                if let intValue = aps["mutable-content"] as? Int {
+                    return intValue == 1
+                } else if let boolValue = aps["mutable-content"] as? Bool {
+                    return boolValue
+                } else if let stringValue = aps["mutable-content"] as? String {
+                    return stringValue == "1" || stringValue.lowercased() == "true"
+                }
+                return false
+            }()
+            
+            if mutableContent {
+                print("✅ [CHAT_NOTIFICATION] APS alert with mutable-content present - Notification Service Extension will handle Communication Notification")
+                print("✅ [CHAT_NOTIFICATION] Waiting for Service Extension to process notification...")
+                completionHandler(.noData)
+                return
+            } else {
+                print("⚠️ [CHAT_NOTIFICATION] APS alert present but mutable-content is false/missing")
+            }
+        }
+        
+        // If APS alert is present but NO mutable-content, Service Extension won't be called
+        // In this case, we need to create local notification ourselves
         if let aps = userInfo["aps"] as? [String: Any], aps["alert"] != nil {
-            print("📱 [CHAT_NOTIFICATION] APS alert present - skipping local notification (system handles banner)")
-            completionHandler(.noData)
-            return
+            print("📱 [CHAT_NOTIFICATION] APS alert present but NO mutable-content - creating local Communication Notification")
+            // Continue to handleChatNotification below
         }
         
         // Log so filter "CHAT_NOTIFICATION" shows whether chat path is reached
@@ -558,15 +585,9 @@ extension FirebaseManager {
     private func handleChatNotification(data: [String: Any], completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
         
         // Extract all params (matching Android FirebaseMessagingService)
-        let userName = data[ChatPayloadKey.name] as? String ?? ""
-        let message = data[ChatPayloadKey.msgKey] as? String ?? ""
         let receiverKey = data[ChatPayloadKey.friendUidKey] as? String ?? ""
-        let user_nameKey = data[ChatPayloadKey.user_nameKey] as? String ?? ""
-        let photoUrlString = data[ChatPayloadKey.photo] as? String ?? ""
-        let selectionCount = data[ChatPayloadKey.selectionCount] as? String ?? "1"
-        let displayName = user_nameKey.isEmpty ? (userName.isEmpty ? "Unknown" : userName) : user_nameKey
         
-        print("📱 [CHAT_NOTIFICATION] handleChatNotification started - receiverKey=\(receiverKey), displayName=\(displayName), msgLen=\(message.count), photoURL=\(photoUrlString.isEmpty ? "nil" : "set")")
+        print("📱 [CHAT_NOTIFICATION] handleChatNotification started - receiverKey=\(receiverKey)")
         
         // Suppress if user is already on this chat (matching Android chattingScreen.isChatScreenActive && receiverKey.equals(chattingScreen.isChatScreenActiveUid))
         let activeUid = chatScreenActiveUid ?? ""
@@ -576,20 +597,44 @@ extension FirebaseManager {
             return
         }
         
-        let truncatedMessage = message.count > 500 ? String(message.prefix(500)) + "..." : message
+        // Use Communication Notifications (WhatsApp-like) for iOS 15+
+        if #available(iOS 15.0, *) {
+            CommunicationNotificationManager.shared.createNotificationFromPayload(
+                data: data,
+                completion: { success in
+                    if success {
+                        print("✅ [CHAT_NOTIFICATION] Communication notification created")
+                    } else {
+                        print("🚫 [CHAT_NOTIFICATION] Failed to create communication notification")
+                    }
+                    completionHandler(.newData)
+                }
+            )
+        } else {
+            // Fallback to standard notification for iOS < 15
+            print("⚠️ [CHAT_NOTIFICATION] iOS < 15, using standard notification")
+            createStandardNotification(data: data, completionHandler: completionHandler)
+        }
+    }
+    
+    /// Fallback method for iOS < 15 (standard notification without Communication API)
+    private func createStandardNotification(data: [String: Any], completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        let userName = data[ChatPayloadKey.name] as? String ?? ""
+        let message = data[ChatPayloadKey.msgKey] as? String ?? ""
+        let receiverKey = data[ChatPayloadKey.friendUidKey] as? String ?? ""
+        let user_nameKey = data[ChatPayloadKey.user_nameKey] as? String ?? ""
+        let selectionCount = data[ChatPayloadKey.selectionCount] as? String ?? "1"
+        let displayName = user_nameKey.isEmpty ? (userName.isEmpty ? "Unknown" : userName) : user_nameKey
         
-        // Display message text (matching Android buildChatNotification displayMessage: Photo, Contact, Audio, etc.)
+        let truncatedMessage = message.count > 500 ? String(message.prefix(500)) + "..." : message
         let displayMessage = Self.displayMessageForNotification(message: truncatedMessage, selectionCount: selectionCount)
         
         let uidForNotification = (data[ChatPayloadKey.uidPower] as? String).flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
             ?? (receiverKey.isEmpty ? nil : receiverKey)
             ?? (data[ChatPayloadKey.uid] as? String)
             ?? "unknown"
-        let notifId = abs(uidForNotification.hashValue)
-        let identifier = "chat_\(notifId)"
+        let identifier = "chat_\(abs(uidForNotification.hashValue))"
         
-        // Show notification immediately so banner always appears (don't wait for profile image).
-        // Waiting for image download can delay or prevent the banner; image is optional.
         let content = UNMutableNotificationContent()
         content.title = displayName
         content.body = displayMessage
@@ -599,18 +644,14 @@ extension FirebaseManager {
         content.threadIdentifier = receiverKey.isEmpty ? "chat" : receiverKey
         content.summaryArgument = displayName
         content.summaryArgumentCount = 1
-        if #available(iOS 15.0, *) {
-            content.interruptionLevel = .active
-        }
         
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
-        // Add on main thread so banner shows reliably (background delivery can miss display otherwise)
         DispatchQueue.main.async {
             UNUserNotificationCenter.current().add(request) { error in
                 if let error = error {
                     print("🚫 [CHAT_NOTIFICATION] Failed to add notification: \(error.localizedDescription)")
                 } else {
-                    print("✅ [CHAT_NOTIFICATION] Chat notification shown for \(displayName)")
+                    print("✅ [CHAT_NOTIFICATION] Standard notification shown for \(displayName)")
                 }
                 completionHandler(.newData)
             }

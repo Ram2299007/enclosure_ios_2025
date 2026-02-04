@@ -99,6 +99,9 @@ class ChatViewModel: ObservableObject {
                     self.errorMessage = nil // Clear error on success
                     self.hasCachedChats = !self.chatList.isEmpty
                     print("🔵 [ChatViewModel] SUCCESS - chatList count: \(self.chatList.count), errorMessage: \(self.errorMessage ?? "nil")")
+
+                    // Donate intents for top chats so Communication UI has metadata on device
+                    self.donateCommunicationIntentsIfNeeded()
                     
                     // Sender device_type from get_user_active_chat_list (for send_notification_api) - do not use static "2"
                     if let dt = myDeviceType, !dt.isEmpty {
@@ -139,6 +142,25 @@ class ChatViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    private func donateCommunicationIntentsIfNeeded() {
+        guard #available(iOS 15.0, *) else { return }
+        let maxDonate = 10
+        let topChats = chatList.prefix(maxDonate)
+        for contact in topChats {
+            let senderName = contact.fullName
+            let message = contact.message
+            let senderUid = contact.uid
+            let photoUrl = contact.photo
+            CommunicationNotificationManager.shared.donateIntent(
+                senderName: senderName,
+                message: message,
+                senderUid: senderUid,
+                photoUrl: photoUrl
+            )
+        }
+        print("🔵 [ChatViewModel] Donated intents for top \(topChats.count) chats")
     }
     
     func fetchChatList(uid: String) {

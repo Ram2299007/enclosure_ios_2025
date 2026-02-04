@@ -1,10 +1,9 @@
 <?php
 /**
- * send_notification_ios – iOS WhatsApp-like notification with Service Extension
+ * send_notification_ios – iOS WhatsApp-like notification (visible APNs)
  *
- * Sends APNs alert + mutable-content so the Notification Service Extension can
- * attach the profile image (photo) and the system shows the banner even when
- * the app is not running. The app can still handle replies via category action.
+ * Sends APNs alert + mutable-content so the Notification Service Extension can update
+ * the notification with INSendMessageIntent (profile picture on LEFT).
  */
 
 public function send_notification_ios()
@@ -70,6 +69,15 @@ public function send_notification_ios()
     $currentDate = $requestData['currentDate'] ?? '';
     $senderTokenReply = $requestData['senderTokenReply'] ?? '';
 
+    // Resolve sender identity (used for Communication Notifications)
+    // Prefer explicit sender fields if provided; fallback to existing fields for compatibility.
+    $senderUid = $requestData['senderUid'] ?? ($requestData['senderKey'] ?? $receiverKey);
+    $senderName = $requestData['senderName'] ?? $user_name;
+    if (empty($senderName)) {
+        $senderName = $name;
+    }
+    $senderPhoto = $requestData['senderPhoto'] ?? $photo;
+
     // msgKey logic (same behaviour as Android)
     if (is_numeric($selectionCount) && (int)$selectionCount > 1) {
         $msgKey = $body . "&" . $selectionCount;
@@ -80,20 +88,22 @@ public function send_notification_ios()
     // FCM endpoint
     $url = "https://fcm.googleapis.com/v1/projects/enclosure-30573/messages:send";
 
-    // iOS DATA payload – all parameters preserved (use $msgKey for multi-selection)
+    // iOS DATA payload – all parameters (same structure as send_notification_api)
     $iosData = [
         "bodyKey" => "chatting",
         "title" => $title,
         "body" => $body,
+        "name" => $senderName,
+        "user_nameKey" => $senderName,
+        "nameKey" => $senderName,
+        "msgKey" => $msgKey,
+        "selectionCount" => $selectionCount,
+        "friendUidKey" => $senderUid,
+        "photo" => $senderPhoto,
+        "currentDateTimeString" => $currentDateTimeString,
+        "device_type" => $deviceType,
         "click_action" => $click_action,
         "icon" => $icon,
-        "nameKey" => $user_name,
-        "msgKey" => $msgKey,
-        "currentDateTimeString" => $currentDateTimeString,
-        "photo" => $photo,
-        "friendUidKey" => $receiverKey,
-        "device_type" => $deviceType,
-        "user_nameKey" => $user_name,
         "uidPower" => $uid,
         "messagePower" => $message,
         "timePower" => $time,
@@ -122,23 +132,24 @@ public function send_notification_ios()
         "notificationPower" => $notification,
         "currentDatePower" => $currentDate,
         "senderTokenReplyPower" => $senderTokenReply,
-        "userFcmTokenPower" => $deviceToken,
-        "selectionCount" => $selectionCount
+        "userFcmTokenPower" => $deviceToken
     ];
 
-    // FINAL iOS payload – APNs alert + mutable-content (Service Extension loads image)
+    // FINAL iOS payload – visible APNs alert + mutable-content
+    // Notification Service Extension will update content with INSendMessageIntent
     $payload = [
         "message" => [
             "token" => $deviceToken,
             "data" => $iosData,
             "apns" => [
                 "headers" => [
+                    "apns-push-type" => "alert",
                     "apns-priority" => "10"
                 ],
                 "payload" => [
                     "aps" => [
                         "alert" => [
-                            "title" => !empty($groupName) ? $groupName : $user_name,
+                            "title" => !empty($groupName) ? $groupName : (!empty($senderName) ? $senderName : 'Unknown'),
                             "body" => $body
                         ],
                         "sound" => "default",
@@ -172,9 +183,40 @@ public function send_notification_ios()
 
     curl_close($ch);
 
+    $fcmResponse = json_decode($response, true);
+
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        http_response_code(500);
+        echo json_encode(["error" => "FCM response is not valid JSON: " . json_last_error_msg()]);
+        return;
+    }
+
+    // Check FCM response for errors (same as send_notification_api)
+    if (isset($fcmResponse['error'])) {
+        http_response_code(500);
+        error_log("FCM Error (send_notification_ios): " . json_encode($fcmResponse['error']));
+        header('Content-Type: application/json');
+        echo json_encode([
+            "status" => "error",
+            "error" => $fcmResponse['error'],
+            "platform" => "ios",
+            "has_mutable_content" => true,
+            "has_content_available" => false,
+            "is_silent_push" => false,
+            "sent_payload" => $payload
+        ]);
+        return;
+    }
+
+    // Same response format as send_notification_api
+    header('Content-Type: application/json');
     echo json_encode([
         "status" => "success",
+        "fcm_response" => $fcmResponse,
         "platform" => "ios",
-        "fcm_response" => json_decode($response, true)
+        "has_mutable_content" => true,
+        "has_content_available" => false,
+        "is_silent_push" => false,
+        "sent_payload" => $payload
     ]);
 }

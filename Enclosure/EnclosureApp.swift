@@ -141,8 +141,27 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
         let keys = userInfo.keys.map { "\($0)" }.joined(separator: ", ")
         let bodyKey = userInfo["bodyKey"] as? String
+        
+        // Check if APS payload exists (required for Notification Service Extension)
+        let hasAps = userInfo["aps"] != nil
+        let hasAlert = (userInfo["aps"] as? [String: Any])?["alert"] != nil
+        let hasMutableContent = ((userInfo["aps"] as? [String: Any])?["mutable-content"] as? Int) == 1
+        
         print("📱 [FCM] didReceiveRemoteNotification - keys: \(keys)")
         print("📱 [FCM] bodyKey = \(bodyKey ?? "nil")")
+        print("📱 [FCM] APS present: \(hasAps)")
+        print("📱 [FCM] APS alert present: \(hasAlert)")
+        print("📱 [FCM] mutable-content: \(hasMutableContent)")
+        
+        if hasAps && hasAlert && hasMutableContent {
+            print("✅ [FCM] Notification Service Extension SHOULD be called (APS alert + mutable-content)")
+        } else if hasAps && hasAlert {
+            print("⚠️ [FCM] APS alert present but NO mutable-content - Service Extension will NOT be called")
+        } else {
+            print("⚠️ [FCM] Data-only notification (no APS alert) - Service Extension will NOT be called")
+            print("⚠️ [FCM] Backend needs to send APS alert with mutable-content: 1 for Communication Notifications")
+        }
+        
         if bodyKey == Constant.chatting {
             print("📱 [CHAT_NOTIFICATION] AppDelegate: chat payload received - forwarding to FirebaseManager")
         } else if bodyKey == nil {
