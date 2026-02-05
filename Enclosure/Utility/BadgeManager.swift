@@ -14,6 +14,14 @@ import FirebaseDatabase
 class BadgeManager {
     static let shared = BadgeManager()
     
+    // App Group for sharing badge count between app and extensions
+    private let appGroupID = "group.com.enclosure.data"
+    private let badgeCountKey = "badgeCount"
+    
+    private var sharedDefaults: UserDefaults? {
+        return UserDefaults(suiteName: appGroupID)
+    }
+    
     private init() {}
     
     // MARK: - App Icon Badge Management
@@ -25,10 +33,16 @@ class BadgeManager {
     
     /// Set app icon badge count
     func setBadgeCount(_ count: Int) {
+        let finalCount = max(0, count)
+        
         DispatchQueue.main.async {
-            UIApplication.shared.applicationIconBadgeNumber = max(0, count)
-            NSLog("📱 [BadgeManager] Badge count set to: \(max(0, count))")
+            UIApplication.shared.applicationIconBadgeNumber = finalCount
+            NSLog("📱 [BadgeManager] Badge count set to: \(finalCount)")
         }
+        
+        // Store in App Group so Notification Service Extension can access it
+        sharedDefaults?.set(finalCount, forKey: badgeCountKey)
+        NSLog("📱 [BadgeManager] Badge count stored in App Group: \(finalCount)")
     }
     
     /// Increment badge count by 1 (called when new notification arrives)
@@ -169,8 +183,15 @@ class BadgeManager {
             let count = chatNotifications.count
             NSLog("📱 [BadgeManager] Syncing badge with delivered notifications: \(count)")
             
+            // Also check App Group stored value
+            let storedCount = self.sharedDefaults?.integer(forKey: self.badgeCountKey) ?? 0
+            NSLog("📱 [BadgeManager] App Group stored badge: \(storedCount)")
+            
+            // Use whichever is higher (delivered notifications or stored count)
+            let finalCount = max(count, storedCount)
+            
             DispatchQueue.main.async {
-                self.setBadgeCount(count)
+                self.setBadgeCount(finalCount)
             }
         }
     }

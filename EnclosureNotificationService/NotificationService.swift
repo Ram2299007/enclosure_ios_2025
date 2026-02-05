@@ -193,12 +193,18 @@ final class NotificationService: UNNotificationServiceExtension {
         bestAttemptContent.summaryArgument = senderName
         bestAttemptContent.summaryArgumentCount = 1
         
-        // Get current badge count and increment by 1
-        // This ensures each new notification adds to the total badge count
-        let currentBadge = UIApplication.shared.applicationIconBadgeNumber
+        // Get current badge count from shared UserDefaults (App Group)
+        // Extensions cannot access UIApplication.shared, so we use App Group storage
+        let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure.data")
+        let currentBadge = sharedDefaults?.integer(forKey: "badgeCount") ?? 0
         let newBadge = currentBadge + 1
+        
+        // Store updated badge count for main app to sync
+        sharedDefaults?.set(newBadge, forKey: "badgeCount")
+        
+        // Set badge in notification content
         bestAttemptContent.badge = NSNumber(value: newBadge)
-        NSLog("📱 [NotificationService] Badge updated: \(currentBadge) -> \(newBadge)")
+        NSLog("📱 [NotificationService] Badge updated (App Group): \(currentBadge) -> \(newBadge)")
         let receiverUid = stringValue(bestAttemptContent.userInfo["receiverUidPower"])
             .ifEmpty(stringValue(bestAttemptContent.userInfo["receiverUid"]))
             .ifEmpty("me")
