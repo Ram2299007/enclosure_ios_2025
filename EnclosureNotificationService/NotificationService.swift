@@ -192,6 +192,13 @@ final class NotificationService: UNNotificationServiceExtension {
         bestAttemptContent.threadIdentifier = conversationId
         bestAttemptContent.summaryArgument = senderName
         bestAttemptContent.summaryArgumentCount = 1
+        
+        // Get current badge count and increment by 1
+        // This ensures each new notification adds to the total badge count
+        let currentBadge = UIApplication.shared.applicationIconBadgeNumber
+        let newBadge = currentBadge + 1
+        bestAttemptContent.badge = NSNumber(value: newBadge)
+        NSLog("📱 [NotificationService] Badge updated: \(currentBadge) -> \(newBadge)")
         let receiverUid = stringValue(bestAttemptContent.userInfo["receiverUidPower"])
             .ifEmpty(stringValue(bestAttemptContent.userInfo["receiverUid"]))
             .ifEmpty("me")

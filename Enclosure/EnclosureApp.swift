@@ -22,6 +22,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         NSLog("📤 [AppDelegate] Launch options: \(launchOptions ?? [:])")
         print("📤 [AppDelegate] Launch options: \(launchOptions ?? [:])")
         
+        // Set notification center delegate to handle interactions
+        UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
+        NSLog("📱 [AppDelegate] NotificationDelegate set")
+        
         // Check if app was launched from remote notification (when app is terminated and user taps notification)
         if let remoteNotification = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
             print("📱 [AppDelegate] App launched from remote notification tap")
@@ -235,6 +239,10 @@ struct EnclosureApp: App {
                     if newPhase == .active {
                         NSLog("📤📤📤 [EnclosureApp] App became ACTIVE - checking for shared content...")
                         print("📤 [EnclosureApp] App became ACTIVE - checking for shared content...")
+                        
+                        // Sync badge count with delivered notifications
+                        BadgeManager.shared.syncBadgeWithNotificationCenter()
+                        
                         // Check for shared content when app becomes active
                         // File container is fast - minimal delay needed
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {

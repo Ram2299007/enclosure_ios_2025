@@ -105,6 +105,13 @@ struct chatView: View {
             // Remove Firebase listener when view disappears
             removeChattingSocketListener()
         }
+        .onChange(of: viewModel.chatList) { newChatList in
+            // Recalculate badge count whenever chat list changes
+            if !newChatList.isEmpty {
+                BadgeManager.shared.calculateTotalBadgeFromChats(chatList: newChatList)
+                print("📱 [chatView] Badge recalculated from \(newChatList.count) chats")
+            }
+        }
         .overlay(
             ConfirmationDialogView(
                 isPresented: $showSessionEndedDialog,

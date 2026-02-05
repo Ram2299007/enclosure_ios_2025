@@ -852,6 +852,19 @@ struct MainActivityOld: View {
                 if let contact = newValue {
                     print("✅ [MainActivityOld] selectedChatForNavigation changed - navigating to ChattingScreen")
                     print("📱 [MainActivityOld] Contact: \(contact.fullName) (\(contact.uid))")
+                    
+                    // Clear notification count for this chat
+                    if contact.notification > 0 {
+                        print("📱 [MainActivityOld] Clearing notification count: \(contact.notification) for user: \(contact.uid)")
+                        
+                        // Clear in Firebase and decrement badge
+                        BadgeManager.shared.clearNotificationCount(
+                            forUserUid: contact.uid,
+                            currentUserUid: Constant.SenderIdMy,
+                            previousCount: contact.notification
+                        )
+                    }
+                    
                     navigateToChattingScreen = true
                 } else {
                     print("📱 [MainActivityOld] selectedChatForNavigation cleared")
