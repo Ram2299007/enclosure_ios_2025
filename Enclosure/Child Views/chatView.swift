@@ -24,6 +24,7 @@ struct chatView: View {
     @State private var firebaseListenerHandle: DatabaseHandle?
     @State private var showSessionEndedDialog: Bool = false
     @State private var didCheckSessionStatus: Bool = false
+    @State private var lastUpdateTimestamp: Date = Date() // Force UI refresh trigger
 
     private var trimmedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -107,10 +108,29 @@ struct chatView: View {
         }
         .onChange(of: viewModel.chatList) { newChatList in
             // Recalculate badge count whenever chat list changes
+            print("📱 [chatView] Chat list changed - count: \(newChatList.count)")
+            
+            // Debug: Print notification counts
+            let totalNotifications = newChatList.reduce(0) { $0 + $1.notification }
+            let chatsWithNotifications = newChatList.filter { $0.notification > 0 }
+            print("📱 [chatView] Total notifications: \(totalNotifications)")
+            print("📱 [chatView] Chats with unread: \(chatsWithNotifications.count)")
+            
+            if !chatsWithNotifications.isEmpty {
+                print("📱 [chatView] Chats with unread messages:")
+                for chat in chatsWithNotifications {
+                    print("📱 [chatView]   - \(chat.fullName): \(chat.notification) unread")
+                }
+            }
+            
             if !newChatList.isEmpty {
                 BadgeManager.shared.calculateTotalBadgeFromChats(chatList: newChatList)
                 print("📱 [chatView] Badge recalculated from \(newChatList.count) chats")
             }
+            
+            // Force UI refresh by updating timestamp
+            lastUpdateTimestamp = Date()
+            print("📱 [chatView] UI refresh triggered at \(lastUpdateTimestamp)")
         }
         .overlay(
             ConfirmationDialogView(
@@ -468,11 +488,13 @@ struct chatView: View {
                 // Get the message value (matching Android snapshot.getValue(String.class))
                 if let message = snapshot.value as? String {
                     print("🔵 [chatView] Live update received: \(message)")
+                    print("🔵 [chatView] Current chat list count: \(viewModel.chatList.count)")
                     
                     // Refresh chat list when socket message changes (matching Android commented code)
                     // This triggers a refresh of the active chat list
                     DispatchQueue.main.async {
                         print("🔵 [chatView] Refreshing chat list due to socket update")
+                        print("🔵 [chatView] Before refresh - Total notifications: \(viewModel.chatList.reduce(0) { $0 + $1.notification })")
                         viewModel.fetchChatList(uid: uid)
                     }
                 } else {

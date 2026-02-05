@@ -99,6 +99,17 @@ class ChatViewModel: ObservableObject {
                     self.errorMessage = nil // Clear error on success
                     self.hasCachedChats = !self.chatList.isEmpty
                     print("🔵 [ChatViewModel] SUCCESS - chatList count: \(self.chatList.count), errorMessage: \(self.errorMessage ?? "nil")")
+                    
+                    // Debug: Print notification counts for all chats
+                    print("🔵 [ChatViewModel] ===== NOTIFICATION COUNTS =====")
+                    for (index, contact) in self.chatList.enumerated() {
+                        if contact.notification > 0 {
+                            print("🔵 [ChatViewModel] Chat #\(index + 1) - \(contact.fullName): notification = \(contact.notification)")
+                        }
+                    }
+                    let totalNotifications = self.chatList.reduce(0) { $0 + $1.notification }
+                    print("🔵 [ChatViewModel] Total unread messages: \(totalNotifications)")
+                    print("🔵 [ChatViewModel] ===== END NOTIFICATION COUNTS =====")
 
                     // Donate intents for top chats so Communication UI has metadata on device
                     self.donateCommunicationIntentsIfNeeded()
