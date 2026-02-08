@@ -201,7 +201,7 @@ final class NotificationService: UNNotificationServiceExtension {
         
         // Store updated badge count for main app to sync
         sharedDefaults?.set(newBadge, forKey: "badgeCount")
-        
+    
         // Set badge in notification content
         bestAttemptContent.badge = NSNumber(value: newBadge)
         NSLog("📱 [NotificationService] Badge updated (App Group): \(currentBadge) -> \(newBadge)")
