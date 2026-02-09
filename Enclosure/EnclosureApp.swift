@@ -214,12 +214,20 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
         
         // Handle voice call notifications with CallKit
-        NSLog("🔍 [FCM] Checking bodyKey: '\(bodyKey ?? "nil")'")
-        print("🔍 [FCM] Checking bodyKey: '\(bodyKey ?? "nil")'")
+        // Check both bodyKey (data) and alert body (for user-visible notifications)
+        let alertBody = (userInfo["aps"] as? [String: Any])?["alert"] as? [String: Any]
+        let alertBodyText = (alertBody?["body"] as? String) ?? ""
         
-        if bodyKey == "Incoming voice call" || bodyKey == "Incoming video call" {
-            NSLog("📞📞📞 [CallKit] ✅ CALL NOTIFICATION DETECTED! bodyKey = '\(bodyKey ?? "")'")
-            print("📞📞📞 [CallKit] ✅ CALL NOTIFICATION DETECTED! bodyKey = '\(bodyKey ?? "")'")
+        NSLog("🔍 [FCM] Checking bodyKey: '\(bodyKey ?? "nil")', alertBody: '\(alertBodyText)'")
+        print("🔍 [FCM] Checking bodyKey: '\(bodyKey ?? "nil")', alertBody: '\(alertBodyText)'")
+        
+        let isVoiceCall = bodyKey == "Incoming voice call" || alertBodyText == "Incoming voice call"
+        let isVideoCall = bodyKey == "Incoming video call" || alertBodyText == "Incoming video call"
+        
+        if isVoiceCall || isVideoCall {
+            let callType = isVoiceCall ? "VOICE" : "VIDEO"
+            NSLog("📞📞📞 [CallKit] ✅ \(callType) CALL NOTIFICATION DETECTED!")
+            print("📞📞📞 [CallKit] ✅ \(callType) CALL NOTIFICATION DETECTED!")
             handleCallNotification(userInfo: userInfo, completionHandler: completionHandler)
             return
         } else {

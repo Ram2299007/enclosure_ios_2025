@@ -169,12 +169,81 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         let notification = response.notification
         let userInfo = notification.request.content.userInfo
         let bodyKey = userInfo["bodyKey"] as? String
+        let alertBody = notification.request.content.body
+        let category = notification.request.content.categoryIdentifier
+        
+        // CRITICAL: Check if this is a call notification (from background state)
+        let isVoiceCall = bodyKey == "Incoming voice call" || alertBody == "Incoming voice call" || category == "VOICE_CALL"
+        let isVideoCall = bodyKey == "Incoming video call" || alertBody == "Incoming video call" || category == "VIDEO_CALL"
         
         // Handle different action types
         switch response.actionIdentifier {
         case UNNotificationDefaultActionIdentifier:
             // User tapped the notification
             NSLog("📱 [NotificationDelegate] User tapped notification")
+            NSLog("📱 [NotificationDelegate] bodyKey: '\(bodyKey ?? "nil")', category: '\(category)'")
+            
+            // CRITICAL: Handle CALL notifications tapped from background/lock screen
+            if isVoiceCall || isVideoCall {
+                let callType = isVoiceCall ? "VOICE" : "VIDEO"
+                NSLog("📞📞📞 [NotificationDelegate] \(callType) CALL notification tapped from BACKGROUND!")
+                NSLog("📞 [NotificationDelegate] Triggering CallKit NOW...")
+                
+                // Extract call data
+                let callerName = (userInfo["name"] as? String) ?? (userInfo["user_nameKey"] as? String) ?? "Unknown"
+                let callerPhoto = (userInfo["photo"] as? String) ?? ""
+                let roomId = (userInfo["roomId"] as? String) ?? ""
+                let receiverId = (userInfo["receiverId"] as? String) ?? ""
+                let receiverPhone = (userInfo["phone"] as? String) ?? ""
+                
+                NSLog("📞 [NotificationDelegate] Call data: caller='\(callerName)', room='\(roomId)'")
+                
+                if !roomId.isEmpty {
+                    // Report to CallKit immediately
+                    CallKitManager.shared.reportIncomingCall(
+                        callerName: callerName,
+                        callerPhoto: callerPhoto,
+                        roomId: roomId,
+                        receiverId: receiverId,
+                        receiverPhone: receiverPhone
+                    ) { error in
+                        if let error = error {
+                            NSLog("❌ [NotificationDelegate] CallKit error: \(error.localizedDescription)")
+                        } else {
+                            NSLog("✅ [NotificationDelegate] CallKit triggered from background tap!")
+                        }
+                    }
+                    
+                    // Set up answer/decline callbacks
+                    CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone in
+                        NSLog("📞 [CallKit] User answered call - Room: \(roomId)")
+                        
+                        DispatchQueue.main.async {
+                            let callData: [String: String] = [
+                                "roomId": roomId,
+                                "receiverId": receiverId,
+                                "receiverPhone": receiverPhone,
+                                "callerName": callerName,
+                                "callerPhoto": callerPhoto
+                            ]
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("AnswerIncomingCall"),
+                                object: nil,
+                                userInfo: callData
+                            )
+                        }
+                    }
+                    
+                    CallKitManager.shared.onDeclineCall = { roomId in
+                        NSLog("📞 [CallKit] User declined call - Room: \(roomId)")
+                    }
+                } else {
+                    NSLog("⚠️ [NotificationDelegate] Missing roomId - cannot trigger CallKit")
+                }
+                
+                completionHandler()
+                return
+            }
             
             if bodyKey == "chatting" {
                 // Chat notification tapped - navigate to chat
