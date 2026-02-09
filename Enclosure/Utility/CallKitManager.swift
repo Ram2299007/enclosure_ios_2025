@@ -1,0 +1,261 @@
+//
+//  CallKitManager.swift
+//  Enclosure
+//
+//  CallKit integration for native iOS call UI
+//
+
+import Foundation
+import CallKit
+import AVFoundation
+import UIKit
+
+class CallKitManager: NSObject {
+    static let shared = CallKitManager()
+    
+    private let callController = CXCallController()
+    private let provider: CXProvider
+    
+    // Store active calls
+    private var activeCalls: [UUID: CallInfo] = [:]
+    
+    // Completion handlers
+    var onAnswerCall: ((String, String, String) -> Void)?
+    var onDeclineCall: ((String) -> Void)?
+    
+    struct CallInfo {
+        let uuid: UUID
+        let callerName: String
+        let callerPhoto: String
+        let roomId: String
+        let receiverId: String
+        let receiverPhone: String
+    }
+    
+    private override init() {
+        // Configure CallKit provider
+        let configuration = CXProviderConfiguration(localizedName: "Enclosure")
+        
+        // Set ringtone and icon
+        configuration.ringtoneSound = "ringtone.caf"
+        configuration.iconTemplateImageData = UIImage(named: "AppIcon")?.pngData()
+        
+        // Support video and audio calls
+        configuration.supportsVideo = true
+        configuration.maximumCallsPerCallGroup = 1
+        configuration.maximumCallGroups = 1
+        
+        // Supported call actions
+        configuration.supportedHandleTypes = [.generic, .phoneNumber]
+        
+        provider = CXProvider(configuration: configuration)
+        
+        super.init()
+        
+        provider.setDelegate(self, queue: nil)
+        
+        print("✅ [CallKit] CallKitManager initialized")
+    }
+    
+    // MARK: - Report Incoming Call
+    func reportIncomingCall(
+        callerName: String,
+        callerPhoto: String,
+        roomId: String,
+        receiverId: String,
+        receiverPhone: String,
+        completion: @escaping (Error?) -> Void
+    ) {
+        let uuid = UUID()
+        
+        print("📞 [CallKit] Reporting incoming call:")
+        print("   - Caller: \(callerName)")
+        print("   - Room ID: \(roomId)")
+        print("   - UUID: \(uuid.uuidString)")
+        
+        // Store call info
+        let callInfo = CallInfo(
+            uuid: uuid,
+            callerName: callerName,
+            callerPhoto: callerPhoto,
+            roomId: roomId,
+            receiverId: receiverId,
+            receiverPhone: receiverPhone
+        )
+        activeCalls[uuid] = callInfo
+        
+        // Create call update
+        let update = CXCallUpdate()
+        update.remoteHandle = CXHandle(type: .generic, value: callerName)
+        update.localizedCallerName = callerName
+        update.hasVideo = false // Set to true for video calls
+        update.supportsHolding = false
+        update.supportsGrouping = false
+        update.supportsUngrouping = false
+        update.supportsDTMF = false
+        
+        // Report to CallKit
+        provider.reportNewIncomingCall(with: uuid, update: update) { error in
+            if let error = error {
+                print("❌ [CallKit] Error reporting call: \(error.localizedDescription)")
+                self.activeCalls.removeValue(forKey: uuid)
+            } else {
+                print("✅ [CallKit] Successfully reported incoming call")
+                
+                // Download and cache caller photo for CallKit UI
+                self.downloadCallerImage(urlString: callerPhoto, for: uuid)
+            }
+            completion(error)
+        }
+    }
+    
+    // MARK: - Download Caller Image
+    private func downloadCallerImage(urlString: String, for uuid: UUID) {
+        guard !urlString.isEmpty, let url = URL(string: urlString) else {
+            print("⚠️ [CallKit] Invalid caller photo URL")
+            return
+        }
+        
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            if let error = error {
+                print("⚠️ [CallKit] Failed to download caller photo: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let data = data, let image = UIImage(data: data) else {
+                print("⚠️ [CallKit] Invalid image data")
+                return
+            }
+            
+            // Save to cache for CallKit to use
+            if let callInfo = self.activeCalls[uuid] {
+                print("✅ [CallKit] Caller photo downloaded successfully")
+                // CallKit will automatically use the image from the provider delegate
+            }
+        }.resume()
+    }
+    
+    // MARK: - Answer Call
+    func answerCall(uuid: UUID) {
+        guard let callInfo = activeCalls[uuid] else {
+            print("⚠️ [CallKit] Call not found: \(uuid)")
+            return
+        }
+        
+        print("📞 [CallKit] Answering call from \(callInfo.callerName)")
+        
+        let answerAction = CXAnswerCallAction(call: uuid)
+        let transaction = CXTransaction(action: answerAction)
+        
+        callController.request(transaction) { error in
+            if let error = error {
+                print("❌ [CallKit] Error answering call: \(error.localizedDescription)")
+            } else {
+                print("✅ [CallKit] Call answered successfully")
+            }
+        }
+    }
+    
+    // MARK: - End Call
+    func endCall(uuid: UUID, reason: CXCallEndedReason = .remoteEnded) {
+        print("📞 [CallKit] Ending call: \(uuid)")
+        
+        provider.reportCall(with: uuid, endedAt: Date(), reason: reason)
+        activeCalls.removeValue(forKey: uuid)
+    }
+    
+    // MARK: - End All Calls
+    func endAllCalls() {
+        print("📞 [CallKit] Ending all calls")
+        
+        for (uuid, _) in activeCalls {
+            endCall(uuid: uuid, reason: .remoteEnded)
+        }
+    }
+    
+    // MARK: - Get Call Info
+    func getCallInfo(for uuid: UUID) -> CallInfo? {
+        return activeCalls[uuid]
+    }
+}
+
+// MARK: - CXProviderDelegate
+extension CallKitManager: CXProviderDelegate {
+    func providerDidReset(_ provider: CXProvider) {
+        print("📞 [CallKit] Provider reset - ending all calls")
+        activeCalls.removeAll()
+    }
+    
+    func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
+        print("📞 [CallKit] User answered call: \(action.callUUID)")
+        
+        guard let callInfo = activeCalls[action.callUUID] else {
+            action.fail()
+            return
+        }
+        
+        // Configure audio session
+        configureAudioSession()
+        
+        // Notify app to start call
+        DispatchQueue.main.async {
+            self.onAnswerCall?(callInfo.roomId, callInfo.receiverId, callInfo.receiverPhone)
+        }
+        
+        action.fulfill()
+    }
+    
+    func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
+        print("📞 [CallKit] User ended call: \(action.callUUID)")
+        
+        guard let callInfo = activeCalls[action.callUUID] else {
+            action.fail()
+            return
+        }
+        
+        // Notify app to end call
+        DispatchQueue.main.async {
+            self.onDeclineCall?(callInfo.roomId)
+        }
+        
+        activeCalls.removeValue(forKey: action.callUUID)
+        action.fulfill()
+    }
+    
+    func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
+        print("📞 [CallKit] Starting outgoing call: \(action.callUUID)")
+        
+        configureAudioSession()
+        action.fulfill()
+    }
+    
+    func provider(_ provider: CXProvider, perform action: CXSetHeldCallAction) {
+        print("📞 [CallKit] Hold action: \(action.isOnHold)")
+        action.fulfill()
+    }
+    
+    func provider(_ provider: CXProvider, timedOutPerforming action: CXAction) {
+        print("⚠️ [CallKit] Action timed out: \(action)")
+        action.fail()
+    }
+    
+    func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
+        print("📞 [CallKit] Audio session activated")
+    }
+    
+    func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+        print("📞 [CallKit] Audio session deactivated")
+    }
+    
+    // MARK: - Audio Session Configuration
+    private func configureAudioSession() {
+        let audioSession = AVAudioSession.sharedInstance()
+        do {
+            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP])
+            try audioSession.setActive(true)
+            print("✅ [CallKit] Audio session configured")
+        } catch {
+            print("❌ [CallKit] Failed to configure audio session: \(error.localizedDescription)")
+        }
+    }
+}

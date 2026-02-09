@@ -74,8 +74,19 @@ class FirebaseManager: NSObject, ObservableObject {
             intentIdentifiers: ["INSendMessageIntent"], // Critical for Communication Notifications
             options: []
         )
-        UNUserNotificationCenter.current().setNotificationCategories([chatCategory])
+        
+        // CRITICAL: Register VOICE_CALL category for incoming call notifications
+        // This category has no actions because CallKit handles the UI
+        let voiceCallCategory = UNNotificationCategory(
+            identifier: "VOICE_CALL",
+            actions: [], // No actions - CallKit provides the UI
+            intentIdentifiers: [],
+            options: [.allowInCarPlay] // Allow calls in CarPlay
+        )
+        
+        UNUserNotificationCenter.current().setNotificationCategories([chatCategory, voiceCallCategory])
         print("✅ [CHAT_NOTIFICATION] Registered CHAT_MESSAGE category with Reply action and INSendMessageIntent")
+        print("✅ [VOICE_CALL] Registered VOICE_CALL category for incoming calls")
     }
     
     @objc private func handleAPNsTokenReceived(_ notification: Notification) {
@@ -95,7 +106,10 @@ class FirebaseManager: NSObject, ObservableObject {
     }
     
     func requestNotificationPermissions() {
-        UNUserNotificationCenter.current().delegate = self
+        // CRITICAL: Do NOT set self as delegate here!
+        // NotificationDelegate.shared is already set in AppDelegate.didFinishLaunchingWithOptions
+        // Setting delegate here would override NotificationDelegate and prevent CallKit from being triggered
+        // UNUserNotificationCenter.current().delegate = self  // REMOVED
         
         // Check current authorization status first
         UNUserNotificationCenter.current().getNotificationSettings { settings in
@@ -244,15 +258,7 @@ extension FirebaseManager: MessagingDelegate {
 
 // MARK: - UNUserNotificationCenterDelegate
 extension FirebaseManager: UNUserNotificationCenterDelegate {
-    func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                willPresent notification: UNNotification,
-                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        // Show notification even when app is in foreground (matching Android foreground notification display)
-        completionHandler([[.banner, .sound, .badge]])
-    }
     
-    /// Handle notification tap (works for both foreground and background notifications)
-    /// When user taps a chat notification, navigate to ChattingScreen (matching Android PendingIntent to chattingScreen)
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {

@@ -812,7 +812,7 @@ class MessageUploadService {
         }
     }
     
-    // MARK: - Send Voice Call Notification (matching Android FcmNotificationsSender)
+    // MARK: - Send Voice Call Notification via Backend API (supports Android & iOS)
     func sendVoiceCallNotification(
         receiverToken: String,
         receiverDeviceType: String,
@@ -830,81 +830,175 @@ class MessageUploadService {
         let myName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
         let myPhoto = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
         
+        print("📞 [VOICE_CALL_NOTIFICATION] Preparing notification:")
+        print("   - Receiver Token: \(trimmedToken)")
+        print("   - Device Type: \(receiverDeviceType)")
+        print("   - Receiver ID: \(receiverId)")
+        print("   - Room ID: \(roomId)")
+        
+        getAccessToken { [weak self] accessToken in
+            guard let self = self else { return }
+            guard let token = accessToken, !token.isEmpty else {
+                print("⚠️ [VOICE_CALL_NOTIFICATION] Failed to get access token")
+                return
+            }
+            
+            // Call backend API which handles device_type routing
+            self.sendVoiceCallNotificationToBackend(
+                deviceToken: trimmedToken,
+                accessToken: token,
+                deviceType: receiverDeviceType,
+                receiverId: receiverId,
+                receiverPhone: receiverPhone,
+                roomId: roomId,
+                senderUid: myUid,
+                senderName: myName,
+                senderPhoto: myPhoto
+            )
+        }
+    }
+    
+    // MARK: - Send Voice Call Notification Directly to FCM (matching Android FcmNotificationsSender)
+    private func sendVoiceCallNotificationToBackend(
+        deviceToken: String,
+        accessToken: String,
+        deviceType: String,
+        receiverId: String,
+        receiverPhone: String,
+        roomId: String,
+        senderUid: String,
+        senderName: String,
+        senderPhoto: String
+    ) {
+        // FCM endpoint - direct to FCM (matching Android)
+        let fcmUrl = "https://fcm.googleapis.com/v1/projects/enclosure-30573/messages:send"
+        
+        guard let url = URL(string: fcmUrl) else {
+            print("⚠️ [VOICE_CALL_NOTIFICATION] Invalid FCM URL")
+            return
+        }
+        
+        // Create data payload matching Android FcmNotificationsSender.createExtraData()
         let extraData: [String: Any] = [
-            "name": myName,
+            "name": senderName,
             "title": "Enclosure",
             "body": Constant.incomingVoiceCall,
             "icon": "notification_icon",
             "click_action": "OPEN_VOICE_CALL",
             "meetingId": "meetingId",
             "phone": receiverPhone,
-            "photo": myPhoto,
+            "photo": senderPhoto,
             "token": "",
-            "uid": myUid,
+            "uid": senderUid,
             "receiverId": receiverId,
-            "device_type": receiverDeviceType,
-            "userFcmToken": trimmedToken,
-            "username": myUid,
-            "createdBy": myUid,
-            "incoming": myUid,
+            "device_type": deviceType,
+            "userFcmToken": deviceToken,
+            "username": senderUid,
+            "createdBy": senderUid,
+            "incoming": senderUid,
             "bodyKey": Constant.incomingVoiceCall,
             "roomId": roomId
         ]
         
-        getAccessToken { [weak self] accessToken in
-            guard let self = self else { return }
-            guard let token = accessToken, !token.isEmpty else {
-                return
-            }
-            
-            var messagePayload: [String: Any] = [
-                "token": trimmedToken,
+        // Build message payload based on device type
+        var messagePayload: [String: Any]
+        
+        if deviceType.trimmingCharacters(in: .whitespacesAndNewlines) == "1" {
+            // Android device (device_type == "1") - Data-only payload
+            messagePayload = [
+                "token": deviceToken,
                 "data": extraData
             ]
-            
-            if receiverDeviceType.trimmingCharacters(in: .whitespacesAndNewlines) == "2" {
-                messagePayload["notification"] = [
-                    "title": "Enclosure",
-                    "body": Constant.incomingVoiceCall,
-                    "sound": "default"
+        } else {
+            // iOS device (device_type != "1") - USER-VISIBLE notification for CallKit
+            // CRITICAL: Changed from silent push to user-visible notification
+            // Reason: Silent pushes (content-available: 1) don't work with SwiftUI scene-based architecture
+            // The NotificationDelegate will intercept this and trigger CallKit
+            messagePayload = [
+                "token": deviceToken,
+                "data": extraData,
+                "apns": [
+                    "headers": [
+                        "apns-push-type": "alert",  // Changed from "background" to "alert"
+                        "apns-priority": "10"
+                    ],
+                    "payload": [
+                        "aps": [
+                            "alert": [
+                                "title": "Enclosure",
+                                "body": Constant.incomingVoiceCall
+                            ],
+                            "sound": "default",
+                            "category": "VOICE_CALL"
+                            // DO NOT add content-available - causes "unhandled action"
+                        ]
+                    ]
                 ]
-            }
-            
-            let requestJson: [String: Any] = [
-                "message": messagePayload
             ]
-            
-            guard let url = URL(string: "https://fcm.googleapis.com/v1/projects/enclosure-30573/messages:send") else {
-                print("⚠️ [VOICE_CALL_NOTIFICATION] Invalid FCM URL")
-                return
-            }
-            
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            
-            do {
-                request.httpBody = try JSONSerialization.data(withJSONObject: requestJson)
-            } catch {
-                print("⚠️ [VOICE_CALL_NOTIFICATION] Failed to encode payload: \(error.localizedDescription)")
-                return
-            }
-            
-            URLSession.shared.dataTask(with: request) { data, response, error in
-                if let error = error {
-                    print("⚠️ [VOICE_CALL_NOTIFICATION] Error: \(error.localizedDescription)")
-                    return
-                }
-                
-                if let httpResponse = response as? HTTPURLResponse {
-                    print("📞 [VOICE_CALL_NOTIFICATION] Response status: \(httpResponse.statusCode)")
-                }
-            }.resume()
         }
+        
+        let fcmPayload: [String: Any] = [
+            "message": messagePayload
+        ]
+        
+        print("📞 [VOICE_CALL_NOTIFICATION] Sending directly to FCM")
+        print("📞 [VOICE_CALL_NOTIFICATION] Device Type: \(deviceType) (1=Android, other=iOS)")
+        if deviceType.trimmingCharacters(in: .whitespacesAndNewlines) == "1" {
+            print("📞 [VOICE_CALL_NOTIFICATION] Using Android payload (data-only)")
+        } else {
+            print("📞 [VOICE_CALL_NOTIFICATION] Using iOS CallKit payload (USER-VISIBLE notification)")
+            print("📞 [VOICE_CALL_NOTIFICATION] Changed from silent push to user-visible (fixes SwiftUI scene issue)")
+            print("📞 [VOICE_CALL_NOTIFICATION] NotificationDelegate will intercept and trigger CallKit")
+        }
+        
+        // Log the complete payload being sent
+        print("📤 [VOICE_CALL_NOTIFICATION] ========== SENDING PAYLOAD ==========")
+        if let jsonData = try? JSONSerialization.data(withJSONObject: fcmPayload, options: .prettyPrinted),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            print("📤 [VOICE_CALL_NOTIFICATION] FCM Payload:\n\(jsonString)")
+        } else {
+            print("📤 [VOICE_CALL_NOTIFICATION] Payload: \(fcmPayload)")
+        }
+        print("📤 [VOICE_CALL_NOTIFICATION] ========================================")
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: fcmPayload)
+        } catch {
+            print("⚠️ [VOICE_CALL_NOTIFICATION] Failed to encode payload: \(error.localizedDescription)")
+            return
+        }
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("⚠️ [VOICE_CALL_NOTIFICATION] Network error: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                print("⚠️ [VOICE_CALL_NOTIFICATION] Invalid response")
+                return
+            }
+            
+            print("📞 [VOICE_CALL_NOTIFICATION] FCM response status: \(httpResponse.statusCode)")
+            
+            if let data = data, let responseString = String(data: data, encoding: .utf8) {
+                print("📞 [VOICE_CALL_NOTIFICATION] FCM response: \(responseString)")
+                
+                if httpResponse.statusCode == 200 {
+                    print("✅ [VOICE_CALL_NOTIFICATION] Voice call notification sent successfully")
+                } else {
+                    print("❌ [VOICE_CALL_NOTIFICATION] FCM error: \(responseString)")
+                }
+            }
+        }.resume()
     }
     
-    // MARK: - Send Video Call Notification (matching Android FcmNotificationsSender)
+    // MARK: - Send Video Call Notification via Backend API (supports Android & iOS)
     func sendVideoCallNotification(
         receiverToken: String,
         receiverDeviceType: String,
@@ -922,79 +1016,172 @@ class MessageUploadService {
         let myName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
         let myPhoto = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
         
+        print("📹 [VIDEO_CALL_NOTIFICATION] Preparing notification:")
+        print("   - Receiver Token: \(trimmedToken)")
+        print("   - Device Type: \(receiverDeviceType)")
+        print("   - Receiver ID: \(receiverId)")
+        print("   - Room ID: \(roomId)")
+        
+        getAccessToken { [weak self] accessToken in
+            guard let self = self else { return }
+            guard let token = accessToken, !token.isEmpty else {
+                print("⚠️ [VIDEO_CALL_NOTIFICATION] Failed to get access token")
+                return
+            }
+            
+            // Call backend API which handles device_type routing
+            self.sendVideoCallNotificationToBackend(
+                deviceToken: trimmedToken,
+                accessToken: token,
+                deviceType: receiverDeviceType,
+                receiverId: receiverId,
+                receiverPhone: receiverPhone,
+                roomId: roomId,
+                senderUid: myUid,
+                senderName: myName,
+                senderPhoto: myPhoto
+            )
+        }
+    }
+    
+    // MARK: - Send Video Call Notification Directly to FCM (matching Android FcmNotificationsSender)
+    private func sendVideoCallNotificationToBackend(
+        deviceToken: String,
+        accessToken: String,
+        deviceType: String,
+        receiverId: String,
+        receiverPhone: String,
+        roomId: String,
+        senderUid: String,
+        senderName: String,
+        senderPhoto: String
+    ) {
+        // FCM endpoint - direct to FCM (matching Android)
+        let fcmUrl = "https://fcm.googleapis.com/v1/projects/enclosure-30573/messages:send"
+        
+        guard let url = URL(string: fcmUrl) else {
+            print("⚠️ [VIDEO_CALL_NOTIFICATION] Invalid FCM URL")
+            return
+        }
+        
+        // Create data payload matching Android FcmNotificationsSender.createExtraData()
         let extraData: [String: Any] = [
-            "name": myName,
+            "name": senderName,
             "title": "Enclosure",
             "body": "Incoming video call",
             "icon": "notification_icon",
             "click_action": "OPEN_VIDEO_CALL",
             "meetingId": "meetingId",
             "phone": receiverPhone,
-            "photo": myPhoto,
+            "photo": senderPhoto,
             "token": "",
-            "uid": myUid,
+            "uid": senderUid,
             "receiverId": receiverId,
-            "device_type": receiverDeviceType,
-            "userFcmToken": trimmedToken,
-            "username": myUid,
-            "createdBy": myUid,
-            "incoming": myUid,
+            "device_type": deviceType,
+            "userFcmToken": deviceToken,
+            "username": senderUid,
+            "createdBy": senderUid,
+            "incoming": senderUid,
             "bodyKey": "Incoming video call",
             "roomId": roomId
         ]
         
-        getAccessToken { [weak self] accessToken in
-            guard let self = self else { return }
-            guard let token = accessToken, !token.isEmpty else {
-                print("⚠️ [VIDEO_CALL_NOTIFICATION] Access token missing - cannot send")
-                return
-            }
-            
-            var messagePayload: [String: Any] = [
-                "token": trimmedToken,
+        // Build message payload based on device type
+        var messagePayload: [String: Any]
+        
+        if deviceType.trimmingCharacters(in: .whitespacesAndNewlines) == "1" {
+            // Android device (device_type == "1") - Data-only payload
+            messagePayload = [
+                "token": deviceToken,
                 "data": extraData
             ]
-            
-            if receiverDeviceType.trimmingCharacters(in: .whitespacesAndNewlines) == "2" {
-                messagePayload["notification"] = [
-                    "title": "Enclosure",
-                    "body": "Incoming video call",
-                    "sound": "default"
+        } else {
+            // iOS device (device_type != "1") - USER-VISIBLE notification for CallKit
+            // CRITICAL: Changed from silent push to user-visible notification
+            // Reason: Silent pushes (content-available: 1) don't work with SwiftUI scene-based architecture
+            // The NotificationDelegate will intercept this and trigger CallKit
+            messagePayload = [
+                "token": deviceToken,
+                "data": extraData,
+                "apns": [
+                    "headers": [
+                        "apns-push-type": "alert",  // Changed from "background" to "alert"
+                        "apns-priority": "10"
+                    ],
+                    "payload": [
+                        "aps": [
+                            "alert": [
+                                "title": "Enclosure",
+                                "body": "Incoming video call"
+                            ],
+                            "sound": "default",
+                            "category": "VIDEO_CALL"
+                            // DO NOT add content-available - causes "unhandled action"
+                        ]
+                    ]
                 ]
-            }
-            
-            let requestJson: [String: Any] = [
-                "message": messagePayload
             ]
-            
-            guard let url = URL(string: "https://fcm.googleapis.com/v1/projects/enclosure-30573/messages:send") else {
-                print("⚠️ [VIDEO_CALL_NOTIFICATION] Invalid FCM URL")
-                return
-            }
-            
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            
-            do {
-                request.httpBody = try JSONSerialization.data(withJSONObject: requestJson)
-            } catch {
-                print("⚠️ [VIDEO_CALL_NOTIFICATION] Failed to encode payload: \(error.localizedDescription)")
-                return
-            }
-            
-            URLSession.shared.dataTask(with: request) { data, response, error in
-                if let error = error {
-                    print("🚫 [VIDEO_CALL_NOTIFICATION] Failed: \(error.localizedDescription)")
-                    return
-                }
-                if let httpResponse = response as? HTTPURLResponse {
-                    let responseBody = data != nil ? String(data: data!, encoding: .utf8) ?? "" : ""
-                    print("📲 [VIDEO_CALL_NOTIFICATION] Status \(httpResponse.statusCode): \(responseBody)")
-                }
-            }.resume()
         }
+        
+        let fcmPayload: [String: Any] = [
+            "message": messagePayload
+        ]
+        
+        print("📹 [VIDEO_CALL_NOTIFICATION] Sending directly to FCM")
+        print("📹 [VIDEO_CALL_NOTIFICATION] Device Type: \(deviceType) (1=Android, other=iOS)")
+        if deviceType.trimmingCharacters(in: .whitespacesAndNewlines) == "1" {
+            print("📹 [VIDEO_CALL_NOTIFICATION] Using Android payload (data-only)")
+        } else {
+            print("📹 [VIDEO_CALL_NOTIFICATION] Using iOS CallKit payload (USER-VISIBLE notification)")
+            print("📹 [VIDEO_CALL_NOTIFICATION] Changed from silent push to user-visible (fixes SwiftUI scene issue)")
+            print("📹 [VIDEO_CALL_NOTIFICATION] NotificationDelegate will intercept and trigger CallKit")
+        }
+        
+        // Log the complete payload being sent
+        print("📤 [VIDEO_CALL_NOTIFICATION] ========== SENDING PAYLOAD ==========")
+        if let jsonData = try? JSONSerialization.data(withJSONObject: fcmPayload, options: .prettyPrinted),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            print("📤 [VIDEO_CALL_NOTIFICATION] FCM Payload:\n\(jsonString)")
+        } else {
+            print("📤 [VIDEO_CALL_NOTIFICATION] Payload: \(fcmPayload)")
+        }
+        print("📤 [VIDEO_CALL_NOTIFICATION] ========================================")
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: fcmPayload)
+        } catch {
+            print("⚠️ [VIDEO_CALL_NOTIFICATION] Failed to encode payload: \(error.localizedDescription)")
+            return
+        }
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("⚠️ [VIDEO_CALL_NOTIFICATION] Network error: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                print("⚠️ [VIDEO_CALL_NOTIFICATION] Invalid response")
+                return
+            }
+            
+            print("📹 [VIDEO_CALL_NOTIFICATION] FCM response status: \(httpResponse.statusCode)")
+            
+            if let data = data, let responseString = String(data: data, encoding: .utf8) {
+                print("📹 [VIDEO_CALL_NOTIFICATION] FCM response: \(responseString)")
+                
+                if httpResponse.statusCode == 200 {
+                    print("✅ [VIDEO_CALL_NOTIFICATION] Video call notification sent successfully")
+                } else {
+                    print("❌ [VIDEO_CALL_NOTIFICATION] FCM error: \(responseString)")
+                }
+            }
+        }.resume()
     }
     
     // MARK: - Send Group Notification API (matching Android end_notification_api_group)

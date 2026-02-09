@@ -9,6 +9,7 @@ import SwiftUI
 import UserNotifications
 import FirebaseCore
 import FirebaseMessaging
+import CallKit
 
 // AppDelegate to lock orientation to portrait only and handle Firebase
 class AppDelegate: NSObject, UIApplicationDelegate {
@@ -16,8 +17,28 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         return .portrait
     }
     
+    // CRITICAL: Implement configurationForConnecting to set custom scene delegate
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        NSLog("🎬 [AppDelegate] configurationForConnecting scene")
+        print("🎬 [AppDelegate] configurationForConnecting scene")
+        
+        let config = UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+        config.delegateClass = RemoteNotificationSceneDelegate.self
+        return config
+    }
+    
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+        NSLog("🚨🚨🚨 [ENCLOSURE_APP] ========================================")
+        NSLog("🚨 [ENCLOSURE_APP] APP LAUNCHED - LOGGING TEST")
+        NSLog("🚨🚨🚨 [ENCLOSURE_APP] ========================================")
         NSLog("📤 [AppDelegate] didFinishLaunchingWithOptions CALLED")
+        print("🚨🚨🚨 [ENCLOSURE_APP] ========================================")
+        print("🚨 [ENCLOSURE_APP] APP LAUNCHED - LOGGING TEST")
+        print("🚨🚨🚨 [ENCLOSURE_APP] ========================================")
         print("📤 [AppDelegate] didFinishLaunchingWithOptions CALLED")
         NSLog("📤 [AppDelegate] Launch options: \(launchOptions ?? [:])")
         print("📤 [AppDelegate] Launch options: \(launchOptions ?? [:])")
@@ -143,18 +164,44 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     
     /// Handle FCM data payload (matching Android FirebaseMessagingService.onMessageReceived). For bodyKey == Constant.chatting, show local chat notification.
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        // CRITICAL: Use NSLog to ensure logs appear in Console.app even if Xcode console doesn't show them
+        NSLog("🚨🚨🚨 [FCM] ============================================")
+        NSLog("🚨 [FCM] NOTIFICATION RECEIVED IN APPDELEGATE!!!")
+        NSLog("🚨 [FCM] App State: \(application.applicationState.rawValue) (0=active, 1=inactive, 2=background)")
+        NSLog("🚨🚨🚨 [FCM] ============================================")
+        
+        print("🚨🚨🚨 [FCM] ============================================")
+        print("🚨 [FCM] NOTIFICATION RECEIVED IN APPDELEGATE!!!")
+        print("🚨 [FCM] App State: \(application.applicationState.rawValue) (0=active, 1=inactive, 2=background)")
+        print("🚨🚨🚨 [FCM] ============================================")
+        
+        // Post to NotificationCenter for SwiftUI scene to observe
+        NotificationCenter.default.post(
+            name: .remoteNotificationReceived,
+            object: nil,
+            userInfo: userInfo
+        )
+        
         let keys = userInfo.keys.map { "\($0)" }.joined(separator: ", ")
         let bodyKey = userInfo["bodyKey"] as? String
+        
+        NSLog("📱 [FCM] Full payload: \(userInfo)")
+        print("📱 [FCM] Full payload: \(userInfo)")
+        NSLog("📱 [FCM] Keys present: \(keys)")
+        print("📱 [FCM] Keys present: \(keys)")
+        NSLog("📱 [FCM] bodyKey = '\(bodyKey ?? "nil")'")
+        print("📱 [FCM] bodyKey = '\(bodyKey ?? "nil")'")
         
         // Check if APS payload exists (required for Notification Service Extension)
         let hasAps = userInfo["aps"] != nil
         let hasAlert = (userInfo["aps"] as? [String: Any])?["alert"] != nil
         let hasMutableContent = ((userInfo["aps"] as? [String: Any])?["mutable-content"] as? Int) == 1
         
-        print("📱 [FCM] didReceiveRemoteNotification - keys: \(keys)")
-        print("📱 [FCM] bodyKey = \(bodyKey ?? "nil")")
+        NSLog("📱 [FCM] APS present: \(hasAps)")
         print("📱 [FCM] APS present: \(hasAps)")
+        NSLog("📱 [FCM] APS alert present: \(hasAlert)")
         print("📱 [FCM] APS alert present: \(hasAlert)")
+        NSLog("📱 [FCM] mutable-content: \(hasMutableContent)")
         print("📱 [FCM] mutable-content: \(hasMutableContent)")
         
         if hasAps && hasAlert && hasMutableContent {
@@ -166,12 +213,107 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             print("⚠️ [FCM] Backend needs to send APS alert with mutable-content: 1 for Communication Notifications")
         }
         
+        // Handle voice call notifications with CallKit
+        NSLog("🔍 [FCM] Checking bodyKey: '\(bodyKey ?? "nil")'")
+        print("🔍 [FCM] Checking bodyKey: '\(bodyKey ?? "nil")'")
+        
+        if bodyKey == "Incoming voice call" || bodyKey == "Incoming video call" {
+            NSLog("📞📞📞 [CallKit] ✅ CALL NOTIFICATION DETECTED! bodyKey = '\(bodyKey ?? "")'")
+            print("📞📞📞 [CallKit] ✅ CALL NOTIFICATION DETECTED! bodyKey = '\(bodyKey ?? "")'")
+            handleCallNotification(userInfo: userInfo, completionHandler: completionHandler)
+            return
+        } else {
+            NSLog("⚠️ [FCM] NOT a call notification. bodyKey = '\(bodyKey ?? "nil")'")
+            print("⚠️ [FCM] NOT a call notification. bodyKey = '\(bodyKey ?? "nil")'")
+        }
+        
         if bodyKey == Constant.chatting {
             print("📱 [CHAT_NOTIFICATION] AppDelegate: chat payload received - forwarding to FirebaseManager")
         } else if bodyKey == nil {
             print("📱 [FCM] bodyKey missing (use data-only FCM for chat so this is called)")
         }
         FirebaseManager.shared.handleRemoteNotification(userInfo: userInfo, completionHandler: completionHandler)
+    }
+    
+    // MARK: - Handle Call Notification with CallKit
+    private func handleCallNotification(userInfo: [AnyHashable: Any], completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        NSLog("📞📞📞 [CallKit] ========== PROCESSING CALL NOTIFICATION ==========")
+        print("📞📞📞 [CallKit] ========== PROCESSING CALL NOTIFICATION ==========")
+        
+        // Extract call data
+        let callerName = (userInfo["name"] as? String) ?? "Unknown"
+        let callerPhoto = (userInfo["photo"] as? String) ?? ""
+        let roomId = (userInfo["roomId"] as? String) ?? ""
+        let receiverId = (userInfo["receiverId"] as? String) ?? ""
+        let receiverPhone = (userInfo["phone"] as? String) ?? ""
+        
+        NSLog("📞 [CallKit] Extracted data:")
+        NSLog("   - Caller Name: '\(callerName)'")
+        NSLog("   - Caller Photo: '\(callerPhoto)'")
+        NSLog("   - Room ID: '\(roomId)'")
+        NSLog("   - Receiver ID: '\(receiverId)'")
+        NSLog("   - Receiver Phone: '\(receiverPhone)'")
+        
+        print("📞 [CallKit] Extracted data:")
+        print("   - Caller Name: '\(callerName)'")
+        print("   - Caller Photo: '\(callerPhoto)'")
+        print("   - Room ID: '\(roomId)'")
+        print("   - Receiver ID: '\(receiverId)'")
+        print("   - Receiver Phone: '\(receiverPhone)'")
+        
+        print("📞 [CallKit] Caller: \(callerName)")
+        print("📞 [CallKit] Room ID: \(roomId)")
+        print("📞 [CallKit] Receiver ID: \(receiverId)")
+        
+        guard !roomId.isEmpty else {
+            print("⚠️ [CallKit] Missing room ID - cannot process call")
+            completionHandler(.failed)
+            return
+        }
+        
+        // Report incoming call to CallKit
+        CallKitManager.shared.reportIncomingCall(
+            callerName: callerName,
+            callerPhoto: callerPhoto,
+            roomId: roomId,
+            receiverId: receiverId,
+            receiverPhone: receiverPhone
+        ) { error in
+            if let error = error {
+                print("❌ [CallKit] Failed to report call: \(error.localizedDescription)")
+                completionHandler(.failed)
+            } else {
+                print("✅ [CallKit] Call reported successfully")
+                completionHandler(.newData)
+            }
+        }
+        
+        // Set up answer callback
+        CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone in
+            print("📞 [CallKit] User answered call - Room: \(roomId)")
+            
+            // Post notification to open voice call screen
+            DispatchQueue.main.async {
+                let callData: [String: String] = [
+                    "roomId": roomId,
+                    "receiverId": receiverId,
+                    "receiverPhone": receiverPhone,
+                    "callerName": callerName,
+                    "callerPhoto": callerPhoto
+                ]
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("AnswerIncomingCall"),
+                    object: nil,
+                    userInfo: callData
+                )
+            }
+        }
+        
+        // Set up decline callback
+        CallKitManager.shared.onDeclineCall = { roomId in
+            print("📞 [CallKit] User declined call - Room: \(roomId)")
+            // Handle call decline (e.g., notify server)
+        }
     }
     
     // Handle URL schemes (for Share Extension)
@@ -221,6 +363,79 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 }
 
+// CRITICAL: Custom SceneDelegate that handles remote notification actions
+// This intercepts UISHandleRemoteNotificationAction at the scene level
+class RemoteNotificationSceneDelegate: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+    
+    // Standard scene lifecycle methods
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        NSLog("🎬 [RemoteNotificationSceneDelegate] scene willConnectTo")
+        print("🎬 [RemoteNotificationSceneDelegate] scene willConnectTo")
+        
+        // Check for notification in connection options
+        if let notificationResponse = connectionOptions.notificationResponse {
+            NSLog("🚨 [RemoteNotificationSceneDelegate] Found notification response in connectionOptions")
+            print("🚨 [RemoteNotificationSceneDelegate] Found notification response in connectionOptions")
+            handleNotification(userInfo: notificationResponse.notification.request.content.userInfo)
+        }
+    }
+    
+    // CRITICAL: Override canPerformAction to intercept action routing
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        let actionString = NSStringFromSelector(action)
+        NSLog("🔍 [RemoteNotificationSceneDelegate] canPerformAction: \(actionString)")
+        print("🔍 [RemoteNotificationSceneDelegate] canPerformAction: \(actionString)")
+        
+        // Log sender details
+        if let senderObj = sender as? NSObject {
+            NSLog("🔍 [RemoteNotificationSceneDelegate] Sender class: \(type(of: senderObj))")
+            print("🔍 [RemoteNotificationSceneDelegate] Sender class: \(type(of: senderObj))")
+            NSLog("🔍 [RemoteNotificationSceneDelegate] Sender: \(senderObj)")
+            print("🔍 [RemoteNotificationSceneDelegate] Sender: \(senderObj)")
+            
+            // Try to extract payload using reflection
+            let mirror = Mirror(reflecting: senderObj)
+            for child in mirror.children {
+                NSLog("🔍 [RemoteNotificationSceneDelegate] Property: \(child.label ?? "unknown") = \(child.value)")
+                print("🔍 [RemoteNotificationSceneDelegate] Property: \(child.label ?? "unknown") = \(child.value)")
+                
+                // If we find userInfo or payload, try to handle it
+                if let label = child.label, (label.contains("payload") || label.contains("userInfo")) {
+                    if let payload = child.value as? [AnyHashable: Any] {
+                        NSLog("🚨🚨🚨 [RemoteNotificationSceneDelegate] Found payload in sender!")
+                        print("🚨🚨🚨 [RemoteNotificationSceneDelegate] Found payload in sender!")
+                        handleNotification(userInfo: payload)
+                        return true
+                    }
+                }
+            }
+        }
+        
+        return super.canPerformAction(action, withSender: sender)
+    }
+    
+    // Helper to forward notifications to AppDelegate
+    private func handleNotification(userInfo: [AnyHashable: Any]) {
+        NSLog("📱 [RemoteNotificationSceneDelegate] Forwarding notification to AppDelegate")
+        print("📱 [RemoteNotificationSceneDelegate] Forwarding notification to AppDelegate")
+        NSLog("📱 [RemoteNotificationSceneDelegate] UserInfo: \(userInfo)")
+        print("📱 [RemoteNotificationSceneDelegate] UserInfo: \(userInfo)")
+        
+        if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
+            appDelegate.application(UIApplication.shared, didReceiveRemoteNotification: userInfo) { result in
+                NSLog("✅ [RemoteNotificationSceneDelegate] AppDelegate handled with result: \(result.rawValue)")
+                print("✅ [RemoteNotificationSceneDelegate] AppDelegate handled with result: \(result.rawValue)")
+            }
+        }
+    }
+}
+
+// Custom notification name for remote notifications
+extension Notification.Name {
+    static let remoteNotificationReceived = Notification.Name("RemoteNotificationReceived")
+}
+
 @main
 struct EnclosureApp: App {
     let persistenceController = PersistenceController.shared
@@ -232,6 +447,15 @@ struct EnclosureApp: App {
             ContentView()
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
                 .lockOrientationToPortrait()
+                .onReceive(NotificationCenter.default.publisher(for: .remoteNotificationReceived)) { notification in
+                    NSLog("🚨🚨🚨 [SCENE] Remote notification received via custom NotificationCenter event!")
+                    print("🚨🚨🚨 [SCENE] Remote notification received via custom NotificationCenter event!")
+                    
+                    if let userInfo = notification.userInfo as? [AnyHashable: Any] {
+                        NSLog("📱 [SCENE] Forwarding notification with bodyKey: \(userInfo["bodyKey"] as? String ?? "nil")")
+                        print("📱 [SCENE] Forwarding notification with bodyKey: \(userInfo["bodyKey"] as? String ?? "nil")")
+                    }
+                }
                 .onChange(of: scenePhase) { newPhase in
                     NSLog("📤📤📤 [EnclosureApp] Scene phase changed to: \(String(describing: newPhase))")
                     print("📤 [EnclosureApp] Scene phase changed to: \(String(describing: newPhase))")

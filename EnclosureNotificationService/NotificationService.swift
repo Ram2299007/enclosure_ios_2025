@@ -51,8 +51,25 @@ final class NotificationService: UNNotificationServiceExtension {
         NSLog("🔔 [NotificationService] photo: \(userInfo["photo"] as? String ?? "MISSING")")
 
         let bodyKey = userInfo["bodyKey"] as? String
+        let category = bestAttemptContent.categoryIdentifier
+        
+        // CRITICAL: Detect CALL notifications and let the main app handle CallKit
+        if bodyKey == "Incoming voice call" || bodyKey == "Incoming video call" || 
+           category == "VOICE_CALL" || category == "VIDEO_CALL" {
+            NSLog("📞📞📞 [NotificationService] CALL NOTIFICATION DETECTED!")
+            NSLog("📞 [NotificationService] bodyKey: '\(bodyKey ?? "nil")', category: '\(category)'")
+            NSLog("📞 [NotificationService] Passing to main app - CallKit will handle UI")
+            NSLog("📞 [NotificationService] App should suppress banner in willPresent and trigger CallKit")
+            
+            // Pass notification to app unchanged - the app's NotificationDelegate will:
+            // 1. Suppress banner with completionHandler([])
+            // 2. Trigger CallKit full-screen UI
+            contentHandler(bestAttemptContent)
+            return
+        }
+        
         guard bodyKey == "chatting" else {
-            NSLog("⚠️ [NotificationService] bodyKey != 'chatting' (got: '\(bodyKey ?? "nil")') - skipping")
+            NSLog("⚠️ [NotificationService] bodyKey != 'chatting' or call (got: '\(bodyKey ?? "nil")') - passing through")
             contentHandler(bestAttemptContent)
             return
         }

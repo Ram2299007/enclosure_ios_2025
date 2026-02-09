@@ -30,10 +30,110 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        NSLog("📱 [NotificationDelegate] willPresent notification")
+        NSLog("🚨🚨🚨 [NotificationDelegate] ============================================")
+        NSLog("🚨 [NotificationDelegate] willPresent notification in FOREGROUND")
+        NSLog("🚨🚨🚨 [NotificationDelegate] ============================================")
+        print("🚨🚨🚨 [NotificationDelegate] willPresent notification in FOREGROUND")
         
         let userInfo = notification.request.content.userInfo
         let bodyKey = userInfo["bodyKey"] as? String
+        
+        // CRITICAL: For user-visible notifications, also check the alert body text
+        let alertBody = notification.request.content.body
+        
+        NSLog("📱 [NotificationDelegate] bodyKey: '\(bodyKey ?? "nil")'")
+        print("📱 [NotificationDelegate] bodyKey: '\(bodyKey ?? "nil")'")
+        NSLog("📱 [NotificationDelegate] alert body: '\(alertBody)'")
+        print("📱 [NotificationDelegate] alert body: '\(alertBody)'")
+        NSLog("📱 [NotificationDelegate] category: '\(notification.request.content.categoryIdentifier)'")
+        print("📱 [NotificationDelegate] category: '\(notification.request.content.categoryIdentifier)'")
+        NSLog("📱 [NotificationDelegate] Full userInfo: \(userInfo)")
+        print("📱 [NotificationDelegate] Full userInfo: \(userInfo)")
+        
+        // CRITICAL: Voice/Video call notifications must be forwarded to AppDelegate for CallKit
+        // Check THREE ways: bodyKey (data payload), alert body (user-visible), OR category identifier
+        let category = notification.request.content.categoryIdentifier
+        let isVoiceCall = bodyKey == "Incoming voice call" || alertBody == "Incoming voice call" || category == "VOICE_CALL"
+        let isVideoCall = bodyKey == "Incoming video call" || alertBody == "Incoming video call" || category == "VIDEO_CALL"
+        
+        if isVoiceCall || isVideoCall {
+            let callType = isVoiceCall ? "VOICE" : "VIDEO"
+            NSLog("🚨🚨🚨 [NotificationDelegate] \(callType) CALL DETECTED IN FOREGROUND!")
+            NSLog("📞 [NotificationDelegate] Detected via: bodyKey='\(bodyKey ?? "nil")', alertBody='\(alertBody)', category='\(category)'")
+            NSLog("📞 [NotificationDelegate] Forwarding to AppDelegate.didReceiveRemoteNotification")
+            print("🚨🚨🚨 [NotificationDelegate] \(callType) CALL DETECTED IN FOREGROUND!")
+            print("📞 [NotificationDelegate] Detected via: bodyKey='\(bodyKey ?? "nil")', alertBody='\(alertBody)'")
+            print("📞 [NotificationDelegate] Forwarding to AppDelegate.didReceiveRemoteNotification")
+            print("📞 [NotificationDelegate] This is a USER-VISIBLE notification (changed from silent push)")
+            
+            // CRITICAL: Trigger CallKit IMMEDIATELY (not async) so it shows before iOS displays banner
+            NSLog("📞 [NotificationDelegate] Triggering CallKit IMMEDIATELY...")
+            print("📞 [NotificationDelegate] Triggering CallKit IMMEDIATELY...")
+            
+            // Extract call data
+            let callerName = (userInfo["name"] as? String) ?? (userInfo["user_nameKey"] as? String) ?? "Unknown"
+            let callerPhoto = (userInfo["photo"] as? String) ?? ""
+            let roomId = (userInfo["roomId"] as? String) ?? ""
+            let receiverId = (userInfo["receiverId"] as? String) ?? ""
+            let receiverPhone = (userInfo["phone"] as? String) ?? ""
+            
+            NSLog("📞 [NotificationDelegate] Call data: caller='\(callerName)', room='\(roomId)'")
+            print("📞 [NotificationDelegate] Call data: caller='\(callerName)', room='\(roomId)'")
+            
+            if !roomId.isEmpty {
+                // Report to CallKit SYNCHRONOUSLY
+                CallKitManager.shared.reportIncomingCall(
+                    callerName: callerName,
+                    callerPhoto: callerPhoto,
+                    roomId: roomId,
+                    receiverId: receiverId,
+                    receiverPhone: receiverPhone
+                ) { error in
+                    if let error = error {
+                        NSLog("❌ [NotificationDelegate] CallKit error: \(error.localizedDescription)")
+                        print("❌ [NotificationDelegate] CallKit error: \(error.localizedDescription)")
+                    } else {
+                        NSLog("✅ [NotificationDelegate] CallKit call reported successfully!")
+                        print("✅ [NotificationDelegate] CallKit call reported successfully!")
+                    }
+                }
+                
+                // Set up answer/decline callbacks
+                CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone in
+                    NSLog("📞 [CallKit] User answered call - Room: \(roomId)")
+                    print("📞 [CallKit] User answered call - Room: \(roomId)")
+                    
+                    DispatchQueue.main.async {
+                        let callData: [String: String] = [
+                            "roomId": roomId,
+                            "receiverId": receiverId,
+                            "receiverPhone": receiverPhone,
+                            "callerName": callerName,
+                            "callerPhoto": callerPhoto
+                        ]
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("AnswerIncomingCall"),
+                            object: nil,
+                            userInfo: callData
+                        )
+                    }
+                }
+                
+                CallKitManager.shared.onDeclineCall = { roomId in
+                    NSLog("📞 [CallKit] User declined call - Room: \(roomId)")
+                    print("📞 [CallKit] User declined call - Room: \(roomId)")
+                }
+            } else {
+                NSLog("⚠️ [NotificationDelegate] Missing roomId - cannot trigger CallKit")
+                print("⚠️ [NotificationDelegate] Missing roomId - cannot trigger CallKit")
+            }
+            
+            // Don't show banner - CallKit is now showing full-screen UI
+            NSLog("📞 [NotificationDelegate] Suppressing banner - CallKit UI active")
+            print("📞 [NotificationDelegate] Suppressing banner - CallKit UI active")
+            completionHandler([])
+            return
+        }
         
         if bodyKey == "chatting" {
             // Chat notification - show banner, sound, and increment badge
@@ -46,6 +146,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             }
         } else {
             // Other notifications
+            NSLog("📱 [NotificationDelegate] Other notification - showing banner")
             if #available(iOS 14.0, *) {
                 completionHandler([.banner, .sound, .badge])
             } else {
