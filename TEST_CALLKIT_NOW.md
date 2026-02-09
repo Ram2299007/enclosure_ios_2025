@@ -1,122 +1,212 @@
-# Quick Test: CallKit Full-Screen UI
+# CallKit Testing Guide - UPDATED
 
-## The Problem You Reported
-"notification detected but not it is in standard rich design like whatsapp call notification mean left side circular and small app icon and right side horizontal dismiss and accept button"
+## Changes Made
 
-**Translation:** You were seeing a **standard banner** instead of **CallKit full-screen UI**.
+### Fixed Code Issues:
+1. ✅ **Removed custom RemoteNotificationSceneDelegate** that was blocking notification delivery
+2. ✅ Removed `configurationForConnecting` override that was interfering with default behavior
+3. ✅ App now uses **default SwiftUI scene management** for proper notification routing
 
-## The Fix
-We fixed a critical timing issue where CallKit was triggered AFTER iOS showed the banner. Now CallKit triggers IMMEDIATELY to show the full-screen UI before any banner appears.
+### What This Fixes:
+- ✅ Notifications will now properly reach `AppDelegate.didReceiveRemoteNotification`
+- ✅ Foreground notifications will reach `NotificationDelegate.willPresent`  
+- ✅ Tapped notifications will reach `NotificationDelegate.didReceive`
+- ✅ No more "unhandled action" errors
 
-## Test Now (5 Minutes)
+## Build & Test Steps
 
-### 1. Rebuild App
+### Step 1: Clean Build
 ```bash
-In Xcode:
-- Product > Clean Build Folder (Cmd+Shift+K)
-- Product > Build (Cmd+B)
-- Run on your iPhone (must be real device, NOT simulator)
+# Clean derived data
+rm -rf ~/Library/Developer/Xcode/DerivedData/Enclosure-*
+
+# In Xcode:
+Product > Clean Build Folder (Cmd+Shift+K)
+Product > Build (Cmd+B)
 ```
 
-### 2. Send Call Notification
-From your Android backend, send a voice call notification to this iOS device.
-
-### 3. What You Should See Now
-
-#### ✅ CORRECT (CallKit Full-Screen UI):
-```
-┌─────────────────────────────┐
-│                             │
-│      Enclosure              │ (top of screen)
-│                             │
-│      ╭──────────╮           │
-│      │          │           │
-│      │  [Photo] │           │ (large circular area)
-│      │          │           │
-│      ╰──────────╯           │
-│                             │
-│    John Doe                 │ (caller name, large)
-│    Incoming Call            │
-│                             │
-│                             │
-│  ┌─────────────────────┐   │
-│  │   🟢  Accept        │   │ (green button, full width)
-│  └─────────────────────┘   │
-│                             │
-│  ┌─────────────────────┐   │
-│  │   🔴  Decline       │   │ (red button, full width)
-│  └─────────────────────┘   │
-│                             │
-└─────────────────────────────┘
-```
-**This is what WhatsApp, FaceTime, and Phone app show**
-
-#### ❌ WRONG (Standard Banner - OLD behavior):
-```
-┌─────────────────────────────┐
-│ [📱] Enclosure         [X]  │ (small notification banner at top)
-│ Incoming voice call         │
-└─────────────────────────────┘
-   ↑
-   Your normal screen below
+### Step 2: Install on Device
+```bash
+# Run on physical device (not simulator - CallKit doesn't work in simulator)
+Product > Run (Cmd+R)
 ```
 
-### 4. Check Logs (Console.app)
+### Step 3: Test Current Backend Notification
 
-Open Console.app on your Mac → Select your iPhone → Filter: `Enclosure`
-
-**Look for these logs:**
+**Current Payload (from logs):**
+```json
+{
+  "aps": {
+    "content-available": 1,
+    "alert": {
+      "title": "Enclosure",
+      "body": "Incoming voice call"
+    },
+    "category": "VOICE_CALL",
+    "sound": "default"
+  },
+  "bodyKey": "Incoming voice call",
+  "name": "Priti Lohar",
+  "roomId": "EnclosurePowerfulNext1770635173",
+  "receiverId": "2",
+  "phone": "+918379887185"
+}
 ```
-📞📞📞 [NotificationService] CALL NOTIFICATION DETECTED!
-🚨🚨🚨 [NotificationDelegate] VOICE CALL DETECTED IN FOREGROUND!
-📞 [NotificationDelegate] Triggering CallKit IMMEDIATELY...
-📞 [NotificationDelegate] Call data: caller='...', room='...'
-✅ [CallKit] Successfully reported incoming call
-📞 [NotificationDelegate] Suppressing banner - CallKit UI active
-```
 
-## If You Still See Banner (Not Full-Screen)
+**Test Scenarios:**
 
-**Check logs for errors:**
-
-1. **Missing data:**
+#### Test A: App in FOREGROUND
+1. Open app and keep it in foreground
+2. Send voice call notification from backend
+3. **Expected Result**: CallKit full-screen UI appears immediately
+4. **Expected Logs:**
    ```
-   ⚠️ [NotificationDelegate] Missing roomId - cannot trigger CallKit
+   🚨🚨🚨 [NotificationDelegate] willPresent notification in FOREGROUND
+   🚨 [NotificationDelegate] VOICE CALL DETECTED IN FOREGROUND!
+   📞 [NotificationDelegate] Triggering CallKit IMMEDIATELY...
+   ✅ [NotificationDelegate] CallKit call reported successfully!
+   📞 [NotificationDelegate] Suppressing banner - CallKit UI active
    ```
-   → Fix: Backend must send `roomId` in notification payload
 
-2. **CallKit error:**
+#### Test B: App in BACKGROUND (Home Screen)
+1. Press home button (app goes to background)
+2. Send voice call notification from backend  
+3. User sees notification banner
+4. **Tap the notification**
+5. **Expected Result**: CallKit UI appears
+6. **Expected Logs:**
    ```
-   ❌ [NotificationDelegate] CallKit error: <error message>
+   📱 [NotificationDelegate] User tapped notification
+   📞📞📞 [NotificationDelegate] VOICE CALL notification tapped from BACKGROUND!
+   📞 [NotificationDelegate] Triggering CallKit NOW...
+   ✅ [NotificationDelegate] CallKit triggered from background tap!
    ```
-   → Send the error message so I can diagnose
 
-3. **Not detected:**
-   - If you don't see `🚨🚨🚨 CALL DETECTED` logs
-   - Send the full logs showing what `bodyKey`, `alertBody`, and `category` values are
+#### Test C: App KILLED (Swiped Away)
+1. Swipe app away completely  
+2. Send voice call notification from backend
+3. **Current Backend Payload Will NOT work** because:
+   - App needs to wake up to trigger CallKit
+   - Current payload has `alert`, so iOS shows banner instead of waking app
+4. **You'll see**: Regular notification banner (NOT CallKit)
+5. **Expected Behavior**: User must tap notification to open app, THEN CallKit appears
 
-## Quick Comparison
+### Step 4: Check Console Logs
 
-| Feature | Banner (❌ OLD) | CallKit (✅ NEW) |
-|---------|----------------|------------------|
-| **Size** | Small banner at top | Full-screen takeover |
-| **Photo** | Tiny app icon | Large circular photo |
-| **Buttons** | Tap to open + dismiss | Accept/Decline (like WhatsApp) |
-| **Sound** | Notification sound | Ringtone (like phone call) |
-| **Lock screen** | Regular notification | Full-screen call UI |
-| **UI Style** | Generic notification | Native call interface |
+**Open Console.app:**
+1. Window > Devices
+2. Select your iPhone
+3. Click "Open Console"
+4. Filter: "Enclosure"
+5. Look for these markers:
+   - 🚨 = Critical notification received
+   - 📞 = CallKit processing
+   - ✅ = Success
+   - ❌ = Error
 
-## Report Back
+**Key Logs to Find:**
 
-After testing, please confirm:
+✅ **SUCCESS CASE (Foreground):**
+```
+🚨🚨🚨 [NotificationDelegate] willPresent notification in FOREGROUND
+🚨 [NotificationDelegate] VOICE CALL DETECTED IN FOREGROUND!
+✅ [NotificationDelegate] CallKit call reported successfully!
+```
 
-1. ✅ **SUCCESS**: "I see the full-screen CallKit UI with large buttons!" 
-   → DONE! Your calls now work like WhatsApp ✨
+✅ **SUCCESS CASE (Background Tap):**
+```
+📱 [NotificationDelegate] User tapped notification
+📞📞📞 [NotificationDelegate] VOICE CALL notification tapped from BACKGROUND!
+✅ [NotificationDelegate] CallKit triggered from background tap!
+```
 
-2. ❌ **STILL BANNER**: "I still see the small banner notification"
-   → Send me the Console.app logs (filter: `Enclosure`)
-   → I'll diagnose what's preventing CallKit from triggering
+⚠️ **FAIL CASE (App Killed - Backend Issue):**
+```
+# NO LOGS because app doesn't wake up with current payload
+```
 
----
+## Expected Results Summary
 
-**Expected result:** Full-screen CallKit UI (like WhatsApp) instead of banner ✅
+| App State | Current Payload | Result | User Experience |
+|-----------|----------------|---------|-----------------|
+| **Foreground** | Works ✅ | CallKit appears | Full-screen native call UI |
+| **Background** | Works ✅ (after tap) | User taps banner → CallKit | Requires user to tap notification |
+| **Killed** | ❌ Doesn't work | Shows banner only | User must tap → Opens app → No CallKit |
+
+## Backend Fix Required for "Killed App" State
+
+To make CallKit work when app is **killed** (swiped away), backend MUST send **silent push**:
+
+### Change Backend Notification to:
+```json
+{
+  "data": {
+    "bodyKey": "Incoming voice call",
+    "name": "Priti Lohar",
+    "roomId": "EnclosurePowerfulNext1770635173",
+    "receiverId": "2",
+    "phone": "+918379887185"
+  },
+  "apns": {
+    "payload": {
+      "aps": {
+        "content-available": 1
+      }
+    }
+  }
+}
+```
+
+**REMOVE these for voice calls:**
+- ❌ `notification.title`
+- ❌ `notification.body`
+- ❌ `aps.alert`
+- ❌ `aps.sound`
+- ❌ `aps.category`
+
+**This will:**
+1. ✅ Wake app in background (even if killed)
+2. ✅ Trigger `AppDelegate.didReceiveRemoteNotification`
+3. ✅ App reports call to CallKit
+4. ✅ CallKit shows full-screen UI (not a banner)
+5. ✅ Works in ALL app states
+
+## Quick Verification Commands
+
+### Check if app is running:
+```bash
+xcrun simctl launch booted com.enclosure
+```
+
+### Kill app manually:
+```bash
+killall Enclosure
+```
+
+### View real-time logs in terminal:
+```bash
+log stream --device --predicate 'process == "Enclosure"' --level debug
+```
+
+## Summary
+
+✅ **Code is now fixed** - No more custom scene delegate blocking notifications
+
+⚠️ **Backend needs updating** - Must send silent push for "killed app" state to work
+
+🎯 **Test Priority:**
+1. Test foreground (should work NOW with current code + current backend)
+2. Test background tap (should work NOW with current code + current backend)
+3. Request backend team to change to silent push for killed app state
+
+## Success Criteria
+
+**The fix is successful when:**
+1. ✅ Foreground: CallKit appears immediately (no banner)
+2. ✅ Background: User taps banner → CallKit appears
+3. ✅ Killed (after backend fix): CallKit appears automatically (no banner)
+
+**NO MORE:**
+- ❌ "unhandled action" errors
+- ❌ Regular notification banners for voice calls
+- ❌ Need to tap notification in foreground

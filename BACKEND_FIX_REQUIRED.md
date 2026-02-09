@@ -1,140 +1,273 @@
-# 🔴 CRITICAL: Backend Fix Required for Communication Notifications
+# Backend Fix Required for CallKit
 
 ## Problem
 
-**Notification Service Extension is NOT being called** because your backend is sending **data-only notifications** (no APS alert).
+Voice call notifications show as **regular banners** instead of **CallKit full-screen UI** when app is killed/swiped away.
 
-## Current Backend Behavior
+## Root Cause
 
-Looking at `backend_example/send_notification_api.php`, line 151-165, your backend DOES include APS alert with mutable-content for iOS. However, you might be using a different endpoint or the payload might not be correct.
+Current backend sends notification with **BOTH alert AND content-available**:
 
-## Required Backend Payload Format
-
-Your backend MUST send notifications in this exact format for Communication Notifications to work:
-
-```php
-// For iOS receiver (receiverDeviceType === "2")
-$fcmMessage["apns"] = [
-    "payload" => [
-        "aps" => [
-            "alert" => [
-                "title" => $user_name,  // Sender name
-                "body" => $body         // Message text
-            ],
-            "sound" => "default",
-            "badge" => 1,
-            "mutable-content" => 1,     // ← CRITICAL: Must be integer 1, not boolean
-            "category" => "CHAT_MESSAGE"
-        ]
-    ]
-];
-
-// Data payload (for app to handle tap/reply)
-$fcmMessage["data"] = [
-    "bodyKey" => "chatting",
-    "friendUidKey" => $receiverKey,
-    "photo" => $photo,
-    "msgKey" => $msgKey,
-    "user_nameKey" => $user_name,
-    "name" => $user_name,
-    // ... all other fields
-];
-```
-
-## Check Your Backend Code
-
-### Option 1: Verify send_notification_api.php
-
-Check line 161 in `backend_example/send_notification_api.php`:
-
-```php
-if ($isReceiverIos) {
-    $fcmMessage["apns"] = [
-        "payload" => [
-            "aps" => [
-                "alert" => [
-                    "title" => !empty($groupName) ? $groupName : $user_name,
-                    "body" => $body
-                ],
-                "sound" => "default",
-                "badge" => 1,
-                "mutable-content" => 1,  // ← Must be integer 1
-                "category" => "CHAT_MESSAGE"
-            ]
-        ]
-    ];
+```json
+{
+  "notification": {
+    "title": "Enclosure",
+    "body": "Incoming voice call"
+  },
+  "data": { ... },
+  "apns": {
+    "payload": {
+      "aps": {
+        "content-available": 1,
+        "alert": { ... },
+        "category": "VOICE_CALL",
+        "sound": "default"
+      }
+    }
+  }
 }
 ```
 
-**Verify:**
-- ✅ `mutable-content` is set to integer `1` (not boolean `true` or string `"1"`)
-- ✅ `alert` has both `title` and `body`
-- ✅ `category` is `"CHAT_MESSAGE"`
+**Problem**: When app is **killed**, iOS shows the alert banner instead of waking the app to trigger CallKit.
 
-### Option 2: Check Which Endpoint You're Using
+## Solution: Send Silent Push for Voice Calls
 
-If you're using `send_notification_ios_DATA_ONLY.php`, **STOP** - that endpoint sends data-only notifications without APS alert. Use `send_notification_api.php` instead.
-
-## How to Test
-
-1. **Send a test notification** from your backend
-2. **Check device logs** for:
-   ```
-   📱 [FCM] APS present: true
-   📱 [FCM] APS alert present: true
-   📱 [FCM] mutable-content: true
-   ✅ [FCM] Notification Service Extension SHOULD be called
-   🔔 [NotificationService] Processing Communication Notification for...
-   ```
-
-3. **If you see**:
-   ```
-   ⚠️ [FCM] Data-only notification (no APS alert)
-   ```
-   Then your backend is NOT sending APS alert - **fix the backend**.
-
-## Quick Fix for Backend
-
-If your backend is not sending APS alert, update it to include:
-
-```php
-// In your notification sending code
-if ($isReceiverIos) {
-    $fcmMessage["apns"] = [
-        "payload" => [
-            "aps" => [
-                "alert" => [
-                    "title" => $user_name,
-                    "body" => $body
-                ],
-                "sound" => "default",
-                "badge" => 1,
-                "mutable-content" => 1,  // Integer 1, not boolean
-                "category" => "CHAT_MESSAGE"
-            ]
-        ]
-    ];
+### ❌ REMOVE (for voice/video calls):
+```json
+{
+  "notification": {
+    "title": "...",  // ❌ REMOVE
+    "body": "..."    // ❌ REMOVE
+  },
+  "apns": {
+    "payload": {
+      "aps": {
+        "alert": { ... },  // ❌ REMOVE
+        "sound": "...",    // ❌ REMOVE
+        "category": "..."  // ❌ REMOVE
+      }
+    }
+  }
 }
 ```
 
-## Why This Matters
+### ✅ SEND THIS INSTEAD:
+```json
+{
+  "data": {
+    "bodyKey": "Incoming voice call",
+    "name": "Priti Lohar",
+    "roomId": "EnclosurePowerfulNext1770635173",
+    "receiverId": "2",
+    "phone": "+918379887185",
+    "photo": "https://...",
+    "uid": "1",
+    "username": "1",
+    "createdBy": "1",
+    "token": "",
+    "meetingId": "meetingId",
+    "incoming": "1",
+    "click_action": "OPEN_VOICE_CALL",
+    "device_type": "BD5313B8-C120-42B7-A17B-C3446F88447C",
+    "userFcmToken": "cWXCYutVCEItm9JpJbkVF1:..."
+  },
+  "apns": {
+    "payload": {
+      "aps": {
+        "content-available": 1
+      }
+    }
+  }
+}
+```
 
-- **Without APS alert + mutable-content**: Service Extension never runs → No Communication Notifications → App logo on LEFT (wrong)
-- **With APS alert + mutable-content**: Service Extension runs → Communication Notifications work → Profile picture on LEFT (correct)
+## Implementation Example (Kotlin/Java)
 
-## Next Steps
+### Current Code (WRONG):
+```kotlin
+val message = Message.builder()
+    .setNotification(
+        Notification.builder()
+            .setTitle("Enclosure")
+            .setBody("Incoming voice call")
+            .build()
+    )
+    .putData("bodyKey", "Incoming voice call")
+    .putData("name", callerName)
+    // ... more data
+    .setApnsConfig(
+        ApnsConfig.builder()
+            .setAps(
+                Aps.builder()
+                    .setContentAvailable(true)
+                    .setCategory("VOICE_CALL")
+                    .setSound("default")
+                    .build()
+            )
+            .build()
+    )
+    .setToken(userFcmToken)
+    .build()
+```
 
-1. **Check your backend code** - verify it sends APS alert with mutable-content
-2. **Send a test notification**
-3. **Check device logs** - look for the new logging messages
-4. **If Service Extension logs appear**, Communication Notifications should work
-5. **If no Service Extension logs**, fix backend to include APS alert + mutable-content
+### Fixed Code (CORRECT):
+```kotlin
+val message = Message.builder()
+    // ✅ NO .setNotification() for voice calls!
+    .putData("bodyKey", "Incoming voice call")
+    .putData("name", callerName)
+    .putData("roomId", roomId)
+    .putData("receiverId", receiverId)
+    .putData("phone", phone)
+    .putData("photo", photo)
+    .putData("uid", uid)
+    .putData("username", username)
+    .putData("createdBy", createdBy)
+    .putData("token", "")
+    .putData("meetingId", meetingId)
+    .putData("incoming", "1")
+    .putData("click_action", "OPEN_VOICE_CALL")
+    .putData("device_type", deviceType)
+    .putData("userFcmToken", userFcmToken)
+    .setApnsConfig(
+        ApnsConfig.builder()
+            .setAps(
+                Aps.builder()
+                    .setContentAvailable(true)  // ✅ ONLY this
+                    // ❌ NO .setCategory()
+                    // ❌ NO .setSound()
+                    .build()
+            )
+            .build()
+    )
+    .setToken(userFcmToken)
+    .build()
+```
+
+## Code Change Locations
+
+### File: `VoiceCallNotificationService.kt` (or similar)
+
+**Find:**
+```kotlin
+fun sendVoiceCallNotification(...)
+```
+
+**Change:**
+1. Remove `.setNotification()` call
+2. Remove `.setCategory()` from ApnsConfig
+3. Remove `.setSound()` from ApnsConfig
+4. Keep `.setContentAvailable(true)`
+5. Keep all `.putData()` calls
+
+## What Happens After Fix
+
+| App State | Before Fix | After Fix |
+|-----------|------------|-----------|
+| **Foreground** | Banner (tap required) | CallKit UI (automatic) ✅ |
+| **Background** | Banner (tap required) | CallKit UI (automatic) ✅ |
+| **Killed** | Banner (tap required) ❌ | CallKit UI (automatic) ✅ |
+
+## Testing the Fix
+
+### Send Silent Push with cURL:
+```bash
+curl -X POST https://fcm.googleapis.com/v1/projects/YOUR_PROJECT/messages:send \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": {
+      "token": "USER_FCM_TOKEN",
+      "data": {
+        "bodyKey": "Incoming voice call",
+        "name": "Test Caller",
+        "roomId": "TestRoom123",
+        "receiverId": "2",
+        "phone": "+1234567890"
+      },
+      "apns": {
+        "payload": {
+          "aps": {
+            "content-available": 1
+          }
+        }
+      }
+    }
+  }'
+```
+
+### Expected iOS Behavior:
+1. ✅ No notification banner appears
+2. ✅ CallKit full-screen UI appears immediately
+3. ✅ Native "Accept/Decline" buttons
+4. ✅ Works even if app is killed
+
+## Fallback for Failed Delivery
+
+If the silent push fails (e.g., user disabled notifications), send a visible "missed call" notification after 5 seconds:
+
+```kotlin
+// After 5 seconds, if no answer/decline event received:
+val fallbackMessage = Message.builder()
+    .setNotification(
+        Notification.builder()
+            .setTitle("Missed Call")
+            .setBody("$callerName tried to call you")
+            .build()
+    )
+    .putData("bodyKey", "chatting")
+    .putData("type", "missed_call")
+    .setToken(userFcmToken)
+    .build()
+```
+
+## API Endpoint to Update
+
+### Likely file location:
+```
+backend/
+  └── src/
+      └── main/
+          └── kotlin/
+              └── com/
+                  └── enclosure/
+                      └── service/
+                          └── NotificationService.kt  ← UPDATE THIS
+```
+
+### Method to change:
+```kotlin
+fun sendVoiceCallNotification(
+    userId: String,
+    callerName: String,
+    roomId: String,
+    // ...
+)
+```
+
+## Verification Checklist
+
+- [ ] Remove `.setNotification()` for voice/video calls
+- [ ] Keep `.putData()` with all call information
+- [ ] Set `content-available = 1` in ApnsConfig
+- [ ] Remove `category`, `sound`, `alert` from ApnsConfig
+- [ ] Test with app killed (swipe away)
+- [ ] Verify CallKit UI appears automatically
+- [ ] Verify no notification banner appears
 
 ## Summary
 
-✅ **Backend MUST send**: APS alert + mutable-content: 1  
-❌ **Backend MUST NOT send**: Data-only notifications (no APS alert)  
-✅ **Result**: Notification Service Extension runs → Communication Notifications work  
-❌ **Current**: Data-only → Service Extension never runs → Wrong UI  
+**Change Type**: Remove notification alert, keep data + content-available
 
-Fix your backend, then test again!
+**Impact**: Voice calls will now trigger CallKit instead of showing banners
+
+**Testing**: Kill app → Send call → CallKit appears automatically
+
+**Rollback**: If issues occur, revert to previous code (will show banners again)
+
+## Questions?
+
+Contact iOS team for:
+- Testing on device
+- Verifying log output
+- Confirming CallKit behavior

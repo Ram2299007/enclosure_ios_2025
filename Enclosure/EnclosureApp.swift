@@ -17,19 +17,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         return .portrait
     }
     
-    // CRITICAL: Implement configurationForConnecting to set custom scene delegate
-    func application(
-        _ application: UIApplication,
-        configurationForConnecting connectingSceneSession: UISceneSession,
-        options: UIScene.ConnectionOptions
-    ) -> UISceneConfiguration {
-        NSLog("🎬 [AppDelegate] configurationForConnecting scene")
-        print("🎬 [AppDelegate] configurationForConnecting scene")
-        
-        let config = UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
-        config.delegateClass = RemoteNotificationSceneDelegate.self
-        return config
-    }
+    // CRITICAL: DON'T override scene configuration - use default to ensure proper notification delivery
+    // Scene configuration is handled in Info.plist
     
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         NSLog("🚨🚨🚨 [ENCLOSURE_APP] ========================================")
@@ -119,6 +108,36 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 }
             }
         }
+        
+        // 📞 VOIP PUSH: Initialize VoIP Push Manager for WhatsApp-style instant CallKit
+        // This enables full-screen CallKit to appear IMMEDIATELY in background/lock screen
+        NSLog("📞 [AppDelegate] ========================================")
+        NSLog("📞 [AppDelegate] Initializing VoIP Push Manager")
+        NSLog("📞 [AppDelegate] This enables instant CallKit in background")
+        NSLog("📞 [AppDelegate] ========================================")
+        print("📞 [AppDelegate] Starting VoIP Push registration...")
+        
+        VoIPPushManager.shared.start()
+        
+        // Handle VoIP token updates
+        VoIPPushManager.shared.onVoIPTokenReceived = { token in
+            NSLog("📞📞📞 [AppDelegate] ========================================")
+            NSLog("📞 [AppDelegate] VoIP Token received!")
+            NSLog("📞 [AppDelegate] Token: \(token)")
+            NSLog("📞 [AppDelegate] ========================================")
+            NSLog("📞 [AppDelegate] ⚠️ IMPORTANT: Send this token to backend")
+            NSLog("📞 [AppDelegate] Backend must store it separately from FCM token")
+            NSLog("📞 [AppDelegate] Backend must send VoIP pushes to APNs directly")
+            NSLog("📞 [AppDelegate] ========================================")
+            print("📞 [AppDelegate] VoIP Token: \(token)")
+            
+            // TODO: Send VoIP token to your backend
+            // Uncomment when backend endpoint is ready:
+            // VoIPPushManager.shared.sendVoIPTokenToBackend()
+        }
+        
+        NSLog("✅ [AppDelegate] VoIP Push Manager initialized successfully")
+        print("✅ [AppDelegate] VoIP registration started")
         
         return true
     }
@@ -371,73 +390,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 }
 
-// CRITICAL: Custom SceneDelegate that handles remote notification actions
-// This intercepts UISHandleRemoteNotificationAction at the scene level
-class RemoteNotificationSceneDelegate: UIResponder, UIWindowSceneDelegate {
-    var window: UIWindow?
-    
-    // Standard scene lifecycle methods
-    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
-        NSLog("🎬 [RemoteNotificationSceneDelegate] scene willConnectTo")
-        print("🎬 [RemoteNotificationSceneDelegate] scene willConnectTo")
-        
-        // Check for notification in connection options
-        if let notificationResponse = connectionOptions.notificationResponse {
-            NSLog("🚨 [RemoteNotificationSceneDelegate] Found notification response in connectionOptions")
-            print("🚨 [RemoteNotificationSceneDelegate] Found notification response in connectionOptions")
-            handleNotification(userInfo: notificationResponse.notification.request.content.userInfo)
-        }
-    }
-    
-    // CRITICAL: Override canPerformAction to intercept action routing
-    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        let actionString = NSStringFromSelector(action)
-        NSLog("🔍 [RemoteNotificationSceneDelegate] canPerformAction: \(actionString)")
-        print("🔍 [RemoteNotificationSceneDelegate] canPerformAction: \(actionString)")
-        
-        // Log sender details
-        if let senderObj = sender as? NSObject {
-            NSLog("🔍 [RemoteNotificationSceneDelegate] Sender class: \(type(of: senderObj))")
-            print("🔍 [RemoteNotificationSceneDelegate] Sender class: \(type(of: senderObj))")
-            NSLog("🔍 [RemoteNotificationSceneDelegate] Sender: \(senderObj)")
-            print("🔍 [RemoteNotificationSceneDelegate] Sender: \(senderObj)")
-            
-            // Try to extract payload using reflection
-            let mirror = Mirror(reflecting: senderObj)
-            for child in mirror.children {
-                NSLog("🔍 [RemoteNotificationSceneDelegate] Property: \(child.label ?? "unknown") = \(child.value)")
-                print("🔍 [RemoteNotificationSceneDelegate] Property: \(child.label ?? "unknown") = \(child.value)")
-                
-                // If we find userInfo or payload, try to handle it
-                if let label = child.label, (label.contains("payload") || label.contains("userInfo")) {
-                    if let payload = child.value as? [AnyHashable: Any] {
-                        NSLog("🚨🚨🚨 [RemoteNotificationSceneDelegate] Found payload in sender!")
-                        print("🚨🚨🚨 [RemoteNotificationSceneDelegate] Found payload in sender!")
-                        handleNotification(userInfo: payload)
-                        return true
-                    }
-                }
-            }
-        }
-        
-        return super.canPerformAction(action, withSender: sender)
-    }
-    
-    // Helper to forward notifications to AppDelegate
-    private func handleNotification(userInfo: [AnyHashable: Any]) {
-        NSLog("📱 [RemoteNotificationSceneDelegate] Forwarding notification to AppDelegate")
-        print("📱 [RemoteNotificationSceneDelegate] Forwarding notification to AppDelegate")
-        NSLog("📱 [RemoteNotificationSceneDelegate] UserInfo: \(userInfo)")
-        print("📱 [RemoteNotificationSceneDelegate] UserInfo: \(userInfo)")
-        
-        if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
-            appDelegate.application(UIApplication.shared, didReceiveRemoteNotification: userInfo) { result in
-                NSLog("✅ [RemoteNotificationSceneDelegate] AppDelegate handled with result: \(result.rawValue)")
-                print("✅ [RemoteNotificationSceneDelegate] AppDelegate handled with result: \(result.rawValue)")
-            }
-        }
-    }
-}
+// Note: Using default scene configuration from Info.plist for proper notification delivery
 
 // Custom notification name for remote notifications
 extension Notification.Name {
