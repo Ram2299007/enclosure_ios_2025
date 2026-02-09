@@ -929,8 +929,8 @@ class MessageUploadService {
                                 "body": Constant.incomingVoiceCall
                             ],
                             "sound": "default",
-                            "category": "VOICE_CALL",
-                            "content-available": 1  // Wake app in background to trigger CallKit immediately
+                            "category": "VOICE_CALL"
+                            // DO NOT add content-available - causes "unhandled action" in background
                         ]
                     ]
                 ]
@@ -1115,8 +1115,8 @@ class MessageUploadService {
                                 "body": "Incoming video call"
                             ],
                             "sound": "default",
-                            "category": "VIDEO_CALL",
-                            "content-available": 1  // Wake app in background to trigger CallKit immediately
+                            "category": "VIDEO_CALL"
+                            // DO NOT add content-available - causes "unhandled action" in background
                         ]
                     ]
                 ]
