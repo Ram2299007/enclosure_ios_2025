@@ -1,6 +1,6 @@
 import Foundation
 
-struct VoiceCallPayload: Identifiable {
+struct VoiceCallPayload: Identifiable, Equatable {
     let id = UUID()
     let receiverId: String
     let receiverName: String
@@ -10,4 +10,9 @@ struct VoiceCallPayload: Identifiable {
     let receiverPhone: String
     let roomId: String?
     let isSender: Bool
+    
+    // Equatable conformance - compare by id
+    static func == (lhs: VoiceCallPayload, rhs: VoiceCallPayload) -> Bool {
+        return lhs.id == rhs.id
+    }
 }
