@@ -914,8 +914,13 @@ struct MainActivityOld: View {
             .fullScreenCover(item: $incomingVoiceCallPayload) { payload in
                 VoiceCallScreen(payload: payload)
                     .onAppear {
-                        NSLog("✅ [MainActivityOld] VoiceCallScreen appeared for incoming call")
-                        print("✅ [MainActivityOld] Voice call screen displayed")
+                        NSLog("✅✅✅ [MainActivityOld] ========================================")
+                        NSLog("✅ [MainActivityOld] VoiceCallScreen APPEARED!")
+                        NSLog("✅ [MainActivityOld] Payload: \(payload.id)")
+                        NSLog("✅ [MainActivityOld] Caller: \(payload.receiverName)")
+                        NSLog("✅ [MainActivityOld] Room: \(payload.roomId ?? "nil")")
+                        NSLog("✅✅✅ [MainActivityOld] ========================================")
+                        print("✅✅✅ [MainActivityOld] VoiceCallScreen DISPLAYED!")
                     }
                     .onDisappear {
                         NSLog("📞 [MainActivityOld] VoiceCallScreen dismissed")
@@ -923,6 +928,16 @@ struct MainActivityOld: View {
                         // Reset payload
                         incomingVoiceCallPayload = nil
                     }
+            }
+            .onChange(of: incomingVoiceCallPayload) { newValue in
+                if let payload = newValue {
+                    NSLog("🔄 [MainActivityOld] incomingVoiceCallPayload CHANGED to: \(payload.id)")
+                    NSLog("🔄 [MainActivityOld] fullScreenCover should trigger now")
+                    print("🔄 [MainActivityOld] Payload changed - fullScreenCover should show")
+                } else {
+                    NSLog("🔄 [MainActivityOld] incomingVoiceCallPayload cleared")
+                    print("🔄 [MainActivityOld] Payload cleared")
+                }
             }
             .onChange(of: showShareExternalDataContactScreen) { newValue in
                 print("📤 [MainActivityOld] showShareExternalDataContactScreen changed to: \(newValue)")
@@ -1027,17 +1042,22 @@ struct MainActivityOld: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("AnswerIncomingCall"))) { notification in
             // Handle incoming call answered via CallKit
-            NSLog("📞 [MainActivityOld] AnswerIncomingCall notification received")
-            print("📞 [MainActivityOld] AnswerIncomingCall received")
+            NSLog("📞📞📞 [MainActivityOld] ========================================")
+            NSLog("📞 [MainActivityOld] AnswerIncomingCall notification RECEIVED!")
+            NSLog("📞 [MainActivityOld] App State: \(UIApplication.shared.applicationState.rawValue)")
+            NSLog("📞 [MainActivityOld] Scene Phase: \(scenePhase)")
+            NSLog("📞 [MainActivityOld] ========================================")
+            print("📞📞📞 [MainActivityOld] AnswerIncomingCall RECEIVED!")
             
             guard let userInfo = notification.userInfo as? [String: String] else {
-                NSLog("❌ [MainActivityOld] AnswerIncomingCall: userInfo is nil or invalid")
+                NSLog("❌ [MainActivityOld] AnswerIncomingCall: userInfo is nil or invalid type")
                 print("❌ [MainActivityOld] AnswerIncomingCall: userInfo missing")
                 return
             }
             
-            NSLog("📞 [MainActivityOld] AnswerIncomingCall: userInfo = \(userInfo)")
-            print("📞 [MainActivityOld] AnswerIncomingCall: \(userInfo.keys.joined(separator: ", "))")
+            NSLog("📞 [MainActivityOld] AnswerIncomingCall userInfo keys: \(userInfo.keys.joined(separator: ", "))")
+            NSLog("📞 [MainActivityOld] Full userInfo: \(userInfo)")
+            print("📞 [MainActivityOld] UserInfo keys: \(userInfo.keys.joined(separator: ", "))")
             
             // Extract call data
             let roomId = userInfo["roomId"] ?? ""
@@ -1046,18 +1066,21 @@ struct MainActivityOld: View {
             let callerName = userInfo["callerName"] ?? "Unknown"
             let callerPhoto = userInfo["callerPhoto"] ?? ""
             
+            NSLog("📞 [MainActivityOld] Extracted: roomId=\(roomId), receiverId=\(receiverId), caller=\(callerName)")
+            
             guard !roomId.isEmpty, !receiverId.isEmpty else {
-                NSLog("❌ [MainActivityOld] AnswerIncomingCall: Missing roomId or receiverId")
+                NSLog("❌ [MainActivityOld] AnswerIncomingCall: Missing required data")
+                NSLog("❌ [MainActivityOld] roomId='\(roomId)', receiverId='\(receiverId)'")
                 print("❌ [MainActivityOld] AnswerIncomingCall: Invalid data")
                 return
             }
             
-            NSLog("📞 [MainActivityOld] AnswerIncomingCall: Creating VoiceCallPayload")
-            NSLog("📞 [MainActivityOld] Room: \(roomId), Caller: \(callerName)")
-            print("📞 [MainActivityOld] Navigating to voice call with \(callerName)")
+            NSLog("📞 [MainActivityOld] ✅ Data validation passed")
+            NSLog("📞 [MainActivityOld] Creating VoiceCallPayload...")
+            print("📞 [MainActivityOld] Creating voice call payload for \(callerName)")
             
             // Create payload and navigate to voice call screen
-            incomingVoiceCallPayload = VoiceCallPayload(
+            let payload = VoiceCallPayload(
                 receiverId: receiverId,
                 receiverName: callerName,
                 receiverPhoto: callerPhoto,
@@ -1068,8 +1091,16 @@ struct MainActivityOld: View {
                 isSender: false // We're receiving the call
             )
             
-            NSLog("✅ [MainActivityOld] AnswerIncomingCall: Payload created, showing call screen")
-            print("✅ [MainActivityOld] Voice call screen will appear")
+            NSLog("📞 [MainActivityOld] VoiceCallPayload created successfully")
+            NSLog("📞 [MainActivityOld] Setting incomingVoiceCallPayload to trigger navigation...")
+            
+            incomingVoiceCallPayload = payload
+            
+            NSLog("✅✅✅ [MainActivityOld] ========================================")
+            NSLog("✅ [MainActivityOld] Payload SET! VoiceCallScreen should appear now")
+            NSLog("✅ [MainActivityOld] Payload ID: \(payload.id)")
+            NSLog("✅✅✅ [MainActivityOld] ========================================")
+            print("✅✅✅ [MainActivityOld] Voice call screen SHOULD APPEAR NOW!")
         }
     }
     

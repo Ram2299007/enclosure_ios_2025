@@ -169,10 +169,25 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         
         // Set up answer callback
         CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone in
-            NSLog("📞 [VoIP] User ANSWERED call - Room: \(roomId)")
-            print("📞 [VoIP] Call answered!")
+            NSLog("📞📞📞 [VoIP] ========================================")
+            NSLog("📞 [VoIP] User ANSWERED call!")
+            NSLog("📞 [VoIP] Room: \(roomId)")
+            NSLog("📞 [VoIP] App State: \(UIApplication.shared.applicationState.rawValue) (0=active, 1=inactive, 2=background)")
+            NSLog("📞 [VoIP] ========================================")
+            print("📞📞📞 [VoIP] CALL ANSWERED!")
+            print("📞 [VoIP] Room: \(roomId)")
             
-            DispatchQueue.main.async {
+            // Check app state and add delay if needed for lock screen/background
+            let appState = UIApplication.shared.applicationState
+            let delay: TimeInterval = (appState == .background || appState == .inactive) ? 1.5 : 0.3
+            
+            NSLog("📞 [VoIP] Adding \(delay)s delay for app state: \(appState.rawValue)")
+            print("📞 [VoIP] Delay: \(delay)s to allow app to activate")
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                NSLog("📞📞📞 [VoIP] ⏰ DELAY COMPLETE - Posting notification NOW")
+                print("📞📞📞 [VoIP] ⏰ Posting AnswerIncomingCall notification")
+                
                 let callData: [String: String] = [
                     "roomId": roomId,
                     "receiverId": receiverId,
@@ -181,12 +196,17 @@ extension VoIPPushManager: PKPushRegistryDelegate {
                     "callerPhoto": callerPhoto
                 ]
                 
-                NSLog("📞 [VoIP] Posting AnswerIncomingCall notification")
+                NSLog("📞 [VoIP] Call Data: \(callData)")
+                NSLog("📞 [VoIP] Posting AnswerIncomingCall notification NOW")
+                
                 NotificationCenter.default.post(
                     name: NSNotification.Name("AnswerIncomingCall"),
                     object: nil,
                     userInfo: callData
                 )
+                
+                NSLog("✅ [VoIP] AnswerIncomingCall notification posted!")
+                print("✅ [VoIP] Notification posted - MainActivityOld should receive it")
             }
         }
         
