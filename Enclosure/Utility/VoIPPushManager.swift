@@ -10,7 +10,6 @@ import Foundation
 import PushKit
 import CallKit
 import UIKit
-import UserNotifications
 
 class VoIPPushManager: NSObject {
     static let shared = VoIPPushManager()
@@ -178,23 +177,16 @@ extension VoIPPushManager: PKPushRegistryDelegate {
             print("📞📞📞 [VoIP] CALL ANSWERED!")
             print("📞 [VoIP] Room: \(roomId)")
             
-            // NOTE: User must manually unlock device after accepting CallKit
-            // iOS will show Face ID/Touch ID prompt when fullScreenCover appears
-            NSLog("🔓 [VoIP] Triggering Face ID/Touch ID unlock prompt...")
-            print("🔓 [VoIP] User should see Face ID prompt to unlock device")
-            
-            // Send banner notification to remind user to unlock
-            if UIApplication.shared.applicationState != .active {
-                self.sendUnlockReminderNotification(callerName: callerName)
-            }
-            
-            // OPTIMIZED: Minimal delay to trigger Face ID prompt quickly
-            // Shorter delay = faster Face ID prompt = better UX
+            // iOS will naturally show Face ID/Touch ID prompt when app tries to show UI
+            // No artificial notifications needed - let iOS handle it natively
             let appState = UIApplication.shared.applicationState
-            let delay: TimeInterval = (appState == .background || appState == .inactive) ? 0.5 : 0.2
             
-            NSLog("📞 [VoIP] Adding \(delay)s delay for app state: \(appState.rawValue)")
-            print("📞 [VoIP] Delay: \(delay)s to allow app to activate")
+            // Minimal delay to let iOS prepare for Face ID prompt
+            // Fast response = native feel
+            let delay: TimeInterval = (appState == .background || appState == .inactive) ? 0.3 : 0.1
+            
+            NSLog("📞 [VoIP] Activating call screen (delay: \(delay)s)")
+            print("📞 [VoIP] iOS will handle Face ID/Touch ID naturally")
             
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 NSLog("📞📞📞 [VoIP] ⏰ DELAY COMPLETE - Posting notification NOW")
@@ -289,28 +281,5 @@ extension VoIPPushManager {
         */
         
         NSLog("⚠️ [VoIP] TODO: Implement sendVoIPTokenToBackend() in VoIPPushManager.swift")
-    }
-    
-    // Send a local notification to remind user to unlock device
-    private func sendUnlockReminderNotification(callerName: String) {
-        let content = UNMutableNotificationContent()
-        content.title = "📞 Call from \(callerName)"
-        content.body = "Unlock your device to join the call"
-        content.sound = nil // Silent - CallKit already has sound
-        content.interruptionLevel = .timeSensitive
-        
-        let request = UNNotificationRequest(
-            identifier: "unlock-reminder-\(UUID().uuidString)",
-            content: content,
-            trigger: nil // Immediate
-        )
-        
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                NSLog("⚠️ [VoIP] Failed to send unlock reminder: \(error)")
-            } else {
-                NSLog("✅ [VoIP] Unlock reminder notification sent")
-            }
-        }
     }
 }
