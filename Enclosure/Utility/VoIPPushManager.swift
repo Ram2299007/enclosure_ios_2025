@@ -177,6 +177,28 @@ extension VoIPPushManager: PKPushRegistryDelegate {
             print("📞📞📞 [VoIP] CALL ANSWERED!")
             print("📞 [VoIP] Room: \(roomId)")
             
+            // CRITICAL: Request app to come to foreground
+            // This triggers the unlock prompt (Face ID/Touch ID/Passcode)
+            DispatchQueue.main.async {
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                    NSLog("🔓 [VoIP] Requesting app activation...")
+                    print("🔓 [VoIP] Triggering unlock prompt...")
+                    
+                    // Request foreground activation
+                    UIApplication.shared.requestSceneSessionActivation(
+                        windowScene.session,
+                        userActivity: nil,
+                        options: nil
+                    ) { error in
+                        if let error = error {
+                            NSLog("⚠️ [VoIP] Scene activation error: \(error.localizedDescription)")
+                        } else {
+                            NSLog("✅ [VoIP] Scene activation requested - iOS will prompt for unlock")
+                        }
+                    }
+                }
+            }
+            
             // Check app state and add delay if needed for lock screen/background
             let appState = UIApplication.shared.applicationState
             let delay: TimeInterval = (appState == .background || appState == .inactive) ? 1.5 : 0.3
