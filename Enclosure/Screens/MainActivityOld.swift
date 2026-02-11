@@ -73,6 +73,9 @@ struct MainActivityOld: View {
     @State private var sharedContentToShow: SharedContent?
     @State private var sharedCaption: String = ""
     
+    // Incoming voice call from CallKit
+    @State private var incomingVoiceCallPayload: VoiceCallPayload?
+    
     // DEBUG: Test button to verify screen presentation works
     #if DEBUG
     @State private var showTestShareScreen: Bool = false
@@ -908,6 +911,19 @@ struct MainActivityOld: View {
                     }
                 }
             }
+            .fullScreenCover(item: $incomingVoiceCallPayload) { payload in
+                VoiceCallScreen(payload: payload)
+                    .onAppear {
+                        NSLog("✅ [MainActivityOld] VoiceCallScreen appeared for incoming call")
+                        print("✅ [MainActivityOld] Voice call screen displayed")
+                    }
+                    .onDisappear {
+                        NSLog("📞 [MainActivityOld] VoiceCallScreen dismissed")
+                        print("📞 [MainActivityOld] Voice call ended")
+                        // Reset payload
+                        incomingVoiceCallPayload = nil
+                    }
+            }
             .onChange(of: showShareExternalDataContactScreen) { newValue in
                 print("📤 [MainActivityOld] showShareExternalDataContactScreen changed to: \(newValue)")
             }
@@ -1008,6 +1024,52 @@ struct MainActivityOld: View {
             
             // Navigate to ChattingScreen (matching Android Intent to chattingScreen)
             selectedChatForNavigation = contact
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("AnswerIncomingCall"))) { notification in
+            // Handle incoming call answered via CallKit
+            NSLog("📞 [MainActivityOld] AnswerIncomingCall notification received")
+            print("📞 [MainActivityOld] AnswerIncomingCall received")
+            
+            guard let userInfo = notification.userInfo as? [String: String] else {
+                NSLog("❌ [MainActivityOld] AnswerIncomingCall: userInfo is nil or invalid")
+                print("❌ [MainActivityOld] AnswerIncomingCall: userInfo missing")
+                return
+            }
+            
+            NSLog("📞 [MainActivityOld] AnswerIncomingCall: userInfo = \(userInfo)")
+            print("📞 [MainActivityOld] AnswerIncomingCall: \(userInfo.keys.joined(separator: ", "))")
+            
+            // Extract call data
+            let roomId = userInfo["roomId"] ?? ""
+            let receiverId = userInfo["receiverId"] ?? ""
+            let receiverPhone = userInfo["receiverPhone"] ?? ""
+            let callerName = userInfo["callerName"] ?? "Unknown"
+            let callerPhoto = userInfo["callerPhoto"] ?? ""
+            
+            guard !roomId.isEmpty, !receiverId.isEmpty else {
+                NSLog("❌ [MainActivityOld] AnswerIncomingCall: Missing roomId or receiverId")
+                print("❌ [MainActivityOld] AnswerIncomingCall: Invalid data")
+                return
+            }
+            
+            NSLog("📞 [MainActivityOld] AnswerIncomingCall: Creating VoiceCallPayload")
+            NSLog("📞 [MainActivityOld] Room: \(roomId), Caller: \(callerName)")
+            print("📞 [MainActivityOld] Navigating to voice call with \(callerName)")
+            
+            // Create payload and navigate to voice call screen
+            incomingVoiceCallPayload = VoiceCallPayload(
+                receiverId: receiverId,
+                receiverName: callerName,
+                receiverPhoto: callerPhoto,
+                receiverToken: "", // Will be fetched in VoiceCallSession if needed
+                receiverDeviceType: "", // Not needed for incoming calls
+                receiverPhone: receiverPhone,
+                roomId: roomId,
+                isSender: false // We're receiving the call
+            )
+            
+            NSLog("✅ [MainActivityOld] AnswerIncomingCall: Payload created, showing call screen")
+            print("✅ [MainActivityOld] Voice call screen will appear")
         }
     }
     
