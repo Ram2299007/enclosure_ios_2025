@@ -1094,19 +1094,23 @@ struct MainActivityOld: View {
             NSLog("📞 [MainActivityOld] VoiceCallPayload created successfully")
             NSLog("📞 [MainActivityOld] Current scene phase: \(scenePhase)")
             
-            // Show screen immediately - iOS will prompt for unlock when fullScreenCover appears
-            // This is necessary because requestSceneSessionActivation is not supported on all devices
-            NSLog("📺 [MainActivityOld] Showing VoiceCallScreen - iOS will handle unlock")
-            print("📺 [MainActivityOld] Presenting fullScreenCover - user must unlock to see it")
+            // CRITICAL: Show screen IMMEDIATELY even in background
+            // CallKit audio session + audio background mode allow WebRTC in background
+            // Connection establishes while locked, UI shows when unlocked (WhatsApp behavior)
+            NSLog("🔥 [MainActivityOld] Showing VoiceCallScreen IMMEDIATELY (background OK)")
+            NSLog("🔥 [MainActivityOld] CallKit audio session allows WebRTC in background")
+            NSLog("🔥 [MainActivityOld] Connection will establish even while locked")
+            print("🔥 [MainActivityOld] WhatsApp-style: Connect in background, UI when unlocked")
             
             incomingVoiceCallPayload = payload
             
             NSLog("✅✅✅ [MainActivityOld] ========================================")
-            NSLog("✅ [MainActivityOld] Payload SET! fullScreenCover will trigger")
-            NSLog("✅ [MainActivityOld] iOS will prompt for unlock when screen appears")
-            NSLog("✅ [MainActivityOld] User must manually unlock device to see call screen")
+            NSLog("✅ [MainActivityOld] Payload SET! VoiceCallScreen showing NOW")
+            NSLog("✅ [MainActivityOld] WebRTC will connect via CallKit audio session")
+            NSLog("✅ [MainActivityOld] User will see UI when device unlocked")
+            NSLog("✅ [MainActivityOld] Android should stop ringing when peer joins")
             NSLog("✅✅✅ [MainActivityOld] ========================================")
-            print("✅✅✅ [MainActivityOld] VoiceCallScreen queued - waiting for unlock!")
+            print("✅✅✅ [MainActivityOld] VoiceCallScreen ACTIVE - connecting in background!")
         }
     }
     
