@@ -1094,58 +1094,19 @@ struct MainActivityOld: View {
             NSLog("📞 [MainActivityOld] VoiceCallPayload created successfully")
             NSLog("📞 [MainActivityOld] Current scene phase: \(scenePhase)")
             
-            // CRITICAL: Wait for app to become active for WebRTC to work
-            // WebView can't establish WebRTC connections in background
-            if scenePhase == .active {
-                NSLog("✅ [MainActivityOld] Scene ACTIVE - showing call screen NOW")
-                print("✅ [MainActivityOld] Scene active - showing VoiceCallScreen")
-                
-                incomingVoiceCallPayload = payload
-                
-                NSLog("✅✅✅ [MainActivityOld] Payload SET! VoiceCallScreen showing NOW")
-            } else {
-                NSLog("⏰ [MainActivityOld] Scene NOT active yet (phase: \(scenePhase))")
-                NSLog("⏰ [MainActivityOld] Waiting for user to UNLOCK device...")
-                NSLog("⏰ [MainActivityOld] WebRTC requires active scene for peer connections")
-                print("⏰ [MainActivityOld] Waiting for unlock to show call screen...")
-                
-                // Wait for scene to become active (user unlocks device)
-                DispatchQueue.main.async {
-                    // Poll scene phase until active
-                    self.waitForSceneActive(payload: payload, attempts: 0)
-                }
-            }
-        }
-    }
-    
-    // MARK: - Scene Activation Helper
-    private func waitForSceneActive(payload: VoiceCallPayload, attempts: Int) {
-        let maxAttempts = 20 // Max 10 seconds (20 * 0.5s)
-        
-        NSLog("⏰ [MainActivityOld] Checking scene phase (attempt \(attempts + 1)/\(maxAttempts))...")
-        print("⏰ [MainActivityOld] Poll #\(attempts + 1): Scene phase = \(scenePhase)")
-        
-        if scenePhase == .active {
-            NSLog("✅✅✅ [MainActivityOld] ========================================")
-            NSLog("✅ [MainActivityOld] Scene became ACTIVE!")
-            NSLog("✅ [MainActivityOld] User UNLOCKED device - showing call screen NOW")
-            NSLog("✅✅✅ [MainActivityOld] ========================================")
-            print("✅✅✅ [MainActivityOld] UNLOCKED! Showing VoiceCallScreen NOW")
+            // Show screen immediately - iOS will prompt for unlock when fullScreenCover appears
+            // This is necessary because requestSceneSessionActivation is not supported on all devices
+            NSLog("📺 [MainActivityOld] Showing VoiceCallScreen - iOS will handle unlock")
+            print("📺 [MainActivityOld] Presenting fullScreenCover - user must unlock to see it")
             
             incomingVoiceCallPayload = payload
-            return
-        }
-        
-        if attempts >= maxAttempts {
-            NSLog("⚠️ [MainActivityOld] Timeout waiting for unlock after \(Double(maxAttempts) * 0.5)s")
-            NSLog("⚠️ [MainActivityOld] User may have declined or device not unlocking")
-            print("⚠️ [MainActivityOld] Timeout - user may have declined call")
-            return
-        }
-        
-        // Poll again after 0.5 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            self.waitForSceneActive(payload: payload, attempts: attempts + 1)
+            
+            NSLog("✅✅✅ [MainActivityOld] ========================================")
+            NSLog("✅ [MainActivityOld] Payload SET! fullScreenCover will trigger")
+            NSLog("✅ [MainActivityOld] iOS will prompt for unlock when screen appears")
+            NSLog("✅ [MainActivityOld] User must manually unlock device to see call screen")
+            NSLog("✅✅✅ [MainActivityOld] ========================================")
+            print("✅✅✅ [MainActivityOld] VoiceCallScreen queued - waiting for unlock!")
         }
     }
     
