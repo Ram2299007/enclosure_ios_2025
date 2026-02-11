@@ -188,14 +188,12 @@ extension VoIPPushManager: PKPushRegistryDelegate {
                     UIApplication.shared.requestSceneSessionActivation(
                         windowScene.session,
                         userActivity: nil,
-                        options: nil
-                    ) { error in
-                        if let error = error {
-                            NSLog("⚠️ [VoIP] Scene activation error: \(error.localizedDescription)")
-                        } else {
-                            NSLog("✅ [VoIP] Scene activation requested - iOS will prompt for unlock")
-                        }
-                    }
+                        options: nil,
+                        errorHandler: nil
+                    )
+                    
+                    NSLog("✅ [VoIP] Scene activation requested - iOS will prompt for unlock")
+                    print("✅ [VoIP] Unlock prompt should appear now")
                 }
             }
             
