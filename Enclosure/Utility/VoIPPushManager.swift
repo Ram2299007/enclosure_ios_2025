@@ -10,6 +10,7 @@ import Foundation
 import PushKit
 import CallKit
 import UIKit
+import UserNotifications
 
 class VoIPPushManager: NSObject {
     static let shared = VoIPPushManager()
@@ -178,13 +179,19 @@ extension VoIPPushManager: PKPushRegistryDelegate {
             print("📞 [VoIP] Room: \(roomId)")
             
             // NOTE: User must manually unlock device after accepting CallKit
-            // iOS will show unlock prompt when fullScreenCover appears
-            NSLog("🔓 [VoIP] User must unlock device to see call screen")
-            print("🔓 [VoIP] iOS will prompt for unlock when UI appears")
+            // iOS will show Face ID/Touch ID prompt when fullScreenCover appears
+            NSLog("🔓 [VoIP] Triggering Face ID/Touch ID unlock prompt...")
+            print("🔓 [VoIP] User should see Face ID prompt to unlock device")
             
-            // Check app state and add delay if needed for lock screen/background
+            // Send banner notification to remind user to unlock
+            if UIApplication.shared.applicationState != .active {
+                self.sendUnlockReminderNotification(callerName: callerName)
+            }
+            
+            // OPTIMIZED: Minimal delay to trigger Face ID prompt quickly
+            // Shorter delay = faster Face ID prompt = better UX
             let appState = UIApplication.shared.applicationState
-            let delay: TimeInterval = (appState == .background || appState == .inactive) ? 1.5 : 0.3
+            let delay: TimeInterval = (appState == .background || appState == .inactive) ? 0.5 : 0.2
             
             NSLog("📞 [VoIP] Adding \(delay)s delay for app state: \(appState.rawValue)")
             print("📞 [VoIP] Delay: \(delay)s to allow app to activate")
@@ -282,5 +289,28 @@ extension VoIPPushManager {
         */
         
         NSLog("⚠️ [VoIP] TODO: Implement sendVoIPTokenToBackend() in VoIPPushManager.swift")
+    }
+    
+    // Send a local notification to remind user to unlock device
+    private func sendUnlockReminderNotification(callerName: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "📞 Call from \(callerName)"
+        content.body = "Unlock your device to join the call"
+        content.sound = nil // Silent - CallKit already has sound
+        content.interruptionLevel = .timeSensitive
+        
+        let request = UNNotificationRequest(
+            identifier: "unlock-reminder-\(UUID().uuidString)",
+            content: content,
+            trigger: nil // Immediate
+        )
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                NSLog("⚠️ [VoIP] Failed to send unlock reminder: \(error)")
+            } else {
+                NSLog("✅ [VoIP] Unlock reminder notification sent")
+            }
+        }
     }
 }
