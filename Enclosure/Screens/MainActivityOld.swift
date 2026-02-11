@@ -1093,62 +1093,20 @@ struct MainActivityOld: View {
             
             NSLog("📞 [MainActivityOld] VoiceCallPayload created successfully")
             NSLog("📞 [MainActivityOld] Current scene phase: \(scenePhase)")
+            NSLog("📞 [MainActivityOld] Showing call screen IMMEDIATELY for instant connection")
+            NSLog("📞 [MainActivityOld] CallKit audio session will handle background WebRTC")
+            print("📞 [MainActivityOld] Showing VoiceCallScreen immediately - WhatsApp style!")
             
-            // Check if app is active - if not, wait for it to become active
-            if scenePhase != .active {
-                NSLog("⏰ [MainActivityOld] App not active yet (phase: \(scenePhase))")
-                NSLog("⏰ [MainActivityOld] Waiting for app to become active before showing call screen...")
-                print("⏰ [MainActivityOld] Waiting for app to become active...")
-                
-                // Store payload temporarily and wait for scene to become active
-                DispatchQueue.main.async {
-                    // Create a temporary observer for scene phase changes
-                    var observer: NSObjectProtocol?
-                    observer = NotificationCenter.default.addObserver(
-                        forName: UIScene.didActivateNotification,
-                        object: nil,
-                        queue: .main
-                    ) { _ in
-                        NSLog("✅ [MainActivityOld] Scene became ACTIVE! Showing call screen now")
-                        print("✅ [MainActivityOld] App is now active - showing VoiceCallScreen")
-                        
-                        // Set payload to show screen
-                        incomingVoiceCallPayload = payload
-                        
-                        NSLog("✅✅✅ [MainActivityOld] VoiceCallScreen should appear NOW")
-                        
-                        // Remove observer
-                        if let observer = observer {
-                            NotificationCenter.default.removeObserver(observer)
-                        }
-                    }
-                    
-                    // Fallback: If scene doesn't activate within 3 seconds, show anyway
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-                        if incomingVoiceCallPayload == nil {
-                            NSLog("⏰ [MainActivityOld] Timeout waiting for active scene - showing anyway")
-                            print("⏰ [MainActivityOld] Showing call screen after timeout")
-                            incomingVoiceCallPayload = payload
-                            
-                            // Remove observer
-                            if let observer = observer {
-                                NotificationCenter.default.removeObserver(observer)
-                            }
-                        }
-                    }
-                }
-            } else {
-                NSLog("📞 [MainActivityOld] App is ACTIVE - showing call screen immediately")
-                NSLog("📞 [MainActivityOld] Setting incomingVoiceCallPayload to trigger navigation...")
-                
-                incomingVoiceCallPayload = payload
-                
-                NSLog("✅✅✅ [MainActivityOld] ========================================")
-                NSLog("✅ [MainActivityOld] Payload SET! VoiceCallScreen should appear now")
-                NSLog("✅ [MainActivityOld] Payload ID: \(payload.id)")
-                NSLog("✅✅✅ [MainActivityOld] ========================================")
-                print("✅✅✅ [MainActivityOld] Voice call screen SHOULD APPEAR NOW!")
-            }
+            // Show call screen immediately - CallKit's audio session allows background WebRTC
+            // This enables WhatsApp-style instant connection even from lock screen
+            incomingVoiceCallPayload = payload
+            
+            NSLog("✅✅✅ [MainActivityOld] ========================================")
+            NSLog("✅ [MainActivityOld] Payload SET! VoiceCallScreen showing NOW")
+            NSLog("✅ [MainActivityOld] Payload ID: \(payload.id)")
+            NSLog("✅ [MainActivityOld] WebRTC will connect via CallKit audio session")
+            NSLog("✅✅✅ [MainActivityOld] ========================================")
+            print("✅✅✅ [MainActivityOld] Voice call screen SHOULD APPEAR NOW!")
         }
     }
     

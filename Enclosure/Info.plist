@@ -113,11 +113,6 @@
 		<string>Inter-SemiBold.ttf</string>
 		<string>Inter-Regular.ttf</string>
 	</array>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>fetch</string>
-		<string>remote-notification</string>
-	</array>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -171,6 +166,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>voip</string>
+		<string>audio</string>
 		<string>remote-notification</string>
 	</array>
 </dict>
