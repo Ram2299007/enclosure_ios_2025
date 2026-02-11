@@ -50,15 +50,30 @@ final class VoiceCallSession: ObservableObject {
 
     func start() {
         isCallConnected = false
-        requestMicrophoneAccess()
+        
+        // For incoming CallKit calls, audio session is already managed by CallKit
+        // Only request microphone permission, don't activate audio session yet
+        if !payload.isSender {
+            print("📞 [VoiceCallSession] Incoming call - CallKit managing audio session")
+            // Just check permission, don't configure audio yet
+            checkMicrophonePermission()
+        } else {
+            print("📞 [VoiceCallSession] Outgoing call - we manage audio session")
+            requestMicrophoneAccess()
+        }
+        
         databaseRef = Database.database().reference()
         setupFirebaseListeners()
         startObservingAudioInterruptions()
         startEarpieceMonitor()
-        // Set earpiece as default when session starts
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+        
+        // For incoming calls, delay earpiece setting to let CallKit finish setup
+        // For outgoing calls, set immediately
+        let delay: TimeInterval = payload.isSender ? 0.5 : 1.0
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             self?.setAudioOutput("earpiece")
         }
+        
         if payload.isSender {
             startRingtone()
         }
@@ -257,6 +272,32 @@ final class VoiceCallSession: ObservableObject {
         }
     }
 
+    private func checkMicrophonePermission() {
+        // For incoming CallKit calls, just check/request permission
+        // Don't configure audio session - CallKit manages it
+        switch audioSession.recordPermission {
+        case .granted:
+            print("✅ [VoiceCallSession] Microphone permission already granted")
+        case .denied:
+            DispatchQueue.main.async {
+                Constant.showToast(message: "Microphone permission is required for voice calls.")
+            }
+        case .undetermined:
+            print("🎤 [VoiceCallSession] Requesting microphone permission...")
+            audioSession.requestRecordPermission { granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        print("✅ [VoiceCallSession] Microphone permission granted")
+                    } else {
+                        Constant.showToast(message: "Microphone permission is required for voice calls.")
+                    }
+                }
+            }
+        @unknown default:
+            break
+        }
+    }
+    
     private func requestMicrophoneAccess() {
         switch audioSession.recordPermission {
         case .granted:
@@ -424,7 +465,17 @@ final class VoiceCallSession: ObservableObject {
         do {
             // Use .voiceChat mode but ensure earpiece routing
             try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
-            try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+            
+            // For incoming calls (not sender), CallKit manages audio session
+            // Don't call setActive - let CallKit handle it to avoid conflicts
+            if payload.isSender {
+                // Outgoing call - we manage audio session
+                try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+                print("✅ [VoiceCallSession] Audio session activated (outgoing call)")
+            } else {
+                // Incoming call - CallKit manages audio session, just configure settings
+                print("✅ [VoiceCallSession] Audio session configured (CallKit managing)")
+            }
             // Route to earpiece by default - must be called after setActive
             if shouldForceEarpiece {
                 if let builtInMic = audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
@@ -472,7 +523,15 @@ final class VoiceCallSession: ObservableObject {
             // Set category first to ensure proper configuration, then override port
             // Use .voiceChat mode which is optimized for voice calls
             try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
-            try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+            
+            // Only activate audio session for outgoing calls
+            // For incoming CallKit calls, CallKit manages the audio session
+            if payload.isSender {
+                try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+                print("✅ [VoiceCallSession] Audio activated for outgoing call")
+            } else {
+                print("✅ [VoiceCallSession] Audio configured (CallKit manages activation)")
+            }
             // Override to earpiece - must be called after setActive
             if let builtInMic = audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
                 try audioSession.setPreferredInput(builtInMic)
@@ -525,7 +584,13 @@ final class VoiceCallSession: ObservableObject {
                 
                 // Ensure category is set correctly for earpiece
                 try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
-                try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+                
+                // Only activate audio for outgoing calls
+                // For incoming CallKit calls, CallKit manages activation
+                if payload.isSender {
+                    try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+                }
+                
                 if let builtInMic = audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
                     try audioSession.setPreferredInput(builtInMic)
                 }

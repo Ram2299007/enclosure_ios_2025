@@ -194,8 +194,8 @@ extension CallKitManager: CXProviderDelegate {
             return
         }
         
-        // Configure audio session
-        configureAudioSession()
+        // Don't configure audio here - CallKit will call didActivate with audio session
+        // Configuring here causes conflicts and "Session activation failed" errors
         
         // Notify app to start call
         DispatchQueue.main.async {
@@ -225,7 +225,7 @@ extension CallKitManager: CXProviderDelegate {
     func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
         print("📞 [CallKit] Starting outgoing call: \(action.callUUID)")
         
-        configureAudioSession()
+        // Don't configure audio here - CallKit will call didActivate
         action.fulfill()
     }
     
@@ -240,7 +240,26 @@ extension CallKitManager: CXProviderDelegate {
     }
     
     func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
-        print("📞 [CallKit] Audio session activated")
+        print("📞 [CallKit] Audio session activated by CallKit")
+        
+        // Configure audio session now that CallKit has activated it
+        do {
+            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP])
+            print("✅ [CallKit] Audio session configured: playAndRecord + voiceChat mode")
+            
+            // Set preferred input to built-in microphone
+            if let builtInMic = audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
+                try audioSession.setPreferredInput(builtInMic)
+                print("✅ [CallKit] Microphone set to built-in mic")
+            }
+            
+            // Route to earpiece by default
+            try audioSession.overrideOutputAudioPort(.none)
+            print("✅ [CallKit] Audio output set to earpiece")
+            
+        } catch {
+            print("❌ [CallKit] Failed to configure audio session: \(error.localizedDescription)")
+        }
     }
     
     func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
