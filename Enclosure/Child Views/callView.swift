@@ -701,7 +701,8 @@ extension callView {
                 receiverDeviceType: entry.deviceType,
                 receiverId: entry.friendId,
                 receiverPhone: entry.mobileNo,
-                roomId: roomId
+                roomId: roomId,
+                voipToken: entry.voipToken  // 🆕 Pass VoIP token for iOS CallKit
             )
         }
     }
@@ -729,7 +730,8 @@ extension callView {
         receiverDeviceType: String,
         receiverId: String,
         receiverPhone: String,
-        roomId: String
+        roomId: String,
+        voipToken: String? = nil  // 🆕 VoIP token for iOS CallKit
     ) {
         let sleepKey = UserDefaults.standard.string(forKey: Constant.sleepKey) ?? ""
         guard sleepKey != Constant.sleepKey else { return }
@@ -740,7 +742,8 @@ extension callView {
             receiverDeviceType: receiverDeviceType,
             receiverId: receiverId,
             receiverPhone: receiverPhone,
-            roomId: roomId
+            roomId: roomId,
+            voipToken: voipToken  // 🆕 Pass VoIP token
         )
     }
     

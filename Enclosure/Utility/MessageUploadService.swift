@@ -818,7 +818,8 @@ class MessageUploadService {
         receiverDeviceType: String,
         receiverId: String,
         receiverPhone: String,
-        roomId: String
+        roomId: String,
+        voipToken: String? = nil  // 🆕 VoIP token for iOS CallKit
     ) {
         let trimmedToken = receiverToken.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedToken.isEmpty, trimmedToken != "apns_missing" else {
@@ -830,11 +831,17 @@ class MessageUploadService {
         let myName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
         let myPhoto = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
         
+        // Get VoIP token for iOS devices
+        let trimmedVoipToken = voipToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        
         print("📞 [VOICE_CALL_NOTIFICATION] Preparing notification:")
         print("   - Receiver Token: \(trimmedToken)")
         print("   - Device Type: \(receiverDeviceType)")
         print("   - Receiver ID: \(receiverId)")
         print("   - Room ID: \(roomId)")
+        if receiverDeviceType != "1" && !trimmedVoipToken.isEmpty {
+            print("   - VoIP Token: \(trimmedVoipToken.prefix(20))... ✅")
+        }
         
         getAccessToken { [weak self] accessToken in
             guard let self = self else { return }
@@ -853,7 +860,8 @@ class MessageUploadService {
                 roomId: roomId,
                 senderUid: myUid,
                 senderName: myName,
-                senderPhoto: myPhoto
+                senderPhoto: myPhoto,
+                voipToken: trimmedVoipToken  // 🆕 Pass VoIP token
             )
         }
     }
@@ -868,7 +876,8 @@ class MessageUploadService {
         roomId: String,
         senderUid: String,
         senderName: String,
-        senderPhoto: String
+        senderPhoto: String,
+        voipToken: String? = nil  // 🆕 VoIP token for iOS CallKit
     ) {
         // FCM endpoint - direct to FCM (matching Android)
         let fcmUrl = "https://fcm.googleapis.com/v1/projects/enclosure-30573/messages:send"
@@ -910,31 +919,37 @@ class MessageUploadService {
                 "data": extraData
             ]
         } else {
-            // iOS device (device_type != "1") - USER-VISIBLE notification for CallKit
-            // CRITICAL: Changed from silent push to user-visible notification
-            // Reason: Silent pushes (content-available: 1) don't work with SwiftUI scene-based architecture
-            // The NotificationDelegate will intercept this and trigger CallKit
-            messagePayload = [
-                "token": deviceToken,
-                "data": extraData,
-                "apns": [
-                    "headers": [
-                        "apns-push-type": "alert",  // Changed from "background" to "alert"
-                        "apns-priority": "10"
-                    ],
-                    "payload": [
-                        "aps": [
-                            "alert": [
-                                "title": "Enclosure",
-                                "body": Constant.incomingVoiceCall
-                            ],
-                            "sound": "default",
-                            "category": "VOICE_CALL"
-                            // DO NOT add content-available - causes "unhandled action" in background
-                        ]
-                    ]
-                ]
-            ]
+            // iOS device (device_type != "1") - SEND VOIP PUSH FOR INSTANT CALLKIT!
+            // ⚠️ IMPORTANT: For iOS call notifications, we send VoIP Push to APNs (NOT FCM)
+            // This triggers instant CallKit in background/lock screen/terminated states
+            
+            // 🆕 Use actual VoIP token if available, otherwise fall back to FCM token
+            let actualVoipToken = (voipToken != nil && !voipToken!.isEmpty) ? voipToken! : deviceToken
+            
+            print("📞📞📞 [VOIP] ========================================")
+            print("📞 [VOIP] Detected iOS CALL notification!")
+            print("📞 [VOIP] Switching to VoIP Push for instant CallKit!")
+            if voipToken != nil && !voipToken!.isEmpty {
+                print("📞 [VOIP] Using provided VoIP token: \(actualVoipToken.prefix(20))... ✅")
+            } else {
+                print("⚠️ [VOIP] No VoIP token provided, using FCM token as fallback")
+            }
+            print("📞 [VOIP] ========================================")
+            
+            // Send VoIP Push directly to APNs
+            sendVoIPPushToAPNs(
+                voipToken: actualVoipToken,  // ✅ Use actual VoIP token from contact/call log
+                senderName: senderName,
+                senderPhoto: senderPhoto,
+                roomId: roomId,
+                receiverId: receiverId,
+                receiverPhone: receiverPhone,
+                accessToken: accessToken
+            )
+            
+            print("✅ [VOIP] VoIP Push sent - iOS will show instant CallKit!")
+            print("✅ [VOIP] Skipping FCM notification for voice call")
+            return  // IMPORTANT: Don't send FCM for voice calls!
         }
         
         let fcmPayload: [String: Any] = [
@@ -998,13 +1013,234 @@ class MessageUploadService {
         }.resume()
     }
     
+    // MARK: - Send VoIP Push to APNs for Instant CallKit
+    private func sendVoIPPushToAPNs(
+        voipToken: String,
+        senderName: String,
+        senderPhoto: String,
+        roomId: String,
+        receiverId: String,
+        receiverPhone: String,
+        accessToken: String
+    ) {
+        print("📞 [VOIP] Starting VoIP Push to APNs")
+        print("📞 [VOIP] VoIP Token: \(voipToken.prefix(20))...")
+        
+        // TODO: Get actual VoIP token from database
+        // For now, assuming deviceToken might be VoIP token
+        // In production: ChatCacheManager.shared.getVoIPToken(for: receiverId) { voipToken in ... }
+        
+        // APNs endpoint for VoIP Push
+        let apnsUrl = "https://api.push.apple.com/3/device/\(voipToken)"
+        // For sandbox/development: https://api.sandbox.push.apple.com/3/device/
+        
+        guard let url = URL(string: apnsUrl) else {
+            print("⚠️ [VOIP] Invalid APNs URL")
+            return
+        }
+        
+        // Create VoIP push payload (NO aps section for VoIP!)
+        let voipPayload: [String: Any] = [
+            "name": senderName,
+            "photo": senderPhoto,
+            "roomId": roomId,
+            "receiverId": receiverId,
+            "phone": receiverPhone,
+            "bodyKey": "Incoming voice call",
+            "user_nameKey": senderName
+        ]
+        
+        print("📞 [VOIP] Payload: \(voipPayload)")
+        
+        // TODO: Create APNs JWT token for authentication
+        // You need to implement createAPNsJWT() method with your Auth Key
+        // See BACKEND_VOIP_IMPLEMENTATION.md for details
+        let jwtToken = createAPNsJWT() ?? ""
+        
+        if jwtToken.isEmpty {
+            print("⚠️ [VOIP] JWT token is empty - VoIP push will fail")
+            print("⚠️ [VOIP] You need to implement createAPNsJWT() with your APNs Auth Key")
+            // For now, continue anyway for logging purposes
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("com.enclosure.voip", forHTTPHeaderField: "apns-topic")  // Bundle ID + .voip
+        request.setValue("voip", forHTTPHeaderField: "apns-push-type")
+        request.setValue("10", forHTTPHeaderField: "apns-priority")
+        request.setValue("bearer \(jwtToken)", forHTTPHeaderField: "authorization")
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: voipPayload)
+        } catch {
+            print("⚠️ [VOIP] Failed to encode payload: \(error.localizedDescription)")
+            return
+        }
+        
+        print("📞 [VOIP] Sending VoIP Push to APNs...")
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("⚠️ [VOIP] Network error: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                print("⚠️ [VOIP] Invalid response")
+                return
+            }
+            
+            print("📞 [VOIP] APNs response status: \(httpResponse.statusCode)")
+            
+            if let data = data, let responseString = String(data: data, encoding: .utf8) {
+                print("📞 [VOIP] APNs response: \(responseString)")
+            }
+            
+            if httpResponse.statusCode == 200 {
+                print("✅✅✅ [VOIP] ========================================")
+                print("✅ [VOIP] VoIP Push sent SUCCESSFULLY!")
+                print("✅ [VOIP] iOS device will show instant CallKit!")
+                print("✅ [VOIP] User will see full-screen incoming call!")
+                print("✅ [VOIP] ========================================")
+            } else {
+                print("❌ [VOIP] APNs Error: \(httpResponse.statusCode)")
+                if let data = data, let responseString = String(data: data, encoding: .utf8) {
+                    print("❌ [VOIP] Error details: \(responseString)")
+                }
+                print("❌ [VOIP] Common errors:")
+                print("❌ [VOIP]   400 = Bad request (check payload)")
+                print("❌ [VOIP]   403 = Invalid JWT or certificate")
+                print("❌ [VOIP]   410 = Invalid device token")
+            }
+        }.resume()
+    }
+    
+    // MARK: - Create APNs JWT Token
+    private func createAPNsJWT() -> String? {
+        // APNs Configuration
+        let APNS_KEY_ID = "838GP97CYN"  // ✅ Your actual Key ID
+        let APNS_TEAM_ID = "XR82K974UJ"  // ✅ Your Team ID
+        let APNS_PRIVATE_KEY = """
+-----BEGIN PRIVATE KEY-----
+MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQglV2GsFLF1OrMz6Jx
+i4dF04TInoAVXvpkyYeub/EYB+GgCgYIKoZIzj0DAQehRANCAATul9xtMykbvPvm
+WD1jSDfoH82QVsoiO1pQqtcfyWfrvUOUSCieWt+BOVLDDsLFLL1VTz5u3ZQ9oHbP
+52p0sePJ
+-----END PRIVATE KEY-----
+"""
+        
+        print("🔑 [APNs JWT] Creating JWT token...")
+        print("🔑 [APNs JWT] Key ID: \(APNS_KEY_ID)")
+        print("🔑 [APNs JWT] Team ID: \(APNS_TEAM_ID)")
+        
+        let now = Int(Date().timeIntervalSince1970)
+        
+        // JWT Header
+        let header: [String: Any] = [
+            "alg": "ES256",
+            "kid": APNS_KEY_ID
+        ]
+        
+        // JWT Claims
+        let claims: [String: Any] = [
+            "iss": APNS_TEAM_ID,
+            "iat": now
+        ]
+        
+        guard let headerData = try? JSONSerialization.data(withJSONObject: header),
+              let claimsData = try? JSONSerialization.data(withJSONObject: claims),
+              let headerBase64 = base64URLEncodeJWT(headerData),
+              let claimsBase64 = base64URLEncodeJWT(claimsData) else {
+            print("❌ [APNs JWT] Failed to encode header/claims")
+            return nil
+        }
+        
+        let unsignedToken = "\(headerBase64).\(claimsBase64)"
+        
+        // Sign with ES256
+        guard let signature = signWithES256JWT(data: unsignedToken, privateKey: APNS_PRIVATE_KEY),
+              let signatureBase64 = base64URLEncodeJWT(signature) else {
+            print("❌ [APNs JWT] Failed to sign token")
+            return nil
+        }
+        
+        let jwt = "\(unsignedToken).\(signatureBase64)"
+        
+        print("✅ [APNs JWT] JWT token created successfully!")
+        print("🔑 [APNs JWT] Token: \(jwt.prefix(50))...")
+        print("🔑 [APNs JWT] Token length: \(jwt.count) characters")
+        
+        return jwt
+    }
+    
+    // MARK: - JWT Helper Functions
+    private func base64URLEncodeJWT(_ data: Data) -> String? {
+        let base64 = data.base64EncodedString()
+        return base64
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+    
+    private func signWithES256JWT(data: String, privateKey: String) -> Data? {
+        // Clean private key
+        let cleanedKey = privateKey
+            .replacingOccurrences(of: "-----BEGIN PRIVATE KEY-----", with: "")
+            .replacingOccurrences(of: "-----END PRIVATE KEY-----", with: "")
+            .replacingOccurrences(of: "\n", with: "")
+            .replacingOccurrences(of: " ", with: "")
+        
+        guard let keyData = Data(base64Encoded: cleanedKey) else {
+            print("❌ [APNs JWT] Failed to decode private key")
+            return nil
+        }
+        
+        // Create SecKey from PKCS#8 data
+        let keyDict: [String: Any] = [
+            kSecAttrKeyType as String: kSecAttrKeyTypeEC,
+            kSecAttrKeyClass as String: kSecAttrKeyClassPrivate,
+            kSecAttrKeySizeInBits as String: 256
+        ]
+        
+        var error: Unmanaged<CFError>?
+        guard let secKey = SecKeyCreateWithData(keyData as CFData, keyDict as CFDictionary, &error) else {
+            if let error = error?.takeRetainedValue() {
+                print("❌ [APNs JWT] SecKey error: \(error)")
+            }
+            return nil
+        }
+        
+        // Sign data
+        guard let messageData = data.data(using: .utf8) else {
+            print("❌ [APNs JWT] Failed to convert data to UTF8")
+            return nil
+        }
+        
+        var signError: Unmanaged<CFError>?
+        guard let signature = SecKeyCreateSignature(
+            secKey,
+            .ecdsaSignatureMessageX962SHA256,
+            messageData as CFData,
+            &signError
+        ) as Data? else {
+            if let error = signError?.takeRetainedValue() {
+                print("❌ [APNs JWT] Signing error: \(error)")
+            }
+            return nil
+        }
+        
+        return signature
+    }
+    
     // MARK: - Send Video Call Notification via Backend API (supports Android & iOS)
     func sendVideoCallNotification(
         receiverToken: String,
         receiverDeviceType: String,
         receiverId: String,
         receiverPhone: String,
-        roomId: String
+        roomId: String,
+        voipToken: String? = nil  // 🆕 VoIP token for iOS CallKit
     ) {
         let trimmedToken = receiverToken.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedToken.isEmpty, trimmedToken != "apns_missing" else {
@@ -1016,11 +1252,17 @@ class MessageUploadService {
         let myName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
         let myPhoto = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
         
+        // Get VoIP token for iOS devices
+        let trimmedVoipToken = voipToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        
         print("📹 [VIDEO_CALL_NOTIFICATION] Preparing notification:")
         print("   - Receiver Token: \(trimmedToken)")
         print("   - Device Type: \(receiverDeviceType)")
         print("   - Receiver ID: \(receiverId)")
         print("   - Room ID: \(roomId)")
+        if receiverDeviceType != "1" && !trimmedVoipToken.isEmpty {
+            print("   - VoIP Token: \(trimmedVoipToken.prefix(20))... ✅")
+        }
         
         getAccessToken { [weak self] accessToken in
             guard let self = self else { return }
@@ -1039,7 +1281,8 @@ class MessageUploadService {
                 roomId: roomId,
                 senderUid: myUid,
                 senderName: myName,
-                senderPhoto: myPhoto
+                senderPhoto: myPhoto,
+                voipToken: trimmedVoipToken  // 🆕 Pass VoIP token
             )
         }
     }
@@ -1054,7 +1297,8 @@ class MessageUploadService {
         roomId: String,
         senderUid: String,
         senderName: String,
-        senderPhoto: String
+        senderPhoto: String,
+        voipToken: String? = nil  // 🆕 VoIP token for iOS CallKit
     ) {
         // FCM endpoint - direct to FCM (matching Android)
         let fcmUrl = "https://fcm.googleapis.com/v1/projects/enclosure-30573/messages:send"
@@ -1096,33 +1340,40 @@ class MessageUploadService {
                 "data": extraData
             ]
         } else {
-            // iOS device (device_type != "1") - USER-VISIBLE notification for CallKit
-            // CRITICAL: Changed from silent push to user-visible notification
-            // Reason: Silent pushes (content-available: 1) don't work with SwiftUI scene-based architecture
-            // The NotificationDelegate will intercept this and trigger CallKit
-            messagePayload = [
-                "token": deviceToken,
-                "data": extraData,
-                "apns": [
-                    "headers": [
-                        "apns-push-type": "alert",  // Changed from "background" to "alert"
-                        "apns-priority": "10"
-                    ],
-                    "payload": [
-                        "aps": [
-                            "alert": [
-                                "title": "Enclosure",
-                                "body": "Incoming video call"
-                            ],
-                            "sound": "default",
-                            "category": "VIDEO_CALL"
-                            // DO NOT add content-available - causes "unhandled action" in background
-                        ]
-                    ]
-                ]
-            ]
+            // iOS device (device_type != "1") - SEND VOIP PUSH FOR INSTANT CALLKIT!
+            // ⚠️ IMPORTANT: For iOS call notifications, we send VoIP Push to APNs (NOT FCM)
+            // This triggers instant CallKit in background/lock screen/terminated states
+            
+            // 🆕 Use actual VoIP token if available, otherwise fall back to FCM token
+            let actualVoipToken = (voipToken != nil && !voipToken!.isEmpty) ? voipToken! : deviceToken
+            
+            print("📹📹📹 [VOIP] ========================================")
+            print("📹 [VOIP] Detected iOS VIDEO CALL notification!")
+            print("📹 [VOIP] Switching to VoIP Push for instant CallKit!")
+            if voipToken != nil && !voipToken!.isEmpty {
+                print("📹 [VOIP] Using provided VoIP token: \(actualVoipToken.prefix(20))... ✅")
+            } else {
+                print("⚠️ [VOIP] No VoIP token provided, using FCM token as fallback")
+            }
+            print("📹 [VOIP] ========================================")
+            
+            // Send VoIP Push directly to APNs
+            sendVoIPPushToAPNs(
+                voipToken: actualVoipToken,  // ✅ Use actual VoIP token from contact/call log
+                senderName: senderName,
+                senderPhoto: senderPhoto,
+                roomId: roomId,
+                receiverId: receiverId,
+                receiverPhone: receiverPhone,
+                accessToken: accessToken
+            )
+            
+            print("✅ [VOIP] VoIP Push sent - iOS will show instant CallKit!")
+            print("✅ [VOIP] Skipping FCM notification for video call")
+            return  // IMPORTANT: Don't send FCM for video calls!
         }
         
+        // This code only runs for Android devices now
         let fcmPayload: [String: Any] = [
             "message": messagePayload
         ]

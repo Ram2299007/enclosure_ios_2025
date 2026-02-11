@@ -115,6 +115,15 @@ struct SettingsView: View {
     // MARK: - Settings Items List (Android RecyclerView style)
     private var settingsItemsList: some View {
         VStack(spacing: 0) {
+            // 🧪 TEST CALLKIT BUTTON - Remove after testing!
+            AndroidSettingsItem(
+                icon: "phone.fill",
+                title: "🧪 Test CallKit (VoIP)",
+                subtitle: "Tap to test WhatsApp-style call screen"
+            ) {
+                handleTestCallKit()
+            }
+            
             // Blocked contacts
             AndroidSettingsItem(
                 icon: "nosign",
@@ -175,6 +184,17 @@ struct SettingsView: View {
         }
     }
     
+    
+    // 🧪 TEST CALLKIT - Remove after testing!
+    private func handleTestCallKit() {
+        NSLog("🧪 [Settings] Test CallKit button tapped!")
+        print("🧪 [Settings] Triggering test VoIP push...")
+        
+        // Call the test helper
+        VoIPTestHelper.testVoIPPushReceived()
+        
+        print("🧪 [Settings] Test triggered - CallKit should appear!")
+    }
     
     private func handleBlockedContacts() {
         showAlert(title: "Blocked contacts", message: "No blocked contacts found.")

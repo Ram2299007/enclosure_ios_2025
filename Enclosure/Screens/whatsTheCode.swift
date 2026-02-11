@@ -699,6 +699,9 @@ struct whatsTheCode: View {
     private func performOTPVerification() {
         let contactStore = CNContactStore()
         let authorizationStatus = CNContactStore.authorizationStatus(for: .contacts)
+        
+        // Get VoIP token from VoIPPushManager
+        let voipToken = VoIPPushManager.shared.getVoIPToken() ?? ""
 
         switch authorizationStatus {
         case .notDetermined:
@@ -711,7 +714,8 @@ struct whatsTheCode: View {
                             otp: otp.joined(),
                             cCode: country_Code,
                             token: fcmToken,
-                            deviceId: deviceId
+                            deviceId: deviceId,
+                            voipToken: voipToken
                         )
                     } else {
                         showPermissionAlert()
@@ -726,7 +730,8 @@ struct whatsTheCode: View {
                 otp: otp.joined(),
                 cCode: country_Code,
                 token: fcmToken,
-                deviceId: deviceId
+                deviceId: deviceId,
+                voipToken: voipToken
             )
 
         case .denied, .restricted:

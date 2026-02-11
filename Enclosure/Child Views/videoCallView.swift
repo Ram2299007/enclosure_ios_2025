@@ -824,7 +824,8 @@ extension videoCallView {
                 receiverDeviceType: contact.deviceType,
                 receiverId: contact.uid,
                 receiverPhone: contact.mobileNo,
-                roomId: roomId
+                roomId: roomId,
+                voipToken: contact.voipToken  // 🆕 Pass VoIP token for iOS CallKit
             )
         }
     }
@@ -851,7 +852,8 @@ extension videoCallView {
                 receiverDeviceType: entry.deviceType,
                 receiverId: entry.friendId,
                 receiverPhone: entry.mobileNo,
-                roomId: roomId
+                roomId: roomId,
+                voipToken: entry.voipToken  // 🆕 Pass VoIP token for iOS CallKit
             )
         }
     }
@@ -901,7 +903,8 @@ extension videoCallView {
         receiverDeviceType: String,
         receiverId: String,
         receiverPhone: String,
-        roomId: String
+        roomId: String,
+        voipToken: String? = nil  // 🆕 VoIP token for iOS CallKit
     ) {
         let sleepKey = UserDefaults.standard.string(forKey: Constant.sleepKey) ?? ""
         guard sleepKey != Constant.sleepKey else { return }
@@ -912,7 +915,8 @@ extension videoCallView {
             receiverDeviceType: receiverDeviceType,
             receiverId: receiverId,
             receiverPhone: receiverPhone,
-            roomId: roomId
+            roomId: roomId,
+            voipToken: voipToken  // 🆕 Pass VoIP token
         )
     }
     

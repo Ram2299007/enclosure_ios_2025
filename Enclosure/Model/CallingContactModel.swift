@@ -14,6 +14,7 @@ struct CallingContactModel: Codable {
     let mobileNo: String
     let caption: String
     let fToken: String
+    let voipToken: String  // 🆕 VoIP token for iOS CallKit
     let deviceType: String
     let block: Bool
     let themeColor: String
@@ -25,6 +26,7 @@ struct CallingContactModel: Codable {
         case mobileNo = "mobile_no"
         case caption
         case fToken = "f_token"
+        case voipToken = "voip_token"  // 🆕 VoIP token
         case deviceType = "device_type"
         case block
         case themeColor
@@ -44,6 +46,7 @@ struct CallingContactModel: Codable {
         mobileNo = try container.decode(String.self, forKey: .mobileNo)
         caption = try container.decode(String.self, forKey: .caption)
         fToken = try container.decode(String.self, forKey: .fToken)
+        voipToken = (try? container.decode(String.self, forKey: .voipToken)) ?? ""  // 🆕 Optional VoIP token
         deviceType = try container.decode(String.self, forKey: .deviceType)
         
         // Handle block as Bool or String

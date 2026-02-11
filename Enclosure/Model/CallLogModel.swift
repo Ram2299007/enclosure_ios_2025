@@ -75,6 +75,7 @@ struct CallLogUserInfo: Identifiable, Codable {
     let photo: String
     let fullName: String
     let fToken: String
+    let voipToken: String  // 🆕 VoIP token for iOS CallKit
     let deviceType: String
     let mobileNo: String
     let date: String
@@ -93,6 +94,7 @@ struct CallLogUserInfo: Identifiable, Codable {
         case photo
         case fullName = "full_name"
         case fToken = "f_token"
+        case voipToken = "voip_token"  // 🆕 VoIP token
         case deviceType = "device_type"
         case mobileNo = "mobile_no"
         case date
@@ -114,6 +116,7 @@ struct CallLogUserInfo: Identifiable, Codable {
         photo = try container.decodeIfPresent(String.self, forKey: .photo) ?? ""
         fullName = try container.decodeIfPresent(String.self, forKey: .fullName) ?? ""
         fToken = try container.decodeIfPresent(String.self, forKey: .fToken) ?? ""
+        voipToken = try container.decodeIfPresent(String.self, forKey: .voipToken) ?? ""  // 🆕 VoIP token (optional)
         deviceType = try container.decodeIfPresent(String.self, forKey: .deviceType) ?? ""
         mobileNo = try container.decodeIfPresent(String.self, forKey: .mobileNo) ?? ""
         date = try container.decodeIfPresent(String.self, forKey: .date) ?? ""

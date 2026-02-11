@@ -131,9 +131,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             NSLog("📞 [AppDelegate] ========================================")
             print("📞 [AppDelegate] VoIP Token: \(token)")
             
-            // TODO: Send VoIP token to your backend
-            // Uncomment when backend endpoint is ready:
-            // VoIPPushManager.shared.sendVoIPTokenToBackend()
+            // ✅ Send VoIP token to backend
+            VoIPPushManager.shared.sendVoIPTokenToBackend()
         }
         
         NSLog("✅ [AppDelegate] VoIP Push Manager initialized successfully")

@@ -13,7 +13,7 @@ class VerifyMobileOTPViewModel: ObservableObject {
     @Published var countryCodeKey: String?
     @Published var fileURL: URL?
 
-    func verifyOTP(uid: String, otp: String,cCode:String, token: String, deviceId: String) {
+    func verifyOTP(uid: String, otp: String,cCode:String, token: String, deviceId: String, voipToken: String? = nil) {
         self.errorMessage = nil
         self.isLoading = true
 
@@ -120,15 +120,23 @@ class VerifyMobileOTPViewModel: ObservableObject {
         
         print("🔑 [VERIFY_OTP] Final token to send: \(finalToken == "apns_missing" ? "apns_missing" : "\(finalToken.prefix(50))...")")
 
+        // Get VoIP token from VoIPPushManager or use passed token
+        let currentVoIPToken = voipToken ?? VoIPPushManager.shared.getVoIPToken() ?? ""
+        
+        print("🔑 [VERIFY_OTP] Sending tokens to backend:")
+        print("🔑 [VERIFY_OTP]   - FCM Token: \(finalToken == "apns_missing" ? "apns_missing" : "\(finalToken.prefix(20))...")")
+        print("🔑 [VERIFY_OTP]   - VoIP Token: \(currentVoIPToken.isEmpty ? "EMPTY - will be sent later" : "\(currentVoIPToken.prefix(20))...")")
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
 
-        // Matching Android parameters: uid, mob_otp, f_token, device_id, phone_id, country_code, device_type (2 = iOS for backend to store)
+        // Matching Android parameters: uid, mob_otp, f_token, voip_token, device_id, phone_id, country_code, device_type (2 = iOS for backend to store)
         let params: [String: String] = [
             "uid": uid,
             "mob_otp": otp,
             "f_token": finalToken,
+            "voip_token": currentVoIPToken,  // VoIP token for CallKit push notifications
             "device_id": deviceId,
             "phone_id": phoneId,
             "country_code": cCode,
@@ -145,7 +153,7 @@ class VerifyMobileOTPViewModel: ObservableObject {
         request.httpBody = bodyString.data(using: .utf8)
 
         print("📤 API: verify_mobile_otp")
-        print("📤 Parameters: uid=\(uid), mob_otp=\(otp), f_token=\(finalToken == "apns_missing" ? "apns_missing" : "\(finalToken.prefix(50))..."), device_id=\(deviceId), phone_id=\(phoneId), country_code=\(cCode)")
+        print("📤 Parameters: uid=\(uid), mob_otp=\(otp), f_token=\(finalToken == "apns_missing" ? "apns_missing" : "\(finalToken.prefix(50))..."), voip_token=\(currentVoIPToken.isEmpty ? "EMPTY" : "\(currentVoIPToken.prefix(20))..."), device_id=\(deviceId), phone_id=\(phoneId), country_code=\(cCode)")
         print("📤 Full Request Body: \(bodyString)")
 
         URLSession.shared.dataTask(with: request) {
