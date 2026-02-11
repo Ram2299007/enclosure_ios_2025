@@ -1137,7 +1137,7 @@ struct MainActivityOld: View {
         }
         
         if attempts >= maxAttempts {
-            NSLog("⚠️ [MainActivityOld] Timeout waiting for unlock after \(maxAttempts * 0.5)s")
+            NSLog("⚠️ [MainActivityOld] Timeout waiting for unlock after \(Double(maxAttempts) * 0.5)s")
             NSLog("⚠️ [MainActivityOld] User may have declined or device not unlocking")
             print("⚠️ [MainActivityOld] Timeout - user may have declined call")
             return
