@@ -2226,6 +2226,41 @@ function monitorConnectionQuality(peerConnection, peerId) {
     }
 }
 
+// Immediate initialization - runs before DOMContentLoaded
+// Critical for lock screen calls where DOMContentLoaded might be delayed
+(function immediateInit() {
+    console.log('[ImmediateInit] Running immediate initialization for lock screen support');
+    
+    // Try to show controls immediately, even if DOM not fully loaded
+    const tryShowControls = () => {
+        const controlsContainer = document.querySelector('.controls-container');
+        const topBar = document.querySelector('.top-bar');
+        
+        if (controlsContainer) {
+            controlsContainer.classList.remove('hidden');
+            console.log('[ImmediateInit] Controls shown immediately');
+        }
+        if (topBar) {
+            topBar.classList.remove('hidden');
+            console.log('[ImmediateInit] Top bar shown immediately');
+        }
+        
+        // If elements not found yet, DOM is still loading
+        // They'll be shown in DOMContentLoaded
+        if (!controlsContainer || !topBar) {
+            console.log('[ImmediateInit] Elements not ready yet, will show in DOMContentLoaded');
+        }
+    };
+    
+    // Try immediately
+    tryShowControls();
+    
+    // Also try after a tiny delay in case DOM is almost ready
+    setTimeout(tryShowControls, 50);
+    setTimeout(tryShowControls, 100);
+    setTimeout(tryShowControls, 200);
+})();
+
 // Initialize audio monitoring
 document.addEventListener('DOMContentLoaded', () => {
     // Set initial status to Connecting
@@ -2245,6 +2280,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const voiceContainer = document.querySelector('.voice-container');
     const controlsContainer = document.querySelector('.controls-container');
     const topBar = document.querySelector('.top-bar');
+    
+    // CRITICAL: Ensure controls are visible on load, especially when accepting from lock screen
+    // Remove any 'hidden' class that might have been set
+    if (controlsContainer) {
+        controlsContainer.classList.remove('hidden');
+        console.log('[Init] Controls container made visible');
+    }
+    if (topBar) {
+        topBar.classList.remove('hidden');
+        console.log('[Init] Top bar made visible');
+    }
+    
     callTimer.style.display = 'block';
     callTimer.style.marginTop = '10px';
     callTimer.style.fontSize = '14px';
