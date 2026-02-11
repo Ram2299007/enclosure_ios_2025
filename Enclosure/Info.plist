@@ -106,6 +106,12 @@
 	<string>Allow Enclosure to access your camera for video calls.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Allow Enclosure to access your microphone for voice and video calls.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Enclosure needs local network access to establish voice and video calls</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_services._dns-sd._udp</string>
+	</array>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Inter-Bold.ttf</string>
