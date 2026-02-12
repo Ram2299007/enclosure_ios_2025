@@ -382,17 +382,13 @@ const initializeLocalStream = async () => {
                 }
             });
             
-            // Listen for mute event - show user interaction prompt for iOS
+            // Listen for mute event (for debugging - overlay shown elsewhere)
             track.addEventListener('mute', () => {
                 console.log(`⚠️ [WebRTC] Track ${index} MUTED!`);
                 if (typeof Android !== 'undefined' && Android.logToNative) {
                     Android.logToNative(`⚠️⚠️⚠️ [WebRTC] Track ${index} became MUTED!`);
                 }
-                
-                // iOS-specific: Show tap-to-activate button
-                if (isIOSDevice() && isConnected) {
-                    showMicrophoneActivationPrompt();
-                }
+                // Note: Overlay is shown from markConnectedIfNeeded() when muted track is detected
             });
 
             // Set track constraints for better quality
@@ -1405,6 +1401,12 @@ function setupCallStreamListener(call) {
                             if (track.muted) {
                                 Android.logToNative(`❌❌❌ [WebRTC] Track ${index} is MUTED!`);
                                 Android.logToNative(`🔧 [WebRTC] Attempting to fix muted track...`);
+                                
+                                // iOS-specific: Show user interaction prompt
+                                if (isIOSDevice()) {
+                                    Android.logToNative(`🔔🔔🔔 [WebRTC] Showing microphone activation overlay for iOS!`);
+                                    showMicrophoneActivationPrompt();
+                                }
                                 
                                 // Listen for unmute event
                                 track.addEventListener('unmute', () => {
