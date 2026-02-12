@@ -304,10 +304,31 @@ const initializeLocalStream = async () => {
         
         audioTracks.forEach((track, index) => {
             track.enabled = true;
-            console.log(`✅ [initializeLocalStream] Track ${index}: id=${track.id}, enabled=${track.enabled}, state=${track.readyState}`);
+            console.log(`✅ [initializeLocalStream] Track ${index}: id=${track.id}, enabled=${track.enabled}, state=${track.readyState}, muted=${track.muted}`);
             if (typeof Android !== 'undefined' && Android.logToNative) {
-                Android.logToNative(`✅ [WebRTC] Track ${index}: id=${track.id}, enabled=${track.enabled}, state=${track.readyState}`);
+                Android.logToNative(`✅ [WebRTC] Track ${index}: id=${track.id}, enabled=${track.enabled}, state=${track.readyState}, muted=${track.muted}`);
+                
+                // Warn if track is muted on creation
+                if (track.muted) {
+                    Android.logToNative(`⚠️ [WebRTC] Track ${index} created MUTED - waiting for unmute event`);
+                }
             }
+            
+            // Listen for unmute event
+            track.addEventListener('unmute', () => {
+                console.log(`✅ [WebRTC] Track ${index} UNMUTED!`);
+                if (typeof Android !== 'undefined' && Android.logToNative) {
+                    Android.logToNative(`✅✅✅ [WebRTC] Track ${index} UNMUTED - microphone is now producing audio!`);
+                }
+            });
+            
+            // Listen for mute event (for debugging)
+            track.addEventListener('mute', () => {
+                console.log(`⚠️ [WebRTC] Track ${index} MUTED!`);
+                if (typeof Android !== 'undefined' && Android.logToNative) {
+                    Android.logToNative(`⚠️⚠️⚠️ [WebRTC] Track ${index} became MUTED!`);
+                }
+            });
 
             // Set track constraints for better quality
             if (track.getCapabilities) {
@@ -1193,7 +1214,35 @@ function setupCallStreamListener(call) {
                                 Android.logToNative(`❌ [WebRTC] Track ${index} state is ${track.readyState} (should be 'live')`);
                             }
                             if (track.muted) {
-                                Android.logToNative(`❌ [WebRTC] Track ${index} is MUTED!`);
+                                Android.logToNative(`❌❌❌ [WebRTC] Track ${index} is MUTED!`);
+                                Android.logToNative(`🔧 [WebRTC] Attempting to fix muted track...`);
+                                
+                                // Listen for unmute event
+                                track.addEventListener('unmute', () => {
+                                    console.log(`✅ [WebRTC] Track ${index} UNMUTED!`);
+                                    if (typeof Android !== 'undefined' && Android.logToNative) {
+                                        Android.logToNative(`✅✅✅ [WebRTC] Track ${index} UNMUTED - audio should flow now!`);
+                                    }
+                                });
+                                
+                                // Try to resume audio context if it's suspended
+                                if (audioContext) {
+                                    Android.logToNative(`🔧 [WebRTC] Audio context state: ${audioContext.state}`);
+                                    if (audioContext.state === 'suspended') {
+                                        Android.logToNative(`🔧 [WebRTC] Resuming audio context...`);
+                                        audioContext.resume().then(() => {
+                                            Android.logToNative(`✅ [WebRTC] Audio context resumed`);
+                                        }).catch(err => {
+                                            Android.logToNative(`❌ [WebRTC] Failed to resume audio context: ${err.message}`);
+                                        });
+                                    }
+                                }
+                                
+                                // Ensure track is enabled
+                                if (!track.enabled) {
+                                    track.enabled = true;
+                                    Android.logToNative(`🔧 [WebRTC] Track enabled set to true`);
+                                }
                             }
                         }
                     });
