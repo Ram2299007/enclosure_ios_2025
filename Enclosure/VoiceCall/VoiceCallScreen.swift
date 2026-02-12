@@ -3,7 +3,6 @@ import SwiftUI
 struct VoiceCallScreen: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var session: VoiceCallSession
-    @State private var hasStarted = false
 
     init(payload: VoiceCallPayload) {
         let newSession = VoiceCallSession(payload: payload)
@@ -17,6 +16,7 @@ struct VoiceCallScreen: View {
         
         // Start on next run loop to ensure session is fully initialized
         DispatchQueue.main.async {
+            NSLog("🔥 [VoiceCallScreen] Now calling session.start()")
             newSession.start()
             NSLog("✅ [VoiceCallScreen] Session started! WebRTC connecting in background...")
         }
@@ -28,13 +28,8 @@ struct VoiceCallScreen: View {
             .onAppear {
                 NSLog("📺 [VoiceCallScreen] View appeared - UI now visible")
                 print("📺 [VoiceCallScreen] onAppear called - device unlocked, UI showing")
-                
-                // Session already started in init, but ensure it's running
-                if !hasStarted {
-                    NSLog("⚠️ [VoiceCallScreen] Backup start call (should not happen)")
-                    session.start()
-                    hasStarted = true
-                }
+                // Session already started in init - no backup needed
+                NSLog("📺 [VoiceCallScreen] Session already started in init()")
             }
             .onDisappear {
                 NSLog("📺 [VoiceCallScreen] View disappeared - stopping session")
