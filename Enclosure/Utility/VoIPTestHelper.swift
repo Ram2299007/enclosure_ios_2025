@@ -52,7 +52,7 @@ class VoIPTestHelper {
             roomId: roomId,
             receiverId: receiverId,
             receiverPhone: receiverPhone
-        ) { error in
+        ) { error, callUUID in
             if let error = error {
                 NSLog("❌ [TEST] CallKit Error: \(error.localizedDescription)")
                 print("❌ [TEST] CallKit error")
@@ -62,6 +62,9 @@ class VoIPTestHelper {
                 NSLog("✅ [TEST] This proves VoIP will work when backend sends real push")
                 print("✅✅✅ [TEST] CallKit triggered successfully!")
                 print("✅ [TEST] This is what happens with real VoIP push!")
+                if let uuid = callUUID {
+                    NSLog("✅ [TEST] Call UUID: \(uuid.uuidString)")
+                }
             }
         }
         

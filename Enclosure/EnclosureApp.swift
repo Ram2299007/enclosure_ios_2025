@@ -304,12 +304,15 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             roomId: roomId,
             receiverId: receiverId,
             receiverPhone: receiverPhone
-        ) { error in
+        ) { error, callUUID in
             if let error = error {
                 print("❌ [CallKit] Failed to report call: \(error.localizedDescription)")
                 completionHandler(.failed)
             } else {
                 print("✅ [CallKit] Call reported successfully")
+                if let uuid = callUUID {
+                    print("✅ [CallKit] Call UUID: \(uuid.uuidString)")
+                }
                 completionHandler(.newData)
             }
         }
