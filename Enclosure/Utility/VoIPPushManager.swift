@@ -122,10 +122,11 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         NSLog("📞 [VoIP]   Caller Name: \(callerName)")
         NSLog("📞 [VoIP]   Room ID: \(roomId)")
         NSLog("📞 [VoIP]   Receiver ID: \(receiverId)")
-        NSLog("📞 [VoIP]   Body Key: \(bodyKey)")
+        NSLog("📞 [VoIP]   Body Key: '\(bodyKey)'")
         
         print("📞 [VoIP] Call from: \(callerName)")
         print("📞 [VoIP] Room: \(roomId)")
+        print("📞 [VoIP] Body Key: '\(bodyKey)'")
         
         // Validate required data
         guard !roomId.isEmpty else {
@@ -137,8 +138,13 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         }
         
         // Determine if voice or video call
-        let isVideoCall = bodyKey.contains("video") || bodyKey.contains("Video")
-        NSLog("📞 [VoIP] Call Type: \(isVideoCall ? "VIDEO" : "VOICE")")
+        // Check specifically for "video" in bodyKey
+        // Voice call: "Incoming voice call"
+        // Video call: "Incoming video call"
+        let isVideoCall = bodyKey.lowercased().contains("video")
+        let callType = isVideoCall ? "VIDEO" : "VOICE"
+        NSLog("📞 [VoIP] Body Key: '\(bodyKey)' → Detected Call Type: \(callType)")
+        print("📞 [VoIP] Call Type: \(callType)")
         
         NSLog("📞 [VoIP] Reporting call to CallKit NOW...")
         print("📞 [VoIP] Triggering CallKit...")
