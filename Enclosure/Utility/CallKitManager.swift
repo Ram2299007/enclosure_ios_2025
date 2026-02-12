@@ -93,11 +93,14 @@ class CallKitManager: NSObject {
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: callerName)
         
-        // Show caller's actual name as main display text
-        // The provider name "Enclosure" will show at the top automatically
-        update.localizedCallerName = callerName
+        // Show caller name with call type
+        // Format: "Ganu\nEnclosure Voice Call" or "Ganu\nEnclosure Video Call"
+        let callTypeText = isVideoCall ? "Enclosure Video Call" : "Enclosure Voice Call"
+        let displayName = "\(callerName)\n\(callTypeText)"
+        
+        update.localizedCallerName = displayName
         print("📞 [CallKit] Display name: \(callerName)")
-        print("📞 [CallKit] Call type: \(isVideoCall ? "VIDEO" : "VOICE")")
+        print("📞 [CallKit] Call type: \(callTypeText)")
         
         // IMPORTANT: Keep hasVideo = true for both call types
         // This ensures iOS shows Face ID/Touch ID unlock prompt on lock screen
