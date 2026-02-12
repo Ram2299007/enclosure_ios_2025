@@ -246,7 +246,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             let callType = isVoiceCall ? "VOICE" : "VIDEO"
             NSLog("📞📞📞 [CallKit] ✅ \(callType) CALL NOTIFICATION DETECTED!")
             print("📞📞📞 [CallKit] ✅ \(callType) CALL NOTIFICATION DETECTED!")
-            handleCallNotification(userInfo: userInfo, completionHandler: completionHandler)
+            handleCallNotification(userInfo: userInfo, isVideoCall: isVideoCall, completionHandler: completionHandler)
             return
         } else {
             NSLog("⚠️ [FCM] NOT a call notification. bodyKey = '\(bodyKey ?? "nil")'")
@@ -262,9 +262,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
     
     // MARK: - Handle Call Notification with CallKit
-    private func handleCallNotification(userInfo: [AnyHashable: Any], completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
-        NSLog("📞📞📞 [CallKit] ========== PROCESSING CALL NOTIFICATION ==========")
-        print("📞📞📞 [CallKit] ========== PROCESSING CALL NOTIFICATION ==========")
+    private func handleCallNotification(userInfo: [AnyHashable: Any], isVideoCall: Bool, completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        let callType = isVideoCall ? "VIDEO" : "VOICE"
+        NSLog("📞📞📞 [CallKit] ========== PROCESSING \(callType) CALL NOTIFICATION ==========")
+        print("📞📞📞 [CallKit] ========== PROCESSING \(callType) CALL NOTIFICATION ==========")
         
         // Extract call data
         let callerName = (userInfo["name"] as? String) ?? "Unknown"
@@ -303,7 +304,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             callerPhoto: callerPhoto,
             roomId: roomId,
             receiverId: receiverId,
-            receiverPhone: receiverPhone
+            receiverPhone: receiverPhone,
+            isVideoCall: isVideoCall
         ) { error, callUUID in
             if let error = error {
                 print("❌ [CallKit] Failed to report call: \(error.localizedDescription)")

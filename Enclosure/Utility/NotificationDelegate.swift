@@ -87,7 +87,8 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                     callerPhoto: callerPhoto,
                     roomId: roomId,
                     receiverId: receiverId,
-                    receiverPhone: receiverPhone
+                    receiverPhone: receiverPhone,
+                    isVideoCall: isVideoCall
                 ) { error, callUUID in
                     if let error = error {
                         NSLog("❌ [NotificationDelegate] CallKit error: \(error.localizedDescription)")
@@ -208,7 +209,8 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                         callerPhoto: callerPhoto,
                         roomId: roomId,
                         receiverId: receiverId,
-                        receiverPhone: receiverPhone
+                        receiverPhone: receiverPhone,
+                        isVideoCall: isVideoCall
                     ) { error, callUUID in
                         if let error = error {
                             NSLog("❌ [NotificationDelegate] CallKit error: \(error.localizedDescription)")

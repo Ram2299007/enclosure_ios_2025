@@ -150,7 +150,8 @@ extension VoIPPushManager: PKPushRegistryDelegate {
             callerPhoto: callerPhoto,
             roomId: roomId,
             receiverId: receiverId,
-            receiverPhone: receiverPhone
+            receiverPhone: receiverPhone,
+            isVideoCall: isVideoCall
         ) { error, callUUID in
             if let error = error {
                 NSLog("❌ [VoIP] CallKit Error: \(error.localizedDescription)")

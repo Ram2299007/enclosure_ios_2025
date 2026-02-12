@@ -67,11 +67,13 @@ class CallKitManager: NSObject {
         roomId: String,
         receiverId: String,
         receiverPhone: String,
+        isVideoCall: Bool = false,
         completion: @escaping (Error?, UUID?) -> Void
     ) {
         let uuid = UUID()
         
-        print("📞 [CallKit] Reporting incoming call:")
+        let callType = isVideoCall ? "VIDEO" : "VOICE"
+        print("📞 [CallKit] Reporting incoming \(callType) call:")
         print("   - Caller: \(callerName)")
         print("   - Room ID: \(roomId)")
         print("   - UUID: \(uuid.uuidString)")
@@ -90,7 +92,13 @@ class CallKitManager: NSObject {
         // Create call update
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: callerName)
-        update.localizedCallerName = callerName
+        
+        // Customize display name based on call type
+        if isVideoCall {
+            update.localizedCallerName = "Enclosure Video Call"
+        } else {
+            update.localizedCallerName = "Enclosure Voice Call"
+        }
         
         // Enable video to show video button on CallKit UI
         // This allows natural unlock trigger when tapped
