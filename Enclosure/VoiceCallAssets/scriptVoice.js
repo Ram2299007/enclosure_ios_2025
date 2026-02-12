@@ -5,6 +5,7 @@ let remoteCallerName = null;
 let isDisconnected = false;
 let selectedAudioButton = null;
 let localStream = null;
+let isInitializingStream = false; // Prevent concurrent getUserMedia() calls
 let audioOutputInitialized = false; // Global flag to track first-time setup
 let audioContext = null; // Audio context for better audio processing
 let audioWorkletNode = null; // Audio worklet for processing
@@ -230,21 +231,55 @@ const initializeAudioContext = async () => {
 
 // Enhanced local stream initialization with better error handling
 const initializeLocalStream = async () => {
-    console.log('🎤 [initializeLocalStream] Called - starting getUserMedia()');
+    console.log('🎤 [initializeLocalStream] Called');
     if (typeof Android !== 'undefined' && Android.logToNative) {
         Android.logToNative('🎤 [WebRTC] initializeLocalStream() called');
     }
     
-    try {
-        if (localStream) {
-            console.log('🎤 [initializeLocalStream] Stopping existing stream tracks');
-            // Stop existing tracks
+    // CRITICAL: Prevent concurrent calls to getUserMedia()
+    if (isInitializingStream) {
+        console.log('⚠️ [initializeLocalStream] Already initializing - skipping');
+        if (typeof Android !== 'undefined' && Android.logToNative) {
+            Android.logToNative('⚠️ [WebRTC] Already initializing stream - skipping duplicate call');
+        }
+        // Return existing stream if available
+        if (localStream) return localStream;
+        // Wait for in-progress initialization
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return localStream;
+    }
+    
+    // Check if existing stream is still valid
+    if (localStream) {
+        const tracks = localStream.getAudioTracks();
+        const hasLiveTracks = tracks.length > 0 && tracks.every(t => t.readyState === 'live');
+        
+        if (hasLiveTracks) {
+            console.log('✅ [initializeLocalStream] Existing stream is valid - reusing it');
+            if (typeof Android !== 'undefined' && Android.logToNative) {
+                Android.logToNative('✅ [WebRTC] Existing stream valid - NOT reinitializing');
+                tracks.forEach((track, i) => {
+                    Android.logToNative(`✅ [WebRTC] Existing Track ${i}: enabled=${track.enabled}, state=${track.readyState}`);
+                });
+            }
+            return localStream;
+        } else {
+            console.log('🔄 [initializeLocalStream] Existing stream invalid - stopping tracks');
+            if (typeof Android !== 'undefined' && Android.logToNative) {
+                Android.logToNative('🔄 [WebRTC] Existing stream has dead tracks - reinitializing');
+            }
+            // Stop invalid tracks
             localStream.getTracks().forEach(track => track.stop());
             localStream = null;
         }
-
+    }
+    
+    // Set flag to prevent concurrent calls
+    isInitializingStream = true;
+    
+    try {
         const constraints = getOptimalAudioConstraints();
-        console.log('🎤 [initializeLocalStream] Constraints:', JSON.stringify(constraints));
+        console.log('🎤 [initializeLocalStream] Calling getUserMedia() with constraints:', JSON.stringify(constraints));
         if (typeof Android !== 'undefined' && Android.logToNative) {
             Android.logToNative('🎤 [WebRTC] Calling navigator.mediaDevices.getUserMedia()...');
         }
@@ -312,9 +347,14 @@ const initializeLocalStream = async () => {
         isAudioInitialized = true;
         applyMuteStateToStream('local_stream_ready');
         console.log('Enhanced local audio stream initialized successfully');
+        
+        // Clear initialization flag
+        isInitializingStream = false;
         return stream;
 
     } catch (err) {
+        // Clear initialization flag on error
+        isInitializingStream = false;
         console.error('❌ [initializeLocalStream] getUserMedia() failed:', err);
         console.error('❌ [initializeLocalStream] Error name:', err.name);
         console.error('❌ [initializeLocalStream] Error message:', err.message);
@@ -364,12 +404,17 @@ const initializeLocalStream = async () => {
                 isAudioInitialized = true;
                 applyMuteStateToStream('local_stream_fallback_ready');
                 console.log('Audio initialized with fallback constraints (echo cancellation enforced)');
+                
+                // Clear initialization flag
+                isInitializingStream = false;
                 return stream;
             } catch (fallbackErr) {
                 console.error('Fallback audio constraints also failed:', fallbackErr);
                 if (isIOSDevice()) {
                     showMicPermissionOverlay();
                 }
+                // Clear initialization flag on fallback error
+                isInitializingStream = false;
                 throw fallbackErr;
             }
         }
