@@ -1447,6 +1447,70 @@ function setupCallStreamListener(call) {
             // Only set Connected when stream is actually received and playing
             // Wait for audio to be ready before showing Connected
             audioElement.addEventListener('playing', () => {
+                console.log('🔊 [WebRTC] Remote audio PLAYING - iOS audio system is active');
+                if (typeof Android !== 'undefined' && Android.logToNative) {
+                    Android.logToNative('🔊 [WebRTC] Remote audio PLAYING - now iOS should allow local capture');
+                }
+                
+                // CRITICAL iOS Fix: Now that remote audio is playing, try to fix muted local track
+                if (isIOSDevice() && localStream) {
+                    const audioTracks = localStream.getAudioTracks();
+                    if (audioTracks.length > 0 && audioTracks[0].muted) {
+                        console.log('🔧 [WebRTC] Local track still muted, re-requesting getUserMedia after remote playback...');
+                        if (typeof Android !== 'undefined' && Android.logToNative) {
+                            Android.logToNative('🔧 [WebRTC] iOS local track muted, re-requesting after remote plays...');
+                        }
+                        
+                        // Stop old muted track
+                        audioTracks.forEach(t => t.stop());
+                        
+                        // Request fresh microphone access now that iOS audio is active
+                        navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+                            .then(newStream => {
+                                const oldStream = localStream;
+                                localStream = newStream;
+                                
+                                console.log('✅ [WebRTC] Got fresh local stream after remote playback');
+                                if (typeof Android !== 'undefined' && Android.logToNative) {
+                                    Android.logToNative('✅✅✅ [WebRTC] Fresh getUserMedia() after remote plays!');
+                                    newStream.getAudioTracks().forEach((track, i) => {
+                                        Android.logToNative(`✅ [WebRTC] New Track ${i}: enabled=${track.enabled}, state=${track.readyState}, muted=${track.muted}`);
+                                    });
+                                }
+                                
+                                // Replace track in all peer connections
+                                Object.keys(peers).forEach(peerId => {
+                                    const peerData = peers[peerId];
+                                    if (peerData && peerData.call && peerData.call.peerConnection) {
+                                        const senders = peerData.call.peerConnection.getSenders();
+                                        senders.forEach(sender => {
+                                            if (sender.track && sender.track.kind === 'audio') {
+                                                const newTrack = newStream.getAudioTracks()[0];
+                                                sender.replaceTrack(newTrack).then(() => {
+                                                    console.log('✅ [WebRTC] Replaced muted track with fresh track');
+                                                    if (typeof Android !== 'undefined' && Android.logToNative) {
+                                                        Android.logToNative('✅✅✅ [WebRTC] Replaced muted track - mic should work now!');
+                                                    }
+                                                }).catch(err => {
+                                                    console.error('❌ [WebRTC] Failed to replace track:', err);
+                                                    if (typeof Android !== 'undefined' && Android.logToNative) {
+                                                        Android.logToNative('❌ [WebRTC] Failed to replace track: ' + err.message);
+                                                    }
+                                                });
+                                            }
+                                        });
+                                    }
+                                });
+                            })
+                            .catch(err => {
+                                console.error('❌ [WebRTC] Failed to get fresh stream:', err);
+                                if (typeof Android !== 'undefined' && Android.logToNative) {
+                                    Android.logToNative('❌ [WebRTC] Fresh getUserMedia failed: ' + err.message);
+                                }
+                            });
+                    }
+                }
+                
                 markConnectedIfNeeded('Audio is playing - call is actually connected on BOTH sides');
             }, { once: true });
             
