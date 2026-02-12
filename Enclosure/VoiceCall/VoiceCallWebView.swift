@@ -12,6 +12,12 @@ struct VoiceCallWebView: UIViewRepresentable {
         let configuration = WKWebViewConfiguration()
         configuration.allowsInlineMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
+        
+        // CRITICAL: Enable getUserMedia() for WebRTC microphone access
+        configuration.allowsPictureInPictureMediaPlayback = true
+        if #available(iOS 14.3, *) {
+            configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        }
 
         let controller = WKUserContentController()
         controller.add(context.coordinator, name: Coordinator.messageHandlerName)
@@ -31,6 +37,11 @@ struct VoiceCallWebView: UIViewRepresentable {
         webView.isOpaque = true
         webView.backgroundColor = UIColor.black
         webView.scrollView.backgroundColor = UIColor.black
+        
+        // Log WebView configuration for debugging
+        NSLog("🎤 [VoiceCallWebView] WebView created with microphone permissions")
+        print("🎤 [VoiceCallWebView] allowsInlineMediaPlayback: true")
+        print("🎤 [VoiceCallWebView] mediaTypesRequiringUserActionForPlayback: []")
 
         session.attach(webView: webView)
 
@@ -142,7 +153,75 @@ struct VoiceCallWebView: UIViewRepresentable {
                      initiatedByFrame frame: WKFrameInfo,
                      type: WKMediaCaptureType,
                      decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+            NSLog("🎤🎤🎤 [VoiceCallWebView] ========================================")
+            NSLog("🎤 [VoiceCallWebView] Media capture permission requested (iOS 15+)")
+            NSLog("🎤 [VoiceCallWebView] Type: \(type.rawValue)")
+            NSLog("🎤 [VoiceCallWebView] Origin: \(origin)")
+            NSLog("🎤 [VoiceCallWebView] GRANTING permission")
+            NSLog("🎤🎤🎤 [VoiceCallWebView] ========================================")
+            
+            print("🎤 [VoiceCallWebView] Granting media capture permission for type: \(type.rawValue)")
             decisionHandler(.grant)
+        }
+        
+        // For iOS 14 and earlier
+        func webView(_ webView: WKWebView,
+                     runJavaScriptAlertPanelWithMessage message: String,
+                     initiatedByFrame frame: WKFrameInfo,
+                     completionHandler: @escaping () -> Void) {
+            NSLog("📱 [VoiceCallWebView] JavaScript alert: \(message)")
+            completionHandler()
+        }
+        
+        func webView(_ webView: WKWebView,
+                     didFinish navigation: WKNavigation!) {
+            NSLog("📱 [VoiceCallWebView] Page loaded successfully")
+            print("📱 [VoiceCallWebView] indexVoice.html loaded - WebRTC should initialize")
+            
+            // Ensure JavaScript execution is allowed
+            webView.evaluateJavaScript("typeof Android !== 'undefined'") { result, error in
+                if let error = error {
+                    NSLog("❌ [VoiceCallWebView] Android bridge check failed: \(error.localizedDescription)")
+                } else if let isAvailable = result as? Bool, isAvailable {
+                    NSLog("✅ [VoiceCallWebView] Android bridge available")
+                    print("✅ [VoiceCallWebView] JavaScript bridge ready for WebRTC")
+                } else {
+                    NSLog("⚠️ [VoiceCallWebView] Android bridge not found")
+                }
+            }
+            
+            // Check getUserMedia() availability
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                webView.evaluateJavaScript("typeof navigator.mediaDevices !== 'undefined' && typeof navigator.mediaDevices.getUserMedia !== 'undefined'") { result, error in
+                    if let error = error {
+                        NSLog("❌ [VoiceCallWebView] getUserMedia check failed: \(error.localizedDescription)")
+                    } else if let isAvailable = result as? Bool, isAvailable {
+                        NSLog("✅✅✅ [VoiceCallWebView] getUserMedia() available - microphone can be captured")
+                        print("✅ [VoiceCallWebView] WebRTC getUserMedia() supported")
+                    } else {
+                        NSLog("❌ [VoiceCallWebView] getUserMedia() NOT available - microphone won't work!")
+                    }
+                }
+                
+                // Check if microphone is muted
+                webView.evaluateJavaScript("window.Android && window.Android.getMuteState ? window.Android.getMuteState() : false") { result, error in
+                    if let isMuted = result as? Bool {
+                        if isMuted {
+                            NSLog("⚠️⚠️⚠️ [VoiceCallWebView] MICROPHONE IS MUTED!")
+                            print("⚠️ [VoiceCallWebView] Mic is muted - Android won't hear audio")
+                        } else {
+                            NSLog("✅ [VoiceCallWebView] Microphone is NOT muted")
+                            print("✅ [VoiceCallWebView] Mic unmuted - should send audio")
+                        }
+                    }
+                }
+            }
+        }
+        
+        func webView(_ webView: WKWebView,
+                     didFail navigation: WKNavigation!,
+                     withError error: Error) {
+            NSLog("❌ [VoiceCallWebView] Page load failed: \(error.localizedDescription)")
         }
     }
 }
