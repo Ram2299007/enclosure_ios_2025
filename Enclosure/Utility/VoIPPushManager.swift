@@ -151,7 +151,7 @@ extension VoIPPushManager: PKPushRegistryDelegate {
             roomId: roomId,
             receiverId: receiverId,
             receiverPhone: receiverPhone
-        ) { error in
+        ) { error, callUUID in
             if let error = error {
                 NSLog("❌ [VoIP] CallKit Error: \(error.localizedDescription)")
                 print("❌ [VoIP] CallKit error: \(error.localizedDescription)")
@@ -160,6 +160,18 @@ extension VoIPPushManager: PKPushRegistryDelegate {
                 NSLog("✅ [VoIP] User should now see full-screen CallKit UI")
                 NSLog("✅ [VoIP] This works in FOREGROUND, BACKGROUND, and LOCK SCREEN!")
                 print("✅✅✅ [VoIP] CallKit triggered successfully!")
+                
+                // Auto-trigger video button on lock screen for natural unlock prompt
+                let appState = UIApplication.shared.applicationState
+                if (appState == .background || appState == .inactive), let uuid = callUUID {
+                    NSLog("🎥 [VoIP] Lock screen detected - auto-triggering video for natural unlock")
+                    // Delay to let CallKit UI fully appear first
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        NSLog("🎥 [VoIP] Auto-triggering video button NOW")
+                        print("🎥 [VoIP] iOS will show Face ID/Touch ID prompt naturally")
+                        CallKitManager.shared.autoTriggerVideoForUnlock(uuid: uuid)
+                    }
+                }
             }
             
             // CRITICAL: Must call completion handler

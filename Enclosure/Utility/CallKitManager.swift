@@ -48,13 +48,16 @@ class CallKitManager: NSObject {
         // Supported call actions
         configuration.supportedHandleTypes = [.generic, .phoneNumber]
         
+        // Enable video button on CallKit UI for natural unlock trigger
+        configuration.includesCallsInRecents = true
+        
         provider = CXProvider(configuration: configuration)
         
         super.init()
         
         provider.setDelegate(self, queue: nil)
         
-        print("✅ [CallKit] CallKitManager initialized")
+        print("✅ [CallKit] CallKitManager initialized with video button")
     }
     
     // MARK: - Report Incoming Call
@@ -64,7 +67,7 @@ class CallKitManager: NSObject {
         roomId: String,
         receiverId: String,
         receiverPhone: String,
-        completion: @escaping (Error?) -> Void
+        completion: @escaping (Error?, UUID?) -> Void
     ) {
         let uuid = UUID()
         
@@ -88,7 +91,11 @@ class CallKitManager: NSObject {
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: callerName)
         update.localizedCallerName = callerName
-        update.hasVideo = false // Set to true for video calls
+        
+        // Enable video to show video button on CallKit UI
+        // This allows natural unlock trigger when tapped
+        update.hasVideo = true
+        
         update.supportsHolding = false
         update.supportsGrouping = false
         update.supportsUngrouping = false
@@ -99,13 +106,15 @@ class CallKitManager: NSObject {
             if let error = error {
                 print("❌ [CallKit] Error reporting call: \(error.localizedDescription)")
                 self.activeCalls.removeValue(forKey: uuid)
+                completion(error, nil)
             } else {
                 print("✅ [CallKit] Successfully reported incoming call")
                 
                 // Download and cache caller photo for CallKit UI
                 self.downloadCallerImage(urlString: callerPhoto, for: uuid)
+                
+                completion(nil, uuid)
             }
-            completion(error)
         }
     }
     
@@ -177,6 +186,25 @@ class CallKitManager: NSObject {
     func getCallInfo(for uuid: UUID) -> CallInfo? {
         return activeCalls[uuid]
     }
+    
+    // MARK: - Auto-trigger Video (Natural Unlock)
+    /// Automatically trigger video button to prompt iOS unlock naturally
+    /// This makes iOS show Face ID/Touch ID prompt like native apps
+    func autoTriggerVideoForUnlock(uuid: UUID) {
+        print("🎥 [CallKit] Auto-triggering video to prompt natural unlock")
+        
+        // Request video action - this triggers iOS unlock prompt naturally
+        let videoAction = CXSetVideoCallAction(call: uuid, video: true)
+        let transaction = CXTransaction(action: videoAction)
+        
+        callController.request(transaction) { error in
+            if let error = error {
+                print("⚠️ [CallKit] Failed to trigger video: \(error.localizedDescription)")
+            } else {
+                print("✅ [CallKit] Video triggered - iOS will show unlock prompt naturally")
+            }
+        }
+    }
 }
 
 // MARK: - CXProviderDelegate
@@ -231,6 +259,17 @@ extension CallKitManager: CXProviderDelegate {
     
     func provider(_ provider: CXProvider, perform action: CXSetHeldCallAction) {
         print("📞 [CallKit] Hold action: \(action.isOnHold)")
+        action.fulfill()
+    }
+    
+    func provider(_ provider: CXProvider, perform action: CXSetVideoCallAction) {
+        print("📞 [CallKit] Video button tapped - iOS will trigger unlock naturally")
+        print("🔓 [CallKit] User tapped video - Face ID/Touch ID prompt will appear")
+        
+        // This action naturally triggers iOS to ask for unlock (Face ID/Touch ID)
+        // Once unlocked, the app will come to foreground
+        // MainActivityOld will then navigate to VoiceCallScreen
+        
         action.fulfill()
     }
     
