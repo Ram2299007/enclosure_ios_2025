@@ -88,13 +88,16 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                     roomId: roomId,
                     receiverId: receiverId,
                     receiverPhone: receiverPhone
-                ) { error in
+                ) { error, callUUID in
                     if let error = error {
                         NSLog("❌ [NotificationDelegate] CallKit error: \(error.localizedDescription)")
                         print("❌ [NotificationDelegate] CallKit error: \(error.localizedDescription)")
                     } else {
                         NSLog("✅ [NotificationDelegate] CallKit call reported successfully!")
                         print("✅ [NotificationDelegate] CallKit call reported successfully!")
+                        if let uuid = callUUID {
+                            NSLog("✅ [NotificationDelegate] Call UUID: \(uuid.uuidString)")
+                        }
                     }
                 }
                 
@@ -206,11 +209,14 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                         roomId: roomId,
                         receiverId: receiverId,
                         receiverPhone: receiverPhone
-                    ) { error in
+                    ) { error, callUUID in
                         if let error = error {
                             NSLog("❌ [NotificationDelegate] CallKit error: \(error.localizedDescription)")
                         } else {
                             NSLog("✅ [NotificationDelegate] CallKit triggered from background tap!")
+                            if let uuid = callUUID {
+                                NSLog("✅ [NotificationDelegate] Call UUID: \(uuid.uuidString)")
+                            }
                         }
                     }
                     
