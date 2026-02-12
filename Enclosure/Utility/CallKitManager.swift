@@ -93,26 +93,15 @@ class CallKitManager: NSObject {
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: callerName)
         
-        // Show caller name with call type
-        NSLog("🔍🔍🔍 [CallKit] isVideoCall = \(isVideoCall)")
-        print("🔍🔍🔍 [CallKit] isVideoCall = \(isVideoCall)")
+        // Show only caller name (no call type text)
+        NSLog("🔍 [CallKit] isVideoCall = \(isVideoCall)")
+        print("🔍 [CallKit] Call type: \(isVideoCall ? "VIDEO" : "VOICE")")
         
-        let callTypeText: String
-        if isVideoCall {
-            callTypeText = "Video Call"
-            NSLog("📞 [CallKit] Setting call type: VIDEO CALL")
-        } else {
-            callTypeText = "Voice Call"
-            NSLog("📞 [CallKit] Setting call type: VOICE CALL")
-        }
+        // Just show caller's name
+        update.localizedCallerName = callerName
         
-        // Format: "Ganu" on line 1, "Voice Call" or "Video Call" on line 2
-        let displayName = "\(callerName)\n\(callTypeText)"
-        update.localizedCallerName = displayName
-        
-        NSLog("📞📞📞 [CallKit] Final display name: '\(displayName)'")
-        print("📞 [CallKit] Line 1: \(callerName)")
-        print("📞 [CallKit] Line 2: \(callTypeText)")
+        NSLog("📞 [CallKit] Display name: '\(callerName)'")
+        print("📞 [CallKit] Display name: \(callerName)")
         
         // IMPORTANT: Keep hasVideo = true for both call types
         // This ensures iOS shows Face ID/Touch ID unlock prompt on lock screen
