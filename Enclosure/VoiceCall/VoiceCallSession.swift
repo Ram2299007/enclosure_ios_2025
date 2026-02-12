@@ -129,13 +129,32 @@ final class VoiceCallSession: ObservableObject {
             NSLog("🎤 [VoiceCallSession] Call connected - activating microphone")
             NSLog("🎤 [VoiceCallSession] Permission: \(audioSession.recordPermission.rawValue)")
             NSLog("🎤 [VoiceCallSession] Session active: \(audioSession.isOtherAudioPlaying)")
+            NSLog("🎤 [VoiceCallSession] isSender: \(payload.isSender)")
             NSLog("🎤🎤🎤 [VoiceCallSession] ========================================")
             
             // Enable proximity sensor when call connects
             enableProximitySensor()
             
-            // Ensure audio session is active for microphone
+            // CRITICAL: Force audio session activation when call connects
+            // This is especially important for foreground acceptance
+            NSLog("🎤 [VoiceCallSession] Force activating audio session NOW")
+            
+            // Reset debounce to allow immediate activation
+            lastAudioActivationTime = 0
             ensureAudioSessionActive()
+            
+            // Aggressively activate multiple times to ensure it works
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                NSLog("🎤 [VoiceCallSession] Second activation attempt (0.2s)")
+                self?.lastAudioActivationTime = 0
+                self?.ensureAudioSessionActive()
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                NSLog("🎤 [VoiceCallSession] Third activation attempt (0.5s)")
+                self?.lastAudioActivationTime = 0
+                self?.ensureAudioSessionActive()
+            }
             
             // Aggressively set earpiece when call connects - do this multiple times to ensure it sticks
             DispatchQueue.main.async { [weak self] in
@@ -150,13 +169,21 @@ final class VoiceCallSession: ObservableObject {
             }
             
             // Log audio session status after activation
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
                 guard let self = self else { return }
-                NSLog("🎤 [VoiceCallSession] Post-activation check:")
+                NSLog("🎤🎤🎤 [VoiceCallSession] ========================================")
+                NSLog("🎤 [VoiceCallSession] Post-activation check (after 0.7s):")
                 NSLog("🎤 [VoiceCallSession] - Category: \(self.audioSession.category.rawValue)")
                 NSLog("🎤 [VoiceCallSession] - Mode: \(self.audioSession.mode.rawValue)")
                 NSLog("🎤 [VoiceCallSession] - Input available: \(self.audioSession.isInputAvailable)")
+                NSLog("🎤 [VoiceCallSession] - Input gain: \(self.audioSession.inputGain)")
                 NSLog("🎤 [VoiceCallSession] - Current route: \(self.audioSession.currentRoute)")
+                
+                let inputs = self.audioSession.currentRoute.inputs
+                NSLog("🎤 [VoiceCallSession] - Input ports: \(inputs.map { $0.portType.rawValue })")
+                let outputs = self.audioSession.currentRoute.outputs
+                NSLog("🎤 [VoiceCallSession] - Output ports: \(outputs.map { $0.portType.rawValue })")
+                NSLog("🎤🎤🎤 [VoiceCallSession] ========================================")
             }
         case "sendBroadcast":
             break
@@ -308,20 +335,36 @@ final class VoiceCallSession: ObservableObject {
         // And ensure audio session is ready when permission exists
         switch audioSession.recordPermission {
         case .granted:
+            NSLog("✅ [VoiceCallSession] Microphone permission already granted")
             print("✅ [VoiceCallSession] Microphone permission already granted")
-            // Activate audio session immediately for incoming calls
-            // CallKit activated it, but we need to configure it for WebRTC
+            
+            // For incoming calls, delay audio session activation to let CallKit settle
+            // This prevents conflicts when accepting from foreground
+            let delay: TimeInterval = 0.3
+            NSLog("🎤 [VoiceCallSession] Will activate audio session in \(delay)s...")
             print("🎤 [VoiceCallSession] Configuring audio session for incoming call...")
-            ensureAudioSessionActive()
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                NSLog("🎤 [VoiceCallSession] Now activating audio session for CallKit call")
+                self?.ensureAudioSessionActive()
+                
+                // Force another activation after a bit to ensure it sticks
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    NSLog("🎤 [VoiceCallSession] Second audio session activation (ensure it sticks)")
+                    self?.ensureAudioSessionActive()
+                }
+            }
         case .denied:
             DispatchQueue.main.async {
                 Constant.showToast(message: "Microphone permission is required for voice calls.")
             }
         case .undetermined:
+            NSLog("🎤 [VoiceCallSession] Requesting microphone permission...")
             print("🎤 [VoiceCallSession] Requesting microphone permission...")
             audioSession.requestRecordPermission { [weak self] granted in
                 DispatchQueue.main.async {
                     if granted {
+                        NSLog("✅ [VoiceCallSession] Microphone permission granted")
                         print("✅ [VoiceCallSession] Microphone permission granted")
                         // Activate audio session now that we have permission
                         self?.ensureAudioSessionActive()
@@ -492,31 +535,47 @@ final class VoiceCallSession: ObservableObject {
     }
 
     private func ensureAudioSessionActive() {
-        guard audioSession.recordPermission == .granted else { return }
-        guard !isAudioInterrupted else { return }
+        guard audioSession.recordPermission == .granted else {
+            NSLog("⚠️ [VoiceCallSession] Cannot activate audio - permission not granted")
+            return
+        }
+        guard !isAudioInterrupted else {
+            NSLog("⚠️ [VoiceCallSession] Cannot activate audio - interrupted")
+            return
+        }
         let now = Date().timeIntervalSince1970
         if now - lastAudioActivationTime < 0.5 {
+            NSLog("ℹ️ [VoiceCallSession] Skipping activation - too soon (debounced)")
             return
         }
         lastAudioActivationTime = now
+        
+        NSLog("🎤 [VoiceCallSession] ensureAudioSessionActive called")
+        print("🎤 [VoiceCallSession] ensureAudioSessionActive called")
+        
         do {
             // Use .voiceChat mode but ensure earpiece routing
+            NSLog("🎤 [VoiceCallSession] Setting category .playAndRecord, mode .voiceChat")
             try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
             
             // Activate audio session for both incoming and outgoing calls
             // CallKit activates it initially, but we need to ensure it's active for WebRTC
             if payload.isSender {
                 // Outgoing call - we manage audio session
+                NSLog("🎤 [VoiceCallSession] Activating audio session (outgoing call)")
                 try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+                NSLog("✅ [VoiceCallSession] Audio session activated (outgoing call)")
                 print("✅ [VoiceCallSession] Audio session activated (outgoing call)")
             } else {
                 // Incoming call - CallKit activated it, but ensure it's still active
-                // Use try? to avoid conflicts if CallKit is managing
+                NSLog("🎤 [VoiceCallSession] Activating audio session (incoming CallKit call)")
                 do {
                     try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+                    NSLog("✅✅✅ [VoiceCallSession] Audio session activated (incoming CallKit call)")
                     print("✅ [VoiceCallSession] Audio session activated (incoming CallKit call)")
                 } catch {
                     // If activation fails, it might already be active from CallKit - that's OK
+                    NSLog("ℹ️ [VoiceCallSession] Audio session already active (CallKit): \(error.localizedDescription)")
                     print("ℹ️ [VoiceCallSession] Audio session already active (CallKit): \(error.localizedDescription)")
                 }
             }
