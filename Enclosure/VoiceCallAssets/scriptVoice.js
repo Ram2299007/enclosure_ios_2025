@@ -230,26 +230,49 @@ const initializeAudioContext = async () => {
 
 // Enhanced local stream initialization with better error handling
 const initializeLocalStream = async () => {
+    console.log('🎤 [initializeLocalStream] Called - starting getUserMedia()');
+    if (typeof Android !== 'undefined' && Android.logToNative) {
+        Android.logToNative('🎤 [WebRTC] initializeLocalStream() called');
+    }
+    
     try {
         if (localStream) {
+            console.log('🎤 [initializeLocalStream] Stopping existing stream tracks');
             // Stop existing tracks
             localStream.getTracks().forEach(track => track.stop());
             localStream = null;
         }
 
         const constraints = getOptimalAudioConstraints();
-        console.log('Initializing audio with constraints:', JSON.stringify(constraints));
+        console.log('🎤 [initializeLocalStream] Constraints:', JSON.stringify(constraints));
+        if (typeof Android !== 'undefined' && Android.logToNative) {
+            Android.logToNative('🎤 [WebRTC] Calling navigator.mediaDevices.getUserMedia()...');
+        }
 
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         localStream = stream;
+        
+        console.log('✅ [initializeLocalStream] getUserMedia() returned stream');
+        if (typeof Android !== 'undefined' && Android.logToNative) {
+            Android.logToNative('✅ [WebRTC] getUserMedia() returned stream successfully');
+        }
 
         // Initialize audio context
         await initializeAudioContext();
 
         // Enhanced audio track configuration
         const audioTracks = localStream.getAudioTracks();
-        audioTracks.forEach(track => {
+        console.log('✅ [initializeLocalStream] Got', audioTracks.length, 'audio tracks');
+        if (typeof Android !== 'undefined' && Android.logToNative) {
+            Android.logToNative('✅ [WebRTC] Got ' + audioTracks.length + ' audio tracks from getUserMedia()');
+        }
+        
+        audioTracks.forEach((track, index) => {
             track.enabled = true;
+            console.log(`✅ [initializeLocalStream] Track ${index}: id=${track.id}, enabled=${track.enabled}, state=${track.readyState}`);
+            if (typeof Android !== 'undefined' && Android.logToNative) {
+                Android.logToNative(`✅ [WebRTC] Track ${index}: id=${track.id}, enabled=${track.enabled}, state=${track.readyState}`);
+            }
 
             // Set track constraints for better quality
             if (track.getCapabilities) {
@@ -292,7 +315,14 @@ const initializeLocalStream = async () => {
         return stream;
 
     } catch (err) {
-        console.error('Failed to initialize enhanced audio stream:', err);
+        console.error('❌ [initializeLocalStream] getUserMedia() failed:', err);
+        console.error('❌ [initializeLocalStream] Error name:', err.name);
+        console.error('❌ [initializeLocalStream] Error message:', err.message);
+        
+        if (typeof Android !== 'undefined' && Android.logToNative) {
+            Android.logToNative('❌❌❌ [WebRTC] getUserMedia() FAILED in initializeLocalStream()');
+            Android.logToNative('❌ [WebRTC] Error: ' + err.name + ' - ' + err.message);
+        }
 
         if (isIOSDevice()) {
             showMicPermissionOverlay();
@@ -300,7 +330,10 @@ const initializeLocalStream = async () => {
 
         // Try fallback constraints - CRITICAL: Always include echo cancellation
         if (err.name === 'OverconstrainedError' || err.name === 'ConstraintNotSatisfiedError') {
-            console.log('Trying fallback audio constraints with echo cancellation...');
+            console.log('🔄 [initializeLocalStream] Trying fallback constraints...');
+            if (typeof Android !== 'undefined' && Android.logToNative) {
+                Android.logToNative('🔄 [WebRTC] Trying fallback constraints...');
+            }
             try {
                 // CRITICAL: Always include echo cancellation in fallback to prevent echo
                 const fallbackConstraints = {
@@ -1596,9 +1629,27 @@ peer.on('open', id => {
             callStatus.textContent = 'Connecting';
         }
     }
+    
+    // Log to native for debugging
+    if (typeof Android !== 'undefined' && Android.logToNative) {
+        Android.logToNative('📞 [WebRTC] PeerJS connected - initializing microphone');
+        Android.logToNative('📞 [WebRTC] Calling getUserMedia() to get local stream...');
+    }
+    
     initializeLocalStream()
         .then(stream => {
             localStream = stream;
+            console.log('✅ [WebRTC] Local stream initialized in peer open');
+            console.log('✅ [WebRTC] Audio tracks:', stream.getAudioTracks().length);
+            
+            if (typeof Android !== 'undefined' && Android.logToNative) {
+                Android.logToNative('✅✅✅ [WebRTC] getUserMedia() SUCCESS in peer.on(open)');
+                Android.logToNative('✅ [WebRTC] Local stream created with ' + stream.getAudioTracks().length + ' audio tracks');
+                stream.getAudioTracks().forEach((track, i) => {
+                    Android.logToNative(`✅ [WebRTC] Track ${i}: id=${track.id}, enabled=${track.enabled}, state=${track.readyState}`);
+                });
+            }
+            
             updateParticipantsUI(); // no arguments now
 
             // Set default audio output to earpiece for voice calls
@@ -1616,6 +1667,10 @@ peer.on('open', id => {
         })
         .catch(err => {
             console.error('Failed to get local audio stream:', err);
+            if (typeof Android !== 'undefined' && Android.logToNative) {
+                Android.logToNative('❌❌❌ [WebRTC] getUserMedia() FAILED in peer.on(open): ' + err.message);
+                Android.logToNative('❌ [WebRTC] Error name: ' + err.name);
+            }
             callStatus.textContent = 'Failed to access microphone';
         });
 });
@@ -1623,12 +1678,31 @@ peer.on('open', id => {
 peer.on('call', incomingCall => {
     console.log('Received call from peer:', incomingCall.peer);
     callStatus.textContent = 'Connecting';
+    
+    if (typeof Android !== 'undefined' && Android.logToNative) {
+        Android.logToNative('📞 [WebRTC] Incoming call from peer: ' + incomingCall.peer);
+        Android.logToNative('📞 [WebRTC] Local stream status: ' + (localStream ? 'EXISTS' : 'NULL'));
+    }
 
     if (!localStream) {
+        console.log('❌ [WebRTC] No local stream - initializing NOW for incoming call');
+        if (typeof Android !== 'undefined' && Android.logToNative) {
+            Android.logToNative('❌ [WebRTC] NO local stream - calling getUserMedia() now');
+        }
+        
         initializeLocalStream()
             .then(stream => {
                 localStream = stream;
-                console.log('Local stream initialized for incoming call');
+                console.log('✅ [WebRTC] Local stream initialized for incoming call');
+                console.log('✅ [WebRTC] Audio tracks:', stream.getAudioTracks().length);
+                
+                if (typeof Android !== 'undefined' && Android.logToNative) {
+                    Android.logToNative('✅ [WebRTC] getUserMedia() SUCCESS - got local stream');
+                    Android.logToNative('✅ [WebRTC] Audio tracks: ' + stream.getAudioTracks().length);
+                    stream.getAudioTracks().forEach((track, i) => {
+                        Android.logToNative(`✅ [WebRTC] Track ${i}: enabled=${track.enabled}, state=${track.readyState}`);
+                    });
+                }
 
                 // Answer the call with the local stream
                 incomingCall.answer(stream);
@@ -1637,12 +1711,27 @@ peer.on('call', incomingCall => {
                 updateParticipantsUI();
 
                 console.log('Call answered successfully');
+                if (typeof Android !== 'undefined' && Android.logToNative) {
+                    Android.logToNative('✅ [WebRTC] Call answered with valid local stream');
+                }
             })
             .catch(err => {
-                console.error('Failed to get local audio stream for call:', err);
+                console.error('❌ [WebRTC] Failed to get local audio stream for call:', err);
+                if (typeof Android !== 'undefined' && Android.logToNative) {
+                    Android.logToNative('❌❌❌ [WebRTC] getUserMedia() FAILED: ' + err.message);
+                }
                 callStatus.textContent = 'Failed to access microphone';
             });
     } else {
+        console.log('✅ [WebRTC] Using existing local stream');
+        if (typeof Android !== 'undefined' && Android.logToNative) {
+            Android.logToNative('✅ [WebRTC] Local stream already exists');
+            Android.logToNative('✅ [WebRTC] Audio tracks: ' + localStream.getAudioTracks().length);
+            localStream.getAudioTracks().forEach((track, i) => {
+                Android.logToNative(`✅ [WebRTC] Track ${i}: enabled=${track.enabled}, state=${track.readyState}`);
+            });
+        }
+        
         // Answer the call with existing local stream
         incomingCall.answer(localStream);
         peers[incomingCall.peer] = { call: incomingCall, remoteStream: null };

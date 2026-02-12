@@ -128,7 +128,7 @@ class CallKitManager: NSObject {
                 
                 // Download and cache caller photo for CallKit UI
                 self.downloadCallerImage(urlString: callerPhoto, for: uuid)
-                
+            
                 completion(nil, uuid)
             }
         }
