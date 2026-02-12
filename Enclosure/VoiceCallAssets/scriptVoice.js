@@ -255,6 +255,19 @@ const getOptimalAudioConstraints = () => {
 
 // Initialize audio context for better audio processing
 const initializeAudioContext = async () => {
+    // CRITICAL: Skip AudioContext for iOS CallKit calls
+    // AudioContext causes tracks to be muted=true in WKWebView
+    // iOS won't allow resume without user interaction
+    // WebRTC works fine without it - AudioContext is only for processing/analysis
+    if (isIOSDevice()) {
+        console.log('⚠️ [AudioContext] Skipping AudioContext creation for iOS (prevents muted tracks)');
+        if (typeof Android !== 'undefined' && Android.logToNative) {
+            Android.logToNative('⚠️ [WebRTC] Skipping AudioContext for iOS - prevents track muting');
+        }
+        audioContext = null;
+        return null;
+    }
+    
     try {
         if (!audioContext) {
             audioContext = new (window.AudioContext || window.webkitAudioContext)({
