@@ -101,6 +101,11 @@ final class VoiceCallSession: ObservableObject {
     func handleMessage(_ message: [String: Any]) {
         guard let type = message["type"] as? String else { return }
         switch type {
+        case "logToNative":
+            if let logMessage = message["message"] as? String {
+                NSLog("🌐 [WebRTC-JS] %@", logMessage)
+                print("🌐 [WebRTC-JS] \(logMessage)")
+            }
         case "sendPeerId":
             if let peerId = message["peerId"] as? String {
                 handleSendPeerId(peerId)

@@ -1076,25 +1076,54 @@ function setupCallStreamListener(call) {
                 ensureLocalMicActive('call_connected');
                 console.log(`[CallConnected] ${reason}`);
 
-                // 🎤 DIAGNOSTIC: Check local audio track state
+                // 🎤 DIAGNOSTIC: Check local audio track state and log to native
                 console.log('🎤🎤🎤 [WebRTC Diagnostic] ========================================');
                 console.log('🎤 [WebRTC] Call connected - checking microphone stream');
+                
+                if (typeof Android !== 'undefined' && Android.logToNative) {
+                    Android.logToNative('🎤🎤🎤 [WebRTC] ========================================');
+                    Android.logToNative('🎤 [WebRTC] Call connected - diagnosing microphone');
+                }
+                
                 if (localStream) {
                     const audioTracks = localStream.getAudioTracks();
                     console.log('🎤 [WebRTC] Local stream exists:', !!localStream);
                     console.log('🎤 [WebRTC] Audio tracks count:', audioTracks.length);
+                    
+                    if (typeof Android !== 'undefined' && Android.logToNative) {
+                        Android.logToNative(`🎤 [WebRTC] Local stream: EXISTS`);
+                        Android.logToNative(`🎤 [WebRTC] Audio tracks: ${audioTracks.length}`);
+                    }
+                    
                     audioTracks.forEach((track, index) => {
-                        console.log(`🎤 [WebRTC] Track ${index}:`, {
+                        const trackInfo = {
                             id: track.id,
                             kind: track.kind,
                             label: track.label,
                             enabled: track.enabled,
                             readyState: track.readyState,
                             muted: track.muted
-                        });
+                        };
+                        console.log(`🎤 [WebRTC] Track ${index}:`, trackInfo);
+                        
+                        if (typeof Android !== 'undefined' && Android.logToNative) {
+                            Android.logToNative(`🎤 [WebRTC] Track ${index}: enabled=${track.enabled}, state=${track.readyState}, muted=${track.muted}`);
+                            if (!track.enabled) {
+                                Android.logToNative(`❌ [WebRTC] Track ${index} is DISABLED!`);
+                            }
+                            if (track.readyState !== 'live') {
+                                Android.logToNative(`❌ [WebRTC] Track ${index} state is ${track.readyState} (should be 'live')`);
+                            }
+                            if (track.muted) {
+                                Android.logToNative(`❌ [WebRTC] Track ${index} is MUTED!`);
+                            }
+                        }
                     });
                 } else {
                     console.error('❌ [WebRTC] NO LOCAL STREAM!');
+                    if (typeof Android !== 'undefined' && Android.logToNative) {
+                        Android.logToNative('❌❌❌ [WebRTC] NO LOCAL STREAM - getUserMedia() not called or failed!');
+                    }
                 }
                 
                 // Check if tracks are added to peer connection
@@ -1103,18 +1132,36 @@ function setupCallStreamListener(call) {
                     if (peer && peer.call && peer.call.peerConnection) {
                         const senders = peer.call.peerConnection.getSenders();
                         console.log(`🎤 [WebRTC] Peer ${peerId} senders:`, senders.length);
+                        
+                        if (typeof Android !== 'undefined' && Android.logToNative) {
+                            Android.logToNative(`🎤 [WebRTC] Peer ${peerId}: ${senders.length} senders`);
+                        }
+                        
                         senders.forEach((sender, index) => {
                             if (sender.track) {
-                                console.log(`🎤 [WebRTC] Sender ${index}:`, {
+                                const senderInfo = {
                                     kind: sender.track.kind,
                                     enabled: sender.track.enabled,
                                     readyState: sender.track.readyState,
                                     muted: sender.track.muted
-                                });
+                                };
+                                console.log(`🎤 [WebRTC] Sender ${index}:`, senderInfo);
+                                
+                                if (typeof Android !== 'undefined' && Android.logToNative) {
+                                    Android.logToNative(`🎤 [WebRTC] Sender ${index}: kind=${sender.track.kind}, enabled=${sender.track.enabled}, state=${sender.track.readyState}`);
+                                }
+                            } else {
+                                if (typeof Android !== 'undefined' && Android.logToNative) {
+                                    Android.logToNative(`⚠️ [WebRTC] Sender ${index} has NO TRACK!`);
+                                }
                             }
                         });
                     }
                 });
+                
+                if (typeof Android !== 'undefined' && Android.logToNative) {
+                    Android.logToNative('🎤🎤🎤 [WebRTC] ========================================');
+                }
                 console.log('🎤🎤🎤 [WebRTC Diagnostic] ========================================');
 
                 // Trigger vibration on BOTH sides when call is connected

@@ -79,6 +79,9 @@ struct VoiceCallWebView: UIViewRepresentable {
         static let bridgeScript = """
         window.__muteState = window.__muteState || false;
         window.Android = {
+          logToNative: function(message) {
+            try { window.webkit.messageHandlers.voiceCall.postMessage({type: 'logToNative', message: message}); } catch (e) {}
+          },
           isWifiConnected: function() {
             try { window.webkit.messageHandlers.voiceCall.postMessage({type: 'isWifiConnected'}); } catch (e) {}
             return true;
