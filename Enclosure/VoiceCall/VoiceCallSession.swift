@@ -85,6 +85,17 @@ final class VoiceCallSession: ObservableObject {
         stopEarpieceMonitor()
         stopRingtone(reason: "session_stop")
         disableProximitySensor()
+        
+        // End CallKit call if this was an incoming CallKit call
+        if !payload.isSender {
+            if let callKitUUID = CallKitManager.shared.getCallUUID(for: roomId) {
+                NSLog("📞 [VoiceCallSession] Ending CallKit call: \(callKitUUID)")
+                print("📞 [VoiceCallSession] Dismissing CallKit full-screen UI...")
+                CallKitManager.shared.endCall(uuid: callKitUUID, reason: .remoteEnded)
+            } else {
+                NSLog("⚠️ [VoiceCallSession] No active CallKit call found for room: \(roomId)")
+            }
+        }
     }
 
     func handleMessage(_ message: [String: Any]) {
@@ -673,9 +684,29 @@ final class VoiceCallSession: ObservableObject {
     }
 
     private func endCall() {
+        NSLog("📞 [VoiceCallSession] User ended call")
+        print("📞 [VoiceCallSession] Ending call and dismissing...")
+        
         stopRingtone(reason: "end_call")
         cleanupFirebaseListeners()
         disableProximitySensor()
+        
+        // End CallKit call if this was an incoming CallKit call
+        if !payload.isSender {
+            if let callKitUUID = CallKitManager.shared.getCallUUID(for: roomId) {
+                NSLog("📞📞📞 [VoiceCallSession] ========================================")
+                NSLog("📞 [VoiceCallSession] Ending CallKit call: \(callKitUUID)")
+                NSLog("📞 [VoiceCallSession] Room: \(roomId)")
+                NSLog("📞 [VoiceCallSession] Dismissing CallKit full-screen UI NOW")
+                NSLog("📞📞📞 [VoiceCallSession] ========================================")
+                print("📞 [VoiceCallSession] Dismissing CallKit full-screen UI...")
+                CallKitManager.shared.endCall(uuid: callKitUUID, reason: .remoteEnded)
+            } else {
+                NSLog("⚠️ [VoiceCallSession] No active CallKit call found for room: \(roomId)")
+                print("⚠️ [VoiceCallSession] CallKit call may have already ended")
+            }
+        }
+        
         shouldDismiss = true
     }
 

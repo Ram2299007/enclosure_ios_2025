@@ -202,6 +202,11 @@ class CallKitManager: NSObject {
     func getCallInfo(for uuid: UUID) -> CallInfo? {
         return activeCalls[uuid]
     }
+    
+    // MARK: - Get Call UUID by Room ID
+    func getCallUUID(for roomId: String) -> UUID? {
+        return activeCalls.first(where: { $0.value.roomId == roomId })?.key
+    }
 }
 
 // MARK: - CXProviderDelegate
