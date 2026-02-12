@@ -186,25 +186,6 @@ class CallKitManager: NSObject {
     func getCallInfo(for uuid: UUID) -> CallInfo? {
         return activeCalls[uuid]
     }
-    
-    // MARK: - Auto-trigger Video (Natural Unlock)
-    /// Automatically trigger video button to prompt iOS unlock naturally
-    /// This makes iOS show Face ID/Touch ID prompt like native apps
-    func autoTriggerVideoForUnlock(uuid: UUID) {
-        print("🎥 [CallKit] Auto-triggering video to prompt natural unlock")
-        
-        // Request video action - this triggers iOS unlock prompt naturally
-        let videoAction = CXSetVideoCallAction(call: uuid, video: true)
-        let transaction = CXTransaction(action: videoAction)
-        
-        callController.request(transaction) { error in
-            if let error = error {
-                print("⚠️ [CallKit] Failed to trigger video: \(error.localizedDescription)")
-            } else {
-                print("✅ [CallKit] Video triggered - iOS will show unlock prompt naturally")
-            }
-        }
-    }
 }
 
 // MARK: - CXProviderDelegate
@@ -259,17 +240,6 @@ extension CallKitManager: CXProviderDelegate {
     
     func provider(_ provider: CXProvider, perform action: CXSetHeldCallAction) {
         print("📞 [CallKit] Hold action: \(action.isOnHold)")
-        action.fulfill()
-    }
-    
-    func provider(_ provider: CXProvider, perform action: CXSetVideoCallAction) {
-        print("📞 [CallKit] Video button tapped - iOS will trigger unlock naturally")
-        print("🔓 [CallKit] User tapped video - Face ID/Touch ID prompt will appear")
-        
-        // This action naturally triggers iOS to ask for unlock (Face ID/Touch ID)
-        // Once unlocked, the app will come to foreground
-        // MainActivityOld will then navigate to VoiceCallScreen
-        
         action.fulfill()
     }
     

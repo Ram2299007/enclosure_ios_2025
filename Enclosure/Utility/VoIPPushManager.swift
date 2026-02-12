@@ -159,19 +159,8 @@ extension VoIPPushManager: PKPushRegistryDelegate {
                 NSLog("✅✅✅ [VoIP] CallKit call reported successfully!")
                 NSLog("✅ [VoIP] User should now see full-screen CallKit UI")
                 NSLog("✅ [VoIP] This works in FOREGROUND, BACKGROUND, and LOCK SCREEN!")
+                NSLog("✅ [VoIP] Video button visible - tap it to trigger unlock")
                 print("✅✅✅ [VoIP] CallKit triggered successfully!")
-                
-                // Auto-trigger video button on lock screen for natural unlock prompt
-                let appState = UIApplication.shared.applicationState
-                if (appState == .background || appState == .inactive), let uuid = callUUID {
-                    NSLog("🎥 [VoIP] Lock screen detected - auto-triggering video for natural unlock")
-                    // Delay to let CallKit UI fully appear first
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        NSLog("🎥 [VoIP] Auto-triggering video button NOW")
-                        print("🎥 [VoIP] iOS will show Face ID/Touch ID prompt naturally")
-                        CallKitManager.shared.autoTriggerVideoForUnlock(uuid: uuid)
-                    }
-                }
             }
             
             // CRITICAL: Must call completion handler
@@ -189,16 +178,35 @@ extension VoIPPushManager: PKPushRegistryDelegate {
             print("📞📞📞 [VoIP] CALL ANSWERED!")
             print("📞 [VoIP] Room: \(roomId)")
             
-            // iOS will naturally show Face ID/Touch ID prompt when app tries to show UI
-            // No artificial notifications needed - let iOS handle it natively
+            // Request app to come to foreground if on lock screen
+            // This will prompt iOS to show unlock (Face ID/Touch ID/Passcode)
             let appState = UIApplication.shared.applicationState
             
-            // Minimal delay to let iOS prepare for Face ID prompt
-            // Fast response = native feel
-            let delay: TimeInterval = (appState == .background || appState == .inactive) ? 0.3 : 0.1
+            if appState == .background || appState == .inactive {
+                NSLog("🔓 [VoIP] Lock screen detected - requesting app activation")
+                print("🔓 [VoIP] Requesting unlock prompt...")
+                
+                // Request the app to come to foreground
+                // iOS will show Face ID/Touch ID prompt naturally
+                DispatchQueue.main.async {
+                    if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                        NSLog("🔓 [VoIP] Requesting scene activation for unlock")
+                        UIApplication.shared.requestSceneSessionActivation(
+                            scene.session,
+                            userActivity: nil,
+                            options: nil,
+                            errorHandler: { error in
+                                NSLog("⚠️ [VoIP] Scene activation error: \(error.localizedDescription)")
+                            }
+                        )
+                    }
+                }
+            }
             
-            NSLog("📞 [VoIP] Activating call screen (delay: \(delay)s)")
-            print("📞 [VoIP] iOS will handle Face ID/Touch ID naturally")
+            // Minimal delay to let iOS prepare for unlock/foreground transition
+            let delay: TimeInterval = (appState == .background || appState == .inactive) ? 0.5 : 0.1
+            
+            NSLog("📞 [VoIP] Posting call notification (delay: \(delay)s)")
             
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 NSLog("📞📞📞 [VoIP] ⏰ DELAY COMPLETE - Posting notification NOW")
