@@ -113,8 +113,19 @@ final class VoiceCallSession: ObservableObject {
         case "onCallConnected":
             isCallConnected = true
             stopRingtone(reason: "call_connected")
+            
+            NSLog("🎤🎤🎤 [VoiceCallSession] ========================================")
+            NSLog("🎤 [VoiceCallSession] Call connected - activating microphone")
+            NSLog("🎤 [VoiceCallSession] Permission: \(audioSession.recordPermission.rawValue)")
+            NSLog("🎤 [VoiceCallSession] Session active: \(audioSession.isOtherAudioPlaying)")
+            NSLog("🎤🎤🎤 [VoiceCallSession] ========================================")
+            
             // Enable proximity sensor when call connects
             enableProximitySensor()
+            
+            // Ensure audio session is active for microphone
+            ensureAudioSessionActive()
+            
             // Aggressively set earpiece when call connects - do this multiple times to ensure it sticks
             DispatchQueue.main.async { [weak self] in
                 self?.setAudioOutput("earpiece")
@@ -126,7 +137,16 @@ final class VoiceCallSession: ObservableObject {
                     self?.setAudioOutput("earpiece")
                 }
             }
-            ensureAudioSessionActive()
+            
+            // Log audio session status after activation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                guard let self = self else { return }
+                NSLog("🎤 [VoiceCallSession] Post-activation check:")
+                NSLog("🎤 [VoiceCallSession] - Category: \(self.audioSession.category.rawValue)")
+                NSLog("🎤 [VoiceCallSession] - Mode: \(self.audioSession.mode.rawValue)")
+                NSLog("🎤 [VoiceCallSession] - Input available: \(self.audioSession.isInputAvailable)")
+                NSLog("🎤 [VoiceCallSession] - Current route: \(self.audioSession.currentRoute)")
+            }
         case "sendBroadcast":
             break
         case "endCall":
@@ -273,21 +293,27 @@ final class VoiceCallSession: ObservableObject {
     }
 
     private func checkMicrophonePermission() {
-        // For incoming CallKit calls, just check/request permission
-        // Don't configure audio session - CallKit manages it
+        // For incoming CallKit calls, check/request permission
+        // And ensure audio session is ready when permission exists
         switch audioSession.recordPermission {
         case .granted:
             print("✅ [VoiceCallSession] Microphone permission already granted")
+            // Activate audio session immediately for incoming calls
+            // CallKit activated it, but we need to configure it for WebRTC
+            print("🎤 [VoiceCallSession] Configuring audio session for incoming call...")
+            ensureAudioSessionActive()
         case .denied:
             DispatchQueue.main.async {
                 Constant.showToast(message: "Microphone permission is required for voice calls.")
             }
         case .undetermined:
             print("🎤 [VoiceCallSession] Requesting microphone permission...")
-            audioSession.requestRecordPermission { granted in
+            audioSession.requestRecordPermission { [weak self] granted in
                 DispatchQueue.main.async {
                     if granted {
                         print("✅ [VoiceCallSession] Microphone permission granted")
+                        // Activate audio session now that we have permission
+                        self?.ensureAudioSessionActive()
                     } else {
                         Constant.showToast(message: "Microphone permission is required for voice calls.")
                     }
@@ -466,15 +492,22 @@ final class VoiceCallSession: ObservableObject {
             // Use .voiceChat mode but ensure earpiece routing
             try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
             
-            // For incoming calls (not sender), CallKit manages audio session
-            // Don't call setActive - let CallKit handle it to avoid conflicts
+            // Activate audio session for both incoming and outgoing calls
+            // CallKit activates it initially, but we need to ensure it's active for WebRTC
             if payload.isSender {
                 // Outgoing call - we manage audio session
                 try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
                 print("✅ [VoiceCallSession] Audio session activated (outgoing call)")
             } else {
-                // Incoming call - CallKit manages audio session, just configure settings
-                print("✅ [VoiceCallSession] Audio session configured (CallKit managing)")
+                // Incoming call - CallKit activated it, but ensure it's still active
+                // Use try? to avoid conflicts if CallKit is managing
+                do {
+                    try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
+                    print("✅ [VoiceCallSession] Audio session activated (incoming CallKit call)")
+                } catch {
+                    // If activation fails, it might already be active from CallKit - that's OK
+                    print("ℹ️ [VoiceCallSession] Audio session already active (CallKit): \(error.localizedDescription)")
+                }
             }
             // Route to earpiece by default - must be called after setActive
             if shouldForceEarpiece {
