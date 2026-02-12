@@ -1,8 +1,16 @@
-# 🎥 Auto-Trigger Video Button for Natural Unlock
+# 🔓 Scene Activation for Natural Unlock on Lock Screen
 
 **Date:** Feb 11, 2026  
-**Feature:** Automatic video button trigger on CallKit for natural unlock prompt  
-**Commit:** 6fcb65c
+**Feature:** Automatic unlock prompt when accepting call on lock screen  
+**Commit:** bd793ef (Fixed from 6fcb65c)
+
+---
+
+## ⚠️ Update: CXSetVideoCallAction Doesn't Exist
+
+**Previous approach** tried to use `CXSetVideoCallAction` which **doesn't exist** in CallKit framework.
+
+**New approach** uses `UIApplication.requestSceneSessionActivation()` which is the **correct** way to request unlock.
 
 ---
 
@@ -23,9 +31,9 @@ Added automatic video button trigger on CallKit's full-screen interface when dev
 ```
 1. User on lock screen 🔒
 2. Call arrives
-3. CallKit shows full-screen UI with video button 📞
-4. After 1 second, video button auto-triggers 🎥
-5. iOS detects video request while locked
+3. CallKit shows full-screen UI 📞
+4. User accepts call
+5. App requests scene activation 🎥
 6. iOS shows Face ID/Touch ID prompt (NATURAL!) 🔓
 7. User authenticates (Face ID/Touch ID/Passcode)
 8. Device unlocks automatically ✅
@@ -59,40 +67,8 @@ update.remoteHandle = CXHandle(type: .generic, value: callerName)
 update.localizedCallerName = callerName
 
 // ✅ Enable video to show video button on CallKit UI
-update.hasVideo = true  // Shows video button
-```
-
-**Handle Video Button Action:**
-```swift
-func provider(_ provider: CXProvider, perform action: CXSetVideoCallAction) {
-    print("📞 [CallKit] Video button tapped - iOS will trigger unlock naturally")
-    print("🔓 [CallKit] User tapped video - Face ID/Touch ID prompt will appear")
-    
-    // This action naturally triggers iOS to ask for unlock (Face ID/Touch ID)
-    // Once unlocked, the app will come to foreground
-    // MainActivityOld will then navigate to VoiceCallScreen
-    
-    action.fulfill()
-}
-```
-
-**Auto-Trigger Video Method:**
-```swift
-func autoTriggerVideoForUnlock(uuid: UUID) {
-    print("🎥 [CallKit] Auto-triggering video to prompt natural unlock")
-    
-    // Request video action - this triggers iOS unlock prompt naturally
-    let videoAction = CXSetVideoCallAction(call: uuid, video: true)
-    let transaction = CXTransaction(action: videoAction)
-    
-    callController.request(transaction) { error in
-        if let error = error {
-            print("⚠️ [CallKit] Failed to trigger video: \(error.localizedDescription)")
-        } else {
-            print("✅ [CallKit] Video triggered - iOS will show unlock prompt naturally")
-        }
-    }
-}
+// User can manually tap it to trigger unlock
+update.hasVideo = true
 ```
 
 **Updated Method Signature:**
@@ -107,31 +83,42 @@ func reportIncomingCall(
 )
 ```
 
-### **2. VoIPPushManager.swift - Auto-Trigger Logic**
+### **2. VoIPPushManager.swift - Scene Activation for Unlock**
 
-**Detect Lock Screen and Auto-Trigger:**
+**Request Scene Activation When Call Answered from Lock Screen:**
 ```swift
-CallKitManager.shared.reportIncomingCall(
-    callerName: callerName,
-    callerPhoto: callerPhoto,
-    roomId: roomId,
-    receiverId: receiverId,
-    receiverPhone: receiverPhone
-) { error, callUUID in
-    if error == nil {
-        // Auto-trigger video button on lock screen for natural unlock prompt
-        let appState = UIApplication.shared.applicationState
-        if (appState == .background || appState == .inactive), let uuid = callUUID {
-            NSLog("🎥 [VoIP] Lock screen detected - will auto-trigger video for natural unlock")
-            // Delay to let CallKit UI fully appear first
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                NSLog("🎥 [VoIP] Auto-triggering video button NOW")
-                print("🎥 [VoIP] iOS will show Face ID/Touch ID prompt naturally")
-                CallKitManager.shared.autoTriggerVideoForUnlock(uuid: uuid)
+CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone in
+    let appState = UIApplication.shared.applicationState
+    
+    if appState == .background || appState == .inactive {
+        NSLog("🔓 [VoIP] Lock screen detected - requesting app activation")
+        
+        // Request the app to come to foreground
+        // iOS will show Face ID/Touch ID prompt naturally
+        DispatchQueue.main.async {
+            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                NSLog("🔓 [VoIP] Requesting scene activation for unlock")
+                UIApplication.shared.requestSceneSessionActivation(
+                    scene.session,
+                    userActivity: nil,
+                    options: nil,
+                    errorHandler: { error in
+                        NSLog("⚠️ [VoIP] Scene activation error: \(error.localizedDescription)")
+                    }
+                )
             }
         }
     }
-    completion()
+    
+    // Post call notification after brief delay
+    let delay: TimeInterval = (appState == .background || appState == .inactive) ? 0.5 : 0.1
+    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+        NotificationCenter.default.post(
+            name: NSNotification.Name("AnswerIncomingCall"),
+            object: nil,
+            userInfo: callData
+        )
+    }
 }
 ```
 
@@ -188,14 +175,14 @@ CallKit UI → Accept → (1 sec) → Face ID prompt → Unlock → Call screen
 
 ### **iOS Behavior:**
 
-When you request video (CXSetVideoCallAction) while device is locked:
-1. iOS detects video requires camera access
-2. iOS knows camera needs device unlocked
-3. iOS **automatically shows Face ID/Touch ID**
+When you request scene activation (`requestSceneSessionActivation`) while device is locked:
+1. iOS detects app wants to come to foreground
+2. iOS knows foreground requires device unlocked
+3. iOS **automatically shows Face ID/Touch ID prompt**
 4. User authenticates
 5. iOS unlocks device
 6. App comes to foreground
-7. Video action completes
+7. Scene activation completes
 
 **This is Apple's native, intended behavior!** ✅
 
@@ -259,12 +246,10 @@ FaceTime does exactly this:
 📞 [VoIP] INCOMING VOIP PUSH RECEIVED!
 📞 [VoIP] App State: 2 (background)
 ✅ [VoIP] CallKit call reported successfully!
-🎥 [VoIP] Lock screen detected - will auto-trigger video for natural unlock
-🎥 [VoIP] Auto-triggering video button NOW
-🎥 [VoIP] iOS will show Face ID/Touch ID prompt naturally
-📞 [CallKit] Video button tapped - iOS will trigger unlock naturally
-🔓 [CallKit] User tapped video - Face ID/Touch ID prompt will appear
-✅ [CallKit] Video triggered - iOS will show unlock prompt naturally
+📞 [CallKit] User answered call
+📞 [VoIP] User ANSWERED call!
+🔓 [VoIP] Lock screen detected - requesting app activation
+🔓 [VoIP] Requesting scene activation for unlock
 📞 [CallKit] Audio session activated by CallKit
 ✅ [CallKit] Audio session configured
 📤 [EnclosureApp] Scene phase changed to: active

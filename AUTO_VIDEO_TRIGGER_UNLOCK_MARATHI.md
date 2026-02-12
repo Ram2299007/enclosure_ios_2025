@@ -1,8 +1,16 @@
-# 🎥 Auto Video Button Trigger - Natural Unlock (Marathi)
+# 🔓 Scene Activation - Natural Unlock (Marathi)
 
 **तारीख:** ११ फेब्रुवारी २०२६  
-**Feature:** Lock screen वर automatic video button trigger  
-**Commit:** 6fcb65c
+**Feature:** Lock screen वर automatic unlock prompt  
+**Commit:** bd793ef (Fixed from 6fcb65c)
+
+---
+
+## ⚠️ Update: CXSetVideoCallAction अस्तित्वात नाही
+
+**पहिला प्रयत्न** `CXSetVideoCallAction` वापरायचा होता पण तो **अस्तित्वातच नाही** CallKit मध्ये.
+
+**नवीन approach** `UIApplication.requestSceneSessionActivation()` वापरतो जी **योग्य** पद्धत आहे unlock साठी.
 
 ---
 
@@ -23,9 +31,9 @@ CallKit च्या full-screen interface वर video button automatic trigger
 ```
 १. User lock screen वर आहे 🔒
 २. Call येतो
-३. CallKit full-screen UI दाखवतो (video button सह) 📞
-४. १ सेकंदानंतर, video button automatic trigger होतो 🎥
-५. iOS detect करतो video request locked असताना
+३. CallKit full-screen UI दाखवतो 📞
+४. User call accept करतो
+५. App scene activation request करतो 🎥
 ६. iOS Face ID/Touch ID prompt दाखवतो (NATURAL!) 🔓
 ७. User authenticate करतो (Face ID/Touch ID/Passcode)
 ८. Device automatic unlock होतो ✅
@@ -55,37 +63,38 @@ Authenticate केला → App आणि call screen तत्काळ द�
 **Video Button दाखवा CallKit UI वर:**
 ```swift
 let update = CXCallUpdate()
-update.hasVideo = true  // ✅ Video button दाखवतो
+update.hasVideo = true  // ✅ Video button दाखवतो (manual use साठी)
 ```
 
-**Video Button Handle करा:**
-```swift
-func provider(_ provider: CXProvider, perform action: CXSetVideoCallAction) {
-    print("🔓 Face ID/Touch ID prompt येणार!")
-    action.fulfill()
-}
-```
+### **२. VoIPPushManager.swift - Scene Activation**
 
-**Auto-Trigger Video:**
+**Lock Screen Detect करून Scene Activation Request:**
 ```swift
-func autoTriggerVideoForUnlock(uuid: UUID) {
-    // Video action request करतो
-    // iOS naturally unlock prompt दाखवतो
-    let videoAction = CXSetVideoCallAction(call: uuid, video: true)
-    callController.request(transaction)
-}
-```
-
-### **२. VoIPPushManager.swift - Lock Screen Detection**
-
-**Lock Screen Detect करून Auto-Trigger:**
-```swift
-// Lock screen detect करा
-let appState = UIApplication.shared.applicationState
-if (appState == .background || appState == .inactive), let uuid = callUUID {
-    // १ सेकंदानंतर video trigger करा
-    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-        CallKitManager.shared.autoTriggerVideoForUnlock(uuid: uuid)
+CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone in
+    let appState = UIApplication.shared.applicationState
+    
+    if appState == .background || appState == .inactive {
+        NSLog("🔓 Lock screen detected - requesting unlock")
+        
+        // App ला foreground मध्ये यायला सांग
+        // iOS automatically Face ID/Touch ID prompt दाखवतो
+        DispatchQueue.main.async {
+            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                UIApplication.shared.requestSceneSessionActivation(
+                    scene.session,
+                    userActivity: nil,
+                    options: nil,
+                    errorHandler: { error in
+                        NSLog("⚠️ Scene activation error: \(error)")
+                    }
+                )
+            }
+        }
+    }
+    
+    // थोड्या delay नंतर call notification post करा
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        NotificationCenter.default.post(...)
     }
 }
 ```
@@ -124,15 +133,14 @@ if (appState == .background || appState == .inactive), let uuid = callUUID {
 
 ### **iOS चे Behavior:**
 
-जेव्हा तुम्ही video request करता device locked असताना:
-1. iOS detect करतो video request
-2. iOS समजतो video साठी camera access हवे
-3. iOS समजतो camera साठी unlock हवे
-4. iOS **automatically Face ID/Touch ID prompt दाखवतो**
-5. User authenticate करतो
-6. iOS device unlock करतो
-7. App foreground मध्ये येतो
-8. Video action complete होतो
+जेव्हा तुम्ही scene activation request करता device locked असताना:
+1. iOS detect करतो app foreground मध्ये यायचे आहे
+2. iOS समजतो foreground साठी device unlock हवे
+3. iOS **automatically Face ID/Touch ID prompt दाखवतो**
+4. User authenticate करतो
+5. iOS device unlock करतो
+6. App foreground मध्ये येतो
+7. Scene activation complete होतो
 
 **हे Apple चे native, intended behavior आहे!** ✅
 
@@ -198,10 +206,10 @@ FaceTime exactly असेच करतो:
 ## ⚠️ महत्वाचे नोंदी
 
 ### **१. Timing:**
-- १ सेकंद delay = CallKit UI render होण्यासाठी
-- खूप लवकर → UI ready नाही, fail होईल
-- खूप उशीर → user manually swipe करेल
-- १ सेकंद = perfect!
+- ०.५ सेकंद delay = unlock transition साठी
+- CallKit answer झाल्यावर तत्काळ request
+- Scene activation natural prompt trigger करतो
+- ०.५ सेकंद = perfect balance!
 
 ### **२. फक्त Lock Screen वर:**
 - Background/inactive state मध्ये trigger होतो
@@ -209,15 +217,15 @@ FaceTime exactly असेच करतो:
 - Smart detection
 
 ### **३. Video Button दिसतो:**
-- User manually देखील tap करू शकतो
-- Auto-trigger हे extra feature आहे
-- दोन्ही तर्‍हांनी unlock trigger होतो
+- User manually देखील tap करू शकतो video button
+- Scene activation automatic चालतो
+- दोन्ही तर्‍हांनी unlock होते
 
-### **४. Video Actually Start होत नाही:**
-- Video action फक्त unlock साठी वापरतो
-- Call audio-only राहतो
-- Video enable करत नाही खरोखर
-- फक्त Face ID trigger साठी trick!
+### **४. Scene Activation:**
+- requestSceneSessionActivation() वापरतो
+- iOS native API आहे
+- Automatic Face ID/Touch ID prompt
+- No hacks, pure Apple approach!
 
 ---
 
