@@ -560,8 +560,9 @@ final class VoiceCallSession: ObservableObject {
         
         do {
             // Use .voiceChat mode but ensure earpiece routing
-            NSLog("🎤 [VoiceCallSession] Setting category .playAndRecord, mode .voiceChat")
-            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+            // CRITICAL: Add .mixWithOthers to allow WKWebView getUserMedia() to work
+            NSLog("🎤 [VoiceCallSession] Setting category .playAndRecord, mode .voiceChat with mixWithOthers")
+            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .mixWithOthers])
             
             // Activate audio session for both incoming and outgoing calls
             // CallKit activates it initially, but we need to ensure it's active for WebRTC
@@ -630,7 +631,8 @@ final class VoiceCallSession: ObservableObject {
         do {
             // Set category first to ensure proper configuration, then override port
             // Use .voiceChat mode which is optimized for voice calls
-            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+            // CRITICAL: Add .mixWithOthers to allow WKWebView getUserMedia() to work
+            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .mixWithOthers])
             
             // Only activate audio session for outgoing calls
             // For incoming CallKit calls, CallKit manages the audio session
@@ -691,7 +693,8 @@ final class VoiceCallSession: ObservableObject {
                 defer { isSettingEarpiece = false }
                 
                 // Ensure category is set correctly for earpiece
-                try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+                // CRITICAL: Add .mixWithOthers to allow WKWebView getUserMedia() to work
+                try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .mixWithOthers])
                 
                 // Only activate audio for outgoing calls
                 // For incoming CallKit calls, CallKit manages activation
@@ -802,10 +805,11 @@ final class VoiceCallSession: ObservableObject {
         do {
             // Configure audio routing for ringtone playback (earpiece).
             // Use .playAndRecord with .voiceChat mode to ensure earpiece routing
+            // CRITICAL: Add .mixWithOthers to allow WKWebView getUserMedia() to work
             try audioSession.setCategory(
                 .playAndRecord,
                 mode: .voiceChat,
-                options: [.allowBluetooth]
+                options: [.allowBluetooth, .mixWithOthers]
             )
             try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
             // Route to earpiece - this works better with .playAndRecord category
@@ -850,7 +854,8 @@ final class VoiceCallSession: ObservableObject {
                 // Verify earpiece routing before playing
                 do {
                     // Ensure we're using the right category for earpiece
-                    try self.audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+                    // CRITICAL: Add .mixWithOthers to allow WKWebView getUserMedia() to work
+                    try self.audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .mixWithOthers])
                     try self.audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
                     if let builtInMic = self.audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
                         try self.audioSession.setPreferredInput(builtInMic)
@@ -918,7 +923,8 @@ final class VoiceCallSession: ObservableObject {
                     print("🔔 [VoiceCallRingtone] Route changed to speaker, forcing earpiece...")
                     do {
                         // Use .playAndRecord with .voiceChat for earpiece routing
-                        try self.audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+                        // CRITICAL: Add .mixWithOthers to allow WKWebView getUserMedia() to work
+                        try self.audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .mixWithOthers])
                         try self.audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
                         if let builtInMic = self.audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
                             try self.audioSession.setPreferredInput(builtInMic)
@@ -936,7 +942,8 @@ final class VoiceCallSession: ObservableObject {
                 print("🔔 [VoiceCallRingtone] Restarting ringtone (was stopped)")
                 do {
                     // Use .playAndRecord with .voiceChat for earpiece routing
-                    try self.audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+                    // CRITICAL: Add .mixWithOthers to allow WKWebView getUserMedia() to work
+                    try self.audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .mixWithOthers])
                     try self.audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
                     // Ensure earpiece routing before playing
                     if let builtInMic = self.audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
@@ -977,7 +984,8 @@ final class VoiceCallSession: ObservableObject {
         // Configure audio session for earpiece before starting system sound
         // Use .playAndRecord with .voiceChat for earpiece routing
         do {
-            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+            // CRITICAL: Add .mixWithOthers to allow WKWebView getUserMedia() to work
+            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .mixWithOthers])
             try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
             if let builtInMic = audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
                 try audioSession.setPreferredInput(builtInMic)
@@ -1001,7 +1009,8 @@ final class VoiceCallSession: ObservableObject {
             if hasSpeaker && !hasReceiver {
                 do {
                     // Use .playAndRecord with .voiceChat for earpiece routing
-                    try self.audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+                    // CRITICAL: Add .mixWithOthers to allow WKWebView getUserMedia() to work
+                    try self.audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .mixWithOthers])
                     try self.audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
                     if let builtInMic = self.audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
                         try self.audioSession.setPreferredInput(builtInMic)

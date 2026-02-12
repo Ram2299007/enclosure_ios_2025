@@ -274,7 +274,8 @@ extension CallKitManager: CXProviderDelegate {
         
         // Configure audio session now that CallKit has activated it
         do {
-            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP])
+            // CRITICAL: Add .mixWithOthers to allow WKWebView getUserMedia() to share mic access
+            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
             print("✅ [CallKit] Audio session configured: playAndRecord + voiceChat mode")
             
             // Set preferred input to built-in microphone
@@ -300,7 +301,8 @@ extension CallKitManager: CXProviderDelegate {
     private func configureAudioSession() {
         let audioSession = AVAudioSession.sharedInstance()
         do {
-            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP])
+            // CRITICAL: Add .mixWithOthers to allow WKWebView getUserMedia() to share mic access
+            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
             try audioSession.setActive(true)
             print("✅ [CallKit] Audio session configured")
         } catch {
