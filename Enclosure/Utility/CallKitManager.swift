@@ -97,12 +97,13 @@ class CallKitManager: NSObject {
         // The provider name "Enclosure" will show at the top automatically
         update.localizedCallerName = callerName
         print("📞 [CallKit] Display name: \(callerName)")
-        print("📞 [CallKit] hasVideo: \(isVideoCall)")
+        print("📞 [CallKit] Call type: \(isVideoCall ? "VIDEO" : "VOICE")")
         
-        // Set hasVideo based on actual call type
-        // Voice call: hasVideo = false (no video button)
-        // Video call: hasVideo = true (shows video button)
-        update.hasVideo = isVideoCall
+        // IMPORTANT: Keep hasVideo = true for both call types
+        // This ensures iOS shows Face ID/Touch ID unlock prompt on lock screen
+        // Video button visibility doesn't affect the actual call (it's audio-only in WebView anyway)
+        update.hasVideo = true
+        print("📞 [CallKit] hasVideo = true (for auto-unlock prompt)")
         
         update.supportsHolding = false
         update.supportsGrouping = false

@@ -195,6 +195,7 @@ extension VoIPPushManager: PKPushRegistryDelegate {
                 
                 // Request the app to come to foreground
                 // iOS will show Face ID/Touch ID prompt naturally
+                // hasVideo = true in CallKit will also trigger unlock
                 DispatchQueue.main.async {
                     if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
                         NSLog("🔓 [VoIP] Requesting scene activation for unlock")
@@ -204,8 +205,11 @@ extension VoIPPushManager: PKPushRegistryDelegate {
                             options: nil,
                             errorHandler: { error in
                                 NSLog("⚠️ [VoIP] Scene activation error: \(error.localizedDescription)")
+                                NSLog("✅ [VoIP] Fallback: hasVideo=true will trigger unlock")
                             }
                         )
+                    } else {
+                        NSLog("✅ [VoIP] No multi-scene support - hasVideo=true will trigger unlock")
                     }
                 }
             }
