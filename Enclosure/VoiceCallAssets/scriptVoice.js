@@ -369,6 +369,25 @@ const initializeLocalStream = async () => {
         applyMuteStateToStream('local_stream_ready');
         console.log('Enhanced local audio stream initialized successfully');
         
+        // CRITICAL: Try to resume audio context immediately after getting stream
+        if (audioContext && audioContext.state === 'suspended') {
+            console.log('🔧 [initializeLocalStream] Audio context suspended, resuming NOW...');
+            if (typeof Android !== 'undefined' && Android.logToNative) {
+                Android.logToNative('🔧 [WebRTC] Audio context suspended after getUserMedia, resuming...');
+            }
+            audioContext.resume().then(() => {
+                console.log('✅ [initializeLocalStream] Audio context RESUMED!');
+                if (typeof Android !== 'undefined' && Android.logToNative) {
+                    Android.logToNative('✅✅✅ [WebRTC] Audio context RESUMED successfully!');
+                }
+            }).catch(err => {
+                console.error('❌ [initializeLocalStream] Failed to resume audio context:', err);
+                if (typeof Android !== 'undefined' && Android.logToNative) {
+                    Android.logToNative('❌ [WebRTC] Audio context resume failed: ' + err.message);
+                }
+            });
+        }
+        
         // Clear initialization flag
         isInitializingStream = false;
         return stream;
@@ -1229,12 +1248,22 @@ function setupCallStreamListener(call) {
                                 if (audioContext) {
                                     Android.logToNative(`🔧 [WebRTC] Audio context state: ${audioContext.state}`);
                                     if (audioContext.state === 'suspended') {
-                                        Android.logToNative(`🔧 [WebRTC] Resuming audio context...`);
+                                        Android.logToNative(`🔧 [WebRTC] Resuming audio context in muted track recovery...`);
+                                        
+                                        // Set a timeout to detect if resume hangs
+                                        const resumeTimeout = setTimeout(() => {
+                                            Android.logToNative(`⏰ [WebRTC] Audio context resume taking > 2s - may be blocked by iOS`);
+                                        }, 2000);
+                                        
                                         audioContext.resume().then(() => {
-                                            Android.logToNative(`✅ [WebRTC] Audio context resumed`);
+                                            clearTimeout(resumeTimeout);
+                                            Android.logToNative(`✅✅✅ [WebRTC] Audio context RESUMED in muted track recovery!`);
                                         }).catch(err => {
+                                            clearTimeout(resumeTimeout);
                                             Android.logToNative(`❌ [WebRTC] Failed to resume audio context: ${err.message}`);
                                         });
+                                    } else {
+                                        Android.logToNative(`ℹ️ [WebRTC] Audio context already ${audioContext.state} - no resume needed`);
                                     }
                                 }
                                 
@@ -1742,6 +1771,21 @@ peer.on('open', id => {
                 stream.getAudioTracks().forEach((track, i) => {
                     Android.logToNative(`✅ [WebRTC] Track ${i}: id=${track.id}, enabled=${track.enabled}, state=${track.readyState}`);
                 });
+                
+                // CRITICAL: Try to resume audio context right after stream creation
+                if (audioContext) {
+                    Android.logToNative(`🔧 [WebRTC] Audio context state in peer.on(open): ${audioContext.state}`);
+                    if (audioContext.state === 'suspended') {
+                        Android.logToNative('🔧 [WebRTC] Attempting to resume audio context in peer.on(open)...');
+                        audioContext.resume().then(() => {
+                            Android.logToNative('✅✅✅ [WebRTC] Audio context RESUMED in peer.on(open)!');
+                        }).catch(err => {
+                            Android.logToNative('❌ [WebRTC] Audio context resume failed in peer.on(open): ' + err.message);
+                        });
+                    } else {
+                        Android.logToNative(`✅ [WebRTC] Audio context already ${audioContext.state} - no resume needed`);
+                    }
+                }
             }
             
             updateParticipantsUI(); // no arguments now
