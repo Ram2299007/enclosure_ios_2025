@@ -429,19 +429,13 @@ const initializeLocalStream = async () => {
         applyMuteStateToStream('local_stream_ready');
         console.log('Enhanced local audio stream initialized successfully');
         
-        // CRITICAL: Wake iOS audio system with silent audio FIRST
+        // REMOVED: playSilentAudioToWakeIOS() was RE-MUTING the working track!
+        // After remote audio plays, iOS is already "awake" - silent audio interferes
         if (isIOSDevice()) {
-            console.log('🔊 [initializeLocalStream] Waking iOS audio system...');
+            console.log('✅ [initializeLocalStream] iOS device - relying on remote audio to wake system');
             if (typeof Android !== 'undefined' && Android.logToNative) {
-                Android.logToNative('🔊 [WebRTC] iOS detected - playing silent audio to wake system...');
+                Android.logToNative('✅ [WebRTC] iOS: Skipping silent audio (would re-mute working track)');
             }
-            
-            // Play silent audio asynchronously (don't block)
-            playSilentAudioToWakeIOS().then(() => {
-                console.log('✅ [initializeLocalStream] iOS audio wake complete');
-            }).catch(err => {
-                console.error('❌ [initializeLocalStream] iOS audio wake failed:', err);
-            });
         } else {
             // Non-iOS: Try direct resume
             if (audioContext && audioContext.state === 'suspended') {
