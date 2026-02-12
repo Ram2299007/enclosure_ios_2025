@@ -15,6 +15,53 @@ let callStartTimestamp = null;
 
 const isIOSDevice = () => /iphone|ipad|ipod/i.test(navigator.userAgent || '');
 
+// Play silent audio to wake iOS audio system
+const playSilentAudioToWakeIOS = async () => {
+    if (!isIOSDevice()) return;
+    
+    console.log('🔊 [iOS Audio Wake] Playing silent audio to wake iOS audio system...');
+    if (typeof Android !== 'undefined' && Android.logToNative) {
+        Android.logToNative('🔊 [WebRTC] Playing silent audio to wake iOS audio system...');
+    }
+    
+    try {
+        // Create a silent audio element
+        const silentAudio = new Audio();
+        silentAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+        silentAudio.loop = false;
+        silentAudio.volume = 0.01; // Very quiet
+        
+        // Play it
+        await silentAudio.play();
+        console.log('✅ [iOS Audio Wake] Silent audio played successfully');
+        if (typeof Android !== 'undefined' && Android.logToNative) {
+            Android.logToNative('✅ [WebRTC] Silent audio played - iOS audio system should be active');
+        }
+        
+        // Remove after playing
+        setTimeout(() => {
+            silentAudio.pause();
+            silentAudio.src = '';
+        }, 100);
+        
+        // Now try to resume audio context
+        if (audioContext && audioContext.state === 'suspended') {
+            if (typeof Android !== 'undefined' && Android.logToNative) {
+                Android.logToNative('🔧 [WebRTC] Attempting audio context resume AFTER silent audio...');
+            }
+            await audioContext.resume();
+            if (typeof Android !== 'undefined' && Android.logToNative) {
+                Android.logToNative('✅✅✅ [WebRTC] Audio context RESUMED after silent audio trick!');
+            }
+        }
+    } catch (err) {
+        console.error('❌ [iOS Audio Wake] Failed to play silent audio:', err);
+        if (typeof Android !== 'undefined' && Android.logToNative) {
+            Android.logToNative('❌ [WebRTC] Silent audio play failed: ' + err.message);
+        }
+    }
+};
+
 // PeerJS server configuration constants
 // Use public PeerJS servers by default, fallback to custom server
 const PUBLIC_PEER_SERVER = '0.peerjs.com';
@@ -369,23 +416,38 @@ const initializeLocalStream = async () => {
         applyMuteStateToStream('local_stream_ready');
         console.log('Enhanced local audio stream initialized successfully');
         
-        // CRITICAL: Try to resume audio context immediately after getting stream
-        if (audioContext && audioContext.state === 'suspended') {
-            console.log('🔧 [initializeLocalStream] Audio context suspended, resuming NOW...');
+        // CRITICAL: Wake iOS audio system with silent audio FIRST
+        if (isIOSDevice()) {
+            console.log('🔊 [initializeLocalStream] Waking iOS audio system...');
             if (typeof Android !== 'undefined' && Android.logToNative) {
-                Android.logToNative('🔧 [WebRTC] Audio context suspended after getUserMedia, resuming...');
+                Android.logToNative('🔊 [WebRTC] iOS detected - playing silent audio to wake system...');
             }
-            audioContext.resume().then(() => {
-                console.log('✅ [initializeLocalStream] Audio context RESUMED!');
-                if (typeof Android !== 'undefined' && Android.logToNative) {
-                    Android.logToNative('✅✅✅ [WebRTC] Audio context RESUMED successfully!');
-                }
+            
+            // Play silent audio asynchronously (don't block)
+            playSilentAudioToWakeIOS().then(() => {
+                console.log('✅ [initializeLocalStream] iOS audio wake complete');
             }).catch(err => {
-                console.error('❌ [initializeLocalStream] Failed to resume audio context:', err);
-                if (typeof Android !== 'undefined' && Android.logToNative) {
-                    Android.logToNative('❌ [WebRTC] Audio context resume failed: ' + err.message);
-                }
+                console.error('❌ [initializeLocalStream] iOS audio wake failed:', err);
             });
+        } else {
+            // Non-iOS: Try direct resume
+            if (audioContext && audioContext.state === 'suspended') {
+                console.log('🔧 [initializeLocalStream] Audio context suspended, resuming NOW...');
+                if (typeof Android !== 'undefined' && Android.logToNative) {
+                    Android.logToNative('🔧 [WebRTC] Audio context suspended after getUserMedia, resuming...');
+                }
+                audioContext.resume().then(() => {
+                    console.log('✅ [initializeLocalStream] Audio context RESUMED!');
+                    if (typeof Android !== 'undefined' && Android.logToNative) {
+                        Android.logToNative('✅✅✅ [WebRTC] Audio context RESUMED successfully!');
+                    }
+                }).catch(err => {
+                    console.error('❌ [initializeLocalStream] Failed to resume audio context:', err);
+                    if (typeof Android !== 'undefined' && Android.logToNative) {
+                        Android.logToNative('❌ [WebRTC] Audio context resume failed: ' + err.message);
+                    }
+                });
+            }
         }
         
         // Clear initialization flag
@@ -1244,26 +1306,27 @@ function setupCallStreamListener(call) {
                                     }
                                 });
                                 
-                                // Try to resume audio context if it's suspended
+                                // Try to wake iOS audio system if it's suspended
                                 if (audioContext) {
                                     Android.logToNative(`🔧 [WebRTC] Audio context state: ${audioContext.state}`);
                                     if (audioContext.state === 'suspended') {
-                                        Android.logToNative(`🔧 [WebRTC] Resuming audio context in muted track recovery...`);
+                                        Android.logToNative(`🔊 [WebRTC] Playing silent audio to wake iOS in muted track recovery...`);
                                         
-                                        // Set a timeout to detect if resume hangs
-                                        const resumeTimeout = setTimeout(() => {
-                                            Android.logToNative(`⏰ [WebRTC] Audio context resume taking > 2s - may be blocked by iOS`);
+                                        // Set a timeout to detect if wake/resume hangs
+                                        const wakeTimeout = setTimeout(() => {
+                                            Android.logToNative(`⏰ [WebRTC] iOS audio wake taking > 2s - may still be blocked`);
                                         }, 2000);
                                         
-                                        audioContext.resume().then(() => {
-                                            clearTimeout(resumeTimeout);
-                                            Android.logToNative(`✅✅✅ [WebRTC] Audio context RESUMED in muted track recovery!`);
+                                        // Use silent audio trick for iOS
+                                        playSilentAudioToWakeIOS().then(() => {
+                                            clearTimeout(wakeTimeout);
+                                            Android.logToNative(`✅✅✅ [WebRTC] iOS audio wake complete in muted track recovery!`);
                                         }).catch(err => {
-                                            clearTimeout(resumeTimeout);
-                                            Android.logToNative(`❌ [WebRTC] Failed to resume audio context: ${err.message}`);
+                                            clearTimeout(wakeTimeout);
+                                            Android.logToNative(`❌ [WebRTC] iOS audio wake failed: ${err.message}`);
                                         });
                                     } else {
-                                        Android.logToNative(`ℹ️ [WebRTC] Audio context already ${audioContext.state} - no resume needed`);
+                                        Android.logToNative(`ℹ️ [WebRTC] Audio context already ${audioContext.state} - no wake needed`);
                                     }
                                 }
                                 
@@ -1772,18 +1835,20 @@ peer.on('open', id => {
                     Android.logToNative(`✅ [WebRTC] Track ${i}: id=${track.id}, enabled=${track.enabled}, state=${track.readyState}`);
                 });
                 
-                // CRITICAL: Try to resume audio context right after stream creation
+                // CRITICAL: Wake iOS audio system in peer.on(open)
                 if (audioContext) {
                     Android.logToNative(`🔧 [WebRTC] Audio context state in peer.on(open): ${audioContext.state}`);
                     if (audioContext.state === 'suspended') {
-                        Android.logToNative('🔧 [WebRTC] Attempting to resume audio context in peer.on(open)...');
-                        audioContext.resume().then(() => {
-                            Android.logToNative('✅✅✅ [WebRTC] Audio context RESUMED in peer.on(open)!');
+                        Android.logToNative('🔊 [WebRTC] Waking iOS audio with silent audio in peer.on(open)...');
+                        
+                        // Play silent audio to wake iOS
+                        playSilentAudioToWakeIOS().then(() => {
+                            Android.logToNative('✅ [WebRTC] iOS audio wake completed in peer.on(open)');
                         }).catch(err => {
-                            Android.logToNative('❌ [WebRTC] Audio context resume failed in peer.on(open): ' + err.message);
+                            Android.logToNative('❌ [WebRTC] iOS audio wake failed in peer.on(open): ' + err.message);
                         });
                     } else {
-                        Android.logToNative(`✅ [WebRTC] Audio context already ${audioContext.state} - no resume needed`);
+                        Android.logToNative(`✅ [WebRTC] Audio context already ${audioContext.state} - no wake needed`);
                     }
                 }
             }
