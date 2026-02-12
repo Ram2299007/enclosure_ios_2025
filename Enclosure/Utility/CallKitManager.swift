@@ -89,27 +89,19 @@ class CallKitManager: NSObject {
         )
         activeCalls[uuid] = callInfo
         
-        // Update provider configuration with call-type-specific name
-        let configuration = provider.configuration
-        if isVideoCall {
-            configuration.localizedName = "Enclosure Video Call"
-            print("📞 [CallKit] Provider name: Enclosure Video Call")
-        } else {
-            configuration.localizedName = "Enclosure Voice Call"
-            print("📞 [CallKit] Provider name: Enclosure Voice Call")
-        }
-        provider.configuration = configuration
-        
         // Create call update
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: callerName)
         
         // Show caller's actual name as main display text
+        // The provider name "Enclosure" will show at the top automatically
         update.localizedCallerName = callerName
-        print("📞 [CallKit] Caller name: \(callerName)")
+        print("📞 [CallKit] Display name: \(callerName)")
+        print("📞 [CallKit] hasVideo: \(isVideoCall)")
         
         // Set hasVideo based on actual call type
-        // This determines if video button appears on CallKit UI
+        // Voice call: hasVideo = false (no video button)
+        // Video call: hasVideo = true (shows video button)
         update.hasVideo = isVideoCall
         
         update.supportsHolding = false
