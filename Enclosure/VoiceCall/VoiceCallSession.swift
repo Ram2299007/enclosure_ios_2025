@@ -7,6 +7,7 @@ import UIKit
 
 final class VoiceCallSession: ObservableObject {
     @Published var shouldDismiss = false
+    @Published var isCallConnected = false
 
     private let payload: VoiceCallPayload
     private let roomId: String
@@ -30,7 +31,6 @@ final class VoiceCallSession: ObservableObject {
     private var lastEarpieceSetTime: TimeInterval = 0
     private var ringtonePlayer: AVAudioPlayer?
     private var ringtoneKeepAliveTimer: Timer?
-    private var isCallConnected = false
     private var ringtoneSystemSoundId: SystemSoundID = 0
     private var ringtoneSystemSoundTimer: Timer?
     private var earpieceMonitorTimer: Timer?

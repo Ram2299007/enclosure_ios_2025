@@ -45,5 +45,15 @@ struct VoiceCallScreen: View {
                     dismiss()
                 }
             }
+            .onReceive(session.$isCallConnected) { connected in
+                if connected {
+                    NSLog("✅✅✅ [VoiceCallScreen] ========================================")
+                    NSLog("✅ [VoiceCallScreen] CALL CONNECTED!")
+                    NSLog("✅ [VoiceCallScreen] WebRTC peer connection established")
+                    NSLog("✅ [VoiceCallScreen] User can now hear audio")
+                    NSLog("✅✅✅ [VoiceCallScreen] ========================================")
+                    print("✅ [VoiceCallScreen] CALL STATUS: CONNECTED")
+                }
+            }
     }
 }
