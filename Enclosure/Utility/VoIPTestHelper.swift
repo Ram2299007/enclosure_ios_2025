@@ -69,7 +69,7 @@ class VoIPTestHelper {
         }
         
         // Set up callbacks
-        CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone in
+        CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone, isVideoCall in
             NSLog("📞 [TEST] User ANSWERED test call")
             print("📞 [TEST] Call answered!")
             
@@ -79,7 +79,8 @@ class VoIPTestHelper {
                     "receiverId": receiverId,
                     "receiverPhone": receiverPhone,
                     "callerName": callerName,
-                    "callerPhoto": callerPhoto
+                    "callerPhoto": callerPhoto,
+                    "isVideoCall": isVideoCall ? "1" : "0"
                 ]
                 
                 NotificationCenter.default.post(

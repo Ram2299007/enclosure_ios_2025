@@ -336,7 +336,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
         
         // Set up answer callback
-        CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone in
+        CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone, isVideoCall in
             print("📞 [CallKit] User answered call - Room: \(roomId)")
             
             // Post notification to open voice call screen
@@ -346,7 +346,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                     "receiverId": receiverId,
                     "receiverPhone": receiverPhone,
                     "callerName": callerName,
-                    "callerPhoto": callerPhoto
+                    "callerPhoto": callerPhoto,
+                    "isVideoCall": isVideoCall ? "1" : "0"
                 ]
                 NotificationCenter.default.post(
                     name: NSNotification.Name("AnswerIncomingCall"),

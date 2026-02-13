@@ -75,6 +75,9 @@ struct MainActivityOld: View {
     
     // Incoming voice call from CallKit
     @State private var incomingVoiceCallPayload: VoiceCallPayload?
+
+    // Incoming video call from CallKit
+    @State private var incomingVideoCallPayload: VideoCallPayload?
     
     // DEBUG: Test button to verify screen presentation works
     #if DEBUG
@@ -929,6 +932,14 @@ struct MainActivityOld: View {
                         incomingVoiceCallPayload = nil
                     }
             }
+            .fullScreenCover(item: $incomingVideoCallPayload) { payload in
+                VideoCallScreen(payload: payload)
+                    .onDisappear {
+                        NSLog("📞 [MainActivityOld] VideoCallScreen dismissed")
+                        print("📞 [MainActivityOld] Video call ended")
+                        incomingVideoCallPayload = nil
+                    }
+            }
             .onChange(of: incomingVoiceCallPayload) { newValue in
                 if let payload = newValue {
                     NSLog("🔄 [MainActivityOld] incomingVoiceCallPayload CHANGED to: \(payload.id)")
@@ -1065,6 +1076,7 @@ struct MainActivityOld: View {
             let receiverPhone = userInfo["receiverPhone"] ?? ""
             let callerName = userInfo["callerName"] ?? "Unknown"
             let callerPhoto = userInfo["callerPhoto"] ?? ""
+            let isVideoCall = (userInfo["isVideoCall"] ?? "0") == "1"
             
             NSLog("📞 [MainActivityOld] Extracted: roomId=\(roomId), receiverId=\(receiverId), caller=\(callerName)")
             
@@ -1076,47 +1088,50 @@ struct MainActivityOld: View {
             }
             
             NSLog("📞 [MainActivityOld] ✅ Data validation passed")
-            NSLog("📞 [MainActivityOld] Creating VoiceCallPayload...")
-            print("📞 [MainActivityOld] Creating voice call payload for \(callerName)")
-            
-            // Create payload and navigate to voice call screen
-            let payload = VoiceCallPayload(
-                receiverId: receiverId,
-                receiverName: callerName,
-                receiverPhoto: callerPhoto,
-                receiverToken: "", // Will be fetched in VoiceCallSession if needed
-                receiverDeviceType: "", // Not needed for incoming calls
-                receiverPhone: receiverPhone,
-                roomId: roomId,
-                isSender: false // We're receiving the call
-            )
-            
-            NSLog("📞 [MainActivityOld] VoiceCallPayload created successfully")
-            NSLog("📞 [MainActivityOld] Current scene phase: \(scenePhase)")
-            
-            // CRITICAL: Show screen IMMEDIATELY even in background
-            // CallKit audio session + audio background mode allow WebRTC in background
-            // Connection establishes while locked, UI shows when unlocked (WhatsApp behavior)
-            NSLog("🔥 [MainActivityOld] Showing VoiceCallScreen IMMEDIATELY (background OK)")
-            NSLog("🔥 [MainActivityOld] CallKit audio session allows WebRTC in background")
-            NSLog("🔥 [MainActivityOld] Connection will establish even while locked")
-            print("🔥 [MainActivityOld] WhatsApp-style: Connect in background, UI when unlocked")
-            
-            incomingVoiceCallPayload = payload
-            
-            NSLog("✅✅✅ [MainActivityOld] ========================================")
-            NSLog("✅ [MainActivityOld] Payload SET! VoiceCallScreen showing NOW")
-            NSLog("✅ [MainActivityOld] WebRTC will connect via CallKit audio session")
-            NSLog("✅ [MainActivityOld] User will see UI when device unlocked")
-            NSLog("✅ [MainActivityOld] Android should stop ringing when peer joins")
-            NSLog("✅✅✅ [MainActivityOld] ========================================")
-            print("✅✅✅ [MainActivityOld] VoiceCallScreen ACTIVE - connecting in background!")
+            if isVideoCall {
+                NSLog("📞 [MainActivityOld] Creating VideoCallPayload...")
+                print("📞 [MainActivityOld] Creating video call payload for \(callerName)")
+
+                let payload = VideoCallPayload(
+                    receiverId: receiverId,
+                    receiverName: callerName,
+                    receiverPhoto: callerPhoto,
+                    receiverToken: "",
+                    receiverDeviceType: "",
+                    receiverPhone: receiverPhone,
+                    roomId: roomId,
+                    isSender: false
+                )
+
+                incomingVideoCallPayload = payload
+                incomingVoiceCallPayload = nil
+                print("✅✅✅ [MainActivityOld] VideoCallScreen ACTIVE")
+            } else {
+                NSLog("📞 [MainActivityOld] Creating VoiceCallPayload...")
+                print("📞 [MainActivityOld] Creating voice call payload for \(callerName)")
+                
+                let payload = VoiceCallPayload(
+                    receiverId: receiverId,
+                    receiverName: callerName,
+                    receiverPhoto: callerPhoto,
+                    receiverToken: "", // Will be fetched in VoiceCallSession if needed
+                    receiverDeviceType: "", // Not needed for incoming calls
+                    receiverPhone: receiverPhone,
+                    roomId: roomId,
+                    isSender: false // We're receiving the call
+                )
+                
+                incomingVoiceCallPayload = payload
+                incomingVideoCallPayload = nil
+                print("✅✅✅ [MainActivityOld] VoiceCallScreen ACTIVE")
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("IncomingCallCancelled"))) { notification in
             let roomId = (notification.userInfo as? [String: String])?["roomId"] ?? ""
             NSLog("📞 [MainActivityOld] IncomingCallCancelled received - dismissing incoming UI. roomId=\(roomId)")
             print("📞 [MainActivityOld] IncomingCallCancelled received - dismissing incoming UI. roomId=\(roomId)")
             incomingVoiceCallPayload = nil
+            incomingVideoCallPayload = nil
         }
     }
     

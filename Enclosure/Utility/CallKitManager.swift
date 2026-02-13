@@ -20,7 +20,7 @@ class CallKitManager: NSObject {
     private var activeCalls: [UUID: CallInfo] = [:]
     
     // Completion handlers
-    var onAnswerCall: ((String, String, String) -> Void)?
+    var onAnswerCall: ((String, String, String, Bool) -> Void)?
     var onDeclineCall: ((String) -> Void)?
     
     // Track if CallKit audio session is ready for WebRTC
@@ -33,6 +33,7 @@ class CallKitManager: NSObject {
         let roomId: String
         let receiverId: String
         let receiverPhone: String
+        let isVideoCall: Bool
     }
     
     private override init() {
@@ -88,7 +89,8 @@ class CallKitManager: NSObject {
             callerPhoto: callerPhoto,
             roomId: roomId,
             receiverId: receiverId,
-            receiverPhone: receiverPhone
+            receiverPhone: receiverPhone,
+            isVideoCall: isVideoCall
         )
         activeCalls[uuid] = callInfo
         
@@ -235,7 +237,7 @@ extension CallKitManager: CXProviderDelegate {
         // Don't configure audio here - CallKit will call didActivate with audio session
         // Configuring here causes conflicts and "Session activation failed" errors
         
-        // Notify app to start call
+        // Notify app to start call, callInfo.isVideoCall
         DispatchQueue.main.async {
             self.onAnswerCall?(callInfo.roomId, callInfo.receiverId, callInfo.receiverPhone)
         }

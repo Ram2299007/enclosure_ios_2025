@@ -246,7 +246,7 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         }
         
         // Set up answer callback
-        CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone in
+        CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone, isVideoCall in
             NSLog("📞📞📞 [VoIP] ========================================")
             NSLog("📞 [VoIP] User ANSWERED call!")
             NSLog("📞 [VoIP] Room: \(roomId)")
@@ -302,7 +302,8 @@ extension VoIPPushManager: PKPushRegistryDelegate {
                     "receiverId": receiverId,
                     "receiverPhone": receiverPhone,
                     "callerName": callerName,
-                    "callerPhoto": callerPhoto
+                    "callerPhoto": callerPhoto,
+                    "isVideoCall": isVideoCall ? "1" : "0"
                 ]
                 
                 NSLog("📞 [VoIP] Call Data: \(callData)")

@@ -119,7 +119,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                 }
                 
                 // Set up answer/decline callbacks
-                CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone in
+                CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone, isVideoCall in
                     NSLog("📞 [CallKit] User answered call - Room: \(roomId)")
                     print("📞 [CallKit] User answered call - Room: \(roomId)")
                     
@@ -129,7 +129,8 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                             "receiverId": receiverId,
                             "receiverPhone": receiverPhone,
                             "callerName": callerName,
-                            "callerPhoto": callerPhoto
+                            "callerPhoto": callerPhoto,
+                            "isVideoCall": isVideoCall ? "1" : "0"
                         ]
                         NotificationCenter.default.post(
                             name: NSNotification.Name("AnswerIncomingCall"),
@@ -239,7 +240,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                     }
                     
                     // Set up answer/decline callbacks
-                    CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone in
+                    CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone, isVideoCall in
                         NSLog("📞 [CallKit] User answered call - Room: \(roomId)")
                         
                         DispatchQueue.main.async {
@@ -248,7 +249,8 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                                 "receiverId": receiverId,
                                 "receiverPhone": receiverPhone,
                                 "callerName": callerName,
-                                "callerPhoto": callerPhoto
+                                "callerPhoto": callerPhoto,
+                                "isVideoCall": isVideoCall ? "1" : "0"
                             ]
                             NotificationCenter.default.post(
                                 name: NSNotification.Name("AnswerIncomingCall"),
