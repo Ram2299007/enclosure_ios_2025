@@ -26,8 +26,9 @@ class CallKitManager: NSObject {
     // Track if CallKit audio session is ready for WebRTC
     private(set) var isAudioSessionReady = false
     
-    // Track if we intentionally dismissed CallKit for a video call
+    // Track if we intentionally dismissed CallKit for a video/voice call
     private var dismissedForVideoCall = false
+    private var dismissedForVoiceCall = false
     
     struct CallInfo {
         let uuid: UUID
@@ -247,15 +248,22 @@ extension CallKitManager: CXProviderDelegate {
         
         action.fulfill()
         
-        // VIDEO CALL: Immediately dismiss CallKit full-screen UI after answering.
+        // Dismiss CallKit full-screen UI after answering for BOTH video and voice calls.
         // CallKit full-screen blocks WKWebView from accessing camera+mic.
         // Once CallKit UI is dismissed, WKWebView getUserMedia() will work.
-        // VOICE CALL: Keep CallKit active (voice uses CallKit for ongoing call UI).
         if callInfo.isVideoCall {
             print("📞 [CallKit] Video call - dismissing CallKit UI so camera+mic can start (1.0s delay)")
             dismissedForVideoCall = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 print("📞 [CallKit] Now dismissing CallKit UI for video call")
+                self.provider.reportCall(with: action.callUUID, endedAt: Date(), reason: .answeredElsewhere)
+                self.activeCalls.removeValue(forKey: action.callUUID)
+            }
+        } else {
+            print("📞 [CallKit] Voice call - dismissing CallKit UI so mic can start (1.0s delay)")
+            dismissedForVoiceCall = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                print("📞 [CallKit] Now dismissing CallKit UI for voice call")
                 self.provider.reportCall(with: action.callUUID, endedAt: Date(), reason: .answeredElsewhere)
                 self.activeCalls.removeValue(forKey: action.callUUID)
             }
@@ -339,6 +347,10 @@ extension CallKitManager: CXProviderDelegate {
             // Video call: don't reset audio ready flag - WKWebView manages its own audio session
             print("📞 [CallKit] Keeping isAudioSessionReady=true (video call active)")
             dismissedForVideoCall = false
+        } else if dismissedForVoiceCall {
+            // Voice call: don't reset audio ready flag - WKWebView manages its own audio session
+            print("📞 [CallKit] Keeping isAudioSessionReady=true (voice call active)")
+            dismissedForVoiceCall = false
         } else {
             isAudioSessionReady = false
         }

@@ -1131,13 +1131,17 @@ struct MainActivityOld: View {
             NSLog("📞 [MainActivityOld] IncomingCallCancelled received. roomId=\(roomId)")
             print("📞 [MainActivityOld] IncomingCallCancelled received. roomId=\(roomId)")
             
-            // Always dismiss voice call (voice uses CallKit for ongoing UI)
-            incomingVoiceCallPayload = nil
+            // Voice call: Do NOT dismiss if VoiceCallScreen is already active.
+            // Once CallKit is dismissed and call is connected, the JS endCall →
+            // VoiceCallSession.endCall() → shouldDismiss handles dismissal.
+            // Clearing here kills the active call due to stale/late Firebase cancel signals.
+            if incomingVoiceCallPayload != nil {
+                NSLog("📞 [MainActivityOld] IncomingCallCancelled - VoiceCallScreen ACTIVE, not dismissing (session manages lifecycle)")
+            } else {
+                NSLog("📞 [MainActivityOld] IncomingCallCancelled - No active voice call, safe to clear")
+            }
             
-            // Video call: Do NOT dismiss if VideoCallScreen is already active.
-            // Once active, the JS endCall → VideoCallSession.endCall() → shouldDismiss
-            // handles dismissal. Clearing here kills the active call due to stale/late
-            // Firebase cancel signals arriving after the call was already answered.
+            // Video call: Same protection — do NOT dismiss if VideoCallScreen is already active.
             if incomingVideoCallPayload != nil {
                 NSLog("📞 [MainActivityOld] IncomingCallCancelled - VideoCallScreen ACTIVE, not dismissing (session manages lifecycle)")
             } else {

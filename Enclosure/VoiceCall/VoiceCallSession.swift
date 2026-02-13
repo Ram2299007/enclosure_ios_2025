@@ -38,6 +38,7 @@ final class VoiceCallSession: ObservableObject {
     private var callKitAudioReadyObserver: NSObjectProtocol?
     private var isWaitingForCallKitAudio = false
     private var hasStarted = false
+    private var callKitDismissed = false
 
     private var removeCallNotificationSent = false
 
@@ -138,6 +139,35 @@ final class VoiceCallSession: ObservableObject {
             startRingtone()
         } else {
             NSLog("📞 [VoiceCallSession] Incoming call - skipping earpiece forcing (CallKit handles it)")
+            
+            // CallKit is dismissed after 1.0s (see CallKitManager). After dismissal,
+            // audio routes to Speaker and mic may stay muted. Reconfigure after 1.5s.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                guard let self = self else { return }
+                self.callKitDismissed = true
+                NSLog("📞 [VoiceCallSession] CallKit dismissed - reconfiguring audio (earpiece + mic)")
+                
+                // Reconfigure audio session for earpiece
+                do {
+                    try self.audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .mixWithOthers])
+                    try self.audioSession.setActive(true)
+                    NSLog("✅ [VoiceCallSession] Audio session reconfigured after CallKit dismiss")
+                } catch {
+                    NSLog("❌ [VoiceCallSession] Failed to reconfigure audio: \(error.localizedDescription)")
+                }
+                
+                // Force earpiece
+                self.setAudioOutput("earpiece")
+                self.startEarpieceMonitor()
+                
+                // Nudge JS to re-acquire mic (fixes muted=true tracks)
+                self.sendToWebView("if (typeof ensureLocalMicActive === 'function') ensureLocalMicActive('callkit_dismissed');")
+                
+                // Retry earpiece after a short delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                    self?.setAudioOutput("earpiece")
+                }
+            }
         }
     }
 
@@ -177,7 +207,7 @@ final class VoiceCallSession: ObservableObject {
                 print("📞 [VoiceCallSession] Dismissing CallKit full-screen UI...")
                 CallKitManager.shared.endCall(uuid: callKitUUID, reason: .remoteEnded)
             } else {
-                NSLog("⚠️ [VoiceCallSession] No active CallKit call found for room: \(roomId)")
+                NSLog("📞 [VoiceCallSession] CallKit already dismissed for room: \(roomId) (expected - dismissed on answer)")
             }
         }
     }
@@ -224,11 +254,14 @@ final class VoiceCallSession: ObservableObject {
             // Enable proximity sensor when call connects
             enableProximitySensor()
             
-            // CRITICAL: For incoming CallKit calls, do NOT touch the audio session at all.
-            // CallKit already configured it in didActivate (including earpiece routing).
-            // Any audio session manipulation prevents WKWebView track from unmuting.
-            if !payload.isSender && CallKitManager.shared.isAudioSessionReady {
-                NSLog("🎤 [VoiceCallSession] CallKit session active - completely hands off! No earpiece forcing.")
+            // For incoming calls: if CallKit is already dismissed, reconfigure audio now.
+            // If CallKit is still active, hands off (proceedWithStart has a 1.5s timer to handle post-dismiss).
+            if !payload.isSender && !callKitDismissed {
+                NSLog("🎤 [VoiceCallSession] CallKit still active - hands off! Post-dismiss timer will reconfigure.")
+            } else if !payload.isSender && callKitDismissed {
+                NSLog("🎤 [VoiceCallSession] CallKit already dismissed - forcing earpiece + mic NOW")
+                setAudioOutput("earpiece")
+                sendToWebView("if (typeof ensureLocalMicActive === 'function') ensureLocalMicActive('onCallConnected_postDismiss');")
             } else {
                 // Outgoing or CallKit not ready: force activation
                 NSLog("🎤 [VoiceCallSession] Force activating audio session NOW")
@@ -794,11 +827,10 @@ final class VoiceCallSession: ObservableObject {
     }
     
     private func setAudioOutput(_ output: String) {
-        // CRITICAL: For incoming CallKit calls, do NOT touch the audio session AT ALL.
-        // CallKit already configured earpiece in didActivate. Any overrideOutputAudioPort
-        // call prevents WKWebView mic track from transitioning muted=true → muted=false.
-        if !payload.isSender && CallKitManager.shared.isAudioSessionReady {
-            NSLog("🚫 [VoiceCallSession] setAudioOutput('\(output)') BLOCKED - incoming CallKit call, hands off!")
+        // For incoming CallKit calls, do NOT touch audio while CallKit is still active.
+        // Once CallKit is dismissed (callKitDismissed=true), we MUST reconfigure audio ourselves.
+        if !payload.isSender && !callKitDismissed {
+            NSLog("🚫 [VoiceCallSession] setAudioOutput('\(output)') BLOCKED - CallKit still active, hands off!")
             return
         }
         guard audioSession.recordPermission == .granted else { return }
@@ -818,14 +850,22 @@ final class VoiceCallSession: ObservableObject {
                 isSettingEarpiece = true
                 defer { isSettingEarpiece = false }
                 
-                // For incoming CallKit calls, do NOT reconfigure category/mode.
-                // CallKit already set it up; only override the output port.
                 if payload.isSender {
+                    // Outgoing: use .voiceChat for echo cancellation
                     try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .mixWithOthers])
                     try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
                     if let builtInMic = audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
                         try audioSession.setPreferredInput(builtInMic)
                     }
+                } else if callKitDismissed {
+                    // Incoming after CallKit dismiss: use .default mode (not .voiceChat)
+                    // .voiceChat conflicts with WKWebView WebRTC audio processing
+                    try audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .mixWithOthers])
+                    try audioSession.setActive(true)
+                    if let builtInMic = audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
+                        try audioSession.setPreferredInput(builtInMic)
+                    }
+                    NSLog("🔊 [VoiceCallSession] Earpiece: reconfigured .default mode after CallKit dismiss")
                 }
                 try audioSession.overrideOutputAudioPort(.none)
                 lastEarpieceSetTime = Date().timeIntervalSince1970
