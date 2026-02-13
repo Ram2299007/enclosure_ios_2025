@@ -36,6 +36,8 @@ final class VideoCallSession: ObservableObject {
     private var isWaitingForCallKitAudio = false
 
     private var mediaStartRetryWorkItem: DispatchWorkItem?
+    private var mediaStartRetryAttempts = 0
+    private let maxMediaStartRetryAttempts = 5
 
     private var isPageReady = false
 
@@ -101,6 +103,7 @@ final class VideoCallSession: ObservableObject {
     }
 
     func stop() {
+        print("📞📞📞 [VideoCallSession] stop() called - shouldDismiss=\(shouldDismiss)")
         cleanupFirebaseListeners()
         stopObservingAudioInterruptions()
         stopRingtone(reason: "session_stop")
@@ -114,13 +117,23 @@ final class VideoCallSession: ObservableObject {
             callKitAudioReadyObserver = nil
         }
         isWaitingForCallKitAudio = false
+
+        // End CallKit call if still active
+        if !payload.isSender {
+            if let callKitUUID = CallKitManager.shared.getCallUUID(for: roomId) {
+                print("📞 [VideoCallSession] stop() - Ending CallKit call: \(callKitUUID)")
+                CallKitManager.shared.endCall(uuid: callKitUUID, reason: .remoteEnded)
+            }
+        }
     }
 
     func handleMessage(_ message: [String: Any]) {
         guard let type = message["type"] as? String else { return }
+        print("📹 [VideoCallSession] JS message: \(type)")
         switch type {
         case "sendPeerId":
             if let peerId = message["peerId"] as? String {
+                print("📹 [VideoCallSession] Peer ID received from JS: \(peerId)")
                 handleSendPeerId(peerId)
             }
         case "toggleMicrophone":
@@ -132,33 +145,39 @@ final class VideoCallSession: ObservableObject {
                 UserDefaults.standard.set(mute, forKey: "video_call_muted")
             }
         case "onPeerConnected":
-            requestCameraAndMicrophonePermissionIfNeeded()
+            // Do NOT re-request permissions or re-trigger getUserMedia here.
+            // The local stream is already live and connected to the peer.
+            print("📹 [VideoCallSession] Peer connected")
         case "onCallConnected":
+            // Guard: only process the first onCallConnected. JS fires this multiple times
+            // (once per stream event). Repeated calls to updateVideoLayout() reset the layout
+            // and can put local video back on primary if remoteStream is momentarily null.
+            guard !isCallConnected else {
+                print("📹 [VideoCallSession] onCallConnected IGNORED (already connected)")
+                return
+            }
             isCallConnected = true
+            print("📹 [VideoCallSession] onCallConnected - FIRST TIME, applying layout")
             stopRingtone(reason: "call_connected")
             enableProximitySensor()
-            reconfigureAudioSessionForCall()
-            requestCameraAndMicrophonePermissionIfNeeded()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                self?.sendToWebView("if (typeof initializeLocalStream === 'function') { initializeLocalStream().catch(function(){}); }")
-            }
-            // Force WebView to show receiver in primary, my video in secondary (like Android)
-            let layoutJS = "updateVideoLayout(); updateVideoMirroring(); if (typeof applyConnectedLayoutFromPeers === 'function') applyConnectedLayoutFromPeers();"
+            // CRITICAL: Do NOT call reconfigureAudioSessionForCall() here.
+            // CRITICAL: Do NOT call requestCameraAndMicrophonePermissionIfNeeded() here.
+            //
+            // Use applyConnectedLayoutFromPeers only (not updateVideoLayout which clears everything first).
+            // applyConnectedLayoutFromPeers directly sets remote→primary, local→secondary without clearing.
+            let layoutJS = "if (typeof applyConnectedLayoutFromPeers === 'function') applyConnectedLayoutFromPeers();"
             DispatchQueue.main.async { [weak self] in
                 self?.sendToWebView(layoutJS)
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-                self?.sendToWebView(layoutJS)
-            }
+            // Single delayed retry to ensure stream is attached
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
                 self?.sendToWebView(layoutJS)
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in
-                self?.sendToWebView(layoutJS)
-            }
         case "endCall":
+            print("📞📞📞 [VideoCallSession] JS triggered endCall")
             endCall()
         case "callOnBackPressed":
+            print("📞📞📞 [VideoCallSession] JS triggered callOnBackPressed")
             shouldDismiss = true
             stopRingtone(reason: "back_pressed")
             disableProximitySensor()
@@ -314,6 +333,9 @@ final class VideoCallSession: ObservableObject {
         // Don't start getUserMedia until the page JS is ready.
         guard isPageReady else { return }
 
+        // Reset retry attempts on each fresh start attempt.
+        mediaStartRetryAttempts = 0
+
         // For incoming CallKit calls, don't start getUserMedia until CallKit has activated audio.
         if !payload.isSender, !CallKitManager.shared.isAudioSessionReady {
             return
@@ -340,6 +362,12 @@ final class VideoCallSession: ObservableObject {
     private func scheduleMediaStartVerificationAndRetry(webView: WKWebView) {
         guard !payload.isSender else { return }
 
+        if mediaStartRetryAttempts >= maxMediaStartRetryAttempts {
+            return
+        }
+
+        mediaStartRetryAttempts += 1
+
         mediaStartRetryWorkItem?.cancel()
 
         let work = DispatchWorkItem { [weak self, weak webView] in
@@ -354,6 +382,7 @@ final class VideoCallSession: ObservableObject {
                 guard let self else { return }
                 let started = (result as? Bool) ?? false
                 if started {
+                    self.mediaStartRetryAttempts = 0
                     return
                 }
 
@@ -501,7 +530,11 @@ final class VideoCallSession: ObservableObject {
         }
         
         do {
-            try audioSession.setCategory(.playAndRecord, mode: .videoChat, options: [.allowBluetooth, .defaultToSpeaker])
+            // CRITICAL: Use .default mode (NOT .videoChat)
+            // .videoChat conflicts with WKWebView's own WebRTC audio processing,
+            // causing getUserMedia tracks to stay permanently muted=true.
+            // .mixWithOthers is REQUIRED for WKWebView to access the microphone.
+            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .defaultToSpeaker, .mixWithOthers])
             try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
         } catch {
             // Ignore "already active" or "already interrupted" errors as they're harmless
@@ -533,6 +566,17 @@ final class VideoCallSession: ObservableObject {
         stopRingtone(reason: "end_call")
         cleanupFirebaseListeners()
         disableProximitySensor()
+
+        // End CallKit call if this was an incoming CallKit call
+        if !payload.isSender {
+            if let callKitUUID = CallKitManager.shared.getCallUUID(for: roomId) {
+                print("📞 [VideoCallSession] Ending CallKit call: \(callKitUUID)")
+                CallKitManager.shared.endCall(uuid: callKitUUID, reason: .remoteEnded)
+            } else {
+                print("⚠️ [VideoCallSession] No active CallKit call found for room: \(roomId)")
+            }
+        }
+
         shouldDismiss = true
     }
 
@@ -583,7 +627,7 @@ final class VideoCallSession: ObservableObject {
         }
 
         do {
-            try audioSession.setCategory(.playAndRecord, mode: .videoChat, options: [.allowBluetooth])
+            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .mixWithOthers])
             try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
             
             var lastError: Error?

@@ -21,6 +21,7 @@ class VoIPPushManager: NSObject {
 
     private var removeCallObserverHandle: DatabaseHandle?
     private var removeCallObserverPath: String?
+    private var callAnswered = false
 
     private struct PendingCallContext {
         let callerName: String
@@ -246,6 +247,7 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         }
         
         // Set up answer callback
+        callAnswered = false
         CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone, isVideoCall in
             NSLog("📞📞📞 [VoIP] ========================================")
             NSLog("📞 [VoIP] User ANSWERED call!")
@@ -254,6 +256,8 @@ extension VoIPPushManager: PKPushRegistryDelegate {
             NSLog("📞 [VoIP] ========================================")
             print("📞📞📞 [VoIP] CALL ANSWERED!")
             print("📞 [VoIP] Room: \(roomId)")
+
+            self.callAnswered = true
 
             // Stop observing cancel signal once user answered
             self.stopObservingRemoveCallNotification()
@@ -361,10 +365,20 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         let ref = Database.database().reference().child(rootNode).child(trimmedUid)
         removeCallObserverHandle = ref.observe(.childAdded) { snapshot in
             let key = snapshot.key
-            NSLog("📞 [VoIP] \(rootNode) RECEIVED key=\(key) - dismissing CallKit/UI")
+            NSLog("📞 [VoIP] \(rootNode) RECEIVED key=\(key)")
 
             // Remove the node (best-effort) to avoid repeated triggers
             ref.child(key).removeValue()
+
+            // If call was already answered, ignore this cancel signal.
+            // The active call session manages its own lifecycle via JS endCall.
+            if self.callAnswered {
+                NSLog("📞 [VoIP] \(rootNode) IGNORED - call already answered, session manages lifecycle")
+                self.stopObservingRemoveCallNotification()
+                return
+            }
+
+            NSLog("📞 [VoIP] \(rootNode) - dismissing CallKit/UI (call not yet answered)")
 
             // End active CallKit call (if exists)
             if let uuid = CallKitManager.shared.getCallUUID(for: roomId) {

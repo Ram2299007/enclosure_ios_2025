@@ -245,26 +245,41 @@ const initializeLocalStream = async () => {
 
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         localStream = stream;
-        localVideo.srcObject = stream;
-        localVideo.muted = true; // Mute local video to prevent echo
-        localVideo.autoplay = true; // Ensure autoplay
-        localVideo.playsInline = true; // Ensure plays inline on mobile
 
         // Apply saved mute state to audio tracks (e.g. restored from previous session)
         if (isMicMuted && stream.getAudioTracks().length) {
             stream.getAudioTracks().forEach(t => t.enabled = false);
         }
 
-        // Force play with error handling
-        try {
-            await localVideo.play();
-        } catch (playError) {
-            console.warn('Auto-play failed, user may need to interact:', playError);
+        // Check if a remote stream is already on primary (call already connected).
+        // If so, put local stream on secondary instead of overwriting primary.
+        var hasRemoteOnPrimary = localVideo.srcObject && localVideo.srcObject !== stream && localVideo.srcObject !== localStream;
+        if (hasRemoteOnPrimary) {
+            console.log('Remote stream already on primary - putting local on secondary');
+            secondaryVideo.srcObject = stream;
+            secondaryVideo.muted = true;
+            secondaryVideo.autoplay = true;
+            secondaryVideo.playsInline = true;
+            secondaryVideo.classList.add('secondary-visible');
+            secondaryVideo.style.display = 'block';
+            secondaryVideo.style.visibility = 'visible';
+            secondaryVideo.style.opacity = '1';
+            try { await secondaryVideo.play(); } catch(e) {}
+        } else {
+            localVideo.srcObject = stream;
+            localVideo.muted = true; // Mute local video to prevent echo
+            localVideo.autoplay = true; // Ensure autoplay
+            localVideo.playsInline = true; // Ensure plays inline on mobile
+            // Force play with error handling
+            try {
+                await localVideo.play();
+            } catch (playError) {
+                console.warn('Auto-play failed, user may need to interact:', playError);
+            }
+            localVideo.style.display = 'block';
+            secondaryVideo.style.display = 'none';
+            remoteVideos.style.display = 'none';
         }
-
-        localVideo.style.display = 'block';
-        secondaryVideo.style.display = 'none';
-        remoteVideos.style.display = 'none';
         updateVideoMirroring();
 
         console.log('Enhanced WebView camera initialized successfully');
@@ -598,67 +613,17 @@ function setupCallStreamListener(call) {
         console.log('Received remote stream from peer:', call.peer);
         if (remoteStream) {
             peers[call.peer].remoteStream = remoteStream;
+            // Apply connected layout: remote → primary, local → secondary.
+            // Do NOT call updateVideoLayout() here — it clears localVideo.srcObject first
+            // which causes local video to flash on primary before remote is re-assigned.
             applyConnectedLayout(call.peer, remoteStream);
             switchVideos(call.peer, remoteStream);
-            updateVideoLayout();
             updateVideoMirroring();
-            setTimeout(function() { applyConnectedLayout(call.peer, remoteStream); updateVideoLayout(); updateVideoMirroring(); }, 200);
-            setTimeout(function() { applyConnectedLayout(call.peer, remoteStream); updateVideoLayout(); updateVideoMirroring(); }, 500);
-            
-            // Ensure local stream is initialized when call connects (include case where we only have audio, no video)
-            const hasNoVideo = !localStream || localStream.getVideoTracks().length === 0;
-            const hasNoLiveTracks = !localStream || localStream.getTracks().length === 0 || localStream.getTracks().every(track => !track.enabled);
-            if (hasNoVideo || hasNoLiveTracks) {
-                console.log('Local stream not initialized, disabled, or missing video track, initializing now...');
-                const constraints = getOptimalCameraConstraints();
-                constraints.video.facingMode = currentFacingMode;
-                
-                navigator.mediaDevices.getUserMedia(constraints)
-                    .then(stream => {
-                        localStream = stream;
-                        // Apply current mute state to new stream so we don't overwrite mute
-                        if (stream.getAudioTracks().length) {
-                            stream.getAudioTracks().forEach(t => { t.enabled = !isMicMuted; });
-                        }
-                        // Do not set localVideo.srcObject here - primary must stay receiver; updateVideoLayout will set secondary = this stream
-                        
-                        // Update all peer connections with new stream
-                        Object.values(peers).forEach(peer => {
-                            if (peer.call && peer.call.peerConnection) {
-                                const senders = peer.call.peerConnection.getSenders();
-                                senders.forEach(sender => {
-                                    if (sender.track) {
-                                        if (sender.track.kind === 'video') {
-                                            const videoTrack = stream.getVideoTracks()[0];
-                                            if (videoTrack) {
-                                                sender.replaceTrack(videoTrack).catch(err => {
-                                                    console.error('Failed to replace video track:', err);
-                                                });
-                                            }
-                                        } else if (sender.track.kind === 'audio') {
-                                            const audioTrack = stream.getAudioTracks()[0];
-                                            if (audioTrack) {
-                                                sender.replaceTrack(audioTrack).catch(err => {
-                                                    console.error('Failed to replace audio track:', err);
-                                                });
-                                            }
-                                        }
-                                    }
-                                });
-                            }
-                        });
-                        
-                        updateVideoLayout();
-                        updateVideoMirroring();
-                        var rstream = peers[call.peer] && peers[call.peer].remoteStream;
-                        if (rstream) applyConnectedLayout(call.peer, rstream);
-                        console.log('Local stream initialized successfully on call connect');
-                    })
-                    .catch(err => {
-                        console.error('Failed to initialize local stream on call connect:', err);
-                        statusBar.textContent = 'Error: Camera/Mic access denied';
-                    });
-            }
+            // Single delayed retry to ensure streams are fully attached
+            setTimeout(function() {
+                applyConnectedLayout(call.peer, remoteStream);
+                updateVideoMirroring();
+            }, 500);
             
             if (Object.keys(peers).length > 0 && typeof Android !== 'undefined') {
                 Android.onCallConnected();
@@ -787,15 +752,12 @@ function updateVideoLayout() {
     remoteVideos.classList.remove('three-participants', 'four-participants');
     remoteVideos.style.display = 'none';
     remoteVideos.innerHTML = '';
-    localVideo.style.display = 'none';
-    localVideo.srcObject = null; // Clear so we never show my video on primary when we should show receiver
-    secondaryVideo.classList.remove('secondary-visible');
-    secondaryVideo.style.display = 'none';
-    secondaryVideo.style.visibility = '';
-    secondaryVideo.style.opacity = '';
-    secondaryVideo.srcObject = null;
 
     if (peerCount === 0) {
+        // No peers: show local video on primary, hide secondary
+        secondaryVideo.classList.remove('secondary-visible');
+        secondaryVideo.style.display = 'none';
+        secondaryVideo.srcObject = null;
         localVideo.style.display = 'block';
         if (localStream && isCameraOn) {
             hideLocalBlur();
@@ -815,55 +777,37 @@ function updateVideoLayout() {
         const remoteStream = peers[peerId] && peers[peerId].remoteStream;
 
         if (remoteStream) {
-            /* Call connected: localVideo = RECEIVER (full screen), secondaryVideo = MY video only */
-            localVideo.srcObject = null;
-            localVideo.srcObject = remoteStream;
-            localVideo.muted = false;
-            localVideo.playsInline = true;
-            localVideo.autoplay = true;
-            localVideo.classList.remove('mirrored');
-            localVideo.style.display = 'block';
-            localVideo.play().catch(function() {});
-
-            if (localStream) {
-                secondaryVideo.classList.add('secondary-visible');
-                secondaryVideo.srcObject = null;
-                secondaryVideo.srcObject = localStream;
-                secondaryVideo.muted = true;
-                secondaryVideo.playsInline = true;
-                secondaryVideo.autoplay = true;
-                secondaryVideo.style.display = 'block';
-                secondaryVideo.style.visibility = 'visible';
-                secondaryVideo.style.opacity = '1';
-                if (!isCameraOn) {
-                    applyBlurToSecondaryVideo();
-                } else {
-                    removeBlurFromSecondaryVideo();
-                }
-                secondaryVideo.play().catch(function() {});
-            }
+            // Call connected: use applyConnectedLayout which sets remote→primary, local→secondary
             applyConnectedLayout(peerId, remoteStream);
-            setTimeout(function() {
-                localVideo.srcObject = null;
-                localVideo.srcObject = remoteStream;
-                localVideo.muted = false;
-                localVideo.play().catch(function() {});
-            }, 100);
-        } else {
-            /* Before connect: localVideo = MY video (sender), no secondary */
-            console.warn('No remote stream yet from:', peerId);
-            localVideo.style.display = 'block';
-            localVideo.srcObject = localStream;
-            localVideo.muted = true;
-            localVideo.playsInline = true;
-            localVideo.autoplay = true;
             if (!isCameraOn) {
-                updateLocalPoster();
-            } else if (localStream) {
-                localVideo.play().catch(function() {}); // iOS: so sender sees themselves
+                applyBlurToSecondaryVideo();
+            } else {
+                removeBlurFromSecondaryVideo();
             }
-            secondaryVideo.style.display = 'none';
-            secondaryVideo.srcObject = null;
+        } else {
+            // Before connect: localVideo = MY video (sender), no secondary
+            // But do NOT overwrite if localVideo already has a remote stream (race condition guard)
+            var currentSrc = localVideo.srcObject;
+            var hasRemoteOnPrimary = false;
+            if (currentSrc && currentSrc !== localStream) {
+                // localVideo already has a remote stream from applyConnectedLayout - don't overwrite
+                hasRemoteOnPrimary = true;
+            }
+            if (!hasRemoteOnPrimary) {
+                console.warn('No remote stream yet from:', peerId);
+                localVideo.style.display = 'block';
+                localVideo.srcObject = localStream;
+                localVideo.muted = true;
+                localVideo.playsInline = true;
+                localVideo.autoplay = true;
+                if (!isCameraOn) {
+                    updateLocalPoster();
+                } else if (localStream) {
+                    localVideo.play().catch(function() {}); // iOS: so sender sees themselves
+                }
+                secondaryVideo.style.display = 'none';
+                secondaryVideo.srcObject = null;
+            }
         }
     } else {
        callerName.style.display = 'none';
@@ -1446,7 +1390,7 @@ function handleNetworkResume() {
         isDisconnected = false;
         reconnectPeer();
         reinitializeLocalStream();
-        updateVideoLayout();
+        if (typeof applyConnectedLayoutFromPeers === 'function') applyConnectedLayoutFromPeers();
         updateVideoMirroring();
     }
     sendStatusToPeers("Connected");
@@ -1465,7 +1409,7 @@ function reconnectPeer() {
                     sender.replaceTrack(videoTrack).then(() => {
                         console.log('Replaced video track for peer:', peer.call.peer);
                         hideLocalBlur(); // stream active असल्यास blur काढ
-                        updateVideoLayout();
+                        if (typeof applyConnectedLayoutFromPeers === 'function') applyConnectedLayoutFromPeers();
                         updateVideoMirroring();
                     }).catch(err => {
                         console.error('Error replacing video track:', err);
@@ -1545,7 +1489,7 @@ function recreatePeer() {
         navigator.mediaDevices.getUserMedia(constraints)
             .then(stream => {
                 localStream = stream;
-                updateVideoLayout();
+                if (typeof applyConnectedLayoutFromPeers === 'function') applyConnectedLayoutFromPeers();
                 updateVideoMirroring();
                 console.log('Local stream reinitialized');
                 Object.keys(peers).forEach(peerId => {
@@ -1662,7 +1606,9 @@ function reinitializeLocalStream() {
                         }
                     });
                 });
-                updateVideoLayout();
+                // Don't call updateVideoLayout() — it can reset the connected layout.
+                // applyConnectedLayoutFromPeers safely sets remote→primary, local→secondary if peers exist.
+                if (typeof applyConnectedLayoutFromPeers === 'function') applyConnectedLayoutFromPeers();
                 updateVideoMirroring();
                 console.log('Local stream reinitialized');
             })

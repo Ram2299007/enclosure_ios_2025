@@ -28,6 +28,7 @@ struct VideoCallWebView: UIViewRepresentable {
 
         let controller = WKUserContentController()
         controller.add(context.coordinator, name: Coordinator.messageHandlerName)
+        controller.add(context.coordinator, name: "jsConsole")
 
         let bridgeScript = WKUserScript(
             source: Coordinator.bridgeScript,
@@ -91,6 +92,21 @@ struct VideoCallWebView: UIViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, WKUIDelegate {
         static let messageHandlerName = "videoCall"
         static let bridgeScript = """
+        // Intercept console.log/warn/error and forward to native
+        (function() {
+          var origLog = console.log, origWarn = console.warn, origErr = console.error;
+          function send(level, args) {
+            try {
+              var msg = Array.prototype.slice.call(args).map(function(a) {
+                return typeof a === 'object' ? JSON.stringify(a) : String(a);
+              }).join(' ');
+              window.webkit.messageHandlers.jsConsole.postMessage({level: level, message: msg});
+            } catch(e) {}
+          }
+          console.log = function() { send('log', arguments); origLog.apply(console, arguments); };
+          console.warn = function() { send('warn', arguments); origWarn.apply(console, arguments); };
+          console.error = function() { send('error', arguments); origErr.apply(console, arguments); };
+        })();
         window.__muteState = window.__muteState || false;
         window.Android = {
           isWifiConnected: function() {
@@ -226,6 +242,14 @@ struct VideoCallWebView: UIViewRepresentable {
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            if message.name == "jsConsole",
+               let body = message.body as? [String: Any],
+               let level = body["level"] as? String,
+               let msg = body["message"] as? String {
+                let prefix = level == "error" ? "❌" : level == "warn" ? "⚠️" : "🌐"
+                print("\(prefix) [JS] \(msg)")
+                return
+            }
             guard message.name == Self.messageHandlerName,
                   let body = message.body as? [String: Any] else { return }
             session.handleMessage(body)
@@ -233,34 +257,9 @@ struct VideoCallWebView: UIViewRepresentable {
         
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             print("📹 [VideoCallWebView] Page finished loading")
-            // Ensure permissions are requested when page loads
-            session.requestCameraAndMicrophonePermissionIfNeeded()
-            
-            // Inject script to ensure getUserMedia is called
-            let initScript = """
-            (function() {
-                console.log('📹 [VideoCallWebView] Checking for getUserMedia availability...');
-                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                    console.log('✅ [VideoCallWebView] getUserMedia is available');
-                    // Trigger initialization if not already done
-                    if (typeof initializeLocalStream === 'function' && !localStream) {
-                        console.log('📹 [VideoCallWebView] Calling initializeLocalStream...');
-                        initializeLocalStream().catch(err => {
-                            console.error('❌ [VideoCallWebView] Failed to initialize stream:', err);
-                        });
-                    }
-                } else {
-                    console.error('❌ [VideoCallWebView] getUserMedia is not available');
-                }
-            })();
-            """
-            webView.evaluateJavaScript(initScript, completionHandler: { result, error in
-                if let error = error {
-                    print("⚠️ [VideoCallWebView] Error injecting init script: \(error.localizedDescription)")
-                } else {
-                    print("✅ [VideoCallWebView] Init script injected successfully")
-                }
-            })
+            // Native side handles media start via attemptStartLocalMedia → startLocalStreamWithRetry.
+            // Do NOT call initializeLocalStream() here — it creates a NEW getUserMedia stream
+            // that overwrites the one already connected to the peer, breaking remote video.
         }
 
         @available(iOS 15.0, *)

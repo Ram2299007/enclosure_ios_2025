@@ -26,6 +26,9 @@ class CallKitManager: NSObject {
     // Track if CallKit audio session is ready for WebRTC
     private(set) var isAudioSessionReady = false
     
+    // Track if we intentionally dismissed CallKit for a video call
+    private var dismissedForVideoCall = false
+    
     struct CallInfo {
         let uuid: UUID
         let callerName: String
@@ -243,6 +246,20 @@ extension CallKitManager: CXProviderDelegate {
         }
         
         action.fulfill()
+        
+        // VIDEO CALL: Immediately dismiss CallKit full-screen UI after answering.
+        // CallKit full-screen blocks WKWebView from accessing camera+mic.
+        // Once CallKit UI is dismissed, WKWebView getUserMedia() will work.
+        // VOICE CALL: Keep CallKit active (voice uses CallKit for ongoing call UI).
+        if callInfo.isVideoCall {
+            print("📞 [CallKit] Video call - dismissing CallKit UI so camera+mic can start (1.0s delay)")
+            dismissedForVideoCall = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                print("📞 [CallKit] Now dismissing CallKit UI for video call")
+                self.provider.reportCall(with: action.callUUID, endedAt: Date(), reason: .answeredElsewhere)
+                self.activeCalls.removeValue(forKey: action.callUUID)
+            }
+        }
     }
     
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
@@ -318,7 +335,13 @@ extension CallKitManager: CXProviderDelegate {
     
     func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
         print("📞 [CallKit] Audio session deactivated")
-        isAudioSessionReady = false
+        if dismissedForVideoCall {
+            // Video call: don't reset audio ready flag - WKWebView manages its own audio session
+            print("📞 [CallKit] Keeping isAudioSessionReady=true (video call active)")
+            dismissedForVideoCall = false
+        } else {
+            isAudioSessionReady = false
+        }
     }
     
     // MARK: - Audio Session Configuration
