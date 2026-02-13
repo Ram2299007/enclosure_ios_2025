@@ -76,6 +76,15 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             let roomId = (userInfo["roomId"] as? String) ?? ""
             let receiverId = (userInfo["receiverId"] as? String) ?? ""
             let receiverPhone = (userInfo["phone"] as? String) ?? ""
+
+            // Start observing for caller-cancel signal (Android parity) even for foreground notification path
+            // Voice: removeCallNotification/<myUid>/<pushKey>
+            // Video: removeVideoCallNotification/<myUid>/<pushKey>
+            if isVideoCall {
+                VoIPPushManager.shared.startObservingRemoveVideoCallNotification(roomId: roomId)
+            } else {
+                VoIPPushManager.shared.startObservingRemoveCallNotification(roomId: roomId)
+            }
             
             NSLog("📞 [NotificationDelegate] Call data: caller='\(callerName)', room='\(roomId)'")
             print("📞 [NotificationDelegate] Call data: caller='\(callerName)', room='\(roomId)'")

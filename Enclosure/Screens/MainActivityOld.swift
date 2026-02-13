@@ -1112,6 +1112,12 @@ struct MainActivityOld: View {
             NSLog("✅✅✅ [MainActivityOld] ========================================")
             print("✅✅✅ [MainActivityOld] VoiceCallScreen ACTIVE - connecting in background!")
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("IncomingCallCancelled"))) { notification in
+            let roomId = (notification.userInfo as? [String: String])?["roomId"] ?? ""
+            NSLog("📞 [MainActivityOld] IncomingCallCancelled received - dismissing incoming UI. roomId=\(roomId)")
+            print("📞 [MainActivityOld] IncomingCallCancelled received - dismissing incoming UI. roomId=\(roomId)")
+            incomingVoiceCallPayload = nil
+        }
     }
     
     // MARK: - Logo Helper Functions

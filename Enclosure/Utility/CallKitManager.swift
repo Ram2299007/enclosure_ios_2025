@@ -23,6 +23,9 @@ class CallKitManager: NSObject {
     var onAnswerCall: ((String, String, String) -> Void)?
     var onDeclineCall: ((String) -> Void)?
     
+    // Track if CallKit audio session is ready for WebRTC
+    private(set) var isAudioSessionReady = false
+    
     struct CallInfo {
         let uuid: UUID
         let callerName: String
@@ -187,6 +190,11 @@ class CallKitManager: NSObject {
         
         provider.reportCall(with: uuid, endedAt: Date(), reason: reason)
         activeCalls.removeValue(forKey: uuid)
+        
+        // Reset audio ready flag when call ends
+        if activeCalls.isEmpty {
+            isAudioSessionReady = false
+        }
     }
     
     // MARK: - End All Calls
@@ -271,38 +279,52 @@ extension CallKitManager: CXProviderDelegate {
     
     func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
         print("📞 [CallKit] Audio session activated by CallKit")
+        NSLog("📞 [CallKit] Audio session activated - configuring for WebRTC...")
         
         // Configure audio session now that CallKit has activated it
         do {
-            // CRITICAL: Add .mixWithOthers to allow WKWebView getUserMedia() to share mic access
-            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
-            print("✅ [CallKit] Audio session configured: playAndRecord + voiceChat mode")
+            // CRITICAL: Use .default mode (NOT .voiceChat)
+            // .voiceChat applies system-level Voice Processing I/O (echo cancellation, AGC, noise suppression)
+            // which CONFLICTS with WKWebView's own WebRTC audio processing, causing getUserMedia tracks
+            // to stay permanently muted=true. WebRTC handles its own echo cancellation and noise suppression.
+            // .playAndRecord category naturally routes to earpiece (receiver).
+            // .mixWithOthers is REQUIRED for WKWebView to access the microphone.
+            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .mixWithOthers])
+            try audioSession.setActive(true)
+            print("✅ [CallKit] Audio session configured: playAndRecord + default mode + active")
+            NSLog("✅ [CallKit] Audio session configured: .default mode + .mixWithOthers + setActive(true)")
             
-            // Set preferred input to built-in microphone
-            if let builtInMic = audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
-                try audioSession.setPreferredInput(builtInMic)
-                print("✅ [CallKit] Microphone set to built-in mic")
-            }
+            let route = audioSession.currentRoute
+            let inputs = route.inputs.map { $0.portType.rawValue }
+            let outputs = route.outputs.map { $0.portType.rawValue }
+            NSLog("✅ [CallKit] Route after config - inputs: \(inputs), outputs: \(outputs)")
             
-            // Route to earpiece by default
-            try audioSession.overrideOutputAudioPort(.none)
-            print("✅ [CallKit] Audio output set to earpiece")
+            // CRITICAL: Set flag AND post notification
+            // Flag allows late-arriving observers to check if audio is already ready
+            isAudioSessionReady = true
+            NSLog("✅✅✅ [CallKit] Audio session FULLY READY - setting flag and posting notification")
+            NotificationCenter.default.post(name: NSNotification.Name("CallKitAudioSessionReady"), object: nil)
             
         } catch {
             print("❌ [CallKit] Failed to configure audio session: \(error.localizedDescription)")
+            NSLog("❌ [CallKit] Audio session configuration failed: \(error.localizedDescription)")
+            // Even if configuration fails, mark as ready so session can try to proceed
+            isAudioSessionReady = true
+            NotificationCenter.default.post(name: NSNotification.Name("CallKitAudioSessionReady"), object: nil)
         }
     }
     
     func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
         print("📞 [CallKit] Audio session deactivated")
+        isAudioSessionReady = false
     }
     
     // MARK: - Audio Session Configuration
     private func configureAudioSession() {
         let audioSession = AVAudioSession.sharedInstance()
         do {
-            // CRITICAL: Add .mixWithOthers to allow WKWebView getUserMedia() to share mic access
-            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers])
+            // Use .default mode - .voiceChat conflicts with WKWebView WebRTC audio processing
+            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .mixWithOthers])
             try audioSession.setActive(true)
             print("✅ [CallKit] Audio session configured")
         } catch {

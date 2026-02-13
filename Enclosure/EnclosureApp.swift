@@ -273,6 +273,15 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         let roomId = (userInfo["roomId"] as? String) ?? ""
         let receiverId = (userInfo["receiverId"] as? String) ?? ""
         let receiverPhone = (userInfo["phone"] as? String) ?? ""
+
+        // Start observing for caller-cancel signal (Android parity) for FCM call path
+        // Voice: removeCallNotification/<myUid>/<pushKey>
+        // Video: removeVideoCallNotification/<myUid>/<pushKey>
+        if isVideoCall {
+            VoIPPushManager.shared.startObservingRemoveVideoCallNotification(roomId: roomId)
+        } else {
+            VoIPPushManager.shared.startObservingRemoveCallNotification(roomId: roomId)
+        }
         
         NSLog("📞 [CallKit] Extracted data:")
         NSLog("   - Caller Name: '\(callerName)'")

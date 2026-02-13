@@ -32,6 +32,8 @@ final class VideoCallSession: ObservableObject {
     private var ringtoneSystemSoundTimer: Timer?
     private var proximityObserver: NSObjectProtocol?
 
+    private var removeCallNotificationSent = false
+
     init(payload: VideoCallPayload) {
         self.payload = payload
         self.roomId = payload.roomId ?? Self.generateRoomId()
@@ -410,10 +412,36 @@ final class VideoCallSession: ObservableObject {
     }
 
     private func endCall() {
+        // Android behavior parity: if caller ends immediately, signal receiver to dismiss incoming-call UI.
+        // Firebase path: removeVideoCallNotification/<receiverId>/<pushKey> = <pushKey>
+        if payload.isSender {
+            sendRemoveCallNotificationIfNeeded()
+        }
+
         stopRingtone(reason: "end_call")
         cleanupFirebaseListeners()
         disableProximitySensor()
         shouldDismiss = true
+    }
+
+    private func sendRemoveCallNotificationIfNeeded() {
+        guard !removeCallNotificationSent else { return }
+        let receiverId = payload.receiverId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !receiverId.isEmpty else {
+            NSLog("⚠️ [VideoCallSession] sendRemoveCallNotification: receiverId missing")
+            return
+        }
+        removeCallNotificationSent = true
+
+        let ref = Database.database().reference().child("removeVideoCallNotification").child(receiverId).childByAutoId()
+        let key = ref.key ?? UUID().uuidString
+        ref.setValue(key) { error, _ in
+            if let error = error {
+                NSLog("⚠️ [VideoCallSession] Failed to send removeCallNotification: \(error.localizedDescription)")
+            } else {
+                NSLog("✅ [VideoCallSession] removeCallNotification sent to receiverId=\(receiverId), key=\(key)")
+            }
+        }
     }
 
     private func sendSignalingData(_ data: String) {

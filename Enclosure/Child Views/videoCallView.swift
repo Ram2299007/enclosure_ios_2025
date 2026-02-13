@@ -428,6 +428,12 @@ struct videoCallView: View {
                 hideKeyboard()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("IncomingCallCancelled"))) { notification in
+            let roomId = (notification.userInfo as? [String: String])?["roomId"] ?? ""
+            NSLog("📞 [videoCallView] IncomingCallCancelled received - dismissing video UI. roomId=\(roomId)")
+            print("📞 [videoCallView] IncomingCallCancelled received - dismissing video UI. roomId=\(roomId)")
+            activeVideoCallPayload = nil
+        }
         .fullScreenCover(item: $activeVideoCallPayload) { payload in
             VideoCallScreen(payload: payload)
         }

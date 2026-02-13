@@ -10,12 +10,16 @@ import Foundation
 import PushKit
 import CallKit
 import UIKit
+import FirebaseDatabase
 
 class VoIPPushManager: NSObject {
     static let shared = VoIPPushManager()
     
     private let pushRegistry = PKPushRegistry(queue: .main)
     private var voipToken: String?
+
+    private var removeCallObserverHandle: DatabaseHandle?
+    private var removeCallObserverPath: String?
     
     // Completion handler for token updates
     var onVoIPTokenReceived: ((String) -> Void)?
@@ -117,6 +121,10 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         let receiverId = (userInfo["receiverId"] as? String) ?? ""
         let receiverPhone = (userInfo["phone"] as? String) ?? ""
         let bodyKey = (userInfo["bodyKey"] as? String) ?? ""
+
+        // Start observing for caller-cancel signal (Android parity)
+        // Firebase path: removeCallNotification/<myUid>/<pushKey> = <pushKey>
+        startObservingRemoveCallNotification(roomId: roomId)
         
         NSLog("📞 [VoIP] Extracted Data:")
         NSLog("📞 [VoIP]   Caller Name: \(callerName)")
@@ -145,6 +153,15 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         let callType = isVideoCall ? "VIDEO" : "VOICE"
         NSLog("📞 [VoIP] Body Key: '\(bodyKey)' → Detected Call Type: \(callType)")
         print("📞 [VoIP] Call Type: \(callType)")
+
+        // Start observing for caller-cancel signal (Android parity)
+        // Voice: removeCallNotification/<myUid>/<pushKey>
+        // Video: removeVideoCallNotification/<myUid>/<pushKey>
+        if isVideoCall {
+            startObservingRemoveVideoCallNotification(roomId: roomId)
+        } else {
+            startObservingRemoveCallNotification(roomId: roomId)
+        }
         
         NSLog("📞 [VoIP] Reporting call to CallKit NOW...")
         print("📞 [VoIP] Triggering CallKit...")
@@ -184,6 +201,9 @@ extension VoIPPushManager: PKPushRegistryDelegate {
             NSLog("📞 [VoIP] ========================================")
             print("📞📞📞 [VoIP] CALL ANSWERED!")
             print("📞 [VoIP] Room: \(roomId)")
+
+            // Stop observing cancel signal once user answered
+            self.stopObservingRemoveCallNotification()
             
             // Request app to come to foreground if on lock screen
             // This will prompt iOS to show unlock (Face ID/Touch ID/Passcode)
@@ -242,6 +262,9 @@ extension VoIPPushManager: PKPushRegistryDelegate {
                 
                 NSLog("✅ [VoIP] AnswerIncomingCall notification posted!")
                 print("✅ [VoIP] Notification posted - MainActivityOld should receive it")
+                
+                // Stop observing removeCallNotification once user answers the call
+                self.stopObservingRemoveCallNotification()
             }
         }
         
@@ -249,10 +272,69 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         CallKitManager.shared.onDeclineCall = { roomId in
             NSLog("📞 [VoIP] User DECLINED call - Room: \(roomId)")
             print("📞 [VoIP] Call declined!")
+
+            // Stop observing cancel signal once user declined
+            self.stopObservingRemoveCallNotification()
             
             // TODO: Notify your backend that call was declined
             // Example: sendCallDeclinedToBackend(roomId: roomId)
         }
+    }
+
+    func startObservingRemoveCallNotification(roomId: String) {
+        startObservingCancelSignal(rootNode: "removeCallNotification", roomId: roomId)
+    }
+
+    func startObservingRemoveVideoCallNotification(roomId: String) {
+        startObservingCancelSignal(rootNode: "removeVideoCallNotification", roomId: roomId)
+    }
+
+    private func startObservingCancelSignal(rootNode: String, roomId: String) {
+        stopObservingRemoveCallNotification()
+
+        let myUid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        let trimmedUid = myUid.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedUid.isEmpty else {
+            NSLog("⚠️ [VoIP] Cannot observe \(rootNode) - myUid missing")
+            return
+        }
+        let path = "\(rootNode)/\(trimmedUid)"
+        removeCallObserverPath = path
+
+        NSLog("📞 [VoIP] Observing \(rootNode) for uid=\(trimmedUid), room=\(roomId)")
+        let ref = Database.database().reference().child(rootNode).child(trimmedUid)
+        removeCallObserverHandle = ref.observe(.childAdded) { snapshot in
+            let key = snapshot.key
+            NSLog("📞 [VoIP] \(rootNode) RECEIVED key=\(key) - dismissing CallKit/UI")
+
+            // Remove the node (best-effort) to avoid repeated triggers
+            ref.child(key).removeValue()
+
+            // End active CallKit call (if exists)
+            if let uuid = CallKitManager.shared.getCallUUID(for: roomId) {
+                CallKitManager.shared.endCall(uuid: uuid, reason: .remoteEnded)
+            }
+
+            // Notify SwiftUI to dismiss call UI if it was opened
+            NotificationCenter.default.post(
+                name: NSNotification.Name("IncomingCallCancelled"),
+                object: nil,
+                userInfo: ["roomId": roomId]
+            )
+
+            // Stop observing after first cancellation
+            self.stopObservingRemoveCallNotification()
+        }
+    }
+
+    func stopObservingRemoveCallNotification() {
+        guard let handle = removeCallObserverHandle,
+              let path = removeCallObserverPath else {
+            return
+        }
+        Database.database().reference().child(path).removeObserver(withHandle: handle)
+        removeCallObserverHandle = nil
+        removeCallObserverPath = nil
     }
     
     /// Called when VoIP token is invalidated (rare)

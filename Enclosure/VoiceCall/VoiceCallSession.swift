@@ -35,6 +35,11 @@ final class VoiceCallSession: ObservableObject {
     private var ringtoneSystemSoundTimer: Timer?
     private var earpieceMonitorTimer: Timer?
     private var proximityObserver: NSObjectProtocol?
+    private var callKitAudioReadyObserver: NSObjectProtocol?
+    private var isWaitingForCallKitAudio = false
+    private var hasStarted = false
+
+    private var removeCallNotificationSent = false
 
     init(payload: VoiceCallPayload) {
         self.payload = payload
@@ -49,42 +54,121 @@ final class VoiceCallSession: ObservableObject {
     }
 
     func start() {
+        guard !hasStarted else {
+            NSLog("⚠️ [VoiceCallSession] start() already called - ignoring duplicate")
+            return
+        }
+        hasStarted = true
         isCallConnected = false
         
-        // For incoming CallKit calls, audio session is already managed by CallKit
-        // Only request microphone permission, don't activate audio session yet
+        // For incoming CallKit calls, set up Firebase IMMEDIATELY so the WebView can connect
+        // (onPageReady/sendPeerId may run before CallKit is ready; we need databaseRef for peer to appear in room)
+        if !payload.isSender {
+            NSLog("📞 [VoiceCallSession] Incoming call - setting up Firebase/room immediately so call can connect")
+            databaseRef = Database.database().reference()
+            setupFirebaseListeners()
+        }
+        
+        // For incoming CallKit calls, WAIT for CallKit before audio/earpiece (prevents muted mic)
+        if !payload.isSender {
+            // CRITICAL: Check if CallKit audio is already ready (handles race condition)
+            if CallKitManager.shared.isAudioSessionReady {
+                NSLog("✅✅✅ [VoiceCallSession] CallKit audio ALREADY READY - proceeding with audio now!")
+                proceedWithStart()
+                return
+            }
+            
+            print("📞 [VoiceCallSession] Incoming CallKit call - waiting for audio session...")
+            NSLog("📞 [VoiceCallSession] Waiting for CallKit audio session to be ready...")
+            
+            isWaitingForCallKitAudio = true
+            
+            // Set up listener for CallKit audio ready notification
+            callKitAudioReadyObserver = NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("CallKitAudioSessionReady"),
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                guard let self = self, self.isWaitingForCallKitAudio else { return }
+                self.isWaitingForCallKitAudio = false
+                
+                NSLog("✅✅✅ [VoiceCallSession] CallKit audio session READY - starting audio now!")
+                self.proceedWithStart()
+            }
+            
+            // Timeout fallback
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                guard let self = self, self.isWaitingForCallKitAudio else { return }
+                NSLog("⚠️ [VoiceCallSession] Timeout waiting for CallKit audio - proceeding anyway")
+                self.isWaitingForCallKitAudio = false
+                self.proceedWithStart()
+            }
+        } else {
+            print("📞 [VoiceCallSession] Outgoing call - starting immediately")
+            proceedWithStart()
+        }
+    }
+    
+    private func proceedWithStart() {
+        // Skip Firebase setup if already done (incoming call sets it up in start())
+        if databaseRef == nil {
+            databaseRef = Database.database().reference()
+            setupFirebaseListeners()
+        }
+        
+        // Audio and earpiece
         if !payload.isSender {
             print("📞 [VoiceCallSession] Incoming call - CallKit managing audio session")
-            // Just check permission, don't configure audio yet
             checkMicrophonePermission()
         } else {
             print("📞 [VoiceCallSession] Outgoing call - we manage audio session")
             requestMicrophoneAccess()
         }
         
-        databaseRef = Database.database().reference()
-        setupFirebaseListeners()
         startObservingAudioInterruptions()
-        startEarpieceMonitor()
         
-        // For incoming calls, delay earpiece setting to let CallKit finish setup
-        // For outgoing calls, set immediately
-        let delay: TimeInterval = payload.isSender ? 0.5 : 1.0
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            self?.setAudioOutput("earpiece")
-        }
-        
+        // For incoming CallKit calls: do NOT start earpiece monitor or force earpiece.
+        // CallKit didActivate already configured earpiece. Any audio session touch
+        // prevents WKWebView track from transitioning muted=true → muted=false.
         if payload.isSender {
+            startEarpieceMonitor()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.setAudioOutput("earpiece")
+            }
             startRingtone()
+        } else {
+            NSLog("📞 [VoiceCallSession] Incoming call - skipping earpiece forcing (CallKit handles it)")
         }
     }
 
+    // REMOVED: nudgeIncomingCallKitAudioSession was re-poking the audio session after
+    // CallKit already configured it in didActivate, which disrupted the WKWebView mic track
+    // and caused muted=true to persist. For incoming CallKit calls, trust CallKit's config.
+
     func stop() {
-        cleanupFirebaseListeners()
+        // Release microphone in WebView FIRST so iOS drops mic access before we end CallKit.
+        // This prevents the orange dot from flashing briefly when the call is dismissed.
+        sendToWebView("if (typeof releaseMicrophone === 'function') releaseMicrophone();")
+        
+        stopRingtone(reason: "session_stop")
         stopObservingAudioInterruptions()
         stopEarpieceMonitor()
-        stopRingtone(reason: "session_stop")
         disableProximitySensor()
+        
+        if let observer = callKitAudioReadyObserver {
+            NotificationCenter.default.removeObserver(observer)
+            callKitAudioReadyObserver = nil
+        }
+        isWaitingForCallKitAudio = false
+        
+        // Short delay so WebView has time to release tracks before we end CallKit (reduces orange dot flash)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            self?.performStopCleanup()
+        }
+    }
+    
+    private func performStopCleanup() {
+        cleanupFirebaseListeners()
         
         // End CallKit call if this was an incoming CallKit call
         if !payload.isSender {
@@ -140,40 +224,35 @@ final class VoiceCallSession: ObservableObject {
             // Enable proximity sensor when call connects
             enableProximitySensor()
             
-            // CRITICAL: Force audio session activation when call connects
-            // This is especially important for foreground acceptance
-            NSLog("🎤 [VoiceCallSession] Force activating audio session NOW")
-            
-            // Reset debounce to allow immediate activation
-            lastAudioActivationTime = 0
-            ensureAudioSessionActive()
-            
-            // Aggressively activate multiple times to ensure it works
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                NSLog("🎤 [VoiceCallSession] Second activation attempt (0.2s)")
-                self?.lastAudioActivationTime = 0
-                self?.ensureAudioSessionActive()
-            }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                NSLog("🎤 [VoiceCallSession] Third activation attempt (0.5s)")
-                self?.lastAudioActivationTime = 0
-                self?.ensureAudioSessionActive()
-            }
-            
-            // Aggressively set earpiece when call connects - do this multiple times to ensure it sticks
-            DispatchQueue.main.async { [weak self] in
-                self?.setAudioOutput("earpiece")
-                // Force again after a short delay
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    self?.setAudioOutput("earpiece")
+            // CRITICAL: For incoming CallKit calls, do NOT touch the audio session at all.
+            // CallKit already configured it in didActivate (including earpiece routing).
+            // Any audio session manipulation prevents WKWebView track from unmuting.
+            if !payload.isSender && CallKitManager.shared.isAudioSessionReady {
+                NSLog("🎤 [VoiceCallSession] CallKit session active - completely hands off! No earpiece forcing.")
+            } else {
+                // Outgoing or CallKit not ready: force activation
+                NSLog("🎤 [VoiceCallSession] Force activating audio session NOW")
+                lastAudioActivationTime = 0
+                ensureAudioSessionActive()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                    self?.lastAudioActivationTime = 0
+                    self?.ensureAudioSessionActive()
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.lastAudioActivationTime = 0
+                    self?.ensureAudioSessionActive()
+                }
+                DispatchQueue.main.async { [weak self] in
                     self?.setAudioOutput("earpiece")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self?.setAudioOutput("earpiece") }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self?.setAudioOutput("earpiece") }
                 }
             }
+
+            // Ask JS layer to verify/recover local mic stream (fixes iOS tracks that start as muted)
+            sendToWebView("if (typeof ensureLocalMicActive === 'function') ensureLocalMicActive('native_onCallConnected');")
             
-            // Log audio session status after activation
+            // Log audio session status
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
                 guard let self = self else { return }
                 NSLog("🎤🎤🎤 [VoiceCallSession] ========================================")
@@ -225,9 +304,26 @@ final class VoiceCallSession: ObservableObject {
         sendToWebView("setRemoteCallerInfo('\(jsEscaped(safePhoto))', '\(jsEscaped(safeName))')")
         sendToWebView("setThemeColor('\(jsEscaped(Constant.themeColor))')")
         updateBluetoothAvailability()
-        // Set earpiece as default when page is ready
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.setAudioOutput("earpiece")
+        // Set earpiece as default when page is ready (outgoing only - CallKit handles incoming)
+        if payload.isSender {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                self?.setAudioOutput("earpiece")
+            }
+        } else if CallKitManager.shared.isAudioSessionReady {
+            // CRITICAL: Re-apply audio session config AFTER WebContent process is running.
+            // CallKit's didActivate configured the session BEFORE the WebContent process launched (~5s).
+            // The WebContent process may not see that configuration. Re-applying now ensures
+            // WKWebView's getUserMedia() gets an unmuted track.
+            NSLog("🎤 [VoiceCallSession] handlePageReady: Nudging audio session for WebContent process")
+            do {
+                try audioSession.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers])
+                try audioSession.setActive(true)
+                NSLog("✅ [VoiceCallSession] Audio session nudged: .playAndRecord + .default + .mixWithOthers + active")
+                let route = audioSession.currentRoute
+                NSLog("✅ [VoiceCallSession] Route after nudge - inputs: \(route.inputs.map { $0.portType.rawValue }), outputs: \(route.outputs.map { $0.portType.rawValue })")
+            } catch {
+                NSLog("⚠️ [VoiceCallSession] Audio session nudge failed: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -249,6 +345,7 @@ final class VoiceCallSession: ObservableObject {
 
     private func setupFirebaseListeners() {
         guard let databaseRef else { return }
+        guard peersHandle == nil else { return } // Already set up (e.g. incoming call did it in start())
 
         peersHandle = databaseRef.child("rooms").child(roomId).child("peers")
             .observe(.value) { [weak self] snapshot in
@@ -343,8 +440,15 @@ final class VoiceCallSession: ObservableObject {
             NSLog("✅ [VoiceCallSession] Microphone permission already granted")
             print("✅ [VoiceCallSession] Microphone permission already granted")
             
-            // For incoming calls, delay audio session activation to let CallKit settle
-            // This prevents conflicts when accepting from foreground
+            // CRITICAL: If CallKit already activated the session, do NOT touch it at all.
+            // Any audio session manipulation (even overrideOutputAudioPort) prevents
+            // WKWebView track from transitioning muted=true → muted=false.
+            if !payload.isSender && CallKitManager.shared.isAudioSessionReady {
+                NSLog("🎤 [VoiceCallSession] CallKit already configured audio - completely hands off!")
+                return
+            }
+            
+            // For incoming calls when CallKit hasn't activated yet, delay activation
             let delay: TimeInterval = 0.3
             NSLog("🎤 [VoiceCallSession] Will activate audio session in \(delay)s...")
             print("🎤 [VoiceCallSession] Configuring audio session for incoming call...")
@@ -353,7 +457,6 @@ final class VoiceCallSession: ObservableObject {
                 NSLog("🎤 [VoiceCallSession] Now activating audio session for CallKit call")
                 self?.ensureAudioSessionActive()
                 
-                // Force another activation after a bit to ensure it sticks
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                     NSLog("🎤 [VoiceCallSession] Second audio session activation (ensure it sticks)")
                     self?.ensureAudioSessionActive()
@@ -424,19 +527,25 @@ final class VoiceCallSession: ObservableObject {
                 self.isAudioInterrupted = true
             case .ended:
                 self.isAudioInterrupted = false
-                // Resume audio when interruption ends
-                if let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt {
-                    let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-                    if options.contains(.shouldResume) {
+                // For incoming CallKit calls, do NOT touch audio session on interruption end.
+                // CallKit manages the session; any manipulation prevents mic track from unmuting.
+                if !self.payload.isSender && CallKitManager.shared.isAudioSessionReady {
+                    NSLog("\u{1F3A4} [VoiceCallSession] Interruption ended - hands off (incoming CallKit call)")
+                } else {
+                    // Resume audio when interruption ends (outgoing calls only)
+                    if let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt {
+                        let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+                        if options.contains(.shouldResume) {
+                            self.ensureAudioSessionActive()
+                            if self.shouldForceEarpiece {
+                                self.setAudioOutput("earpiece")
+                            }
+                        }
+                    } else {
                         self.ensureAudioSessionActive()
                         if self.shouldForceEarpiece {
                             self.setAudioOutput("earpiece")
                         }
-                    }
-                } else {
-                    self.ensureAudioSessionActive()
-                    if self.shouldForceEarpiece {
-                        self.setAudioOutput("earpiece")
                     }
                 }
             @unknown default:
@@ -470,6 +579,13 @@ final class VoiceCallSession: ObservableObject {
             let outputStrings = route.outputs.map { $0.portType.rawValue }
             print("🔊 [VoiceCallSession] Route changed (reason: \(reason.rawValue)). Outputs: \(outputStrings)")
             
+            // For incoming CallKit calls, do NOT force earpiece on route changes.
+            // CallKit already configured earpiece; any audio session manipulation
+            // prevents WKWebView mic track from unmuting.
+            if !self.payload.isSender && CallKitManager.shared.isAudioSessionReady {
+                return
+            }
+            
             // If route changed to speaker and we want earpiece, force it back
             let hasSpeaker = outputs.contains(.builtInSpeaker)
             let hasReceiver = outputs.contains(.builtInReceiver)
@@ -479,11 +595,9 @@ final class VoiceCallSession: ObservableObject {
             let minDelay: TimeInterval = isCategoryChange ? 0.3 : 0.5
             
             if self.shouldForceEarpiece && hasSpeaker && !hasReceiver {
-                // Only react if it's been a while since we last set earpiece
                 if now - self.lastEarpieceSetTime > minDelay {
                     print("⚠️ [VoiceCallSession] Route changed to speaker (reason: \(reason.rawValue)), forcing back to earpiece...")
                     self.lastEarpieceSetTime = now
-                    // For category changes, force immediately without delay
                     if isCategoryChange {
                         self.forceEarpieceImmediate()
                     } else {
@@ -540,6 +654,11 @@ final class VoiceCallSession: ObservableObject {
     }
 
     private func ensureAudioSessionActive() {
+        // CRITICAL: For incoming CallKit calls, do NOT touch the audio session AT ALL.
+        if !payload.isSender && CallKitManager.shared.isAudioSessionReady {
+            NSLog("🚫 [VoiceCallSession] ensureAudioSessionActive BLOCKED - incoming CallKit call, hands off!")
+            return
+        }
         guard audioSession.recordPermission == .granted else {
             NSLog("⚠️ [VoiceCallSession] Cannot activate audio - permission not granted")
             return
@@ -617,6 +736,12 @@ final class VoiceCallSession: ObservableObject {
     }
 
     private func forceEarpieceImmediate() {
+        // CRITICAL: For incoming CallKit calls, do NOT touch the audio session AT ALL.
+        // CallKit already configured earpiece in didActivate. Any overrideOutputAudioPort
+        // call prevents WKWebView mic track from transitioning muted=true → muted=false.
+        if !payload.isSender && CallKitManager.shared.isAudioSessionReady {
+            return
+        }
         guard audioSession.recordPermission == .granted else { return }
         guard !isAudioInterrupted else { return }
         guard !isSettingEarpiece else { return }
@@ -629,23 +754,17 @@ final class VoiceCallSession: ObservableObject {
         }
         
         do {
-            // Set category first to ensure proper configuration, then override port
-            // Use .voiceChat mode which is optimized for voice calls
-            // CRITICAL: Add .mixWithOthers to allow WKWebView getUserMedia() to work
-            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .mixWithOthers])
-            
-            // Only activate audio session for outgoing calls
-            // For incoming CallKit calls, CallKit manages the audio session
+            // For incoming CallKit calls, do NOT reconfigure category/mode/active.
+            // CallKit already set it up in didActivate; touching it disrupts the WKWebView mic track.
             if payload.isSender {
+                try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .mixWithOthers])
                 try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
                 print("✅ [VoiceCallSession] Audio activated for outgoing call")
-            } else {
-                print("✅ [VoiceCallSession] Audio configured (CallKit manages activation)")
+                if let builtInMic = audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
+                    try audioSession.setPreferredInput(builtInMic)
+                }
             }
-            // Override to earpiece - must be called after setActive
-            if let builtInMic = audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
-                try audioSession.setPreferredInput(builtInMic)
-            }
+            // Override to earpiece - safe for both incoming and outgoing
             try audioSession.overrideOutputAudioPort(.none)
             lastEarpieceSetTime = Date().timeIntervalSince1970
             
@@ -675,6 +794,13 @@ final class VoiceCallSession: ObservableObject {
     }
     
     private func setAudioOutput(_ output: String) {
+        // CRITICAL: For incoming CallKit calls, do NOT touch the audio session AT ALL.
+        // CallKit already configured earpiece in didActivate. Any overrideOutputAudioPort
+        // call prevents WKWebView mic track from transitioning muted=true → muted=false.
+        if !payload.isSender && CallKitManager.shared.isAudioSessionReady {
+            NSLog("🚫 [VoiceCallSession] setAudioOutput('\(output)') BLOCKED - incoming CallKit call, hands off!")
+            return
+        }
         guard audioSession.recordPermission == .granted else { return }
         guard !isAudioInterrupted else { return }
         
@@ -692,18 +818,14 @@ final class VoiceCallSession: ObservableObject {
                 isSettingEarpiece = true
                 defer { isSettingEarpiece = false }
                 
-                // Ensure category is set correctly for earpiece
-                // CRITICAL: Add .mixWithOthers to allow WKWebView getUserMedia() to work
-                try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .mixWithOthers])
-                
-                // Only activate audio for outgoing calls
-                // For incoming CallKit calls, CallKit manages activation
+                // For incoming CallKit calls, do NOT reconfigure category/mode.
+                // CallKit already set it up; only override the output port.
                 if payload.isSender {
+                    try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .mixWithOthers])
                     try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
-                }
-                
-                if let builtInMic = audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
-                    try audioSession.setPreferredInput(builtInMic)
+                    if let builtInMic = audioSession.availableInputs?.first(where: { $0.portType == .builtInMic }) {
+                        try audioSession.setPreferredInput(builtInMic)
+                    }
                 }
                 try audioSession.overrideOutputAudioPort(.none)
                 lastEarpieceSetTime = Date().timeIntervalSince1970
@@ -753,6 +875,12 @@ final class VoiceCallSession: ObservableObject {
     private func endCall() {
         NSLog("📞 [VoiceCallSession] User ended call")
         print("📞 [VoiceCallSession] Ending call and dismissing...")
+
+        // Android behavior parity: if caller ends immediately, signal receiver to dismiss incoming-call UI.
+        // Firebase path: removeCallNotification/<receiverId>/<pushKey> = <pushKey>
+        if payload.isSender {
+            sendRemoveCallNotificationIfNeeded()
+        }
         
         stopRingtone(reason: "end_call")
         cleanupFirebaseListeners()
@@ -775,6 +903,26 @@ final class VoiceCallSession: ObservableObject {
         }
         
         shouldDismiss = true
+    }
+
+    private func sendRemoveCallNotificationIfNeeded() {
+        guard !removeCallNotificationSent else { return }
+        let receiverId = payload.receiverId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !receiverId.isEmpty else {
+            NSLog("⚠️ [VoiceCallSession] sendRemoveCallNotification: receiverId missing")
+            return
+        }
+        removeCallNotificationSent = true
+
+        let ref = Database.database().reference().child("removeCallNotification").child(receiverId).childByAutoId()
+        let key = ref.key ?? UUID().uuidString
+        ref.setValue(key) { error, _ in
+            if let error = error {
+                NSLog("⚠️ [VoiceCallSession] Failed to send removeCallNotification: \(error.localizedDescription)")
+            } else {
+                NSLog("✅ [VoiceCallSession] removeCallNotification sent to receiverId=\(receiverId), key=\(key)")
+            }
+        }
     }
 
     private func sendToWebView(_ javascript: String) {

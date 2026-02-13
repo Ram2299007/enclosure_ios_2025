@@ -6,6 +6,7 @@ let isDisconnected = false;
 let selectedAudioButton = null;
 let localStream = null;
 let isInitializingStream = false; // Prevent concurrent getUserMedia() calls
+let localStreamInitPromise = null; // Single-flight promise so callers can await ongoing init
 let audioOutputInitialized = false; // Global flag to track first-time setup
 let audioContext = null; // Audio context for better audio processing
 let audioWorkletNode = null; // Audio worklet for processing
@@ -223,6 +224,17 @@ console.log('[PeerJS Config] Peer instance created with configuration above');
 
 // Enhanced audio constraints for better compatibility
 const getOptimalAudioConstraints = () => {
+    // iOS/WKWebView: Use simple constraints. Complex constraints (sampleRate, latency,
+    // googEchoCancellation etc.) can cause WKWebView's audio pipeline to fail to initialize,
+    // resulting in permanently muted=true tracks. WebRTC handles echo cancellation internally.
+    if (isIOSDevice()) {
+        console.log('🎤 [Constraints] iOS: Using simple {audio: true} for WKWebView compatibility');
+        if (typeof Android !== 'undefined' && Android.logToNative) {
+            Android.logToNative('🎤 [WebRTC] iOS: Simple audio constraints for WKWebView');
+        }
+        return { audio: true, video: false };
+    }
+
     const constraints = {
         audio: {
             echoCancellation: true,
@@ -244,10 +256,9 @@ const getOptimalAudioConstraints = () => {
     // Android-specific optimizations
     const userAgent = navigator.userAgent.toLowerCase();
     if (userAgent.includes('android')) {
-        // Optimize for Android devices
         constraints.audio.sampleRate = { ideal: 44100, min: 16000, max: 48000 };
-        constraints.audio.channelCount = { ideal: 1, min: 1, max: 1 }; // Mono for better compatibility
-        constraints.audio.latency = { ideal: 0.02, max: 0.05 }; // Lower latency for Android
+        constraints.audio.channelCount = { ideal: 1, min: 1, max: 1 };
+        constraints.audio.latency = { ideal: 0.02, max: 0.05 };
     }
 
     return constraints;
@@ -296,16 +307,22 @@ const initializeLocalStream = async () => {
         Android.logToNative('🎤 [WebRTC] initializeLocalStream() called');
     }
     
-    // CRITICAL: Prevent concurrent calls to getUserMedia()
+    // CRITICAL: Prevent concurrent calls to getUserMedia() (single-flight)
     if (isInitializingStream) {
-        console.log('⚠️ [initializeLocalStream] Already initializing - skipping');
+        console.log('⚠️ [initializeLocalStream] Already initializing - awaiting in-flight init');
         if (typeof Android !== 'undefined' && Android.logToNative) {
-            Android.logToNative('⚠️ [WebRTC] Already initializing stream - skipping duplicate call');
+            Android.logToNative('⚠️ [WebRTC] Already initializing stream - awaiting in-flight init');
         }
-        // Return existing stream if available
         if (localStream) return localStream;
-        // Wait for in-progress initialization
-        await new Promise(resolve => setTimeout(resolve, 100));
+        if (localStreamInitPromise) {
+            try {
+                return await localStreamInitPromise;
+            } catch (err) {
+                // fall through and try again below
+            }
+        }
+        // If we somehow have no promise, wait briefly then return whatever exists
+        await new Promise(resolve => setTimeout(resolve, 150));
         return localStream;
     }
     
@@ -315,20 +332,21 @@ const initializeLocalStream = async () => {
         const hasLiveTracks = tracks.length > 0 && tracks.every(t => t.readyState === 'live');
         
         if (hasLiveTracks) {
-            console.log('✅ [initializeLocalStream] Existing stream is valid - reusing it');
+            // iOS: muted=true is a TRANSIENT state - track will unmute on its own.
+            // Do NOT destroy or reinitialize. Just reuse the stream.
+            console.log('✅ [initializeLocalStream] Existing stream is valid (live tracks) - reusing it');
             if (typeof Android !== 'undefined' && Android.logToNative) {
-                Android.logToNative('✅ [WebRTC] Existing stream valid - NOT reinitializing');
+                Android.logToNative('✅ [WebRTC] Existing stream valid - reusing (muted is transient on iOS)');
                 tracks.forEach((track, i) => {
-                    Android.logToNative(`✅ [WebRTC] Existing Track ${i}: enabled=${track.enabled}, state=${track.readyState}`);
+                    Android.logToNative(`✅ [WebRTC] Existing Track ${i}: enabled=${track.enabled}, state=${track.readyState}, muted=${track.muted}`);
                 });
             }
             return localStream;
         } else {
-            console.log('🔄 [initializeLocalStream] Existing stream invalid - stopping tracks');
+            console.log('🔄 [initializeLocalStream] Existing stream has dead/ended tracks - reinitializing');
             if (typeof Android !== 'undefined' && Android.logToNative) {
                 Android.logToNative('🔄 [WebRTC] Existing stream has dead tracks - reinitializing');
             }
-            // Stop invalid tracks
             localStream.getTracks().forEach(track => track.stop());
             localStream = null;
         }
@@ -336,8 +354,8 @@ const initializeLocalStream = async () => {
     
     // Set flag to prevent concurrent calls
     isInitializingStream = true;
-    
-    try {
+
+    localStreamInitPromise = (async () => {
         const constraints = getOptimalAudioConstraints();
         console.log('🎤 [initializeLocalStream] Calling getUserMedia() with constraints:', JSON.stringify(constraints));
         if (typeof Android !== 'undefined' && Android.logToNative) {
@@ -346,7 +364,7 @@ const initializeLocalStream = async () => {
 
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         localStream = stream;
-        
+
         console.log('✅ [initializeLocalStream] getUserMedia() returned stream');
         if (typeof Android !== 'undefined' && Android.logToNative) {
             Android.logToNative('✅ [WebRTC] getUserMedia() returned stream successfully');
@@ -361,35 +379,95 @@ const initializeLocalStream = async () => {
         if (typeof Android !== 'undefined' && Android.logToNative) {
             Android.logToNative('✅ [WebRTC] Got ' + audioTracks.length + ' audio tracks from getUserMedia()');
         }
-        
+
         audioTracks.forEach((track, index) => {
             track.enabled = true;
             console.log(`✅ [initializeLocalStream] Track ${index}: id=${track.id}, enabled=${track.enabled}, state=${track.readyState}, muted=${track.muted}`);
             if (typeof Android !== 'undefined' && Android.logToNative) {
                 Android.logToNative(`✅ [WebRTC] Track ${index}: id=${track.id}, enabled=${track.enabled}, state=${track.readyState}, muted=${track.muted}`);
-                
-                // Warn if track is muted on creation
-                if (track.muted) {
-                    Android.logToNative(`⚠️ [WebRTC] Track ${index} created MUTED - waiting for unmute event`);
-                }
             }
-            
-            // Listen for unmute event
-            track.addEventListener('unmute', () => {
-                console.log(`✅ [WebRTC] Track ${index} UNMUTED!`);
+
+            // iOS: muted=true is TRANSIENT. Listen for unmute event to push track to peers.
+            if (isIOSDevice() && track.muted) {
+                console.log('🔄 [initializeLocalStream] iOS: Track muted=true (transient) - waiting for unmute');
                 if (typeof Android !== 'undefined' && Android.logToNative) {
-                    Android.logToNative(`✅✅✅ [WebRTC] Track ${index} UNMUTED - microphone is now producing audio!`);
+                    Android.logToNative('🔄 [WebRTC] iOS: Track muted=true (transient) - onunmute + polling started');
                 }
-            });
-            
-            // Listen for mute event (for debugging - overlay shown elsewhere)
-            track.addEventListener('mute', () => {
-                console.log(`⚠️ [WebRTC] Track ${index} MUTED!`);
-                if (typeof Android !== 'undefined' && Android.logToNative) {
-                    Android.logToNative(`⚠️⚠️⚠️ [WebRTC] Track ${index} became MUTED!`);
-                }
-                // Note: Overlay is shown from markConnectedIfNeeded() when muted track is detected
-            });
+                let unmuteFired = false;
+                const handleUnmute = () => {
+                    if (unmuteFired) return;
+                    unmuteFired = true;
+                    console.log('✅✅✅ [initializeLocalStream] iOS: Track UNMUTED! Pushing to peer connections now.');
+                    if (typeof Android !== 'undefined' && Android.logToNative) {
+                        Android.logToNative('✅✅✅ [WebRTC] iOS: Track UNMUTED! Calling refreshOutgoingAudio()');
+                    }
+                    refreshOutgoingAudio(localStream);
+                };
+                // Method 1: onunmute event
+                track.onunmute = handleUnmute;
+
+                // Method 2: AudioContext warmup - forces WebKit to connect mic to audio graph
+                const tryAudioContextWarmup = (delayLabel) => {
+                    if (unmuteFired) return;
+                    try {
+                        const warmupCtx = new (window.AudioContext || window.webkitAudioContext)();
+                        const src = warmupCtx.createMediaStreamSource(stream);
+                        // Connect to a gain node set to 0 (no audible output, but activates graph)
+                        const gain = warmupCtx.createGain();
+                        gain.gain.value = 0;
+                        src.connect(gain);
+                        gain.connect(warmupCtx.destination);
+                        warmupCtx.resume().then(() => {
+                            console.log('🔊 [iOS] AudioContext warmup (' + delayLabel + ') - state:', warmupCtx.state);
+                            if (typeof Android !== 'undefined' && Android.logToNative) {
+                                Android.logToNative('🔊 [WebRTC] iOS: AudioContext warmup (' + delayLabel + ') state=' + warmupCtx.state);
+                            }
+                            // Disconnect after a moment - we just needed to kick the graph
+                            setTimeout(() => {
+                                try { src.disconnect(); gain.disconnect(); warmupCtx.close(); } catch(e) {}
+                            }, 2000);
+                        }).catch(e => console.warn('AudioContext warmup resume failed:', e));
+                    } catch(e) {
+                        console.warn('AudioContext warmup failed (' + delayLabel + '):', e);
+                    }
+                };
+                // Try warmup at 2s and 5s if still muted
+                setTimeout(() => tryAudioContextWarmup('2s'), 2000);
+                setTimeout(() => tryAudioContextWarmup('5s'), 5000);
+
+                // Method 3: Fallback polling (onunmute may not fire in WKWebView)
+                let pollCount = 0;
+                const pollInterval = setInterval(() => {
+                    pollCount++;
+                    if (!track.muted && track.readyState === 'live') {
+                        clearInterval(pollInterval);
+                        console.log('✅ [initializeLocalStream] iOS: Poll detected track unmuted (poll #' + pollCount + ')');
+                        if (typeof Android !== 'undefined' && Android.logToNative) {
+                            Android.logToNative('✅ [WebRTC] iOS: Poll detected unmute at poll #' + pollCount);
+                        }
+                        handleUnmute();
+                    } else if (pollCount >= 30) { // 15 seconds max
+                        clearInterval(pollInterval);
+                        console.warn('⚠️ [initializeLocalStream] iOS: Track still muted after 15s polling');
+                        if (typeof Android !== 'undefined' && Android.logToNative) {
+                            Android.logToNative('⚠️ [WebRTC] iOS: Track still muted after 15s - trying fresh getUserMedia');
+                        }
+                        // Last resort: stop old tracks, fresh getUserMedia
+                        if (!unmuteFired && localStream) {
+                            if (typeof Android !== 'undefined' && Android.logToNative) {
+                                Android.logToNative('🔄 [WebRTC] iOS: Fresh getUserMedia last resort');
+                            }
+                            localStream.getTracks().forEach(t => t.stop());
+                            localStream = null;
+                            localStreamInitPromise = null;
+                            isInitializingStream = false;
+                            initializeLocalStream().then(s => {
+                                if (s) refreshOutgoingAudio(s);
+                            }).catch(e => console.error('Last resort getUserMedia failed:', e));
+                        }
+                    }
+                }, 500);
+            }
 
             // Set track constraints for better quality
             if (track.getCapabilities) {
@@ -429,15 +507,8 @@ const initializeLocalStream = async () => {
         isAudioInitialized = true;
         applyMuteStateToStream('local_stream_ready');
         console.log('Enhanced local audio stream initialized successfully');
-        
-        // REMOVED: playSilentAudioToWakeIOS() was RE-MUTING the working track!
-        // After remote audio plays, iOS is already "awake" - silent audio interferes
-        if (isIOSDevice()) {
-            console.log('✅ [initializeLocalStream] iOS device - relying on remote audio to wake system');
-            if (typeof Android !== 'undefined' && Android.logToNative) {
-                Android.logToNative('✅ [WebRTC] iOS: Skipping silent audio (would re-mute working track)');
-            }
-        } else {
+
+        if (!isIOSDevice()) {
             // Non-iOS: Try direct resume
             if (audioContext && audioContext.state === 'suspended') {
                 console.log('🔧 [initializeLocalStream] Audio context suspended, resuming NOW...');
@@ -457,14 +528,14 @@ const initializeLocalStream = async () => {
                 });
             }
         }
-        
-        // Clear initialization flag
-        isInitializingStream = false;
-        return stream;
 
+        return stream;
+    })();
+
+    try {
+        const resultStream = await localStreamInitPromise;
+        return resultStream;
     } catch (err) {
-        // Clear initialization flag on error
-        isInitializingStream = false;
         console.error('❌ [initializeLocalStream] getUserMedia() failed:', err);
         console.error('❌ [initializeLocalStream] Error name:', err.name);
         console.error('❌ [initializeLocalStream] Error message:', err.message);
@@ -529,6 +600,10 @@ const initializeLocalStream = async () => {
             }
         }
         throw err;
+    } finally {
+        // Always clear flags
+        isInitializingStream = false;
+        localStreamInitPromise = null;
     }
 };
 
@@ -565,101 +640,9 @@ const showMicPermissionOverlay = () => {
     }
 };
 
-// iOS-specific: Prompt user to tap to activate microphone during call
-const showMicrophoneActivationPrompt = () => {
-    // Don't show if already showing
-    if (document.getElementById('ios-mic-activate-overlay')) return;
-    
-    console.log('🔔 [iOS] Showing microphone activation prompt');
-    if (typeof Android !== 'undefined' && Android.logToNative) {
-        Android.logToNative('🔔 [WebRTC] Showing user tap prompt to activate microphone');
-    }
-    
-    const overlay = document.createElement('div');
-    overlay.id = 'ios-mic-activate-overlay';
-    overlay.style.position = 'fixed';
-    overlay.style.inset = '0';
-    overlay.style.background = 'rgba(0,0,0,0.85)';
-    overlay.style.display = 'flex';
-    overlay.style.flexDirection = 'column';
-    overlay.style.alignItems = 'center';
-    overlay.style.justifyContent = 'center';
-    overlay.style.zIndex = '10000';
-    overlay.style.color = '#fff';
-    overlay.style.fontFamily = '-apple-system, BlinkMacSystemFont, sans-serif';
-    overlay.style.padding = '20px';
-    overlay.style.textAlign = 'center';
-    overlay.innerHTML = `
-        <div style="font-size:48px;margin-bottom:20px;">🎤</div>
-        <div style="font-size:18px;font-weight:600;margin-bottom:8px;">Microphone Inactive</div>
-        <div style="font-size:14px;margin-bottom:24px;opacity:0.8;">Tap below to activate your microphone</div>
-        <button id="ios-mic-activate-button" style="padding:14px 32px;border-radius:25px;border:none;background:#10B981;color:#fff;font-size:16px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(16,185,129,0.3);">Activate Microphone</button>
-    `;
-    document.body.appendChild(overlay);
-    
-    const button = document.getElementById('ios-mic-activate-button');
-    if (button) {
-        button.addEventListener('click', async () => {
-            console.log('👆 [iOS] User tapped activate button');
-            if (typeof Android !== 'undefined' && Android.logToNative) {
-                Android.logToNative('👆👆👆 [WebRTC] User tapped to activate microphone!');
-            }
-            
-            try {
-                // Request microphone with explicit user gesture
-                const newStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                
-                if (typeof Android !== 'undefined' && Android.logToNative) {
-                    Android.logToNative('✅✅✅ [WebRTC] getUserMedia() SUCCESS after user tap!');
-                    newStream.getAudioTracks().forEach((track, i) => {
-                        Android.logToNative(`✅ [WebRTC] Track ${i}: enabled=${track.enabled}, state=${track.readyState}, muted=${track.muted}`);
-                    });
-                }
-                
-                // Stop old stream
-                if (localStream) {
-                    localStream.getTracks().forEach(t => t.stop());
-                }
-                
-                localStream = newStream;
-                
-                // Replace track in all peer connections
-                Object.keys(peers).forEach(peerId => {
-                    const peerData = peers[peerId];
-                    if (peerData && peerData.call && peerData.call.peerConnection) {
-                        const senders = peerData.call.peerConnection.getSenders();
-                        senders.forEach(sender => {
-                            if (sender.track && sender.track.kind === 'audio') {
-                                const newTrack = newStream.getAudioTracks()[0];
-                                sender.replaceTrack(newTrack).then(() => {
-                                    console.log('✅ [WebRTC] Track replaced after user tap');
-                                    if (typeof Android !== 'undefined' && Android.logToNative) {
-                                        Android.logToNative('✅✅✅ [WebRTC] Track replaced - mic active!');
-                                    }
-                                }).catch(err => {
-                                    console.error('❌ [WebRTC] Failed to replace track:', err);
-                                    if (typeof Android !== 'undefined' && Android.logToNative) {
-                                        Android.logToNative('❌ [WebRTC] Replace failed: ' + err.message);
-                                    }
-                                });
-                            }
-                        });
-                    }
-                });
-                
-                // Remove overlay on success
-                overlay.remove();
-                
-            } catch (err) {
-                console.error('❌ [iOS] Failed to activate microphone after user tap:', err);
-                if (typeof Android !== 'undefined' && Android.logToNative) {
-                    Android.logToNative('❌ [WebRTC] User tap activation failed: ' + err.message);
-                }
-                // Keep overlay visible so user can try again
-            }
-        });
-    }
-};
+// Removed: showMicrophoneActivationPrompt - no longer used.
+// Mic is fixed by: iOS 500ms delay + reinitialize when existing stream has muted tracks.
+const showMicrophoneActivationPrompt = () => { /* no-op */ };
 
 const peers = {};
 const maxParticipants = 4; // Including local user
@@ -790,9 +773,8 @@ function ensureLocalMicActive(reason) {
     const hasStream = !!localStream;
     const tracks = localStream ? localStream.getAudioTracks() : [];
     const hasLiveTrack = tracks.some(t => t.readyState === 'live');
-    const hasMutedLiveTrack = tracks.some(t => t.readyState === 'live' && t.muted);
 
-    if (!hasStream || !hasLiveTrack || (!isMicMuted && hasMutedLiveTrack)) {
+    if (!hasStream || !hasLiveTrack) {
         console.warn('[MicRecovery] Local stream missing or ended, reinitializing:', reason);
         initializeLocalStream()
             .then(stream => {
@@ -806,14 +788,19 @@ function ensureLocalMicActive(reason) {
         return;
     }
 
-    if (!isMicMuted) {
-        tracks.forEach(track => {
-            if (!track.enabled) {
-                console.warn('[MicRecovery] Enabling muted track:', reason);
-                track.enabled = true;
-            }
-        });
-    }
+    // On iOS, track.muted=true is TRANSIENT (read-only, set by OS).
+    // Do NOT treat it as needing reinit. The onunmute handler will fire.
+    // Just ensure track.enabled=true so audio flows once iOS unmutes.
+    tracks.forEach(track => {
+        if (!track.enabled) {
+            console.warn('[MicRecovery] Enabling disabled track:', reason);
+            track.enabled = true;
+        }
+    });
+
+    // Always try to push current stream to peers (in case sender track is stale/ended)
+    refreshOutgoingAudio(localStream);
+    console.log('[MicRecovery] ensureLocalMicActive done:', reason, 'tracks:', tracks.length);
 }
 
 function startCallTimer() {
@@ -1399,52 +1386,11 @@ function setupCallStreamListener(call) {
                                 Android.logToNative(`❌ [WebRTC] Track ${index} state is ${track.readyState} (should be 'live')`);
                             }
                             if (track.muted) {
-                                Android.logToNative(`❌❌❌ [WebRTC] Track ${index} is MUTED!`);
-                                Android.logToNative(`🔧 [WebRTC] Attempting to fix muted track...`);
-                                
-                                // iOS-specific: Show user interaction prompt
-                                if (isIOSDevice()) {
-                                    Android.logToNative(`🔔🔔🔔 [WebRTC] Showing microphone activation overlay for iOS!`);
-                                    showMicrophoneActivationPrompt();
-                                }
-                                
-                                // Listen for unmute event
-                                track.addEventListener('unmute', () => {
-                                    console.log(`✅ [WebRTC] Track ${index} UNMUTED!`);
-                                    if (typeof Android !== 'undefined' && Android.logToNative) {
-                                        Android.logToNative(`✅✅✅ [WebRTC] Track ${index} UNMUTED - audio should flow now!`);
-                                    }
-                                });
-                                
-                                // Try to wake iOS audio system if it's suspended
-                                if (audioContext) {
-                                    Android.logToNative(`🔧 [WebRTC] Audio context state: ${audioContext.state}`);
-                                    if (audioContext.state === 'suspended') {
-                                        Android.logToNative(`🔊 [WebRTC] Playing silent audio to wake iOS in muted track recovery...`);
-                                        
-                                        // Set a timeout to detect if wake/resume hangs
-                                        const wakeTimeout = setTimeout(() => {
-                                            Android.logToNative(`⏰ [WebRTC] iOS audio wake taking > 2s - may still be blocked`);
-                                        }, 2000);
-                                        
-                                        // Use silent audio trick for iOS
-                                        playSilentAudioToWakeIOS().then(() => {
-                                            clearTimeout(wakeTimeout);
-                                            Android.logToNative(`✅✅✅ [WebRTC] iOS audio wake complete in muted track recovery!`);
-                                        }).catch(err => {
-                                            clearTimeout(wakeTimeout);
-                                            Android.logToNative(`❌ [WebRTC] iOS audio wake failed: ${err.message}`);
-                                        });
-                                    } else {
-                                        Android.logToNative(`ℹ️ [WebRTC] Audio context already ${audioContext.state} - no wake needed`);
-                                    }
-                                }
-                                
-                                // Ensure track is enabled
-                                if (!track.enabled) {
-                                    track.enabled = true;
-                                    Android.logToNative(`🔧 [WebRTC] Track enabled set to true`);
-                                }
+                                Android.logToNative(`❌ [WebRTC] Track ${index} is MUTED (diagnostic only - no overlay)`);
+                            }
+                            if (!track.enabled) {
+                                track.enabled = true;
+                                Android.logToNative(`🔧 [WebRTC] Track enabled set to true`);
                             }
                         }
                     });
@@ -1547,19 +1493,6 @@ function setupCallStreamListener(call) {
                 console.log('🔊 [WebRTC] Remote audio PLAYING - iOS audio system is active');
                 if (typeof Android !== 'undefined' && Android.logToNative) {
                     Android.logToNative('🔊 [WebRTC] Remote audio PLAYING - now iOS should allow local capture');
-                }
-                
-                // DISABLED: Automatic re-request doesn't work - iOS blocks it
-                // Instead, we show a user interaction prompt via showMicrophoneActivationPrompt()
-                if (isIOSDevice() && localStream) {
-                    const audioTracks = localStream.getAudioTracks();
-                    if (audioTracks.length > 0 && audioTracks[0].muted) {
-                        console.log('🔔 [WebRTC] Local track muted - will show user prompt');
-                        if (typeof Android !== 'undefined' && Android.logToNative) {
-                            Android.logToNative('🔔 [WebRTC] Track muted - waiting for user tap prompt');
-                        }
-                        // Prompt will be shown by mute event listener
-                    }
                 }
                 
                 markConnectedIfNeeded('Audio is playing - call is actually connected on BOTH sides');
@@ -1806,6 +1739,25 @@ endCallBtn.addEventListener('click', () => {
     }
 });
 
+// Release microphone only (stops local stream tracks). Called by native before ending call
+// so iOS releases the mic before CallKit deactivates - avoids orange dot flash on dismiss.
+function releaseMicrophone() {
+    if (localStream) {
+        try {
+            localStream.getTracks().forEach(track => {
+                track.stop();
+                track.enabled = false;
+            });
+        } catch (e) {
+            console.warn('releaseMicrophone:', e);
+        }
+        localStream = null;
+        if (typeof Android !== 'undefined' && Android.logToNative) {
+            Android.logToNative('🎤 [WebRTC] releaseMicrophone() - local stream released');
+        }
+    }
+}
+
 function endCall() {
     console.log('Ending call');
     // Note: Android.endCall() is already called from button handler
@@ -1950,7 +1902,23 @@ peer.on('open', id => {
         Android.logToNative('📞 [WebRTC] Calling getUserMedia() to get local stream...');
     }
     
-    initializeLocalStream()
+    // iOS: Delay getUserMedia so CallKit audio session is fully stable before capture.
+    // Without this, track often starts muted and the mic doesn't show in Dynamic Island.
+    const delayMs = isIOSDevice() ? 2000 : 0;
+    const doInitializeLocalStream = () => {
+        if (delayMs && typeof Android !== 'undefined' && Android.logToNative) {
+            Android.logToNative('🎤 [WebRTC] iOS: Starting getUserMedia() after ' + delayMs + 'ms delay (session warm)');
+        }
+        return initializeLocalStream();
+    };
+    
+    const streamPromise = delayMs
+        ? new Promise((resolve, reject) => {
+            setTimeout(() => doInitializeLocalStream().then(resolve).catch(reject), delayMs);
+        })
+        : doInitializeLocalStream();
+    
+    streamPromise
         .then(stream => {
             localStream = stream;
             console.log('✅ [WebRTC] Local stream initialized in peer open');
@@ -2015,62 +1983,36 @@ peer.on('call', incomingCall => {
         Android.logToNative('📞 [WebRTC] Local stream status: ' + (localStream ? 'EXISTS' : 'NULL'));
     }
 
-    if (!localStream) {
-        console.log('❌ [WebRTC] No local stream - initializing NOW for incoming call');
-        if (typeof Android !== 'undefined' && Android.logToNative) {
-            Android.logToNative('❌ [WebRTC] NO local stream - calling getUserMedia() now');
-        }
-        
-        initializeLocalStream()
-            .then(stream => {
-                localStream = stream;
-                console.log('✅ [WebRTC] Local stream initialized for incoming call');
-                console.log('✅ [WebRTC] Audio tracks:', stream.getAudioTracks().length);
-                
-                if (typeof Android !== 'undefined' && Android.logToNative) {
-                    Android.logToNative('✅ [WebRTC] getUserMedia() SUCCESS - got local stream');
-                    Android.logToNative('✅ [WebRTC] Audio tracks: ' + stream.getAudioTracks().length);
-                    stream.getAudioTracks().forEach((track, i) => {
-                        Android.logToNative(`✅ [WebRTC] Track ${i}: enabled=${track.enabled}, state=${track.readyState}`);
-                    });
-                }
-
-                // Answer the call with the local stream
-                incomingCall.answer(stream);
-                peers[incomingCall.peer] = { call: incomingCall, remoteStream: null };
-                setupCallStreamListener(incomingCall);
-                updateParticipantsUI();
-
-                console.log('Call answered successfully');
-                if (typeof Android !== 'undefined' && Android.logToNative) {
-                    Android.logToNative('✅ [WebRTC] Call answered with valid local stream');
-                }
-            })
-            .catch(err => {
-                console.error('❌ [WebRTC] Failed to get local audio stream for call:', err);
-                if (typeof Android !== 'undefined' && Android.logToNative) {
-                    Android.logToNative('❌❌❌ [WebRTC] getUserMedia() FAILED: ' + err.message);
-                }
-                callStatus.textContent = 'Failed to access microphone';
-            });
-    } else {
-        console.log('✅ [WebRTC] Using existing local stream');
-        if (typeof Android !== 'undefined' && Android.logToNative) {
-            Android.logToNative('✅ [WebRTC] Local stream already exists');
-            Android.logToNative('✅ [WebRTC] Audio tracks: ' + localStream.getAudioTracks().length);
-            localStream.getAudioTracks().forEach((track, i) => {
-                Android.logToNative(`✅ [WebRTC] Track ${i}: enabled=${track.enabled}, state=${track.readyState}`);
-            });
-        }
-        
-        // Answer the call with existing local stream
-        incomingCall.answer(localStream);
-        peers[incomingCall.peer] = { call: incomingCall, remoteStream: null };
-        setupCallStreamListener(incomingCall);
-        updateParticipantsUI();
-
-        console.log('Call answered with existing stream');
+    if (typeof Android !== 'undefined' && Android.logToNative) {
+        Android.logToNative('📞 [WebRTC] Answering incoming peer call - ensuring local stream first');
     }
+
+    initializeLocalStream()
+        .then(stream => {
+            if (!stream) {
+                throw new Error('Local stream unavailable after initialization');
+            }
+            localStream = stream;
+            console.log('✅ [WebRTC] Local stream ready for incoming call. Audio tracks:', stream.getAudioTracks().length);
+            if (typeof Android !== 'undefined' && Android.logToNative) {
+                Android.logToNative('✅ [WebRTC] Local stream ready for incoming call (tracks=' + stream.getAudioTracks().length + ')');
+                stream.getAudioTracks().forEach((track, i) => {
+                    Android.logToNative(`✅ [WebRTC] Track ${i}: enabled=${track.enabled}, state=${track.readyState}, muted=${track.muted}`);
+                });
+            }
+
+            incomingCall.answer(stream);
+            peers[incomingCall.peer] = { call: incomingCall, remoteStream: null };
+            setupCallStreamListener(incomingCall);
+            updateParticipantsUI();
+        })
+        .catch(err => {
+            console.error('❌ [WebRTC] Failed to prepare local stream for incoming call:', err);
+            if (typeof Android !== 'undefined' && Android.logToNative) {
+                Android.logToNative('❌❌❌ [WebRTC] Failed to prepare local stream for incoming call: ' + err.message);
+            }
+            callStatus.textContent = 'Failed to access microphone';
+        });
 });
 
 peer.on('connection', conn => {
@@ -2493,8 +2435,8 @@ function highlightAudioOption(output, themeColor) {
 }
 
 function restoreMuteState() {
-    isMicMuted = getSavedMuteState();
-    applyMuteStateToStream('restore');
+    isMicMuted = false;
+    applyMuteStateToStream('restore_force_unmuted');
 }
 
 
@@ -2784,7 +2726,7 @@ document.addEventListener('DOMContentLoaded', () => {
     monitorAudioHealth();
 
     // Initialize existing functionality
-    restoreMuteState();
+    applyMuteStateToStream('startup_force_unmuted');
     const voiceContainer = document.querySelector('.voice-container');
     const controlsContainer = document.querySelector('.controls-container');
     const topBar = document.querySelector('.top-bar');
@@ -2873,6 +2815,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.setCallStatus = setCallStatus;
     window.startCall = startCall; // Expose startCall function for Android
     window.handleNetworkResume = handleNetworkResume; // Expose network resume handler
+    window.releaseMicrophone = releaseMicrophone; // Release mic before native ends call (avoids orange dot flash)
 
     console.log('Voice call script initialized with global functions exposed');
 });
