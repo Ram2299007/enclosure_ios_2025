@@ -32,6 +32,13 @@ final class VideoCallSession: ObservableObject {
     private var ringtoneSystemSoundTimer: Timer?
     private var proximityObserver: NSObjectProtocol?
 
+    private var callKitAudioReadyObserver: NSObjectProtocol?
+    private var isWaitingForCallKitAudio = false
+
+    private var mediaStartRetryWorkItem: DispatchWorkItem?
+
+    private var isPageReady = false
+
     private var removeCallNotificationSent = false
 
     init(payload: VideoCallPayload) {
@@ -61,12 +68,35 @@ final class VideoCallSession: ObservableObject {
 
     func start() {
         isCallConnected = false
+        isPageReady = false
         requestCameraAndMicrophoneAccess()
         databaseRef = Database.database().reference()
         setupFirebaseListeners()
         startObservingAudioInterruptions()
         if payload.isSender {
             startRingtone()
+        } else {
+            // Incoming CallKit call: wait for CallKit to finish activating audio session before starting getUserMedia.
+            if CallKitManager.shared.isAudioSessionReady {
+                attemptStartLocalMedia(reason: "callkit_audio_already_ready")
+            } else {
+                isWaitingForCallKitAudio = true
+                callKitAudioReadyObserver = NotificationCenter.default.addObserver(
+                    forName: NSNotification.Name("CallKitAudioSessionReady"),
+                    object: nil,
+                    queue: .main
+                ) { [weak self] _ in
+                    guard let self, self.isWaitingForCallKitAudio else { return }
+                    self.isWaitingForCallKitAudio = false
+                    self.attemptStartLocalMedia(reason: "callkit_audio_ready")
+                }
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                    guard let self, self.isWaitingForCallKitAudio else { return }
+                    self.isWaitingForCallKitAudio = false
+                    self.attemptStartLocalMedia(reason: "callkit_audio_timeout")
+                }
+            }
         }
     }
 
@@ -75,6 +105,15 @@ final class VideoCallSession: ObservableObject {
         stopObservingAudioInterruptions()
         stopRingtone(reason: "session_stop")
         disableProximitySensor()
+
+        mediaStartRetryWorkItem?.cancel()
+        mediaStartRetryWorkItem = nil
+
+        if let observer = callKitAudioReadyObserver {
+            NotificationCenter.default.removeObserver(observer)
+            callKitAudioReadyObserver = nil
+        }
+        isWaitingForCallKitAudio = false
     }
 
     func handleMessage(_ message: [String: Any]) {
@@ -149,10 +188,11 @@ final class VideoCallSession: ObservableObject {
         let safeName = payload.receiverName.isEmpty ? "Name" : payload.receiverName
         sendToWebView("setRemoteCallerInfo('\(jsEscaped(safePhoto))', '\(jsEscaped(safeName))')")
         sendToWebView("setThemeColor('\(jsEscaped(Constant.themeColor))')")
+        isPageReady = true
         // Default: start unmuted (do not restore saved mute state so mic is unmuted by default)
-        // Re-trigger camera/mic after page is ready (guard in JS prevents double init)
+        // Start local media after page is ready (guard in JS prevents double init)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.sendToWebView("if (typeof startLocalStreamWithRetry === 'function') { startLocalStreamWithRetry(0); }")
+            self?.attemptStartLocalMedia(reason: "page_ready")
         }
     }
 
@@ -242,22 +282,92 @@ final class VideoCallSession: ObservableObject {
     func requestCameraAndMicrophonePermissionIfNeeded() {
         let cameraStatus = AVCaptureDevice.authorizationStatus(for: .video)
         let micStatus = audioSession.recordPermission
-        
+
         print("📹 [VideoCallSession] Checking permissions - Camera: \(cameraStatus.rawValue), Mic: \(micStatus.rawValue)")
-        
+
         if cameraStatus == .notDetermined {
             print("📹 [VideoCallSession] Requesting camera permission...")
-            AVCaptureDevice.requestAccess(for: .video) { granted in
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                 print("📹 [VideoCallSession] Camera permission result: \(granted)")
+                DispatchQueue.main.async {
+                    self?.attemptStartLocalMedia(reason: "camera_permission_result")
+                }
             }
         }
-        
+
         if micStatus == .undetermined {
             print("🎤 [VideoCallSession] Requesting microphone permission...")
-            audioSession.requestRecordPermission { granted in
+            audioSession.requestRecordPermission { [weak self] granted in
                 print("🎤 [VideoCallSession] Microphone permission result: \(granted)")
+                DispatchQueue.main.async {
+                    self?.attemptStartLocalMedia(reason: "mic_permission_result")
+                }
             }
         }
+
+        attemptStartLocalMedia(reason: "permission_check")
+    }
+
+    private func attemptStartLocalMedia(reason: String) {
+        guard let webView else { return }
+
+        // Don't start getUserMedia until the page JS is ready.
+        guard isPageReady else { return }
+
+        // For incoming CallKit calls, don't start getUserMedia until CallKit has activated audio.
+        if !payload.isSender, !CallKitManager.shared.isAudioSessionReady {
+            return
+        }
+
+        let cameraStatus = AVCaptureDevice.authorizationStatus(for: .video)
+        let micStatus = audioSession.recordPermission
+        guard cameraStatus == .authorized, micStatus == .granted else {
+            return
+        }
+
+        let js = "if (typeof startLocalStreamWithRetry === 'function') { startLocalStreamWithRetry(0); } else if (typeof initializeLocalStream === 'function') { initializeLocalStream().catch(function(){}); }"
+        webView.evaluateJavaScript(js) { _, error in
+            if let error = error {
+                print("⚠️ [VideoCallSession] Failed to start local media (\(reason)): \(error.localizedDescription)")
+            } else {
+                print("📹 [VideoCallSession] Triggered local media start (\(reason))")
+            }
+        }
+
+        scheduleMediaStartVerificationAndRetry(webView: webView)
+    }
+
+    private func scheduleMediaStartVerificationAndRetry(webView: WKWebView) {
+        guard !payload.isSender else { return }
+
+        mediaStartRetryWorkItem?.cancel()
+
+        let work = DispatchWorkItem { [weak self, weak webView] in
+            guard let self, let webView else { return }
+
+            if UIApplication.shared.applicationState != .active {
+                return
+            }
+
+            let checkJS = "(function(){try{var s=window.localStream; if(!s) return false; var ts=s.getTracks? s.getTracks(): []; if(!ts||!ts.length) return false; for(var i=0;i<ts.length;i++){var t=ts[i]; if(t && t.readyState==='live') return true;} return false;}catch(e){return false;}})();"
+            webView.evaluateJavaScript(checkJS) { [weak self] result, _ in
+                guard let self else { return }
+                let started = (result as? Bool) ?? false
+                if started {
+                    return
+                }
+
+                let retryJS = "if (typeof startLocalStreamWithRetry === 'function') { startLocalStreamWithRetry(0); } else if (typeof initializeLocalStream === 'function') { initializeLocalStream().catch(function(){}); }"
+                webView.evaluateJavaScript(retryJS, completionHandler: nil)
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    self.scheduleMediaStartVerificationAndRetry(webView: webView)
+                }
+            }
+        }
+
+        mediaStartRetryWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: work)
     }
 
     private func requestCameraAndMicrophoneAccess() {
@@ -290,6 +400,7 @@ final class VideoCallSession: ObservableObject {
         switch audioSession.recordPermission {
         case .granted:
             ensureAudioSessionActive()
+            attemptStartLocalMedia(reason: "mic_already_granted")
         case .denied:
             DispatchQueue.main.async {
                 Constant.showToast(message: "Microphone permission is required for video calls.")
@@ -299,6 +410,7 @@ final class VideoCallSession: ObservableObject {
                 DispatchQueue.main.async {
                     if granted {
                         self?.ensureAudioSessionActive()
+                        self?.attemptStartLocalMedia(reason: "mic_granted_request")
                     } else {
                         Constant.showToast(message: "Microphone permission is required for video calls.")
                     }

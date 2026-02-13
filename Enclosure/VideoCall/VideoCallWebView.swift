@@ -269,44 +269,95 @@ struct VideoCallWebView: UIViewRepresentable {
                      initiatedByFrame frame: WKFrameInfo,
                      type: WKMediaCaptureType,
                      decisionHandler: @escaping (WKPermissionDecision) -> Void) {
-            let isCamera = (type == .camera)
-            print("📹 [VideoCallWebView] Media capture permission requested - type: \(isCamera ? "camera" : "microphone")")
+            let typeLabel: String
+            switch type {
+            case .camera:
+                typeLabel = "camera"
+            case .microphone:
+                typeLabel = "microphone"
+            case .cameraAndMicrophone:
+                typeLabel = "cameraAndMicrophone"
+            @unknown default:
+                typeLabel = "unknown"
+            }
+            print("📹 [VideoCallWebView] Media capture permission requested - type: \(typeLabel)")
             
             func complete(_ decision: WKPermissionDecision) {
                 DispatchQueue.main.async {
                     decisionHandler(decision)
                 }
             }
-            
-            if isCamera {
-                let cameraStatus = AVCaptureDevice.authorizationStatus(for: .video)
-                if cameraStatus == .authorized {
-                    print("✅ [VideoCallWebView] Camera permission granted")
-                    complete(.grant)
-                } else if cameraStatus == .notDetermined {
-                    AVCaptureDevice.requestAccess(for: .video) { granted in
-                        print("📹 [VideoCallWebView] Camera permission request result: \(granted)")
-                        complete(granted ? .grant : .deny)
-                    }
-                } else {
-                    print("⚠️ [VideoCallWebView] Camera permission denied (status: \(cameraStatus.rawValue))")
-                    complete(.deny)
-                }
-            } else {
-                let micStatus = AVAudioSession.sharedInstance().recordPermission
-                if micStatus == .granted {
-                    print("✅ [VideoCallWebView] Microphone permission granted")
-                    complete(.grant)
-                } else if micStatus == .undetermined {
-                    AVAudioSession.sharedInstance().requestRecordPermission { granted in
+
+            let audioSession = AVAudioSession.sharedInstance()
+
+            func requestMic(_ done: @escaping () -> Void) {
+                if audioSession.recordPermission == .undetermined {
+                    audioSession.requestRecordPermission { granted in
                         print("🎤 [VideoCallWebView] Microphone permission request result: \(granted)")
-                        complete(granted ? .grant : .deny)
+                        DispatchQueue.main.async { done() }
                     }
                 } else {
-                    print("⚠️ [VideoCallWebView] Microphone permission denied")
-                    complete(.deny)
+                    done()
                 }
             }
+
+            func requestCamera(_ done: @escaping () -> Void) {
+                if AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined {
+                    AVCaptureDevice.requestAccess(for: .video) { granted in
+                        print("📹 [VideoCallWebView] Camera permission request result: \(granted)")
+                        DispatchQueue.main.async { done() }
+                    }
+                } else {
+                    done()
+                }
+            }
+
+            if type == .camera {
+                requestCamera {
+                    let status = AVCaptureDevice.authorizationStatus(for: .video)
+                    if status == .authorized {
+                        print("✅ [VideoCallWebView] Camera permission granted")
+                        complete(.grant)
+                    } else {
+                        print("⚠️ [VideoCallWebView] Camera permission denied (status: \(status.rawValue))")
+                        complete(.deny)
+                    }
+                }
+                return
+            }
+
+            if type == .microphone {
+                requestMic {
+                    let status = AVAudioSession.sharedInstance().recordPermission
+                    if status == .granted {
+                        print("✅ [VideoCallWebView] Microphone permission granted")
+                        complete(.grant)
+                    } else {
+                        print("⚠️ [VideoCallWebView] Microphone permission denied")
+                        complete(.deny)
+                    }
+                }
+                return
+            }
+
+            if type == .cameraAndMicrophone {
+                requestCamera {
+                    requestMic {
+                        let cam = AVCaptureDevice.authorizationStatus(for: .video)
+                        let mic = AVAudioSession.sharedInstance().recordPermission
+                        let ok = (cam == .authorized && mic == .granted)
+                        if ok {
+                            print("✅ [VideoCallWebView] Camera+Microphone permissions granted")
+                        } else {
+                            print("⚠️ [VideoCallWebView] Camera+Microphone not granted (camera=\(cam.rawValue), mic=\(mic.rawValue))")
+                        }
+                        complete(ok ? .grant : .deny)
+                    }
+                }
+                return
+            }
+
+            complete(.deny)
         }
     }
 }

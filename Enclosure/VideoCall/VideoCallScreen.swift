@@ -279,45 +279,133 @@ class VideoCallWebViewCoordinator: NSObject, WKNavigationDelegate, WKScriptMessa
                  initiatedByFrame frame: WKFrameInfo,
                  type: WKMediaCaptureType,
                  decisionHandler: @escaping (WKPermissionDecision) -> Void) {
-        let isCamera = (type == .camera)
-        print("📹 [VideoCallScreen] Media capture permission requested - type: \(isCamera ? "camera" : "microphone")")
+        let typeLabel: String
+        switch type {
+        case .camera:
+            typeLabel = "camera"
+        case .microphone:
+            typeLabel = "microphone"
+        case .cameraAndMicrophone:
+            typeLabel = "cameraAndMicrophone"
+        @unknown default:
+            typeLabel = "unknown"
+        }
+        print("📹 [VideoCallScreen] Media capture permission requested - type: \(typeLabel)")
         
         func complete(_ decision: WKPermissionDecision) {
             DispatchQueue.main.async {
                 decisionHandler(decision)
             }
         }
-        
-        if isCamera {
-            let status = AVCaptureDevice.authorizationStatus(for: .video)
-            if status == .authorized {
-                print("✅ [VideoCallScreen] Camera permission granted")
-                complete(.grant)
-            } else if status == .notDetermined {
-                AVCaptureDevice.requestAccess(for: .video) { granted in
-                    print("📹 [VideoCallScreen] Camera permission result: \(granted)")
-                    complete(granted ? .grant : .deny)
-                }
+
+        let audioSession = AVAudioSession.sharedInstance()
+        let cameraStatus = AVCaptureDevice.authorizationStatus(for: .video)
+        let micStatus = audioSession.recordPermission
+
+        func grantIfPossible() {
+            let cameraOK = (cameraStatus == .authorized)
+            let micOK = (micStatus == .granted)
+            if type == .camera {
+                complete(cameraOK ? .grant : .deny)
+            } else if type == .microphone {
+                complete(micOK ? .grant : .deny)
+            } else if type == .cameraAndMicrophone {
+                complete((cameraOK && micOK) ? .grant : .deny)
             } else {
-                print("⚠️ [VideoCallScreen] Camera denied (status: \(status.rawValue))")
-                complete(.deny)
-            }
-        } else {
-            let session = AVAudioSession.sharedInstance()
-            let status = session.recordPermission
-            if status == .granted {
-                print("✅ [VideoCallScreen] Microphone permission granted")
-                complete(.grant)
-            } else if status == .undetermined {
-                session.requestRecordPermission { granted in
-                    print("🎤 [VideoCallScreen] Microphone permission result: \(granted)")
-                    complete(granted ? .grant : .deny)
-                }
-            } else {
-                print("⚠️ [VideoCallScreen] Microphone denied")
                 complete(.deny)
             }
         }
+
+        // Fast path
+        if type == .camera {
+            if cameraStatus == .authorized {
+                print("✅ [VideoCallScreen] Camera permission granted")
+                complete(.grant)
+                return
+            }
+        } else if type == .microphone {
+            if micStatus == .granted {
+                print("✅ [VideoCallScreen] Microphone permission granted")
+                complete(.grant)
+                return
+            }
+        } else if type == .cameraAndMicrophone {
+            if cameraStatus == .authorized, micStatus == .granted {
+                print("✅ [VideoCallScreen] Camera+Microphone permissions granted")
+                complete(.grant)
+                return
+            }
+        }
+
+        // Request missing permissions and then decide.
+        func requestMic(_ done: @escaping () -> Void) {
+            if audioSession.recordPermission == .undetermined {
+                audioSession.requestRecordPermission { granted in
+                    print("🎤 [VideoCallScreen] Microphone permission result: \(granted)")
+                    DispatchQueue.main.async { done() }
+                }
+            } else {
+                done()
+            }
+        }
+
+        func requestCamera(_ done: @escaping () -> Void) {
+            if AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined {
+                AVCaptureDevice.requestAccess(for: .video) { granted in
+                    print("📹 [VideoCallScreen] Camera permission result: \(granted)")
+                    DispatchQueue.main.async { done() }
+                }
+            } else {
+                done()
+            }
+        }
+
+        if type == .camera {
+            requestCamera {
+                let status = AVCaptureDevice.authorizationStatus(for: .video)
+                if status == .authorized {
+                    print("✅ [VideoCallScreen] Camera permission granted")
+                    complete(.grant)
+                } else {
+                    print("⚠️ [VideoCallScreen] Camera denied (status: \(status.rawValue))")
+                    complete(.deny)
+                }
+            }
+            return
+        }
+
+        if type == .microphone {
+            requestMic {
+                let status = AVAudioSession.sharedInstance().recordPermission
+                if status == .granted {
+                    print("✅ [VideoCallScreen] Microphone permission granted")
+                    complete(.grant)
+                } else {
+                    print("⚠️ [VideoCallScreen] Microphone denied")
+                    complete(.deny)
+                }
+            }
+            return
+        }
+
+        if type == .cameraAndMicrophone {
+            requestCamera {
+                requestMic {
+                    let cam = AVCaptureDevice.authorizationStatus(for: .video)
+                    let mic = AVAudioSession.sharedInstance().recordPermission
+                    let ok = (cam == .authorized && mic == .granted)
+                    if ok {
+                        print("✅ [VideoCallScreen] Camera+Microphone permissions granted")
+                    } else {
+                        print("⚠️ [VideoCallScreen] Camera+Microphone not granted (camera=\(cam.rawValue), mic=\(mic.rawValue))")
+                    }
+                    complete(ok ? .grant : .deny)
+                }
+            }
+            return
+        }
+
+        grantIfPossible()
     }
 }
 
