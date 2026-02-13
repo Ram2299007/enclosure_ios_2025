@@ -105,10 +105,13 @@ final class VideoCallSession: ObservableObject {
 
     func stop() {
         print("📞📞📞 [VideoCallSession] stop() called - shouldDismiss=\(shouldDismiss), isCallEnded=\(isCallEnded)")
-        // Safety net: only send removeVideoCallNotification if the call actually ended
-        // (not during normal SwiftUI view lifecycle like fullScreenCover appearing)
-        if isCallEnded {
+        // Safety net: only sender sends removeVideoCallNotification, and only if call actually ended
+        if isCallEnded && payload.isSender {
             sendRemoveCallNotificationIfNeeded()
+        }
+        // Always clean up any entries addressed to us
+        if isCallEnded {
+            cleanupRemoveCallNotificationForSelf()
         }
         cleanupFirebaseListeners()
         stopObservingAudioInterruptions()
@@ -184,7 +187,9 @@ final class VideoCallSession: ObservableObject {
             endCall()
         case "callOnBackPressed":
             print("📞📞📞 [VideoCallSession] JS triggered callOnBackPressed")
-            sendRemoveCallNotificationIfNeeded()
+            if payload.isSender {
+                sendRemoveCallNotificationIfNeeded()
+            }
             stopRingtone(reason: "back_pressed")
             disableProximitySensor()
             shouldDismiss = true
@@ -594,10 +599,14 @@ final class VideoCallSession: ObservableObject {
             return
         }
         isCallEnded = true
-        // Android behavior parity: ALWAYS send removeVideoCallNotification on end call
-        // (both sender and receiver), so the other side dismisses incoming-call UI.
-        // Firebase path: removeVideoCallNotification/<receiverId>/<pushKey> = <pushKey>
-        sendRemoveCallNotificationIfNeeded()
+        // Android behavior parity: sender sends removeVideoCallNotification to dismiss
+        // receiver's incoming-call/CallKit UI. Only sender sends (receiver's payload.receiverId
+        // points to themselves, not the sender).
+        if payload.isSender {
+            sendRemoveCallNotificationIfNeeded()
+        }
+        // Always clean up any removeVideoCallNotification entries addressed to us
+        cleanupRemoveCallNotificationForSelf()
 
         stopRingtone(reason: "end_call")
         cleanupFirebaseListeners()
@@ -629,9 +638,23 @@ final class VideoCallSession: ObservableObject {
         let key = ref.key ?? UUID().uuidString
         ref.setValue(key) { error, _ in
             if let error = error {
-                NSLog("⚠️ [VideoCallSession] Failed to send removeCallNotification: \(error.localizedDescription)")
+                NSLog("⚠️ [VideoCallSession] Failed to send removeVideoCallNotification: \(error.localizedDescription)")
             } else {
-                NSLog("✅ [VideoCallSession] removeCallNotification sent to receiverId=\(receiverId), key=\(key)")
+                NSLog("✅ [VideoCallSession] removeVideoCallNotification sent to receiverId=\(receiverId), key=\(key)")
+            }
+        }
+    }
+
+    /// Clean up any removeVideoCallNotification entries addressed to our own UID
+    /// so they don't pile up in Firebase.
+    private func cleanupRemoveCallNotificationForSelf() {
+        let myUid = self.myUid.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !myUid.isEmpty else { return }
+        Database.database().reference().child("removeVideoCallNotification").child(myUid).removeValue { error, _ in
+            if let error = error {
+                NSLog("⚠️ [VideoCallSession] Failed to cleanup removeVideoCallNotification for self: \(error.localizedDescription)")
+            } else {
+                NSLog("✅ [VideoCallSession] Cleaned up removeVideoCallNotification for myUid=\(myUid)")
             }
         }
     }

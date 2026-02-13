@@ -177,10 +177,13 @@ final class VoiceCallSession: ObservableObject {
     // and caused muted=true to persist. For incoming CallKit calls, trust CallKit's config.
 
     func stop() {
-        // Safety net: only send removeCallNotification if the call actually ended
-        // (not during normal SwiftUI view lifecycle)
-        if isCallEnded {
+        // Safety net: only sender sends removeCallNotification, and only if call actually ended
+        if isCallEnded && payload.isSender {
             sendRemoveCallNotificationIfNeeded()
+        }
+        // Always clean up any entries addressed to us
+        if isCallEnded {
+            cleanupRemoveCallNotificationForSelf()
         }
         
         // Release microphone in WebView FIRST so iOS drops mic access before we end CallKit.
@@ -314,8 +317,10 @@ final class VoiceCallSession: ObservableObject {
         case "endCall":
             endCall()
         case "callOnBackPressed":
-            NSLog("📞 [VoiceCallSession] callOnBackPressed - sending remove notification")
-            sendRemoveCallNotificationIfNeeded()
+            NSLog("📞 [VoiceCallSession] callOnBackPressed")
+            if payload.isSender {
+                sendRemoveCallNotificationIfNeeded()
+            }
             stopRingtone(reason: "back_pressed")
             disableProximitySensor()
             shouldDismiss = true
@@ -955,10 +960,14 @@ final class VoiceCallSession: ObservableObject {
         NSLog("📞 [VoiceCallSession] User ended call")
         print("📞 [VoiceCallSession] Ending call and dismissing...")
 
-        // Android behavior parity: ALWAYS send removeCallNotification on end call
-        // (both sender and receiver), so the other side dismisses incoming-call UI.
-        // Firebase path: removeCallNotification/<receiverId>/<pushKey> = <pushKey>
-        sendRemoveCallNotificationIfNeeded()
+        // Android behavior parity: sender sends removeCallNotification to dismiss
+        // receiver's incoming-call/CallKit UI. Only sender sends (receiver's payload.receiverId
+        // points to themselves, not the sender).
+        if payload.isSender {
+            sendRemoveCallNotificationIfNeeded()
+        }
+        // Always clean up any removeCallNotification entries addressed to us
+        cleanupRemoveCallNotificationForSelf()
         
         stopRingtone(reason: "end_call")
         cleanupFirebaseListeners()
@@ -999,6 +1008,20 @@ final class VoiceCallSession: ObservableObject {
                 NSLog("⚠️ [VoiceCallSession] Failed to send removeCallNotification: \(error.localizedDescription)")
             } else {
                 NSLog("✅ [VoiceCallSession] removeCallNotification sent to receiverId=\(receiverId), key=\(key)")
+            }
+        }
+    }
+
+    /// Clean up any removeCallNotification entries addressed to our own UID
+    /// so they don't pile up in Firebase.
+    private func cleanupRemoveCallNotificationForSelf() {
+        let myUid = self.myUid.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !myUid.isEmpty else { return }
+        Database.database().reference().child("removeCallNotification").child(myUid).removeValue { error, _ in
+            if let error = error {
+                NSLog("⚠️ [VoiceCallSession] Failed to cleanup removeCallNotification for self: \(error.localizedDescription)")
+            } else {
+                NSLog("✅ [VoiceCallSession] Cleaned up removeCallNotification for myUid=\(myUid)")
             }
         }
     }
