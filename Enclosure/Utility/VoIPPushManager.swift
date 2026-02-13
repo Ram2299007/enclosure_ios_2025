@@ -11,6 +11,7 @@ import PushKit
 import CallKit
 import UIKit
 import FirebaseDatabase
+import UserNotifications
 
 class VoIPPushManager: NSObject {
     static let shared = VoIPPushManager()
@@ -20,6 +21,13 @@ class VoIPPushManager: NSObject {
 
     private var removeCallObserverHandle: DatabaseHandle?
     private var removeCallObserverPath: String?
+
+    private struct PendingCallContext {
+        let callerName: String
+        let callerPhoto: String
+        let isVideoCall: Bool
+    }
+    private var pendingCallContextByRoomId: [String: PendingCallContext] = [:]
     
     // Completion handler for token updates
     var onVoIPTokenReceived: ((String) -> Void)?
@@ -37,15 +45,62 @@ class VoIPPushManager: NSObject {
         
         print("📞 [VoIP] Starting VoIP Push Registration")
         
-        pushRegistry.delegate = self
-        pushRegistry.desiredPushTypes = [.voIP]
+        configure()
         
         NSLog("📞 [VoIP] PushKit registry configured for VoIP")
         print("📞 [VoIP] PushKit registry configured")
     }
     
+    func configure() {
+        pushRegistry.delegate = self
+        pushRegistry.desiredPushTypes = [.voIP]
+    }
+    
     func getVoIPToken() -> String? {
         return voipToken
+    }
+}
+
+extension VoIPPushManager {
+    func registerIncomingCallContext(roomId: String, callerName: String, callerPhoto: String, isVideoCall: Bool) {
+        let trimmedRoomId = roomId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedRoomId.isEmpty else { return }
+        pendingCallContextByRoomId[trimmedRoomId] = PendingCallContext(
+            callerName: callerName,
+            callerPhoto: callerPhoto,
+            isVideoCall: isVideoCall
+        )
+    }
+
+    func clearIncomingCallContext(roomId: String) {
+        let trimmedRoomId = roomId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedRoomId.isEmpty else { return }
+        pendingCallContextByRoomId.removeValue(forKey: trimmedRoomId)
+    }
+
+    func showMissedCallNotificationIfPossible(roomId: String) {
+        let trimmedRoomId = roomId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedRoomId.isEmpty else { return }
+        guard let ctx = pendingCallContextByRoomId[trimmedRoomId] else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = ctx.callerName
+        content.body = ctx.isVideoCall ? "Missed video call" : "Missed voice call"
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "missed_call_\(trimmedRoomId)",
+            content: content,
+            trigger: nil
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                NSLog("⚠️ [VoIP] Failed to schedule missed call notification: \(error.localizedDescription)")
+            } else {
+                NSLog("✅ [VoIP] Missed call notification scheduled. roomId=\(trimmedRoomId)")
+            }
+        }
     }
 }
 
@@ -121,10 +176,6 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         let receiverId = (userInfo["receiverId"] as? String) ?? ""
         let receiverPhone = (userInfo["phone"] as? String) ?? ""
         let bodyKey = (userInfo["bodyKey"] as? String) ?? ""
-
-        // Start observing for caller-cancel signal (Android parity)
-        // Firebase path: removeCallNotification/<myUid>/<pushKey> = <pushKey>
-        startObservingRemoveCallNotification(roomId: roomId)
         
         NSLog("📞 [VoIP] Extracted Data:")
         NSLog("📞 [VoIP]   Caller Name: \(callerName)")
@@ -153,6 +204,8 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         let callType = isVideoCall ? "VIDEO" : "VOICE"
         NSLog("📞 [VoIP] Body Key: '\(bodyKey)' → Detected Call Type: \(callType)")
         print("📞 [VoIP] Call Type: \(callType)")
+
+        registerIncomingCallContext(roomId: roomId, callerName: callerName, callerPhoto: callerPhoto, isVideoCall: isVideoCall)
 
         // Start observing for caller-cancel signal (Android parity)
         // Voice: removeCallNotification/<myUid>/<pushKey>
@@ -204,6 +257,7 @@ extension VoIPPushManager: PKPushRegistryDelegate {
 
             // Stop observing cancel signal once user answered
             self.stopObservingRemoveCallNotification()
+            self.clearIncomingCallContext(roomId: roomId)
             
             // Request app to come to foreground if on lock screen
             // This will prompt iOS to show unlock (Face ID/Touch ID/Passcode)
@@ -275,6 +329,7 @@ extension VoIPPushManager: PKPushRegistryDelegate {
 
             // Stop observing cancel signal once user declined
             self.stopObservingRemoveCallNotification()
+            self.clearIncomingCallContext(roomId: roomId)
             
             // TODO: Notify your backend that call was declined
             // Example: sendCallDeclinedToBackend(roomId: roomId)
@@ -321,6 +376,10 @@ extension VoIPPushManager: PKPushRegistryDelegate {
                 object: nil,
                 userInfo: ["roomId": roomId]
             )
+
+            // Android parity: show missed-call notification when caller cancels while still ringing
+            self.showMissedCallNotificationIfPossible(roomId: roomId)
+            self.clearIncomingCallContext(roomId: roomId)
 
             // Stop observing after first cancellation
             self.stopObservingRemoveCallNotification()

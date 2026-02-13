@@ -77,6 +77,13 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             let receiverId = (userInfo["receiverId"] as? String) ?? ""
             let receiverPhone = (userInfo["phone"] as? String) ?? ""
 
+            VoIPPushManager.shared.registerIncomingCallContext(
+                roomId: roomId,
+                callerName: callerName,
+                callerPhoto: callerPhoto,
+                isVideoCall: isVideoCall
+            )
+
             // Start observing for caller-cancel signal (Android parity) even for foreground notification path
             // Voice: removeCallNotification/<myUid>/<pushKey>
             // Video: removeVideoCallNotification/<myUid>/<pushKey>

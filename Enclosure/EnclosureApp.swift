@@ -274,6 +274,13 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         let receiverId = (userInfo["receiverId"] as? String) ?? ""
         let receiverPhone = (userInfo["phone"] as? String) ?? ""
 
+        VoIPPushManager.shared.registerIncomingCallContext(
+            roomId: roomId,
+            callerName: callerName,
+            callerPhoto: callerPhoto,
+            isVideoCall: isVideoCall
+        )
+
         // Start observing for caller-cancel signal (Android parity) for FCM call path
         // Voice: removeCallNotification/<myUid>/<pushKey>
         // Video: removeVideoCallNotification/<myUid>/<pushKey>
