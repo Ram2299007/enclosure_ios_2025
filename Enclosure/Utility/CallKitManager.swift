@@ -239,7 +239,7 @@ extension CallKitManager: CXProviderDelegate {
         
         // Notify app to start call, callInfo.isVideoCall
         DispatchQueue.main.async {
-            self.onAnswerCall?(callInfo.roomId, callInfo.receiverId, callInfo.receiverPhone)
+            self.onAnswerCall?(callInfo.roomId, callInfo.receiverId, callInfo.receiverPhone, callInfo.isVideoCall)
         }
         
         action.fulfill()
