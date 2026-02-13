@@ -41,6 +41,7 @@ final class VoiceCallSession: ObservableObject {
     private var callKitDismissed = false
 
     private var removeCallNotificationSent = false
+    private var isCallEnded = false
 
     init(payload: VoiceCallPayload) {
         self.payload = payload
@@ -176,6 +177,12 @@ final class VoiceCallSession: ObservableObject {
     // and caused muted=true to persist. For incoming CallKit calls, trust CallKit's config.
 
     func stop() {
+        // Safety net: only send removeCallNotification if the call actually ended
+        // (not during normal SwiftUI view lifecycle)
+        if isCallEnded {
+            sendRemoveCallNotificationIfNeeded()
+        }
+        
         // Release microphone in WebView FIRST so iOS drops mic access before we end CallKit.
         // This prevents the orange dot from flashing briefly when the call is dismissed.
         sendToWebView("if (typeof releaseMicrophone === 'function') releaseMicrophone();")
@@ -307,9 +314,11 @@ final class VoiceCallSession: ObservableObject {
         case "endCall":
             endCall()
         case "callOnBackPressed":
-            shouldDismiss = true
+            NSLog("📞 [VoiceCallSession] callOnBackPressed - sending remove notification")
+            sendRemoveCallNotificationIfNeeded()
             stopRingtone(reason: "back_pressed")
             disableProximitySensor()
+            shouldDismiss = true
         case "addMemberBtn":
             break
         case "onPageReady":
@@ -404,6 +413,20 @@ final class VoiceCallSession: ObservableObject {
                     sendToWebView("setCallerInfo('\(jsEscaped(name))', '\(jsEscaped(photo))', '\(jsEscaped(peerId))')")
                 }
 
+                // Android parity: when peer count drops to 0 (room deleted by other side),
+                // auto-end the call on this side too (setupDeleteListers behavior).
+                // IMPORTANT: Only trigger after our own peer has been written (myPeerId != nil).
+                // Before that, peerCount=0 is expected (empty room at call start).
+                let peerCount = snapshot.childrenCount
+                NSLog("📞 [VoiceCallSession] Peers listener: peerCount=\(peerCount), myPeerId=\(self.myPeerId ?? "nil")")
+                if peerCount == 0 && !self.isCallEnded && self.myPeerId != nil {
+                    NSLog("📞 [VoiceCallSession] Peers dropped to 0 - other side ended call, auto-ending")
+                    DispatchQueue.main.async {
+                        self.endCall()
+                    }
+                    return
+                }
+
                 if let peersJsonData = try? JSONSerialization.data(withJSONObject: ["peers": peerIds], options: []),
                    let peersJson = String(data: peersJsonData, encoding: .utf8) {
                     sendToWebView("updatePeers(\(peersJson))")
@@ -441,7 +464,18 @@ final class VoiceCallSession: ObservableObject {
             databaseRef.child("rooms").child(roomId).child("signaling").removeObserver(withHandle: signalingHandle)
             self.signalingHandle = nil
         }
-        if let peerId = myPeerId {
+        // Android parity: remove entire room when call ended so the other side
+        // sees peerCount=0 and auto-ends. Only remove entire room if endCall() was triggered.
+        // Otherwise just remove own peer (e.g. stop() called during view lifecycle).
+        if isCallEnded {
+            databaseRef.child("rooms").child(roomId).removeValue { error, _ in
+                if let error = error {
+                    NSLog("⚠️ [VoiceCallSession] Failed to remove room: \(error.localizedDescription)")
+                } else {
+                    NSLog("✅ [VoiceCallSession] Room removed: \(self.roomId)")
+                }
+            }
+        } else if let peerId = myPeerId {
             databaseRef.child("rooms").child(roomId).child("peers").child(peerId).removeValue()
         }
     }
@@ -913,14 +947,18 @@ final class VoiceCallSession: ObservableObject {
     }
 
     private func endCall() {
+        guard !isCallEnded else {
+            NSLog("📞 [VoiceCallSession] endCall() IGNORED - already ended")
+            return
+        }
+        isCallEnded = true
         NSLog("📞 [VoiceCallSession] User ended call")
         print("📞 [VoiceCallSession] Ending call and dismissing...")
 
-        // Android behavior parity: if caller ends immediately, signal receiver to dismiss incoming-call UI.
+        // Android behavior parity: ALWAYS send removeCallNotification on end call
+        // (both sender and receiver), so the other side dismisses incoming-call UI.
         // Firebase path: removeCallNotification/<receiverId>/<pushKey> = <pushKey>
-        if payload.isSender {
-            sendRemoveCallNotificationIfNeeded()
-        }
+        sendRemoveCallNotificationIfNeeded()
         
         stopRingtone(reason: "end_call")
         cleanupFirebaseListeners()
