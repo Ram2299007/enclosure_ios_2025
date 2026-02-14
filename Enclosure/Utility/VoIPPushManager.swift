@@ -205,6 +205,22 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         let callType = isVideoCall ? "VIDEO" : "VOICE"
         NSLog("📞 [VoIP] Body Key: '\(bodyKey)' → Detected Call Type: \(callType)")
         print("📞 [VoIP] Call Type: \(callType)")
+        
+        // Check toggle state from shared App Group UserDefaults
+        let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure.data")
+        let isVoiceCallEnabled = sharedDefaults?.object(forKey: "voiceRadioKey") as? Bool ?? true
+        let isVideoCallEnabled = sharedDefaults?.object(forKey: "videoRadioKey") as? Bool ?? true
+        
+        if !isVideoCall && !isVoiceCallEnabled {
+            NSLog("🔇 [VoIP] Voice call SUPPRESSED - audio call toggle is OFF")
+            completion()
+            return
+        }
+        if isVideoCall && !isVideoCallEnabled {
+            NSLog("🔇 [VoIP] Video call SUPPRESSED - video call toggle is OFF")
+            completion()
+            return
+        }
 
         registerIncomingCallContext(roomId: roomId, callerName: callerName, callerPhoto: callerPhoto, isVideoCall: isVideoCall)
 

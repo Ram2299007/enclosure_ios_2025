@@ -58,6 +58,34 @@ final class NotificationService: UNNotificationServiceExtension {
            category == "VOICE_CALL" || category == "VIDEO_CALL" {
             NSLog("📞📞📞 [NotificationService] CALL NOTIFICATION DETECTED!")
             NSLog("📞 [NotificationService] bodyKey: '\(bodyKey ?? "nil")', category: '\(category)'")
+            
+            // Check toggle state from shared App Group UserDefaults
+            let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure.data")
+            let isVoiceCallEnabled = sharedDefaults?.bool(forKey: "voiceRadioKey") ?? true
+            let isVideoCallEnabled = sharedDefaults?.bool(forKey: "videoRadioKey") ?? true
+            
+            // Suppress voice call notification if audio call toggle is OFF
+            if (bodyKey == "Incoming voice call" || category == "VOICE_CALL") && !isVoiceCallEnabled {
+                NSLog("🔇 [NotificationService] Voice call SUPPRESSED - audio call toggle is OFF")
+                bestAttemptContent.title = ""
+                bestAttemptContent.body = ""
+                bestAttemptContent.sound = nil
+                bestAttemptContent.badge = nil
+                contentHandler(bestAttemptContent)
+                return
+            }
+            
+            // Suppress video call notification if video call toggle is OFF
+            if (bodyKey == "Incoming video call" || category == "VIDEO_CALL") && !isVideoCallEnabled {
+                NSLog("🔇 [NotificationService] Video call SUPPRESSED - video call toggle is OFF")
+                bestAttemptContent.title = ""
+                bestAttemptContent.body = ""
+                bestAttemptContent.sound = nil
+                bestAttemptContent.badge = nil
+                contentHandler(bestAttemptContent)
+                return
+            }
+            
             NSLog("📞 [NotificationService] Passing to main app - CallKit will handle UI")
             NSLog("📞 [NotificationService] App should suppress banner in willPresent and trigger CallKit")
             

@@ -246,6 +246,23 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             let callType = isVoiceCall ? "VOICE" : "VIDEO"
             NSLog("📞📞📞 [CallKit] ✅ \(callType) CALL NOTIFICATION DETECTED!")
             print("📞📞📞 [CallKit] ✅ \(callType) CALL NOTIFICATION DETECTED!")
+            
+            // Check toggle state from shared App Group UserDefaults
+            let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure.data")
+            let isVoiceCallEnabled = sharedDefaults?.object(forKey: "voiceRadioKey") as? Bool ?? true
+            let isVideoCallEnabled = sharedDefaults?.object(forKey: "videoRadioKey") as? Bool ?? true
+            
+            if isVoiceCall && !isVoiceCallEnabled {
+                NSLog("🔇 [CallKit] Voice call SUPPRESSED - audio call toggle is OFF")
+                completionHandler(.noData)
+                return
+            }
+            if isVideoCall && !isVideoCallEnabled {
+                NSLog("🔇 [CallKit] Video call SUPPRESSED - video call toggle is OFF")
+                completionHandler(.noData)
+                return
+            }
+            
             handleCallNotification(userInfo: userInfo, isVideoCall: isVideoCall, completionHandler: completionHandler)
             return
         } else {

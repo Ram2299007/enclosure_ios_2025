@@ -981,21 +981,27 @@ struct MainActivityOld: View {
             }
             .onChange(of: isCallEnabled) { newValue in
                 // Matching Android switchcall.setOnCheckedChangeListener
+                let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure.data")
                 if newValue {
                     UserDefaults.standard.set(Constant.voiceRadioKey, forKey: Constant.voiceRadioKey)
+                    sharedDefaults?.set(true, forKey: Constant.voiceRadioKey)
                     showIncomingOnOffToastMessage("Incoming Calls : ON")
                 } else {
                     UserDefaults.standard.set("", forKey: Constant.voiceRadioKey)
+                    sharedDefaults?.set(false, forKey: Constant.voiceRadioKey)
                     showIncomingOnOffToastMessage("Incoming Calls : OFF")
                 }
             }
             .onChange(of: isVideoCallEnabled) { newValue in
                 // Matching Android switchVideocall.setOnCheckedChangeListener
+                let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure.data")
                 if newValue {
                     UserDefaults.standard.set(Constant.videoRadioKey, forKey: Constant.videoRadioKey)
+                    sharedDefaults?.set(true, forKey: Constant.videoRadioKey)
                     showIncomingOnOffToastMessage("Incoming Video Calls : ON")
                 } else {
                     UserDefaults.standard.set("", forKey: Constant.videoRadioKey)
+                    sharedDefaults?.set(false, forKey: Constant.videoRadioKey)
                     showIncomingOnOffToastMessage("Incoming Video Calls : OFF")
                 }
             }
@@ -1009,6 +1015,11 @@ struct MainActivityOld: View {
             let videoRadio = UserDefaults.standard.string(forKey: Constant.videoRadioKey) ?? "turnedOn"
             isCallEnabled = (voiceRadio == Constant.voiceRadioKey || voiceRadio == "turnedOn")
             isVideoCallEnabled = (videoRadio == Constant.videoRadioKey || videoRadio == "turnedOn")
+            
+            // Sync to shared App Group UserDefaults so NSE can suppress call notifications
+            let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure.data")
+            sharedDefaults?.set(isCallEnabled, forKey: Constant.voiceRadioKey)
+            sharedDefaults?.set(isVideoCallEnabled, forKey: Constant.videoRadioKey)
             
             // Smooth fade-in animation when view appears
             withAnimation(.easeInOut(duration: 0.3)) {

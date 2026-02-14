@@ -60,10 +60,26 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             let callType = isVoiceCall ? "VOICE" : "VIDEO"
             NSLog("🚨🚨🚨 [NotificationDelegate] \(callType) CALL DETECTED IN FOREGROUND!")
             NSLog("📞 [NotificationDelegate] Detected via: bodyKey='\(bodyKey ?? "nil")', alertBody='\(alertBody)', category='\(category)'")
-            NSLog("📞 [NotificationDelegate] Forwarding to AppDelegate.didReceiveRemoteNotification")
+            
+            // Check toggle state from shared App Group UserDefaults
+            let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure.data")
+            let isVoiceCallEnabled = sharedDefaults?.object(forKey: "voiceRadioKey") as? Bool ?? true
+            let isVideoCallEnabled = sharedDefaults?.object(forKey: "videoRadioKey") as? Bool ?? true
+            
+            if isVoiceCall && !isVoiceCallEnabled {
+                NSLog("� [NotificationDelegate] Voice call SUPPRESSED - audio call toggle is OFF")
+                completionHandler([])
+                return
+            }
+            if isVideoCall && !isVideoCallEnabled {
+                NSLog("🔇 [NotificationDelegate] Video call SUPPRESSED - video call toggle is OFF")
+                completionHandler([])
+                return
+            }
+            
+            NSLog("�📞 [NotificationDelegate] Forwarding to AppDelegate.didReceiveRemoteNotification")
             print("🚨🚨🚨 [NotificationDelegate] \(callType) CALL DETECTED IN FOREGROUND!")
             print("📞 [NotificationDelegate] Detected via: bodyKey='\(bodyKey ?? "nil")', alertBody='\(alertBody)'")
-            print("📞 [NotificationDelegate] Forwarding to AppDelegate.didReceiveRemoteNotification")
             print("📞 [NotificationDelegate] This is a USER-VISIBLE notification (changed from silent push)")
             
             // CRITICAL: Trigger CallKit IMMEDIATELY (not async) so it shows before iOS displays banner
