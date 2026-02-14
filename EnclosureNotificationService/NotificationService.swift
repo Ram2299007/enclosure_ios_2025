@@ -76,7 +76,9 @@ final class NotificationService: UNNotificationServiceExtension {
 
         let directPhoto = userInfo["photo"] as? String
         let nestedData = (userInfo["data"] as? [String: Any])?["photo"] as? String
-        let photoUrlString = directPhoto ?? nestedData ?? ""
+        let rawPhoto = directPhoto ?? nestedData ?? ""
+        let invalidValues: Set<String> = ["NA", "na", "null", "nil", "none", ""]
+        let photoUrlString = invalidValues.contains(rawPhoto) ? "" : rawPhoto
         let senderUid = stringValue(userInfo["friendUidKey"])
         let senderName = (userInfo["user_nameKey"] as? String)
             ?? (userInfo["name"] as? String)

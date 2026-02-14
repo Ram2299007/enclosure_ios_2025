@@ -245,7 +245,6 @@ extension CallKitManager: CXProviderDelegate {
         DispatchQueue.main.async {
             self.onAnswerCall?(callInfo.roomId, callInfo.receiverId, callInfo.receiverPhone, callInfo.isVideoCall)
         }
-        
         action.fulfill()
         
         // Dismiss CallKit full-screen UI after answering for BOTH video and voice calls.

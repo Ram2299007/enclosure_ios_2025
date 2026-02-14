@@ -19,6 +19,8 @@ struct Constant{
     static let loggedInKey = "loggedInKey"
     static let sleepKey = "sleepKey"
     static let sleepKeyCheckOFF = "sleepKeyCheckOFF"
+    static let voiceRadioKey = "voiceRadioKey"
+    static let videoRadioKey = "videoRadioKey"
     static let chatView = "chatView"
     static let callView = "callView"
     static let videoCallView = "videoCallView"

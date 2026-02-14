@@ -68,6 +68,10 @@ struct MainActivityOld: View {
     @State private var isMenuButtonPressed = false // Track menu button press state
     @State private var initialFadeInOpacity: Double = 0.0 // Start at 0 for smooth fade-in
     
+    // Incoming call on/off toast (matching Android incomingonoffLyt CardView)
+    @State private var showIncomingOnOffToast = false
+    @State private var incomingOnOffText = ""
+    
     // Shared content handling (for Share Extension)
     @State private var showShareExternalDataContactScreen: Bool = false
     @State private var sharedContentToShow: SharedContent?
@@ -335,7 +339,7 @@ struct MainActivityOld: View {
                                         Text("Audio call")
                                             .font(.custom("Inter18pt-Medium", size: 15))
                                             .fontWeight(.heavy)
-                                            .foregroundColor(.white)
+                                            .foregroundColor(isCallEnabled ? .white : Color(hex: "#9EA6B9"))
                                             .lineLimit(1)
 
                                         CustomImageToggle(
@@ -398,7 +402,7 @@ struct MainActivityOld: View {
                                         Text("Video call")
                                             .font(.custom("Inter18pt-Medium", size: 15))
                                             .fontWeight(.heavy)
-                                            .foregroundColor(.white)
+                                            .foregroundColor(isVideoCallEnabled ? .white : Color(hex: "#9EA6B9"))
                                             .lineLimit(1)
 
                                         CustomImageToggle(
@@ -828,6 +832,25 @@ struct MainActivityOld: View {
                         .zIndex(999) // Ensure it's on top of everything
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
+                
+                // Incoming call on/off toast (matching Android incomingonoffLyt CardView)
+                if showIncomingOnOffToast {
+                    VStack {
+                        Text(incomingOnOffText)
+                            .font(.custom("Inter18pt-Medium", size: 17))
+                            .foregroundColor(Color("TextColor"))
+                            .padding(.horizontal, 22)
+                            .padding(.vertical, 8)
+                            .background(Color("cardBackgroundColornew"))
+                            .cornerRadius(10)
+                            .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 4)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 146)
+                    .zIndex(1000)
+                    .transition(.opacity)
+                }
             }
             .opacity(initialFadeInOpacity)
             .navigationBarHidden(true)
@@ -956,10 +979,36 @@ struct MainActivityOld: View {
             .onChange(of: sharedContentToShow != nil) { hasContent in
                 print("📤 [MainActivityOld] sharedContentToShow changed: \(hasContent)")
             }
+            .onChange(of: isCallEnabled) { newValue in
+                // Matching Android switchcall.setOnCheckedChangeListener
+                if newValue {
+                    UserDefaults.standard.set(Constant.voiceRadioKey, forKey: Constant.voiceRadioKey)
+                    showIncomingOnOffToastMessage("Incoming Calls : ON")
+                } else {
+                    UserDefaults.standard.set("", forKey: Constant.voiceRadioKey)
+                    showIncomingOnOffToastMessage("Incoming Calls : OFF")
+                }
+            }
+            .onChange(of: isVideoCallEnabled) { newValue in
+                // Matching Android switchVideocall.setOnCheckedChangeListener
+                if newValue {
+                    UserDefaults.standard.set(Constant.videoRadioKey, forKey: Constant.videoRadioKey)
+                    showIncomingOnOffToastMessage("Incoming Video Calls : ON")
+                } else {
+                    UserDefaults.standard.set("", forKey: Constant.videoRadioKey)
+                    showIncomingOnOffToastMessage("Incoming Video Calls : OFF")
+                }
+            }
         }
         .onAppear {
             showNetworkLoader = !networkMonitor.isConnected
             updateLogoBasedOnTheme()
+            
+            // Load saved toggle state from UserDefaults (matching Android onResume voiceRadioKey/videoRadioKey check)
+            let voiceRadio = UserDefaults.standard.string(forKey: Constant.voiceRadioKey) ?? "turnedOn"
+            let videoRadio = UserDefaults.standard.string(forKey: Constant.videoRadioKey) ?? "turnedOn"
+            isCallEnabled = (voiceRadio == Constant.voiceRadioKey || voiceRadio == "turnedOn")
+            isVideoCallEnabled = (videoRadio == Constant.videoRadioKey || videoRadio == "turnedOn")
             
             // Smooth fade-in animation when view appears
             withAnimation(.easeInOut(duration: 0.3)) {
@@ -1146,6 +1195,21 @@ struct MainActivityOld: View {
                 NSLog("📞 [MainActivityOld] IncomingCallCancelled - VideoCallScreen ACTIVE, not dismissing (session manages lifecycle)")
             } else {
                 NSLog("📞 [MainActivityOld] IncomingCallCancelled - No active video call, safe to clear")
+            }
+        }
+    }
+    
+    // MARK: - Incoming Call On/Off Toast (matching Android incomingonoffLyt)
+    // Shows a floating card with fade-in then auto fade-out, matching Android fade_in2 + fade_outnew animations
+    private func showIncomingOnOffToastMessage(_ message: String) {
+        incomingOnOffText = message
+        withAnimation(.easeIn(duration: 0.3)) {
+            showIncomingOnOffToast = true
+        }
+        // Auto-dismiss after animation (matching Android onAnimationEnd -> fade_outnew)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            withAnimation(.easeOut(duration: 0.5)) {
+                showIncomingOnOffToast = false
             }
         }
     }
