@@ -2,88 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CFBundleIcons</key>
 	<dict>
-		<key>CFBundleAlternateIcons</key>
-		<dict>
-			<key>SplashScreenMyAliasDefault</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasDefault</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasLightBlue</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasLightBlue</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasOrange</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasOrange</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasPink</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasPink</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasPopati</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasPopati</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasRed</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasRed</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasVoilet</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasVoilet</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasgray</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasgray</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasred2</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasred2</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasrichgreen</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasrichgreen</string>
-				</array>
-			</dict>
-			<key>SplashScreenMyAliasyellow</key>
-			<dict>
-				<key>CFBundleIconFiles</key>
-				<array>
-					<string>SplashScreenMyAliasyellow</string>
-				</array>
-			</dict>
-		</dict>
 	</dict>
 	<key>NSAppTransportSecurity</key>
 	<dict>
@@ -126,6 +48,8 @@
 			<string>All Files</string>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>public.item</string>
@@ -141,6 +65,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>
@@ -168,6 +94,20 @@
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>INSendMessageIntent</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>

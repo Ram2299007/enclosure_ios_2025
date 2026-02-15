@@ -944,6 +944,7 @@ class MessageUploadService {
                 roomId: roomId,
                 receiverId: receiverId,
                 receiverPhone: receiverPhone,
+                bodyKey: Constant.incomingVoiceCall,
                 accessToken: accessToken
             )
             
@@ -1021,6 +1022,7 @@ class MessageUploadService {
         roomId: String,
         receiverId: String,
         receiverPhone: String,
+        bodyKey: String,
         accessToken: String
     ) {
         print("📞 [VOIP] Starting VoIP Push to APNs")
@@ -1030,23 +1032,22 @@ class MessageUploadService {
         // For now, assuming deviceToken might be VoIP token
         // In production: ChatCacheManager.shared.getVoIPToken(for: receiverId) { voipToken in ... }
         
-        // APNs endpoint for VoIP Push
-        let apnsUrl = "https://api.push.apple.com/3/device/\(voipToken)"
-        // For sandbox/development: https://api.sandbox.push.apple.com/3/device/
-        
-        guard let url = URL(string: apnsUrl) else {
-            print("⚠️ [VOIP] Invalid APNs URL")
-            return
-        }
-        
-        // Create VoIP push payload (NO aps section for VoIP!)
+        // APNs endpoints
+        // Production: TestFlight/App Store
+        // Sandbox: Xcode debug builds
+        let apnsUrlProduction = "https://api.push.apple.com/3/device/\(voipToken)"
+        let apnsUrlSandbox = "https://api.sandbox.push.apple.com/3/device/\(voipToken)"
+
+        // Create VoIP push payload.
+        // VoIP pushes MUST include aps with content-available=1.
         let voipPayload: [String: Any] = [
+            "aps": ["content-available": 1],
             "name": senderName,
             "photo": senderPhoto,
             "roomId": roomId,
             "receiverId": receiverId,
             "phone": receiverPhone,
-            "bodyKey": "Incoming voice call",
+            "bodyKey": bodyKey,
             "user_nameKey": senderName
         ]
         
@@ -1063,55 +1064,92 @@ class MessageUploadService {
             // For now, continue anyway for logging purposes
         }
         
+
+        print("📞 [VOIP] Trying PRODUCTION APNs first (TestFlight/App Store)...")
+        sendApnsVoipRequest(
+            apnsUrl: apnsUrlProduction,
+            environmentLabel: "PRODUCTION",
+            voipPayload: voipPayload,
+            jwtToken: jwtToken
+        ) { success in
+            if success {
+                return
+            }
+            print("📞 [VOIP] Production APNs failed. Trying SANDBOX APNs (Debug/Xcode)...")
+            self.sendApnsVoipRequest(
+                apnsUrl: apnsUrlSandbox,
+                environmentLabel: "SANDBOX",
+                voipPayload: voipPayload,
+                jwtToken: jwtToken,
+                completion: { _ in }
+            )
+        }
+    }
+
+    private func sendApnsVoipRequest(
+        apnsUrl: String,
+        environmentLabel: String,
+        voipPayload: [String: Any],
+        jwtToken: String,
+        completion: @escaping (Bool) -> Void
+    ) {
+        guard let url = URL(string: apnsUrl) else {
+            print("⚠️ [VOIP] Invalid APNs URL (\(environmentLabel)): \(apnsUrl)")
+            completion(false)
+            return
+        }
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("com.enclosure.voip", forHTTPHeaderField: "apns-topic")  // Bundle ID + .voip
+        request.setValue("com.enclosure.voip", forHTTPHeaderField: "apns-topic")
         request.setValue("voip", forHTTPHeaderField: "apns-push-type")
         request.setValue("10", forHTTPHeaderField: "apns-priority")
         request.setValue("bearer \(jwtToken)", forHTTPHeaderField: "authorization")
-        
+
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: voipPayload)
         } catch {
-            print("⚠️ [VOIP] Failed to encode payload: \(error.localizedDescription)")
+            print("⚠️ [VOIP] Failed to encode payload (\(environmentLabel)): \(error.localizedDescription)")
+            completion(false)
             return
         }
-        
-        print("📞 [VOIP] Sending VoIP Push to APNs...")
-        
+
+        print("📞 [VOIP] APNs URL (\(environmentLabel)): \(apnsUrl)")
+        print("📞 [VOIP] Sending VoIP Push to APNs (\(environmentLabel))...")
+
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                print("⚠️ [VOIP] Network error: \(error.localizedDescription)")
+                print("⚠️ [VOIP] Network error (\(environmentLabel)): \(error.localizedDescription)")
+                completion(false)
                 return
             }
-            
+
             guard let httpResponse = response as? HTTPURLResponse else {
-                print("⚠️ [VOIP] Invalid response")
+                print("⚠️ [VOIP] Invalid response (\(environmentLabel))")
+                completion(false)
                 return
             }
-            
-            print("📞 [VOIP] APNs response status: \(httpResponse.statusCode)")
-            
-            if let data = data, let responseString = String(data: data, encoding: .utf8) {
-                print("📞 [VOIP] APNs response: \(responseString)")
+
+            let responseBody = data != nil ? String(data: data!, encoding: .utf8) ?? "" : ""
+            print("📞 [VOIP] APNs response status (\(environmentLabel)): \(httpResponse.statusCode)")
+            if !responseBody.isEmpty {
+                print("📞 [VOIP] APNs response (\(environmentLabel)): \(responseBody)")
             }
-            
+
             if httpResponse.statusCode == 200 {
                 print("✅✅✅ [VOIP] ========================================")
-                print("✅ [VOIP] VoIP Push sent SUCCESSFULLY!")
-                print("✅ [VOIP] iOS device will show instant CallKit!")
-                print("✅ [VOIP] User will see full-screen incoming call!")
-                print("✅ [VOIP] ========================================")
+                print("✅ [VOIP] VoIP Push sent SUCCESSFULLY! (\(environmentLabel))")
+                print("✅ [VOIP] iOS device should show incoming CallKit UI")
+                print("✅✅✅ [VOIP] ========================================")
+                completion(true)
             } else {
-                print("❌ [VOIP] APNs Error: \(httpResponse.statusCode)")
-                if let data = data, let responseString = String(data: data, encoding: .utf8) {
-                    print("❌ [VOIP] Error details: \(responseString)")
-                }
+                print("❌ [VOIP] APNs Error (\(environmentLabel)): \(httpResponse.statusCode)")
                 print("❌ [VOIP] Common errors:")
-                print("❌ [VOIP]   400 = Bad request (check payload)")
-                print("❌ [VOIP]   403 = Invalid JWT or certificate")
-                print("❌ [VOIP]   410 = Invalid device token")
+                print("❌ [VOIP]   400 = Bad request (BadTopic/BadDeviceToken/MissingTopic/etc)")
+                print("❌ [VOIP]   403 = Invalid JWT or not allowed")
+                print("❌ [VOIP]   410 = Unregistered/Invalid token")
+                completion(false)
             }
         }.resume()
     }
@@ -1365,6 +1403,7 @@ WD1jSDfoH82QVsoiO1pQqtcfyWfrvUOUSCieWt+BOVLDDsLFLL1VTz5u3ZQ9oHbP
                 roomId: roomId,
                 receiverId: receiverId,
                 receiverPhone: receiverPhone,
+                bodyKey: Constant.incomingVideoCall,
                 accessToken: accessToken
             )
             
