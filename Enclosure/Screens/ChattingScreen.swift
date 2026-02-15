@@ -2843,6 +2843,7 @@ struct ChattingScreen: View {
             
             let database = Database.database().reference()
             let chatPath = "\(Constant.CHAT)/\(receiverRoom)"
+            database.child(chatPath).keepSynced(true)
             
             let limitedQuery = database.child(chatPath)
                 .queryOrdered(byChild: "timestamp")
@@ -2985,6 +2986,7 @@ struct ChattingScreen: View {
         
         let database = Database.database().reference()
         let chatPath = "\(Constant.CHAT)/\(receiverRoom)"
+        database.child(chatPath).keepSynced(true)
         
         let fullQuery = database.child(chatPath)
             .queryOrdered(byChild: "timestamp")

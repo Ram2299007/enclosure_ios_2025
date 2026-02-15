@@ -30,7 +30,7 @@ class FirebaseManager: NSObject, ObservableObject {
         Messaging.messaging().delegate = self
         
         // Configure Realtime Database
-        Database.database().isPersistenceEnabled = false // Set to true if you want offline persistence
+        Database.database().isPersistenceEnabled = true // Set to true if you want offline persistence
         
         // Listen for APNs token received notification
         NotificationCenter.default.addObserver(

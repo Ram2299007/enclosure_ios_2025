@@ -3168,6 +3168,7 @@ struct GroupChattingScreen: View {
         
         let database = Database.database().reference()
         let chatPath = "\(Constant.GROUPCHAT)/\(senderRoom)"
+        database.child(chatPath).keepSynced(true)
         
         // Query last 10 messages ordered by key (matching Android orderByKey().limitToLast(10))
             let limitedQuery = database.child(chatPath)
@@ -3290,6 +3291,7 @@ struct GroupChattingScreen: View {
         
         let database = Database.database().reference()
         let chatPath = "\(Constant.GROUPCHAT)/\(senderRoom)"
+        database.child(chatPath).keepSynced(true)
         
         print("📱 [attachFullListener] Attaching real-time listener for room: \(senderRoom)")
         

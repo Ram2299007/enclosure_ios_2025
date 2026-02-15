@@ -48,6 +48,7 @@ struct Constant{
     static let camera = "camera"
     static let TYPEINDICATOR = "typingIndicator"
     static let incomingVoiceCall = "Incoming voice call"
+    static let incomingVideoCall = "Incoming video call"
 
     /// Current user device type from API (get_profile / verify_otp). "2" = iOS, "1" = Android. Fallback "2" if not yet fetched.
     static var deviceType: String {
