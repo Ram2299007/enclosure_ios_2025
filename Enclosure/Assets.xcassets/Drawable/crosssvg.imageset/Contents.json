@@ -1,0 +1,23 @@
+{
+  "images" : [
+    {
+      "filename" : "crossvg.svg",
+      "idiom" : "universal",
+      "scale" : "1x"
+    },
+    {
+      "filename" : "crossvg 1.svg",
+      "idiom" : "universal",
+      "scale" : "2x"
+    },
+    {
+      "filename" : "crossvg 2.svg",
+      "idiom" : "universal",
+      "scale" : "3x"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

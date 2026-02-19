@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Group Video Call</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-fullscreen">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 100% !important;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden !important;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            background: url('bg_blur.webp') center center / cover no-repeat !important;
+        }
+        body {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 100% !important;
+            height: 100vh;
+            height: 100dvh;
+            min-height: 100vh;
+            min-height: 100dvh;
+            overflow: hidden !important;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            background: url('bg_blur.webp') center center / cover no-repeat !important;
+        }
+        .video-container {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            min-width: 100% !important;
+            min-height: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            background: url('bg_blur.webp') center center / cover no-repeat !important;
+        }
+    </style>
+</head>
+<body>
+<div class="video-container">
+    <div class="remote-videos"  id="remoteVideos" ></div>
+    <video id="secondaryVideo" class="secondary-video" autoplay muted playsinline poster="bg_blur.webp"></video>
+    <video id="localVideo" class="local-video" autoplay muted playsinline poster="bg_blur.webp"></video>
+    <div class="status-bar" id="statusBar">Connecting...</div>
+    <div class="controls-container">
+        <div class="controls">
+            <button class="control-btn" id="muteMic" title="Mute Mic">
+                <img src="mic.png" alt="Mute Mic" width="24" height="24">
+            </button>
+            <button class="control-btn" id="toggleCamera" title="Toggle Camera">
+                <img src="camera.png" alt="Toggle Camera" width="24" height="24">
+            </button>
+            <button class="control-btn" id="switchCamera" title="Switch Camera">
+                <img src="switch_camera.png" alt="Switch Camera" width="24" height="24">
+            </button>
+            <button class="control-btn end-call" id="endCall" title="End Call">
+                <img src="end_call.png" alt="End Call" width="24" height="24">
+            </button>
+        </div>
+    </div>
+    <div class="top-bar hidden">
+        <button class="top-btn" id="backBtn" title="Go Back">
+            <img src="pinch.png" alt="Back" />
+        </button>
+        <div class="caller-name" id="callerName">Name</div>
+        <button class="top-btn" id="addMemberBtn" title="Add Member">
+            <img src="add_member.png" alt="Add Member" />
+        </button>
+    </div>
+</div>
+
+<script src="peerjs.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
+
+
+<!--<script src="file:///android_asset/peerjs.js"></script>-->

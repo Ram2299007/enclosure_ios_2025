@@ -1,0 +1,50 @@
+{
+  "PERFECT_PAYLOAD_FOR_WHATSAPP_STYLE": {
+    "message": {
+      "token": "YOUR_DEVICE_TOKEN_HERE",
+      "data": {
+        "bodyKey": "chatting",
+        "user_nameKey": "Ram Lohar",
+        "friendUidKey": "user123",
+        "msgKey": "Hello! How are you?",
+        "photo": "https://picsum.photos/200",
+        "receiverUidPower": "receiver123"
+      },
+      "apns": {
+        "headers": {
+          "apns-push-type": "alert",
+          "apns-priority": "10"
+        },
+        "payload": {
+          "aps": {
+            "alert": {
+              "title": "Ram Lohar",
+              "body": "Hello! How are you?"
+            },
+            "sound": "default",
+            "badge": 1,
+            "mutable-content": 1,
+            "category": "CHAT_MESSAGE"
+          }
+        }
+      }
+    }
+  },
+  
+  "CRITICAL_FIELDS_CHECKLIST": {
+    "mutable-content": "MUST be 1 (not 0, not missing)",
+    "bodyKey": "MUST be 'chatting' (exact string)",
+    "category": "MUST be 'CHAT_MESSAGE'",
+    "user_nameKey": "Sender's display name",
+    "friendUidKey": "Sender's unique ID",
+    "photo": "Valid HTTPS URL to profile picture"
+  },
+  
+  "COMMON_MISTAKES": {
+    "mistake_1": "mutable-content: 0 → Extension won't run",
+    "mistake_2": "No bodyKey → Extension skips processing",
+    "mistake_3": "bodyKey: 'chat' instead of 'chatting' → Skipped",
+    "mistake_4": "photo URL invalid → No profile picture",
+    "mistake_5": "apns in wrong place → iOS doesn't see it"
+  }
+}
