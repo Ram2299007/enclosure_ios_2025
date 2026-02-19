@@ -115,11 +115,12 @@ class CallKitManager: NSObject {
         NSLog("📞 [CallKit] Display text: '\(displayName)'")
         print("📞 [CallKit] Format: Caller • CallType")
         
-        // Set hasVideo based on actual call type
-        // Voice calls → false (shows "Voice Call" in CallKit UI)
-        // Video calls → true (shows "Video Call" in CallKit UI)
-        update.hasVideo = isVideoCall
-        print("📞 [CallKit] hasVideo = \(isVideoCall)")
+        // ALWAYS set hasVideo = true to force iOS unlock when answering from lock screen.
+        // Without this, voice calls answered from lock screen stay in background and
+        // the NativeVoiceCallScreen never appears (session.start() never fires).
+        // The localizedCallerName already shows "Voice Call" / "Video Call" so user knows.
+        update.hasVideo = true
+        print("📞 [CallKit] hasVideo = true (forces unlock for lock screen)")
         
         update.supportsHolding = false
         update.supportsGrouping = false

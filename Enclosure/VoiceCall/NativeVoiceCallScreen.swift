@@ -1,7 +1,7 @@
 import SwiftUI
 
 // MARK: - NativeVoiceCallScreen
-/// Full native SwiftUI voice call UI — same design as indexVoice.html
+/// Full native SwiftUI voice call UI — pixel-matched to indexVoice.html + stylesVoice.css
 /// No WKWebView, no JavaScript. Uses NativeVoiceCallSession for WebRTC.
 struct NativeVoiceCallScreen: View {
     @Environment(\.dismiss) private var dismiss
@@ -15,23 +15,27 @@ struct NativeVoiceCallScreen: View {
 
     var body: some View {
         ZStack {
-            // Background
+            // Background — matches .voice-container + .background-image
             backgroundView
 
+            // Caller info — matches .participants-container + .caller-info
+            // Positioned in upper-center area (top: 40px + margin-top: 40px in CSS)
             VStack(spacing: 0) {
-                // Top bar (back + add member)
-                topBar
-
-                Spacer()
-
-                // Caller info (photo, name, timer, status)
+                Spacer().frame(height: 80 + safeAreaTop) // ~top: 40px + safe area + caller-info margin-top: 40px
                 callerInfoView
-
                 Spacer()
+            }
 
-                // Bottom controls (mute, end, audio output)
-                controlsView
-                    .padding(.bottom, 48)
+            // Top bar — matches .top-bar (absolute, top: calc(20px + safe-area))
+            VStack {
+                topBar
+                Spacer()
+            }
+
+            // Bottom controls container — matches .controls-container
+            VStack {
+                Spacer()
+                controlsContainer
             }
 
             // Audio output menu overlay
@@ -58,7 +62,20 @@ struct NativeVoiceCallScreen: View {
         }
     }
 
+    private var safeAreaTop: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows.first?.safeAreaInsets.top ?? 47
+    }
+
+    private var safeAreaBottom: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows.first?.safeAreaInsets.bottom ?? 34
+    }
+
     // MARK: - Background
+    // Matches: body { background: url('callnewmodernbg.png'); background-color: #000; }
 
     private var backgroundView: some View {
         ZStack {
@@ -68,109 +85,165 @@ struct NativeVoiceCallScreen: View {
                     .resizable()
                     .scaledToFill()
                     .ignoresSafeArea()
-                    .opacity(0.85)
             }
         }
     }
 
     // MARK: - Top Bar
+    // Matches: .top-bar { top: calc(20px + env(safe-area-inset-top)); left: 10px; right: 10px; }
+    // Matches: .top-btn { width: 44px; height: 44px; background-color: rgba(255,255,255,0.1); border-radius: 50%; }
 
     private var topBar: some View {
         HStack {
             Button(action: { session.endCall() }) {
-                Image(uiImage: UIImage(named: "back_arrow") ?? UIImage(systemName: "chevron.left")!)
-                    .resizable()
-                    .frame(width: 24, height: 24)
-                    .foregroundColor(.white)
-                    .padding(12)
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.1))
+                        .frame(width: 44, height: 44)
+                    if let img = UIImage(named: "back_arrow") {
+                        Image(uiImage: img)
+                            .resizable()
+                            .renderingMode(.template)
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(.white)
+                    } else {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundColor(.white)
+                    }
+                }
             }
             Spacer()
             Button(action: { /* Add member */ }) {
-                Image(uiImage: UIImage(named: "add_member") ?? UIImage(systemName: "person.badge.plus")!)
-                    .resizable()
-                    .frame(width: 24, height: 24)
-                    .foregroundColor(.white)
-                    .padding(12)
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.1))
+                        .frame(width: 44, height: 44)
+                    if let img = UIImage(named: "add_member") {
+                        Image(uiImage: img)
+                            .resizable()
+                            .renderingMode(.template)
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(.white)
+                    } else {
+                        Image(systemName: "person.badge.plus")
+                            .font(.system(size: 18))
+                            .foregroundColor(.white)
+                    }
+                }
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.top, 56)
+        .padding(.horizontal, 22) // left: 10px + padding: 0 12px
+        .padding(.top, 20 + safeAreaTop) // top: calc(20px + env(safe-area-inset-top))
     }
 
     // MARK: - Caller Info
+    // Matches: .caller-info { margin-top: 40px; }
+    // .caller-image { width: 100px; height: 100px; } — visibility: hidden in HTML
+    // .caller-name { margin-top: 17px; font-size: 14px; font-weight: 700; color: #ffffff; }
+    // .call-timer  { margin-top: 10px; font-size: 14px; font-weight: 500; color: #808080; }
+    // .call-status { margin-top: 17px; font-size: 12px; font-weight: 700; color: #9EA6B9; }
 
     private var callerInfoView: some View {
-        VStack(spacing: 12) {
-            // Caller photo
+        VStack(spacing: 0) {
+            // Caller photo — .caller-image-wrapper (100x100, hidden in original HTML but we show it)
             AsyncImage(url: URL(string: session.callerPhoto)) { image in
                 image.resizable().scaledToFill()
             } placeholder: {
-                Image(uiImage: UIImage(named: "user") ?? UIImage(systemName: "person.circle.fill")!)
-                    .resizable()
-                    .foregroundColor(.white.opacity(0.6))
+                if let img = UIImage(named: "user") {
+                    Image(uiImage: img)
+                        .resizable()
+                        .foregroundColor(.white.opacity(0.6))
+                } else {
+                    Image(systemName: "person.circle.fill")
+                        .resizable()
+                        .foregroundColor(.white.opacity(0.6))
+                }
             }
             .frame(width: 100, height: 100)
             .clipShape(Circle())
-            .overlay(Circle().stroke(Color.white.opacity(0.3), lineWidth: 2))
 
-            // Caller name
+            // Caller name — .caller-name { margin-top: 17px; font-size: 14px; font-weight: 700; }
             Text(session.callerName.isEmpty ? "Unknown" : session.callerName)
-                .font(.system(size: 26, weight: .semibold))
+                .font(.system(size: 14, weight: .bold))
                 .foregroundColor(.white)
                 .lineLimit(1)
+                .padding(.top, 17)
 
-            // Call timer / status
+            // Call timer — .call-timer { margin-top: 10px; font-size: 14px; font-weight: 500; color: #808080; }
             if session.isCallConnected {
                 Text(formattedDuration(session.callDuration))
-                    .font(.system(size: 16, weight: .regular))
-                    .foregroundColor(.white.opacity(0.8))
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(Color(hex: "#808080"))
                     .monospacedDigit()
-            } else {
-                Text("Connecting...")
-                    .font(.system(size: 16, weight: .regular))
-                    .foregroundColor(.white.opacity(0.7))
+                    .padding(.top, 10)
             }
+
+            // Call status — .call-status { margin-top: 17px; font-size: 12px; font-weight: 700; color: #9EA6B9; }
+            Text(session.isCallConnected ? "Connected" : "Connecting...")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(Color(hex: "#9EA6B9"))
+                .padding(.top, 17)
         }
     }
 
-    // MARK: - Controls
+    // MARK: - Controls Container
+    // Matches: .controls-container { position: absolute; bottom: 0; height: 80px;
+    //   padding-bottom: env(safe-area-inset-bottom); background-color: rgba(0,0,0,0.5);
+    //   border-top-left-radius: 50px; border-top-right-radius: 50px; }
+    // .controls { position: absolute; top: -28px; gap: 50px; }
+    // .control-btn { width: 64px; height: 64px; background-color: rgba(255,255,255,0.1); }
+    // .control-btn.end-call { background-color: rgba(211,47,47,0.7); }
+    // .control-btn img { width: 28px; height: 28px; }
 
-    private var controlsView: some View {
-        HStack(spacing: 32) {
-            // Mute mic
-            controlButton(
-                imageName: session.isMuted ? "mic_muted" : "mic",
-                systemFallback: session.isMuted ? "mic.slash.fill" : "mic.fill",
-                isActive: session.isMuted,
-                activeColor: .red.opacity(0.8)
-            ) {
-                session.setMuted(!session.isMuted)
-            }
+    private var controlsContainer: some View {
+        ZStack(alignment: .top) {
+            // Bottom container background — .controls-container
+            VoiceCallRoundedCorner(radius: 50, corners: [.topLeft, .topRight])
+                .fill(Color.black.opacity(0.5))
+                .frame(height: 80 + safeAreaBottom)
 
-            // End call
-            Button(action: { session.endCall() }) {
-                ZStack {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 68, height: 68)
-                    Image(uiImage: UIImage(named: "end_call") ?? UIImage(systemName: "phone.down.fill")!)
-                        .resizable()
-                        .frame(width: 28, height: 28)
-                        .foregroundColor(.white)
+            // Floating controls — .controls { top: -28px; }
+            HStack(spacing: 50) {
+                // Mute mic
+                controlButton(
+                    imageName: session.isMuted ? "mic_muted" : "mic",
+                    systemFallback: session.isMuted ? "mic.slash.fill" : "mic.fill",
+                    isActive: session.isMuted
+                ) {
+                    session.setMuted(!session.isMuted)
                 }
-            }
 
-            // Audio output (earpiece / speaker / bluetooth)
-            ZStack(alignment: .top) {
+                // End call — .control-btn.end-call { background-color: rgba(211,47,47,0.7); }
+                Button(action: { session.endCall() }) {
+                    ZStack {
+                        Circle()
+                            .fill(Color(red: 211/255, green: 47/255, blue: 47/255).opacity(0.7))
+                            .frame(width: 64, height: 64)
+                        if let img = UIImage(named: "end_call") {
+                            Image(uiImage: img)
+                                .resizable()
+                                .renderingMode(.template)
+                                .frame(width: 28, height: 28)
+                                .foregroundColor(.white)
+                        } else {
+                            Image(systemName: "phone.down.fill")
+                                .font(.system(size: 22))
+                                .foregroundColor(.white)
+                        }
+                    }
+                }
+
+                // Audio output
                 controlButton(
                     imageName: audioOutputImageName,
                     systemFallback: session.isSpeakerOn ? "speaker.wave.3.fill" : "speaker.fill",
-                    isActive: session.isSpeakerOn,
-                    activeColor: .blue.opacity(0.8)
+                    isActive: session.isSpeakerOn
                 ) {
                     showAudioMenu.toggle()
                 }
             }
+            .offset(y: -28) // .controls { top: -28px; }
         }
     }
 
@@ -183,18 +256,18 @@ struct NativeVoiceCallScreen: View {
         imageName: String,
         systemFallback: String,
         isActive: Bool,
-        activeColor: Color,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(isActive ? activeColor : Color.white.opacity(0.2))
-                    .frame(width: 60, height: 60)
+                    .fill(isActive ? Color(hex: "FF0000").opacity(0.7) : Color.white.opacity(0.1))
+                    .frame(width: 64, height: 64)
                 if let img = UIImage(named: imageName) {
                     Image(uiImage: img)
                         .resizable()
-                        .frame(width: 24, height: 24)
+                        .renderingMode(.template)
+                        .frame(width: 28, height: 28)
                         .foregroundColor(.white)
                 } else {
                     Image(systemName: systemFallback)
@@ -206,53 +279,64 @@ struct NativeVoiceCallScreen: View {
     }
 
     // MARK: - Audio Output Menu
+    // Matches: .audio-output-menu { bottom: 70px; background-color: #011224; border-radius: 12px; min-width: 120px; }
+    // .audio-option { padding: 12px 24px; color: #ffffff; font-size: 16px; font-weight: 500; }
 
     private var audioOutputMenu: some View {
-        VStack {
-            Spacer()
-            HStack {
+        ZStack {
+            // Dismiss tap area
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { showAudioMenu = false }
+
+            VStack {
                 Spacer()
-                VStack(spacing: 0) {
-                    audioMenuOption(label: "Earpiece", icon: "earpiece", systemIcon: "ear") {
-                        session.setAudioOutput(speaker: false)
-                        showAudioMenu = false
-                    }
-                    Divider().background(Color.white.opacity(0.3))
-                    audioMenuOption(label: "Speaker", icon: "speaker", systemIcon: "speaker.wave.3") {
-                        session.setAudioOutput(speaker: true)
-                        showAudioMenu = false
-                    }
-                    if session.isBluetoothAvailable {
-                        Divider().background(Color.white.opacity(0.3))
-                        audioMenuOption(label: "Bluetooth", icon: "bluetooth", systemIcon: "headphones") {
-                            // Bluetooth auto-routes when headset connected
+                HStack {
+                    Spacer()
+                    VStack(spacing: 0) {
+                        audioMenuOption(label: "Normal", icon: "earpiece", systemIcon: "ear") {
+                            session.setAudioOutput(speaker: false)
                             showAudioMenu = false
                         }
+                        audioMenuOption(label: "Speaker", icon: "speaker", systemIcon: "speaker.wave.3") {
+                            session.setAudioOutput(speaker: true)
+                            showAudioMenu = false
+                        }
+                        if session.isBluetoothAvailable {
+                            audioMenuOption(label: "Bluetooth", icon: "bluetooth", systemIcon: "headphones") {
+                                showAudioMenu = false
+                            }
+                        }
                     }
+                    .padding(.vertical, 8)
+                    .background(Color(hex: "#011224"))
+                    .cornerRadius(12)
+                    .frame(minWidth: 120)
+                    .fixedSize()
+                    Spacer().frame(width: 20)
                 }
-                .background(Color.black.opacity(0.85))
-                .cornerRadius(12)
-                .frame(width: 160)
-                .padding(.trailing, 24)
+                .padding(.bottom, 80 + safeAreaBottom + 38) // above controls container + button offset
             }
-            .padding(.bottom, 130)
         }
-        .onTapGesture { showAudioMenu = false }
     }
 
     private func audioMenuOption(label: String, icon: String, systemIcon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 if let img = UIImage(named: icon) {
-                    Image(uiImage: img).resizable().frame(width: 20, height: 20)
+                    Image(uiImage: img)
+                        .resizable()
+                        .renderingMode(.template)
+                        .frame(width: 20, height: 20)
                 } else {
                     Image(systemName: systemIcon).font(.system(size: 18))
                 }
-                Text(label).font(.system(size: 15))
+                Text(label)
+                    .font(.system(size: 16, weight: .medium))
                 Spacer()
             }
             .foregroundColor(.white)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 24)
             .padding(.vertical, 12)
         }
     }
@@ -268,5 +352,21 @@ struct NativeVoiceCallScreen: View {
             return String(format: "%02d:%02d:%02d", h, m, s)
         }
         return String(format: "%02d:%02d", m, s)
+    }
+}
+
+// MARK: - VoiceCallRoundedCorner Shape (top-left + top-right radius only)
+// Matches: .controls-container { border-top-left-radius: 50px; border-top-right-radius: 50px; }
+private struct VoiceCallRoundedCorner: Shape {
+    var radius: CGFloat = .infinity
+    var corners: UIRectCorner = .allCorners
+
+    func path(in rect: CGRect) -> Path {
+        let path = UIBezierPath(
+            roundedRect: rect,
+            byRoundingCorners: corners,
+            cornerRadii: CGSize(width: radius, height: radius)
+        )
+        return Path(path.cgPath)
     }
 }

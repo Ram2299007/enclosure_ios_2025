@@ -92,6 +92,9 @@ struct MainActivityOld: View {
 
     // Incoming video call from CallKit
     @State private var incomingVideoCallPayload: VideoCallPayload?
+
+    // Reliable pending call observer (survives background/lockscreen transitions)
+    @ObservedObject private var pendingCallManager = PendingCallManager.shared
     
     // DEBUG: Test button to verify screen presentation works
     #if DEBUG
@@ -1131,6 +1134,11 @@ struct MainActivityOld: View {
                     print("📤 [MainActivityOld] ⏰ Checking for shared content after becoming active...")
                     checkForSharedContent()
                 }
+
+                // Check for pending calls (background / lock screen answer)
+                // NotificationCenter might have missed the AnswerIncomingCall notification
+                // PendingCallManager is the reliable fallback
+                checkAndConsumePendingCalls()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("HandleSharedContent"))) { notification in
@@ -1235,6 +1243,7 @@ struct MainActivityOld: View {
 
                 incomingVideoCallPayload = payload
                 incomingVoiceCallPayload = nil
+                pendingCallManager.clearAll()
                 print("✅✅✅ [MainActivityOld] VideoCallScreen ACTIVE")
             } else {
                 NSLog("📞 [MainActivityOld] Creating VoiceCallPayload...")
@@ -1253,6 +1262,8 @@ struct MainActivityOld: View {
                 
                 incomingVoiceCallPayload = payload
                 incomingVideoCallPayload = nil
+                // Clear PendingCallManager since we handled it via NotificationCenter
+                pendingCallManager.clearAll()
                 print("✅✅✅ [MainActivityOld] VoiceCallScreen ACTIVE")
             }
         }
@@ -1280,6 +1291,27 @@ struct MainActivityOld: View {
         }
     }
     
+    // MARK: - Pending Call Check (Background / Lock Screen Fallback)
+    /// Called when scenePhase becomes .active to pick up calls answered from background/lockscreen.
+    /// PendingCallManager is the reliable source — NotificationCenter may have missed the notification.
+    private func checkAndConsumePendingCalls() {
+        // Don't consume if a call screen is already active
+        guard incomingVoiceCallPayload == nil, incomingVideoCallPayload == nil else {
+            NSLog("📞 [MainActivityOld] checkAndConsumePendingCalls: call screen already active, skipping")
+            return
+        }
+
+        if let voicePayload = pendingCallManager.consumePendingVoiceCall() {
+            NSLog("📞 [MainActivityOld] ✅ Consumed pending VOICE call from PendingCallManager")
+            incomingVoiceCallPayload = voicePayload
+            incomingVideoCallPayload = nil
+        } else if let videoPayload = pendingCallManager.consumePendingVideoCall() {
+            NSLog("📞 [MainActivityOld] ✅ Consumed pending VIDEO call from PendingCallManager")
+            incomingVideoCallPayload = videoPayload
+            incomingVoiceCallPayload = nil
+        }
+    }
+
     // MARK: - Incoming Call On/Off Toast (matching Android incomingonoffLyt)
     // Shows a floating card with fade-in then auto fade-out, matching Android fade_in2 + fade_outnew animations
     private func showIncomingOnOffToastMessage(_ message: String) {

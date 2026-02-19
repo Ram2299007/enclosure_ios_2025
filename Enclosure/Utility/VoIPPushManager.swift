@@ -299,6 +299,19 @@ extension VoIPPushManager: PKPushRegistryDelegate {
             // Stop observing cancel signal once user answered
             self.stopObservingRemoveCallNotification()
             self.clearIncomingCallContext(roomId: roomId)
+
+            // Store in PendingCallManager IMMEDIATELY (reliable, survives background transitions)
+            if isVideoCall {
+                PendingCallManager.shared.setPendingVideoCall(
+                    roomId: roomId, receiverId: receiverId,
+                    receiverPhone: receiverPhone, callerName: callerName, callerPhoto: callerPhoto
+                )
+            } else {
+                PendingCallManager.shared.setPendingVoiceCall(
+                    roomId: roomId, receiverId: receiverId,
+                    receiverPhone: receiverPhone, callerName: callerName, callerPhoto: callerPhoto
+                )
+            }
             
             // Request app to come to foreground if on lock screen
             // This will prompt iOS to show unlock (Face ID/Touch ID/Passcode)
