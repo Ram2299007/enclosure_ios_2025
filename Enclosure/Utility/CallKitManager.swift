@@ -316,10 +316,12 @@ extension CallKitManager: CXProviderDelegate {
         // Don't configure audio here - CallKit will call didActivate with audio session
         // Configuring here causes conflicts and "Session activation failed" errors
         
-        // Notify app to start call, callInfo.isVideoCall
-        DispatchQueue.main.async {
-            self.onAnswerCall?(callInfo.roomId, callInfo.receiverId, callInfo.receiverPhone, callInfo.isVideoCall)
-        }
+        // Notify app to start call SYNCHRONOUSLY.
+        // CXProvider delegate is on main queue (queue: nil), so this is safe.
+        // CRITICAL: Must run BEFORE action.fulfill() so the session exists
+        // when didActivate fires. Async dispatch caused cold-start race condition
+        // where didActivate fired before the session was created.
+        self.onAnswerCall?(callInfo.roomId, callInfo.receiverId, callInfo.receiverPhone, callInfo.isVideoCall)
         action.fulfill()
         
         // Dismiss CallKit full-screen UI after answering for BOTH video and voice calls.
@@ -416,12 +418,12 @@ extension CallKitManager: CXProviderDelegate {
                 // Native voice call: use .voiceChat mode for proper mic capture + echo cancellation.
                 // .voiceChat enables system AEC/AGC which works WITH native WebRTC (GoogleWebRTC).
                 // .allowBluetooth for headset support. NO .mixWithOthers — exclusive mic access.
+                // NOTE: Do NOT set preferredSampleRate/IOBufferDuration here.
+                // CallKit manages the audio session — forcing 48kHz/5ms causes AURemoteIO
+                // format errors on cold start. System defaults work fine with Opus codec.
                 try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP])
-                // HD audio preferences: 48kHz for Opus wideband, 5ms buffer for low latency
-                try audioSession.setPreferredSampleRate(48000)
-                try audioSession.setPreferredIOBufferDuration(0.005)
                 try audioSession.setActive(true)
-                NSLog("✅ [CallKit] Voice call: .voiceChat HD (48kHz, 5ms buffer) + .allowBluetooth")
+                NSLog("✅ [CallKit] Voice call: .voiceChat + .allowBluetooth (system audio defaults)")
             } else {
                 // Video call (WKWebView): use .default mode + .mixWithOthers
                 // .voiceChat CONFLICTS with WKWebView's WebRTC audio processing (muted=true tracks).

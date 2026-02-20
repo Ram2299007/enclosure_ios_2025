@@ -142,6 +142,19 @@ final class NativeVoiceCallSession: ObservableObject {
                         self.callKitAudioReadyObserver = nil
                     }
                 }
+                // Fallback: If didActivate still hasn't fired after 3s (cold start edge case),
+                // force-activate audio anyway. Better late mic than no mic.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                    guard let self = self, !self.isCallEnded else { return }
+                    if self.callKitAudioReadyObserver != nil {
+                        NSLog("⚠️ [NativeSession] Audio fallback timer — force-activating WebRTC audio")
+                        self.webRTCManager?.activateAudioSession()
+                        if let obs = self.callKitAudioReadyObserver {
+                            NotificationCenter.default.removeObserver(obs)
+                            self.callKitAudioReadyObserver = nil
+                        }
+                    }
+                }
             }
         }
     }

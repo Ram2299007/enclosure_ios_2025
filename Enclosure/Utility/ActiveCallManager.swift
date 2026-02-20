@@ -50,11 +50,13 @@ final class ActiveCallManager: ObservableObject {
 
         let session = NativeVoiceCallSession(payload: payload)
         
-        DispatchQueue.main.async {
-            self.activeSession = session
-            NSLog("✅ [ActiveCallManager] Session created — starting WebRTC immediately")
-            session.start()
-        }
+        // Set session SYNCHRONOUSLY — no async dispatch.
+        // This is already called from main queue (CXProvider delegate).
+        // CRITICAL: Session must exist BEFORE action.fulfill() triggers didActivate,
+        // otherwise activateAudioForCallKit() finds nil session on cold start.
+        self.activeSession = session
+        NSLog("✅ [ActiveCallManager] Session created — starting WebRTC immediately")
+        session.start()
     }
 
     /// Set an outgoing session (created by NativeVoiceCallScreen for outgoing calls)
