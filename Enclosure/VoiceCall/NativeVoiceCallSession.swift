@@ -453,10 +453,15 @@ extension NativeVoiceCallSession: NativeWebRTCManagerDelegate {
     func webRTCManager(_ manager: NativeWebRTCManager, didDisconnectPeer peerId: String) {
         NSLog("🔴 [NativeSession] Peer disconnected: \(peerId) (attempt \(reconnectAttempts)/\(maxReconnectAttempts))")
         guard !isCallEnded else { return }
+        disconnectedPeerId = peerId
+        attemptICERestart(forPeer: peerId)
+    }
 
-        // Try ICE restart before giving up
+    /// Attempt ICE restart with retry logic. Called on disconnect and on timeout.
+    private func attemptICERestart(forPeer peerId: String) {
+        guard !isCallEnded else { return }
+
         if reconnectAttempts < maxReconnectAttempts {
-            disconnectedPeerId = peerId
             reconnectAttempts += 1
             NSLog("🔄 [NativeSession] Attempting ICE restart #\(reconnectAttempts) for: \(peerId)")
             webRTCManager?.restartICE(forPeer: peerId)
@@ -467,7 +472,7 @@ extension NativeVoiceCallSession: NativeWebRTCManagerDelegate {
                 guard let self = self, !self.isCallEnded else { return }
                 if self.reconnectAttempts < self.maxReconnectAttempts {
                     NSLog("⏱️ [NativeSession] Reconnect timeout — retrying ICE restart")
-                    self.webRTCManager(_ manager, didDisconnectPeer: peerId)
+                    self.attemptICERestart(forPeer: peerId)
                 } else {
                     NSLog("❌ [NativeSession] Max reconnect attempts reached — ending call")
                     DispatchQueue.main.async { self.endCall() }

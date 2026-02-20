@@ -170,9 +170,7 @@ final class NativeWebRTCManager: NSObject {
                 NSLog("❌ [NativeWebRTC] createOffer failed for \(peerId): \(error?.localizedDescription ?? "nil")")
                 return
             }
-            // Apply Opus HD bitrate to offer SDP
-            let hdSDP = self.setOpusBitrate(sdp: sdp)
-            pc.setLocalDescription(hdSDP) { error in
+            pc.setLocalDescription(sdp) { error in
                 if let error = error {
                     NSLog("❌ [NativeWebRTC] setLocalDescription (offer) failed: \(error.localizedDescription)")
                     return
@@ -183,7 +181,7 @@ final class NativeWebRTCManager: NSObject {
                 } else {
                     NSLog("📤 [NativeWebRTC] Calling delegate.didGenerateLocalSDP for offer")
                 }
-                self.delegate?.webRTCManager(self, didGenerateLocalSDP: hdSDP, forPeer: peerId)
+                self.delegate?.webRTCManager(self, didGenerateLocalSDP: sdp, forPeer: peerId)
             }
         }
     }
@@ -214,15 +212,13 @@ final class NativeWebRTCManager: NSObject {
                 NSLog("❌ [NativeWebRTC] createAnswer failed for \(peerId): \(error?.localizedDescription ?? "nil")")
                 return
             }
-            // Apply Opus HD bitrate to answer SDP
-            let hdSDP = self.setOpusBitrate(sdp: sdp)
-            pc.setLocalDescription(hdSDP) { error in
+            pc.setLocalDescription(sdp) { error in
                 if let error = error {
                     NSLog("❌ [NativeWebRTC] setLocalDescription (answer) failed: \(error.localizedDescription)")
                     return
                 }
                 NSLog("✅ [NativeWebRTC] Local SDP (answer) set for peer: \(peerId)")
-                self.delegate?.webRTCManager(self, didGenerateLocalSDP: hdSDP, forPeer: peerId)
+                self.delegate?.webRTCManager(self, didGenerateLocalSDP: sdp, forPeer: peerId)
             }
         }
     }
@@ -308,37 +304,15 @@ final class NativeWebRTCManager: NSObject {
                 NSLog("❌ [NativeWebRTC] ICE restart offer failed: \(error?.localizedDescription ?? "nil")")
                 return
             }
-            // Set Opus bitrate preferences in SDP
-            let optimizedSDP = self.setOpusBitrate(sdp: sdp)
-            pc.setLocalDescription(optimizedSDP) { error in
+            pc.setLocalDescription(sdp) { error in
                 if let error = error {
                     NSLog("❌ [NativeWebRTC] ICE restart setLocal failed: \(error.localizedDescription)")
                     return
                 }
                 NSLog("✅ [NativeWebRTC] ICE restart offer set — sending to peer")
-                self.delegate?.webRTCManager(self, didGenerateLocalSDP: optimizedSDP, forPeer: peerId)
+                self.delegate?.webRTCManager(self, didGenerateLocalSDP: sdp, forPeer: peerId)
             }
         }
-    }
-
-    // MARK: - Opus HD Audio Bitrate
-
-    /// Modify SDP to set Opus codec bitrate for HD voice.
-    /// maxaveragebitrate=64000 for high-quality voice, stereo=0 for mono (voice).
-    private func setOpusBitrate(sdp: RTCSessionDescription) -> RTCSessionDescription {
-        var sdpString = sdp.sdp
-        // Find the Opus codec line and add bitrate parameters
-        if let range = sdpString.range(of: "a=fmtp:111 ") {
-            // Opus is typically payload 111
-            let endOfLine = sdpString[range.upperBound...].firstIndex(of: "\r") ?? sdpString[range.upperBound...].firstIndex(of: "\n") ?? sdpString.endIndex
-            let existingParams = String(sdpString[range.upperBound..<endOfLine])
-            if !existingParams.contains("maxaveragebitrate") {
-                let hdParams = ";maxaveragebitrate=64000;stereo=0;sprop-stereo=0;useinbandfec=1;usedtx=1"
-                sdpString.insert(contentsOf: hdParams, at: endOfLine)
-                NSLog("✅ [NativeWebRTC] Opus HD bitrate set: 64kbps, FEC+DTX enabled")
-            }
-        }
-        return RTCSessionDescription(type: sdp.type, sdp: sdpString)
     }
 
     // MARK: - Cleanup
