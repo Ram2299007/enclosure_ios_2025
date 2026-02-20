@@ -466,7 +466,10 @@ final class NativeVoiceCallSession: ObservableObject {
     }
 
     func stop() {
-        if isCallEnded && payload.isSender {
+        // Only send removeCallNotification if call was NOT connected (missed call).
+        // Sending after a connected call leaves stale entries in Firebase,
+        // causing the next incoming call to immediately trigger missed call flow.
+        if isCallEnded && payload.isSender && !isCallConnected {
             sendRemoveCallNotificationIfNeeded()
         }
         performCleanup(removeRoom: isCallEnded)
