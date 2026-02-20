@@ -44,7 +44,17 @@ final class NativeWebRTCManager: NSObject {
         // Without this, WebRTC fights CallKit for audio session and mic capture fails.
         let rtcAudioSession = RTCAudioSession.sharedInstance()
         rtcAudioSession.useManualAudio = true
-        rtcAudioSession.isAudioEnabled = false
+        
+        // CRITICAL: On lock screen + cold start, didActivate may fire BEFORE this init.
+        // If CallKit already activated audio, do NOT reset isAudioEnabled — that undoes
+        // the activation and causes "no mic" on lock screen answered calls.
+        // Only disable audio if CallKit hasn't activated yet (normal flow).
+        if !CallKitManager.shared.isAudioSessionReady {
+            rtcAudioSession.isAudioEnabled = false
+            NSLog("📞 [NativeWebRTC] Audio not yet active — isAudioEnabled=false (will activate on didActivate)")
+        } else {
+            NSLog("📞 [NativeWebRTC] CallKit audio ALREADY active — keeping isAudioEnabled=\(rtcAudioSession.isAudioEnabled)")
+        }
         
         // Pre-configure the audio session settings WebRTC should use.
         // These are applied when RTCAudioSession is activated (via didActivate).
@@ -280,13 +290,14 @@ final class NativeWebRTCManager: NSObject {
     /// NOTE: didActivate now directly activates RTCAudioSession, so this may be a no-op.
     func activateAudioSession() {
         let rtcAudioSession = RTCAudioSession.sharedInstance()
-        if rtcAudioSession.isAudioEnabled {
-            NSLog("ℹ️ [NativeWebRTC] RTCAudioSession already enabled — skipping (didActivate handled it)")
-            return
-        }
+        // ALWAYS call audioSessionDidActivate — even if isAudioEnabled is already true.
+        // On lock screen + cold start, didActivate may have set isAudioEnabled=true before
+        // the RTCPeerConnectionFactory and audio tracks existed. Re-calling ensures the
+        // audio pipeline is properly connected to the now-existing tracks.
+        let wasEnabled = rtcAudioSession.isAudioEnabled
         rtcAudioSession.audioSessionDidActivate(audioSession)
         rtcAudioSession.isAudioEnabled = true
-        NSLog("✅ [NativeWebRTC] RTCAudioSession activated — mic capture enabled")
+        NSLog("✅ [NativeWebRTC] RTCAudioSession activated — mic capture enabled (wasEnabled=\(wasEnabled))")
     }
 
     /// Call on cleanup to release WebRTC audio.

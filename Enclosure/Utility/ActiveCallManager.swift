@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import os.log
 
 /// Singleton bridge between CallKit ↔ NativeVoiceCallSession.
 /// - Starts WebRTC session IMMEDIATELY when user answers (before UI appears)
@@ -16,6 +17,7 @@ final class ActiveCallManager: ObservableObject {
     var hasActiveCall: Bool { activeSession != nil }
 
     private init() {
+        CallLogger.log("ActiveCallManager initialized", category: .session)
         NSLog("✅ [ActiveCallManager] Initialized")
     }
 
@@ -55,7 +57,8 @@ final class ActiveCallManager: ObservableObject {
         // CRITICAL: Session must exist BEFORE action.fulfill() triggers didActivate,
         // otherwise activateAudioForCallKit() finds nil session on cold start.
         self.activeSession = session
-        NSLog("✅ [ActiveCallManager] Session created — starting WebRTC immediately")
+        CallLogger.success("Session created for room=\(roomId), caller=\(callerName) — starting WebRTC (isAudioReady=\(CallKitManager.shared.isAudioSessionReady))", category: .session)
+        NSLog("✅ [ActiveCallManager] Session created — starting WebRTC immediately (isAudioReady=\(CallKitManager.shared.isAudioSessionReady))")
         session.start()
     }
 
@@ -100,11 +103,13 @@ final class ActiveCallManager: ObservableObject {
     /// This ensures the RTCAudioSession is activated AFTER CallKit has activated AVAudioSession.
     func activateAudioForCallKit() {
         guard let session = activeSession else {
+            CallLogger.log("activateAudioForCallKit: session nil — will check when created", category: .audio)
             NSLog("📞 [ActiveCallManager] activateAudioForCallKit: session nil — session will check isAudioSessionReady when created")
             return
         }
         DispatchQueue.main.async {
             session.activateWebRTCAudio()
+            CallLogger.success("CallKit didActivate → WebRTC audio activated", category: .audio)
             NSLog("✅ [ActiveCallManager] CallKit didActivate → WebRTC audio activated")
         }
     }

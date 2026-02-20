@@ -4,6 +4,7 @@ import AVFoundation
 import AudioToolbox
 import UIKit
 import WebRTC
+import os.log
 
 // MARK: - NativeVoiceCallSession
 /// Replaces WKWebView-based VoiceCallSession with fully native WebRTC.
@@ -72,6 +73,7 @@ final class NativeVoiceCallSession: ObservableObject {
             self.callKitUUID = CallKitManager.shared.getCallUUID(for: rId)
         }
 
+        CallLogger.log("Init — room: \(roomId), myPeerId: \(myPeerId), isSender: \(payload.isSender), callKitUUID: \(callKitUUID?.uuidString ?? "nil")", category: .session)
         NSLog("✅ [NativeSession] Init — room: \(roomId), myPeerId: \(myPeerId), isSender: \(payload.isSender), callKitUUID: \(callKitUUID?.uuidString ?? "nil")")
     }
 
@@ -91,6 +93,7 @@ final class NativeVoiceCallSession: ObservableObject {
         } else {
             // Incoming call: proceed immediately with WebRTC setup.
             // Audio activation is deferred until CallKit's didActivate fires.
+            CallLogger.log("Incoming — setting up WebRTC, audio deferred to didActivate", category: .session)
             NSLog("📞 [NativeSession] Incoming — setting up WebRTC immediately, audio deferred to didActivate")
             proceedWithStart()
         }
@@ -126,6 +129,7 @@ final class NativeVoiceCallSession: ObservableObject {
             // We MUST wait for didActivate before activating WebRTC audio.
             // Activating before didActivate causes AURemoteIO format errors (no mic in background).
             if CallKitManager.shared.isAudioSessionReady {
+                CallLogger.success("CallKit audio already active — activating WebRTC audio now", category: .audio)
                 NSLog("✅ [NativeSession] CallKit audio already active — activating WebRTC audio now")
                 webRTCManager?.activateAudioSession()
             } else {
@@ -135,6 +139,7 @@ final class NativeVoiceCallSession: ObservableObject {
                     object: nil, queue: .main
                 ) { [weak self] _ in
                     guard let self = self else { return }
+                    CallLogger.success("CallKit didActivate fired — activating WebRTC audio now", category: .audio)
                     NSLog("✅ [NativeSession] CallKit didActivate fired — activating WebRTC audio now")
                     self.webRTCManager?.activateAudioSession()
                     if let obs = self.callKitAudioReadyObserver {
@@ -147,6 +152,7 @@ final class NativeVoiceCallSession: ObservableObject {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
                     guard let self = self, !self.isCallEnded else { return }
                     if self.callKitAudioReadyObserver != nil {
+                        CallLogger.log("Audio fallback timer — force-activating WebRTC audio", category: .audio)
                         NSLog("⚠️ [NativeSession] Audio fallback timer — force-activating WebRTC audio")
                         self.webRTCManager?.activateAudioSession()
                         if let obs = self.callKitAudioReadyObserver {
@@ -166,6 +172,7 @@ final class NativeVoiceCallSession: ObservableObject {
         manager.delegate = self
         manager.createLocalAudioTrack()
         self.webRTCManager = manager
+        CallLogger.success("WebRTC manager ready", category: .webrtc)
         NSLog("✅ [NativeSession] WebRTC manager ready")
     }
 

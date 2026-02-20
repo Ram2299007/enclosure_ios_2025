@@ -10,6 +10,7 @@ import UserNotifications
 import FirebaseCore
 import FirebaseMessaging
 import CallKit
+import AVFoundation
 
 // AppDelegate to lock orientation to portrait only and handle Firebase
 class AppDelegate: NSObject, UIApplicationDelegate {
@@ -329,6 +330,22 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             print("⚠️ [CallKit] Missing room ID - cannot process call")
             completionHandler(.failed)
             return
+        }
+        
+        // CRITICAL: Pre-configure audio session BEFORE reporting to CallKit.
+        // On cold start (app killed), AVAudioSession defaults to SoloAmbientSound.
+        // When callservicesd creates a proxy session, it inherits this category and fails:
+        //   "not allowed to play because it is a lock stopper"
+        //   "insufficient privileges to take control"
+        // Setting PlayAndRecord early fixes this. CallKit's didActivate will finalize.
+        if !isVideoCall {
+            do {
+                let audioSession = AVAudioSession.sharedInstance()
+                try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP])
+                NSLog("✅ [CallKit] Pre-configured audio session for voice call (FCM path)")
+            } catch {
+                NSLog("⚠️ [CallKit] Audio pre-config failed (FCM path): \(error.localizedDescription)")
+            }
         }
         
         // Report incoming call to CallKit

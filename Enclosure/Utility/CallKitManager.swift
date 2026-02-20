@@ -10,6 +10,7 @@ import CallKit
 import AVFoundation
 import UIKit
 import WebRTC
+import os.log
 
 class CallKitManager: NSObject {
     static let shared = CallKitManager()
@@ -82,6 +83,7 @@ class CallKitManager: NSObject {
         let uuid = UUID()
         
         let callType = isVideoCall ? "VIDEO" : "VOICE"
+        CallLogger.log("Reporting incoming \(callType) call: Caller=\(callerName), Room=\(roomId), UUID=\(uuid.uuidString)", category: .callkit)
         print("📞 [CallKit] Reporting incoming \(callType) call:")
         print("   - Caller: \(callerName)")
         print("   - Room ID: \(roomId)")
@@ -107,13 +109,9 @@ class CallKitManager: NSObject {
         NSLog("🔍 [CallKit] isVideoCall = \(isVideoCall)")
         print("🔍 [CallKit] Call type: \(isVideoCall ? "VIDEO" : "VOICE")")
         
-        // Single line format: "Ganu • Voice Call" (using bullet separator)
-        let callTypeText = isVideoCall ? "Video Call" : "Voice Call"
-        let displayName = "\(callerName) • \(callTypeText)"
+        update.localizedCallerName = callerName
         
-        update.localizedCallerName = displayName
-        
-        NSLog("📞 [CallKit] Display text: '\(displayName)'")
+        NSLog("📞 [CallKit] Display text: '\(callerName)'")
         print("📞 [CallKit] Format: Caller • CallType")
         
         // Set hasVideo based on actual call type.
@@ -307,6 +305,7 @@ extension CallKitManager: CXProviderDelegate {
     }
     
     func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
+        CallLogger.log("User ANSWERED call: \(action.callUUID)", category: .callkit)
         print("📞 [CallKit] User answered call: \(action.callUUID)")
         
         guard let callInfo = activeCalls[action.callUUID] else {
@@ -421,9 +420,11 @@ extension CallKitManager: CXProviderDelegate {
     }
     
     func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
+        CallLogger.log("didActivate — audio session activated by system", category: .audio)
         NSLog("📞 [CallKit] didActivate — audio session activated by system")
         
         let isVoiceCall = activeCalls.values.contains(where: { !$0.isVideoCall })
+        CallLogger.log("Call type: \(isVoiceCall ? "VOICE (native WebRTC)" : "VIDEO (WebView)"), Category: \(audioSession.category.rawValue), Mode: \(audioSession.mode.rawValue)", category: .audio)
         NSLog("📞 [CallKit] Call type: \(isVoiceCall ? "VOICE (native WebRTC)" : "VIDEO (WebView)")")
         
         if isVoiceCall {
@@ -439,9 +440,11 @@ extension CallKitManager: CXProviderDelegate {
             let rtcAudioSession = RTCAudioSession.sharedInstance()
             rtcAudioSession.audioSessionDidActivate(audioSession)
             rtcAudioSession.isAudioEnabled = true
+            CallLogger.success("RTCAudioSession.audioSessionDidActivate + isAudioEnabled=true", category: .audio)
             NSLog("✅ [CallKit] RTCAudioSession.audioSessionDidActivate + isAudioEnabled=true")
             
             let route = audioSession.currentRoute
+            CallLogger.log("Route: in=\(route.inputs.map{$0.portType.rawValue}), out=\(route.outputs.map{$0.portType.rawValue})", category: .audio)
             NSLog("✅ [CallKit] Route: in=\(route.inputs.map{$0.portType.rawValue}), out=\(route.outputs.map{$0.portType.rawValue})")
         } else {
             // Video call (WKWebView): configure for WebView mic access
@@ -456,14 +459,29 @@ extension CallKitManager: CXProviderDelegate {
         
         // Set flag AND post notification
         isAudioSessionReady = true
+        CallLogger.success("Audio session FULLY READY", category: .audio)
         NSLog("✅✅✅ [CallKit] Audio session FULLY READY")
         NotificationCenter.default.post(name: NSNotification.Name("CallKitAudioSessionReady"), object: nil)
         
         // Belt-and-suspenders: also tell ActiveCallManager (session may not exist yet on cold start)
         ActiveCallManager.shared.activateAudioForCallKit()
+        
+        // LOCK SCREEN FIX: On lock screen + cold start, didActivate fires BEFORE
+        // ActiveCallManager.startIncomingSession() creates the NativeVoiceCallSession.
+        // The call above finds nil session. This delayed retry ensures audio is activated
+        // AFTER the session and WebRTC factory/tracks are fully created.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            guard self.isAudioSessionReady else { return }
+            if ActiveCallManager.shared.hasActiveCall {
+                CallLogger.log("didActivate delayed retry — re-activating WebRTC audio (lock screen fix)", category: .audio)
+                NSLog("📞 [CallKit] didActivate delayed retry — re-activating WebRTC audio")
+                ActiveCallManager.shared.activateAudioForCallKit()
+            }
+        }
     }
     
     func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+        CallLogger.log("didDeactivate — audio session deactivated", category: .audio)
         NSLog("📞 [CallKit] didDeactivate — audio session deactivated")
         
         // Tell RTCAudioSession the system deactivated audio

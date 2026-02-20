@@ -10,8 +10,10 @@ import Foundation
 import PushKit
 import CallKit
 import UIKit
+import AVFoundation
 import FirebaseDatabase
 import UserNotifications
+import os.log
 
 class VoIPPushManager: NSObject {
     static let shared = VoIPPushManager()
@@ -177,6 +179,8 @@ extension VoIPPushManager: PKPushRegistryDelegate {
             return
         }
         
+        CallLogger.log("======== INCOMING VOIP PUSH RECEIVED! ========", category: .voip)
+        CallLogger.log("App State: \(UIApplication.shared.applicationState.rawValue) (0=active, 1=inactive, 2=background)", category: .voip)
         NSLog("📞📞📞 [VoIP] ========================================")
         NSLog("📞 [VoIP] INCOMING VOIP PUSH RECEIVED!")
         NSLog("📞 [VoIP] App State: \(UIApplication.shared.applicationState.rawValue) (0=active, 1=inactive, 2=background)")
@@ -186,6 +190,7 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         
         let userInfo = payload.dictionaryPayload
         
+        CallLogger.log("Full Payload: \(userInfo)", category: .voip)
         NSLog("📞 [VoIP] Full Payload: \(userInfo)")
         print("📞 [VoIP] Payload: \(userInfo)")
         
@@ -199,6 +204,7 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         let receiverPhone = (userInfo["phone"] as? String) ?? ""
         let bodyKey = (userInfo["bodyKey"] as? String) ?? ""
         
+        CallLogger.log("Caller: \(callerName), Room: \(roomId), BodyKey: \(bodyKey)", category: .voip)
         NSLog("📞 [VoIP] Extracted Data:")
         NSLog("📞 [VoIP]   Caller Name: \(callerName)")
         NSLog("📞 [VoIP]   Room ID: \(roomId)")
@@ -224,6 +230,7 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         // Video call: "Incoming video call"
         let isVideoCall = bodyKey.lowercased().contains("video")
         let callType = isVideoCall ? "VIDEO" : "VOICE"
+        CallLogger.log("Detected Call Type: \(callType) (bodyKey='\(bodyKey)')", category: .voip)
         NSLog("📞 [VoIP] Body Key: '\(bodyKey)' → Detected Call Type: \(callType)")
         print("📞 [VoIP] Call Type: \(callType)")
         
@@ -254,6 +261,25 @@ extension VoIPPushManager: PKPushRegistryDelegate {
             startObservingRemoveCallNotification(roomId: roomId)
         }
         
+        // CRITICAL: Pre-configure audio session BEFORE reporting to CallKit.
+        // On cold start (app killed), AVAudioSession defaults to SoloAmbientSound.
+        // When callservicesd creates a proxy session, it inherits this category and fails:
+        //   "not allowed to play because it is a lock stopper"
+        //   "insufficient privileges to take control"
+        // Setting PlayAndRecord early fixes this. CallKit's didActivate will finalize.
+        if !isVideoCall {
+            do {
+                let audioSession = AVAudioSession.sharedInstance()
+                try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP])
+                CallLogger.success("Pre-configured audio: PlayAndRecord + voiceChat", category: .audio)
+                NSLog("✅ [VoIP] Pre-configured audio session for voice call")
+            } catch {
+                CallLogger.error("Audio pre-config failed: \(error.localizedDescription)", category: .audio)
+                NSLog("⚠️ [VoIP] Audio pre-config failed: \(error.localizedDescription)")
+            }
+        }
+        
+        CallLogger.log("Reporting \(callType) call to CallKit NOW...", category: .voip)
         NSLog("📞 [VoIP] Reporting call to CallKit NOW...")
         print("📞 [VoIP] Triggering CallKit...")
         
@@ -268,9 +294,11 @@ extension VoIPPushManager: PKPushRegistryDelegate {
             isVideoCall: isVideoCall
         ) { error, callUUID in
             if let error = error {
+                CallLogger.error("CallKit Error: \(error.localizedDescription)", category: .voip)
                 NSLog("❌ [VoIP] CallKit Error: \(error.localizedDescription)")
                 print("❌ [VoIP] CallKit error: \(error.localizedDescription)")
             } else {
+                CallLogger.success("CallKit call reported! Caller=\(callerName), Room=\(roomId)", category: .voip)
                 NSLog("✅✅✅ [VoIP] CallKit call reported successfully!")
                 NSLog("✅ [VoIP] User should now see full-screen CallKit UI")
                 NSLog("✅ [VoIP] This works in FOREGROUND, BACKGROUND, and LOCK SCREEN!")
