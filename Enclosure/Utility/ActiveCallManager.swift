@@ -92,6 +92,18 @@ final class ActiveCallManager: ObservableObject {
         return activeSession?.callKitUUID
     }
 
+    // MARK: - CallKit Audio Activation
+
+    /// Called from CallKit didActivate to bridge the audio session to WebRTC.
+    /// This ensures the RTCAudioSession is activated AFTER CallKit has activated AVAudioSession.
+    func activateAudioForCallKit() {
+        guard let session = activeSession else { return }
+        DispatchQueue.main.async {
+            session.activateWebRTCAudio()
+            NSLog("✅ [ActiveCallManager] CallKit didActivate → WebRTC audio activated")
+        }
+    }
+
     // MARK: - Cleanup
 
     func clearSession() {

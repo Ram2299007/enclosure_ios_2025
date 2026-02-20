@@ -44,7 +44,6 @@ final class NativeVoiceCallSession: ObservableObject {
 
     private var hasStarted = false
     private var isCallEnded = false
-    private var isWaitingForCallKitAudio = false
     private var removeCallNotificationSent = false
     private(set) var callKitUUID: UUID?  // Track our CallKit call (outgoing or incoming)
     private var callKitEndObserver: NSObjectProtocol?
@@ -85,34 +84,14 @@ final class NativeVoiceCallSession: ObservableObject {
         }
         hasStarted = true
 
-        // For incoming calls: wait for CallKit audio session before proceeding
-        if !payload.isSender {
-            if CallKitManager.shared.isAudioSessionReady {
-                NSLog("✅ [NativeSession] CallKit audio already ready — proceeding")
-                proceedWithStart()
-            } else {
-                NSLog("📞 [NativeSession] Waiting for CallKit audio session...")
-                isWaitingForCallKitAudio = true
-                callKitAudioReadyObserver = NotificationCenter.default.addObserver(
-                    forName: NSNotification.Name("CallKitAudioSessionReady"),
-                    object: nil, queue: .main
-                ) { [weak self] _ in
-                    guard let self = self, self.isWaitingForCallKitAudio else { return }
-                    self.isWaitingForCallKitAudio = false
-                    NSLog("✅ [NativeSession] CallKit audio ready — proceeding")
-                    self.proceedWithStart()
-                }
-                // Timeout fallback
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-                    guard let self = self, self.isWaitingForCallKitAudio else { return }
-                    NSLog("⚠️ [NativeSession] Timeout waiting for CallKit — proceeding anyway")
-                    self.isWaitingForCallKitAudio = false
-                    self.proceedWithStart()
-                }
-            }
-        } else {
+        if payload.isSender {
             // Outgoing call: start CallKit for Dynamic Island / green status bar
             startOutgoingCallKit()
+            proceedWithStart()
+        } else {
+            // Incoming call: proceed immediately with WebRTC setup.
+            // Audio activation is deferred until CallKit's didActivate fires.
+            NSLog("📞 [NativeSession] Incoming — setting up WebRTC immediately, audio deferred to didActivate")
             proceedWithStart()
         }
     }
@@ -143,10 +122,27 @@ final class NativeVoiceCallSession: ObservableObject {
             startRingtone()
             enableProximitySensor()
         } else {
-            // CallKit already activated audio session — bridge it to WebRTC for mic capture
-            // Without this, WebRTC doesn't capture mic audio even though CallKit has it active
-            webRTCManager?.activateAudioSession()
-            NSLog("📞 [NativeSession] Incoming — CallKit owns audio, WebRTC mic bridged")
+            // Incoming call: CallKit owns the audio session.
+            // We MUST wait for didActivate before activating WebRTC audio.
+            // Activating before didActivate causes AURemoteIO format errors (no mic in background).
+            if CallKitManager.shared.isAudioSessionReady {
+                NSLog("✅ [NativeSession] CallKit audio already active — activating WebRTC audio now")
+                webRTCManager?.activateAudioSession()
+            } else {
+                NSLog("📞 [NativeSession] Deferring WebRTC audio until CallKit didActivate...")
+                callKitAudioReadyObserver = NotificationCenter.default.addObserver(
+                    forName: NSNotification.Name("CallKitAudioSessionReady"),
+                    object: nil, queue: .main
+                ) { [weak self] _ in
+                    guard let self = self else { return }
+                    NSLog("✅ [NativeSession] CallKit didActivate fired — activating WebRTC audio now")
+                    self.webRTCManager?.activateAudioSession()
+                    if let obs = self.callKitAudioReadyObserver {
+                        NotificationCenter.default.removeObserver(obs)
+                        self.callKitAudioReadyObserver = nil
+                    }
+                }
+            }
         }
     }
 
@@ -182,6 +178,22 @@ final class NativeVoiceCallSession: ObservableObject {
     }
 
     // MARK: - Audio Configuration
+
+    /// Called from ActiveCallManager when CallKit didActivate fires.
+    /// Activates the RTCAudioSession so WebRTC can capture mic audio.
+    func activateWebRTCAudio() {
+        guard let mgr = webRTCManager else {
+            NSLog("⚠️ [NativeSession] activateWebRTCAudio called but webRTCManager is nil")
+            return
+        }
+        mgr.activateAudioSession()
+        NSLog("✅ [NativeSession] WebRTC audio activated via CallKit didActivate")
+        // Clean up observer if it was still registered
+        if let obs = callKitAudioReadyObserver {
+            NotificationCenter.default.removeObserver(obs)
+            callKitAudioReadyObserver = nil
+        }
+    }
 
     private func configureAudioForOutgoing() {
         webRTCManager?.configureAudioSession(useEarpiece: true)

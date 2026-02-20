@@ -115,12 +115,12 @@ class CallKitManager: NSObject {
         NSLog("📞 [CallKit] Display text: '\(displayName)'")
         print("📞 [CallKit] Format: Caller • CallType")
         
-        // ALWAYS set hasVideo = true to force iOS unlock when answering from lock screen.
-        // Without this, voice calls answered from lock screen stay in background and
-        // the NativeVoiceCallScreen never appears (session.start() never fires).
-        // The localizedCallerName already shows "Voice Call" / "Video Call" so user knows.
-        update.hasVideo = true
-        print("📞 [CallKit] hasVideo = true (forces unlock for lock screen)")
+        // Set hasVideo based on actual call type.
+        // Voice calls: hasVideo=false → iOS shows "Enclosure Audio" (not "Enclosure Video")
+        // Video calls: hasVideo=true → iOS shows "Enclosure Video" + forces unlock
+        // Background audio for voice calls works via ActiveCallManager (no unlock hack needed).
+        update.hasVideo = isVideoCall
+        print("📞 [CallKit] hasVideo = \(isVideoCall) (\(isVideoCall ? "video" : "voice") call)")
         
         update.supportsHolding = false
         update.supportsGrouping = false
@@ -440,6 +440,9 @@ extension CallKitManager: CXProviderDelegate {
             isAudioSessionReady = true
             NSLog("✅✅✅ [CallKit] Audio session FULLY READY - setting flag and posting notification")
             NotificationCenter.default.post(name: NSNotification.Name("CallKitAudioSessionReady"), object: nil)
+            
+            // Also directly activate WebRTC audio for the active session (belt-and-suspenders)
+            ActiveCallManager.shared.activateAudioForCallKit()
             
         } catch {
             print("❌ [CallKit] Failed to configure audio session: \(error.localizedDescription)")
