@@ -316,13 +316,27 @@ extension CallKitManager: CXProviderDelegate {
         // Don't configure audio here - CallKit will call didActivate with audio session
         // Configuring here causes conflicts and "Session activation failed" errors
         
-        // Notify app to start call SYNCHRONOUSLY.
-        // CXProvider delegate is on main queue (queue: nil), so this is safe.
-        // CRITICAL: Must run BEFORE action.fulfill() so the session exists
-        // when didActivate fires. Async dispatch caused cold-start race condition
-        // where didActivate fired before the session was created.
-        self.onAnswerCall?(callInfo.roomId, callInfo.receiverId, callInfo.receiverPhone, callInfo.isVideoCall)
+        // CRITICAL ORDER: fulfill() FIRST, then start session.
+        // action.fulfill() triggers didActivate on the main queue.
+        // If we do heavy WebRTC setup (PeerConnectionFactory, audio tracks, Firebase)
+        // BEFORE fulfill(), it blocks the main queue and didActivate NEVER fires.
+        //
+        // After fulfill(), didActivate sets isAudioSessionReady=true.
+        // When the async onAnswerCall creates the session, proceedWithStart() checks
+        // isAudioSessionReady and activates audio immediately if true.
+        // If didActivate hasn't fired yet, the notification observer handles it.
+        let roomId = callInfo.roomId
+        let receiverId = callInfo.receiverId
+        let receiverPhone = callInfo.receiverPhone
+        let isVideoCall = callInfo.isVideoCall
+        
         action.fulfill()
+        NSLog("📞 [CallKit] action.fulfill() called — didActivate will fire next")
+        
+        DispatchQueue.main.async { [weak self] in
+            NSLog("📞 [CallKit] Starting session async after fulfill (isAudioReady=\(CallKitManager.shared.isAudioSessionReady))")
+            self?.onAnswerCall?(roomId, receiverId, receiverPhone, isVideoCall)
+        }
         
         // Dismiss CallKit full-screen UI after answering for BOTH video and voice calls.
         // CallKit full-screen blocks WKWebView from accessing camera+mic.
