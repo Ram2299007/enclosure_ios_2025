@@ -221,12 +221,14 @@ final class NativeVoiceCallSession: ObservableObject {
 
     // MARK: - Mute
 
-    func setMuted(_ muted: Bool) {
+    func setMuted(_ muted: Bool, fromCallKit: Bool = false) {
         isMuted = muted
         webRTCManager?.setMuted(muted)
         UserDefaults.standard.set(muted, forKey: "voice_call_muted")
-        // Sync mute state to CallKit (Dynamic Island / green bar shows correct icon)
-        if let uuid = callKitUUID {
+        // Only sync to CallKit if this mute was triggered by the APP UI.
+        // If it came FROM CallKit, don't report back — that causes an infinite loop:
+        // setMuted → reportMuteState → CXSetMutedCallAction → setMutedFromCallKit → setMuted → ...
+        if !fromCallKit, let uuid = callKitUUID {
             CallKitManager.shared.reportMuteState(uuid: uuid, muted: muted)
         }
     }

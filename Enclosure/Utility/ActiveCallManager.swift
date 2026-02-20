@@ -73,7 +73,7 @@ final class ActiveCallManager: ObservableObject {
     func setMutedFromCallKit(_ muted: Bool) {
         guard let session = activeSession else { return }
         DispatchQueue.main.async {
-            session.setMuted(muted)
+            session.setMuted(muted, fromCallKit: true)
             NSLog("📞 [ActiveCallManager] CallKit → mute: \(muted)")
         }
     }

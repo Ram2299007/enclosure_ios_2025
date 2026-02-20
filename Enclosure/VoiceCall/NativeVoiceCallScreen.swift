@@ -162,18 +162,14 @@ struct NativeVoiceCallScreen: View {
 
     private var callerInfoView: some View {
         VStack(spacing: 0) {
-            // Caller photo — .caller-image-wrapper (100x100, hidden in original HTML but we show it)
-            AsyncImage(url: URL(string: session.callerPhoto)) { image in
-                image.resizable().scaledToFill()
-            } placeholder: {
-                if let img = UIImage(named: "user") {
-                    Image(uiImage: img)
-                        .resizable()
-                        .foregroundColor(.white.opacity(0.6))
-                } else {
-                    Image(systemName: "person.circle.fill")
-                        .resizable()
-                        .foregroundColor(.white.opacity(0.6))
+            // Caller photo — WhatsApp-style: show profile pic or first letter avatar
+            AsyncImage(url: URL(string: session.callerPhoto)) { phase in
+                switch phase {
+                case .success(let image):
+                    image.resizable().scaledToFill()
+                default:
+                    // WhatsApp-like first letter avatar
+                    firstLetterAvatar(name: session.callerName)
                 }
             }
             .frame(width: 100, height: 100)
@@ -358,6 +354,32 @@ struct NativeVoiceCallScreen: View {
     }
 
     // MARK: - Helpers
+
+    // WhatsApp-like first letter avatar — colored circle with caller's initial
+    private func firstLetterAvatar(name: String) -> some View {
+        let letter = String(name.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased()
+        let displayLetter = letter.isEmpty ? "?" : letter
+        // Deterministic color based on name (same name → same color, like WhatsApp)
+        let colors: [Color] = [
+            Color(red: 0.13, green: 0.59, blue: 0.95), // blue
+            Color(red: 0.30, green: 0.69, blue: 0.31), // green
+            Color(red: 0.61, green: 0.15, blue: 0.69), // purple
+            Color(red: 0.96, green: 0.49, blue: 0.0),  // orange
+            Color(red: 0.0, green: 0.59, blue: 0.53),  // teal
+            Color(red: 0.91, green: 0.26, blue: 0.21), // red
+            Color(red: 0.48, green: 0.32, blue: 0.66), // deep purple
+            Color(red: 0.0, green: 0.47, blue: 0.42),  // dark teal
+        ]
+        let hash = abs(name.hashValue)
+        let color = colors[hash % colors.count]
+        
+        return ZStack {
+            Circle().fill(color)
+            Text(displayLetter)
+                .font(.system(size: 40, weight: .semibold, design: .rounded))
+                .foregroundColor(.white)
+        }
+    }
 
     private func formattedDuration(_ duration: TimeInterval) -> String {
         let total = Int(duration)
