@@ -46,8 +46,13 @@ final class NativeVoiceCallSession: ObservableObject {
     private var isCallEnded = false
     private var isWaitingForCallKitAudio = false
     private var removeCallNotificationSent = false
-    private var callKitUUID: UUID?  // Track our CallKit call (outgoing or incoming)
+    private(set) var callKitUUID: UUID?  // Track our CallKit call (outgoing or incoming)
     private var callKitEndObserver: NSObjectProtocol?
+
+    private var reconnectAttempts = 0
+    private let maxReconnectAttempts = 3
+    private var reconnectTimer: Timer?
+    private var disconnectedPeerId: String?  // Track which peer disconnected for ICE restart
 
     // MARK: - Init
     init(payload: VoiceCallPayload) {
@@ -63,7 +68,12 @@ final class NativeVoiceCallSession: ObservableObject {
         self.callerName = payload.receiverName
         self.callerPhoto = payload.receiverPhoto
 
-        NSLog("✅ [NativeSession] Init — room: \(roomId), myPeerId: \(myPeerId), isSender: \(payload.isSender)")
+        // For incoming calls: grab the CallKit UUID that was already reported
+        if !payload.isSender, let rId = payload.roomId {
+            self.callKitUUID = CallKitManager.shared.getCallUUID(for: rId)
+        }
+
+        NSLog("✅ [NativeSession] Init — room: \(roomId), myPeerId: \(myPeerId), isSender: \(payload.isSender), callKitUUID: \(callKitUUID?.uuidString ?? "nil")")
     }
 
     // MARK: - Start
@@ -190,6 +200,10 @@ final class NativeVoiceCallSession: ObservableObject {
         isMuted = muted
         webRTCManager?.setMuted(muted)
         UserDefaults.standard.set(muted, forKey: "voice_call_muted")
+        // Sync mute state to CallKit (Dynamic Island / green bar shows correct icon)
+        if let uuid = callKitUUID {
+            CallKitManager.shared.reportMuteState(uuid: uuid, muted: muted)
+        }
     }
 
     // MARK: - Call Timer
@@ -298,6 +312,10 @@ final class NativeVoiceCallSession: ObservableObject {
 
     private func onCallConnected() {
         guard !isCallConnected else { return }
+        reconnectAttempts = 0  // Reset reconnect counter on successful connection
+        reconnectTimer?.invalidate()
+        reconnectTimer = nil
+
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.isCallConnected = true
@@ -314,11 +332,9 @@ final class NativeVoiceCallSession: ObservableObject {
         }
 
         // For incoming calls: keep CallKit ACTIVE throughout the call.
-        // Native WebRTC works fine with CallKit managing audio session.
-        // CallKit provides stable earpiece routing — no need to dismiss.
-        // (Dismissing caused didDeactivate → audio session killed → mic dies)
+        // CallKit provides: earpiece routing, Dynamic Island, green status bar, mute sync.
         if !payload.isSender {
-            NSLog("📞 [NativeSession] Incoming — keeping CallKit active for stable audio")
+            NSLog("📞 [NativeSession] Incoming — CallKit active (WhatsApp-style)")
         }
     }
 
@@ -340,6 +356,8 @@ final class NativeVoiceCallSession: ObservableObject {
     private func performCleanup(removeRoom: Bool) {
         callTimer?.invalidate()
         callTimer = nil
+        reconnectTimer?.invalidate()
+        reconnectTimer = nil
         stopRingtone()
         stopObservingAudio()
         disableProximitySensor()
@@ -370,6 +388,9 @@ final class NativeVoiceCallSession: ObservableObject {
             NotificationCenter.default.removeObserver(obs)
             callKitEndObserver = nil
         }
+
+        // Clear from ActiveCallManager
+        ActiveCallManager.shared.clearSession()
 
         NSLog("🔴 [NativeSession] Cleanup complete")
     }
@@ -430,8 +451,30 @@ extension NativeVoiceCallSession: NativeWebRTCManagerDelegate {
     }
 
     func webRTCManager(_ manager: NativeWebRTCManager, didDisconnectPeer peerId: String) {
-        NSLog("🔴 [NativeSession] Peer disconnected: \(peerId)")
-        if !isCallEnded {
+        NSLog("🔴 [NativeSession] Peer disconnected: \(peerId) (attempt \(reconnectAttempts)/\(maxReconnectAttempts))")
+        guard !isCallEnded else { return }
+
+        // Try ICE restart before giving up
+        if reconnectAttempts < maxReconnectAttempts {
+            disconnectedPeerId = peerId
+            reconnectAttempts += 1
+            NSLog("🔄 [NativeSession] Attempting ICE restart #\(reconnectAttempts) for: \(peerId)")
+            webRTCManager?.restartICE(forPeer: peerId)
+
+            // Set a timeout — if not reconnected within 5s, try again or end
+            reconnectTimer?.invalidate()
+            reconnectTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
+                guard let self = self, !self.isCallEnded else { return }
+                if self.reconnectAttempts < self.maxReconnectAttempts {
+                    NSLog("⏱️ [NativeSession] Reconnect timeout — retrying ICE restart")
+                    self.webRTCManager(_ manager, didDisconnectPeer: peerId)
+                } else {
+                    NSLog("❌ [NativeSession] Max reconnect attempts reached — ending call")
+                    DispatchQueue.main.async { self.endCall() }
+                }
+            }
+        } else {
+            NSLog("❌ [NativeSession] Max reconnect attempts reached — ending call")
             DispatchQueue.main.async { [weak self] in
                 self?.endCall()
             }

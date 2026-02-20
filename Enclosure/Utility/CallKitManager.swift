@@ -236,6 +236,21 @@ class CallKitManager: NSObject {
         provider.reportOutgoingCall(with: uuid, connectedAt: Date())
         NSLog("✅ [CallKit] Reported call connected: \(uuid)")
     }
+
+    // MARK: - Sync Mute State to CallKit
+    /// Called from NativeVoiceCallSession when user toggles mute in the app UI.
+    /// This syncs the mute state to CallKit so the Dynamic Island/green bar shows correct icon.
+    func reportMuteState(uuid: UUID, muted: Bool) {
+        let muteAction = CXSetMutedCallAction(call: uuid, muted: muted)
+        let transaction = CXTransaction(action: muteAction)
+        callController.request(transaction) { error in
+            if let error = error {
+                NSLog("⚠️ [CallKit] Failed to sync mute to CallKit: \(error.localizedDescription)")
+            } else {
+                NSLog("✅ [CallKit] Mute synced to CallKit: \(muted)")
+            }
+        }
+    }
     
     // MARK: - Dismiss CallKit for Voice Session
     /// Dismiss CallKit call while keeping isAudioSessionReady=true.
@@ -346,8 +361,11 @@ extension CallKitManager: CXProviderDelegate {
             self.onDeclineCall?(callInfo.roomId)
         }
         
-        // Post notification for NativeVoiceCallSession to observe
-        // This handles end-call from Dynamic Island / green status bar
+        // Route end-call through ActiveCallManager (primary path)
+        // This directly ends the NativeVoiceCallSession if active
+        ActiveCallManager.shared.endCallFromCallKit()
+        
+        // Also post notification as fallback for NativeVoiceCallSession observer
         DispatchQueue.main.async {
             NSLog("📞 [CallKit] Posting CallKitEndedCall notification for room: \(callInfo.roomId)")
             NotificationCenter.default.post(
@@ -372,6 +390,13 @@ extension CallKitManager: CXProviderDelegate {
         print("📞 [CallKit] Hold action: \(action.isOnHold)")
         action.fulfill()
     }
+
+    func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
+        NSLog("📞 [CallKit] Mute action: \(action.isMuted)")
+        // Route mute to the active voice call session (WhatsApp-style sync)
+        ActiveCallManager.shared.setMutedFromCallKit(action.isMuted)
+        action.fulfill()
+    }
     
     func provider(_ provider: CXProvider, timedOutPerforming action: CXAction) {
         print("⚠️ [CallKit] Action timed out: \(action)")
@@ -391,9 +416,12 @@ extension CallKitManager: CXProviderDelegate {
                 // Native voice call: use .voiceChat mode for proper mic capture + echo cancellation.
                 // .voiceChat enables system AEC/AGC which works WITH native WebRTC (GoogleWebRTC).
                 // .allowBluetooth for headset support. NO .mixWithOthers — exclusive mic access.
-                try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+                try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP])
+                // HD audio preferences: 48kHz for Opus wideband, 5ms buffer for low latency
+                try audioSession.setPreferredSampleRate(48000)
+                try audioSession.setPreferredIOBufferDuration(0.005)
                 try audioSession.setActive(true)
-                NSLog("✅ [CallKit] Voice call: .voiceChat mode + .allowBluetooth + setActive(true)")
+                NSLog("✅ [CallKit] Voice call: .voiceChat HD (48kHz, 5ms buffer) + .allowBluetooth")
             } else {
                 // Video call (WKWebView): use .default mode + .mixWithOthers
                 // .voiceChat CONFLICTS with WKWebView's WebRTC audio processing (muted=true tracks).

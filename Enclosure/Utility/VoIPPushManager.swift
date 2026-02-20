@@ -307,6 +307,13 @@ extension VoIPPushManager: PKPushRegistryDelegate {
                     receiverPhone: receiverPhone, callerName: callerName, callerPhoto: callerPhoto
                 )
             } else {
+                // VOICE CALL: Start WebRTC session IMMEDIATELY via ActiveCallManager.
+                // Audio connects in background BEFORE UI appears (like WhatsApp).
+                // NativeVoiceCallScreen will attach to this already-running session.
+                ActiveCallManager.shared.startIncomingSession(
+                    roomId: roomId, receiverId: receiverId,
+                    receiverPhone: receiverPhone, callerName: callerName, callerPhoto: callerPhoto
+                )
                 PendingCallManager.shared.setPendingVoiceCall(
                     roomId: roomId, receiverId: receiverId,
                     receiverPhone: receiverPhone, callerName: callerName, callerPhoto: callerPhoto

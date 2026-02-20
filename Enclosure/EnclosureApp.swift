@@ -355,7 +355,27 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // Set up answer callback
         CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone, isVideoCall in
             print("📞 [CallKit] User answered call - Room: \(roomId)")
-            
+
+            // Start voice call session immediately (background-safe, audio connects before UI)
+            if !isVideoCall {
+                ActiveCallManager.shared.startIncomingSession(
+                    roomId: roomId, receiverId: receiverId,
+                    receiverPhone: receiverPhone, callerName: callerName, callerPhoto: callerPhoto
+                )
+            }
+            // Store pending call for UI presentation
+            if isVideoCall {
+                PendingCallManager.shared.setPendingVideoCall(
+                    roomId: roomId, receiverId: receiverId,
+                    receiverPhone: receiverPhone, callerName: callerName, callerPhoto: callerPhoto
+                )
+            } else {
+                PendingCallManager.shared.setPendingVoiceCall(
+                    roomId: roomId, receiverId: receiverId,
+                    receiverPhone: receiverPhone, callerName: callerName, callerPhoto: callerPhoto
+                )
+            }
+
             // Post notification to open voice call screen
             DispatchQueue.main.async {
                 let callData: [String: String] = [

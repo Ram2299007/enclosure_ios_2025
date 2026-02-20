@@ -9,8 +9,21 @@ struct NativeVoiceCallScreen: View {
     @State private var showAudioMenu = false
 
     init(payload: VoiceCallPayload) {
-        _session = StateObject(wrappedValue: NativeVoiceCallSession(payload: payload))
-        NSLog("🔥 [NativeVoiceCallScreen] init — session created")
+        // For incoming calls: reuse the already-running session from ActiveCallManager
+        // (started immediately on CallKit answer, before UI appeared — audio already connected)
+        // For outgoing calls: create a new session
+        if !payload.isSender, let existingSession = ActiveCallManager.shared.activeSession {
+            _session = StateObject(wrappedValue: existingSession)
+            NSLog("🔥 [NativeVoiceCallScreen] init — reusing ActiveCallManager session (background start)")
+        } else {
+            let newSession = NativeVoiceCallSession(payload: payload)
+            _session = StateObject(wrappedValue: newSession)
+            // Register outgoing session with ActiveCallManager for CallKit sync
+            if payload.isSender {
+                ActiveCallManager.shared.setOutgoingSession(newSession)
+            }
+            NSLog("🔥 [NativeVoiceCallScreen] init — new session created (isSender=\(payload.isSender))")
+        }
     }
 
     var body: some View {
@@ -45,7 +58,10 @@ struct NativeVoiceCallScreen: View {
         }
         .ignoresSafeArea()
         .onAppear {
-            NSLog("📺 [NativeVoiceCallScreen] appeared — starting session")
+            // session.start() is idempotent (checks hasStarted flag).
+            // For incoming calls from background: session already started via ActiveCallManager.
+            // For outgoing calls: this is where it starts.
+            NSLog("📺 [NativeVoiceCallScreen] appeared — ensuring session started")
             session.start()
         }
         .onDisappear {

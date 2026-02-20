@@ -138,7 +138,27 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                 CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone, isVideoCall in
                     NSLog("📞 [CallKit] User answered call - Room: \(roomId)")
                     print("📞 [CallKit] User answered call - Room: \(roomId)")
-                    
+
+                    // Start voice call session immediately (background-safe)
+                    if !isVideoCall {
+                        ActiveCallManager.shared.startIncomingSession(
+                            roomId: roomId, receiverId: receiverId,
+                            receiverPhone: receiverPhone, callerName: callerName, callerPhoto: callerPhoto
+                        )
+                    }
+                    // Store pending call for UI presentation
+                    if isVideoCall {
+                        PendingCallManager.shared.setPendingVideoCall(
+                            roomId: roomId, receiverId: receiverId,
+                            receiverPhone: receiverPhone, callerName: callerName, callerPhoto: callerPhoto
+                        )
+                    } else {
+                        PendingCallManager.shared.setPendingVoiceCall(
+                            roomId: roomId, receiverId: receiverId,
+                            receiverPhone: receiverPhone, callerName: callerName, callerPhoto: callerPhoto
+                        )
+                    }
+
                     DispatchQueue.main.async {
                         let callData: [String: String] = [
                             "roomId": roomId,

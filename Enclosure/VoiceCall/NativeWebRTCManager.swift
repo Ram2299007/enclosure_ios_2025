@@ -60,13 +60,17 @@ final class NativeWebRTCManager: NSObject {
 
     // MARK: - Audio Setup
 
-    /// Configure AVAudioSession for voice call (earpiece by default).
+    /// Configure AVAudioSession for HD voice call (earpiece by default).
     /// Call this AFTER CallKit didActivate fires for incoming calls.
     func configureAudioSession(useEarpiece: Bool = true) {
         do {
             try audioSession.setCategory(.playAndRecord,
                                          mode: .voiceChat,
                                          options: [.allowBluetooth, .allowBluetoothA2DP])
+            // HD audio: 48kHz sample rate for Opus wideband
+            try audioSession.setPreferredSampleRate(48000)
+            // Low-latency buffer for real-time voice
+            try audioSession.setPreferredIOBufferDuration(0.005) // 5ms
             try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
             if useEarpiece {
                 try audioSession.overrideOutputAudioPort(.none)
@@ -74,7 +78,7 @@ final class NativeWebRTCManager: NSObject {
                 try audioSession.overrideOutputAudioPort(.speaker)
             }
             let route = audioSession.currentRoute
-            NSLog("✅ [NativeWebRTC] Audio session configured. Output: \(route.outputs.map { $0.portType.rawValue })")
+            NSLog("✅ [NativeWebRTC] HD audio configured. Rate: \(audioSession.sampleRate)Hz, Buffer: \(audioSession.ioBufferDuration)s, Output: \(route.outputs.map { $0.portType.rawValue })")
         } catch {
             NSLog("❌ [NativeWebRTC] Audio session config failed: \(error.localizedDescription)")
         }
@@ -124,6 +128,10 @@ final class NativeWebRTCManager: NSObject {
         config.iceServers = iceServers
         config.continualGatheringPolicy = .gatherContinually
         config.iceCandidatePoolSize = 10
+        // Network resilience: allow ICE restart and use both IPv4/IPv6
+        config.bundlePolicy = .maxBundle
+        config.rtcpMuxPolicy = .require
+        config.tcpCandidatePolicy = .enabled
 
         let constraints = RTCMediaConstraints(
             mandatoryConstraints: nil,
@@ -162,7 +170,9 @@ final class NativeWebRTCManager: NSObject {
                 NSLog("❌ [NativeWebRTC] createOffer failed for \(peerId): \(error?.localizedDescription ?? "nil")")
                 return
             }
-            pc.setLocalDescription(sdp) { error in
+            // Apply Opus HD bitrate to offer SDP
+            let hdSDP = self.setOpusBitrate(sdp: sdp)
+            pc.setLocalDescription(hdSDP) { error in
                 if let error = error {
                     NSLog("❌ [NativeWebRTC] setLocalDescription (offer) failed: \(error.localizedDescription)")
                     return
@@ -173,7 +183,7 @@ final class NativeWebRTCManager: NSObject {
                 } else {
                     NSLog("📤 [NativeWebRTC] Calling delegate.didGenerateLocalSDP for offer")
                 }
-                self.delegate?.webRTCManager(self, didGenerateLocalSDP: sdp, forPeer: peerId)
+                self.delegate?.webRTCManager(self, didGenerateLocalSDP: hdSDP, forPeer: peerId)
             }
         }
     }
@@ -204,13 +214,15 @@ final class NativeWebRTCManager: NSObject {
                 NSLog("❌ [NativeWebRTC] createAnswer failed for \(peerId): \(error?.localizedDescription ?? "nil")")
                 return
             }
-            pc.setLocalDescription(sdp) { error in
+            // Apply Opus HD bitrate to answer SDP
+            let hdSDP = self.setOpusBitrate(sdp: sdp)
+            pc.setLocalDescription(hdSDP) { error in
                 if let error = error {
                     NSLog("❌ [NativeWebRTC] setLocalDescription (answer) failed: \(error.localizedDescription)")
                     return
                 }
                 NSLog("✅ [NativeWebRTC] Local SDP (answer) set for peer: \(peerId)")
-                self.delegate?.webRTCManager(self, didGenerateLocalSDP: sdp, forPeer: peerId)
+                self.delegate?.webRTCManager(self, didGenerateLocalSDP: hdSDP, forPeer: peerId)
             }
         }
     }
@@ -273,6 +285,60 @@ final class NativeWebRTCManager: NSObject {
         rtcAudioSession.audioSessionDidDeactivate(audioSession)
         rtcAudioSession.isAudioEnabled = false
         NSLog("🔴 [NativeWebRTC] RTCAudioSession deactivated")
+    }
+
+    // MARK: - ICE Restart (Network Resilience)
+
+    /// Trigger ICE restart for a specific peer when connection drops.
+    /// Creates a new offer with iceRestart=true to re-establish connectivity.
+    func restartICE(forPeer peerId: String) {
+        guard let pc = peerConnections[peerId] else {
+            NSLog("⚠️ [NativeWebRTC] No peer connection for ICE restart: \(peerId)")
+            return
+        }
+
+        NSLog("🔄 [NativeWebRTC] ICE restart for peer: \(peerId)")
+        let constraints = RTCMediaConstraints(
+            mandatoryConstraints: ["IceRestart": "true", "OfferToReceiveAudio": "true"],
+            optionalConstraints: nil
+        )
+
+        pc.offer(for: constraints) { [weak self] sdp, error in
+            guard let self = self, let sdp = sdp else {
+                NSLog("❌ [NativeWebRTC] ICE restart offer failed: \(error?.localizedDescription ?? "nil")")
+                return
+            }
+            // Set Opus bitrate preferences in SDP
+            let optimizedSDP = self.setOpusBitrate(sdp: sdp)
+            pc.setLocalDescription(optimizedSDP) { error in
+                if let error = error {
+                    NSLog("❌ [NativeWebRTC] ICE restart setLocal failed: \(error.localizedDescription)")
+                    return
+                }
+                NSLog("✅ [NativeWebRTC] ICE restart offer set — sending to peer")
+                self.delegate?.webRTCManager(self, didGenerateLocalSDP: optimizedSDP, forPeer: peerId)
+            }
+        }
+    }
+
+    // MARK: - Opus HD Audio Bitrate
+
+    /// Modify SDP to set Opus codec bitrate for HD voice.
+    /// maxaveragebitrate=64000 for high-quality voice, stereo=0 for mono (voice).
+    private func setOpusBitrate(sdp: RTCSessionDescription) -> RTCSessionDescription {
+        var sdpString = sdp.sdp
+        // Find the Opus codec line and add bitrate parameters
+        if let range = sdpString.range(of: "a=fmtp:111 ") {
+            // Opus is typically payload 111
+            let endOfLine = sdpString[range.upperBound...].firstIndex(of: "\r") ?? sdpString[range.upperBound...].firstIndex(of: "\n") ?? sdpString.endIndex
+            let existingParams = String(sdpString[range.upperBound..<endOfLine])
+            if !existingParams.contains("maxaveragebitrate") {
+                let hdParams = ";maxaveragebitrate=64000;stereo=0;sprop-stereo=0;useinbandfec=1;usedtx=1"
+                sdpString.insert(contentsOf: hdParams, at: endOfLine)
+                NSLog("✅ [NativeWebRTC] Opus HD bitrate set: 64kbps, FEC+DTX enabled")
+            }
+        }
+        return RTCSessionDescription(type: sdp.type, sdp: sdpString)
     }
 
     // MARK: - Cleanup
@@ -339,9 +405,17 @@ private final class PeerConnectionDelegateWrapper: NSObject, RTCPeerConnectionDe
         case .connected, .completed:
             if !connectedReported {
                 connectedReported = true
-                manager?.delegate?.webRTCManager(manager!, didConnectPeer: peerId)
             }
-        case .disconnected, .failed, .closed:
+            // Always report connect — needed for ICE restart reconnection
+            manager?.delegate?.webRTCManager(manager!, didConnectPeer: peerId)
+        case .disconnected:
+            // Temporary disconnect — ICE restart may recover this
+            // Reset connectedReported so reconnection can be reported
+            connectedReported = false
+            manager?.delegate?.webRTCManager(manager!, didDisconnectPeer: peerId)
+        case .failed, .closed:
+            // Permanent failure — report disconnect
+            connectedReported = false
             manager?.delegate?.webRTCManager(manager!, didDisconnectPeer: peerId)
         default: break
         }
