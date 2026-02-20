@@ -9,6 +9,7 @@ import Foundation
 import CallKit
 import AVFoundation
 import UIKit
+import WebRTC
 
 class CallKitManager: NSObject {
     static let shared = CallKitManager()
@@ -420,64 +421,65 @@ extension CallKitManager: CXProviderDelegate {
     }
     
     func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
-        print("📞 [CallKit] Audio session activated by CallKit")
-        NSLog("📞 [CallKit] Audio session activated - configuring for WebRTC...")
+        NSLog("📞 [CallKit] didActivate — audio session activated by system")
         
-        // Determine if this is a voice call (native WebRTC) or video call (WKWebView)
         let isVoiceCall = activeCalls.values.contains(where: { !$0.isVideoCall })
-        NSLog("📞 [CallKit] Call type in didActivate: \(isVoiceCall ? "VOICE (native)" : "VIDEO (WebView)")")
+        NSLog("📞 [CallKit] Call type: \(isVoiceCall ? "VOICE (native WebRTC)" : "VIDEO (WebView)")")
         
-        do {
-            if isVoiceCall {
-                // Native voice call: use .voiceChat mode for proper mic capture + echo cancellation.
-                // .voiceChat enables system AEC/AGC which works WITH native WebRTC (GoogleWebRTC).
-                // .allowBluetooth for headset support. NO .mixWithOthers — exclusive mic access.
-                // NOTE: Do NOT set preferredSampleRate/IOBufferDuration here.
-                // CallKit manages the audio session — forcing 48kHz/5ms causes AURemoteIO
-                // format errors on cold start. System defaults work fine with Opus codec.
-                try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .allowBluetoothA2DP])
-                try audioSession.setActive(true)
-                NSLog("✅ [CallKit] Voice call: .voiceChat + .allowBluetooth (system audio defaults)")
-            } else {
-                // Video call (WKWebView): use .default mode + .mixWithOthers
-                // .voiceChat CONFLICTS with WKWebView's WebRTC audio processing (muted=true tracks).
-                // .mixWithOthers is REQUIRED for WKWebView to access the microphone.
-                try audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .mixWithOthers])
-                try audioSession.setActive(true)
-                NSLog("✅ [CallKit] Video call: .default mode + .mixWithOthers + setActive(true)")
-            }
+        if isVoiceCall {
+            // CRITICAL: For native WebRTC voice calls, activate RTCAudioSession DIRECTLY.
+            // Do NOT reconfigure AVAudioSession (setCategory/setActive) here.
+            // CallKit has ALREADY activated the audio session — reconfiguring it
+            // causes AURemoteIO format errors (1701737535) on cold start / background.
+            //
+            // The proper WebRTC + CallKit pattern:
+            // 1. RTCAudioSession.useManualAudio = true (set in NativeWebRTCManager.init)
+            // 2. In didActivate: audioSessionDidActivate + isAudioEnabled = true
+            // 3. In didDeactivate: audioSessionDidDeactivate + isAudioEnabled = false
+            let rtcAudioSession = RTCAudioSession.sharedInstance()
+            rtcAudioSession.audioSessionDidActivate(audioSession)
+            rtcAudioSession.isAudioEnabled = true
+            NSLog("✅ [CallKit] RTCAudioSession.audioSessionDidActivate + isAudioEnabled=true")
             
             let route = audioSession.currentRoute
-            let inputs = route.inputs.map { $0.portType.rawValue }
-            let outputs = route.outputs.map { $0.portType.rawValue }
-            NSLog("✅ [CallKit] Route after config - inputs: \(inputs), outputs: \(outputs)")
-            
-            // Set flag AND post notification
-            isAudioSessionReady = true
-            NSLog("✅✅✅ [CallKit] Audio session FULLY READY - setting flag and posting notification")
-            NotificationCenter.default.post(name: NSNotification.Name("CallKitAudioSessionReady"), object: nil)
-            
-            // Also directly activate WebRTC audio for the active session (belt-and-suspenders)
-            ActiveCallManager.shared.activateAudioForCallKit()
-            
-        } catch {
-            print("❌ [CallKit] Failed to configure audio session: \(error.localizedDescription)")
-            NSLog("❌ [CallKit] Audio session configuration failed: \(error.localizedDescription)")
-            isAudioSessionReady = true
-            NotificationCenter.default.post(name: NSNotification.Name("CallKitAudioSessionReady"), object: nil)
+            NSLog("✅ [CallKit] Route: in=\(route.inputs.map{$0.portType.rawValue}), out=\(route.outputs.map{$0.portType.rawValue})")
+        } else {
+            // Video call (WKWebView): configure for WebView mic access
+            do {
+                try audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .mixWithOthers])
+                try audioSession.setActive(true)
+                NSLog("✅ [CallKit] Video call: .default mode + .mixWithOthers")
+            } catch {
+                NSLog("❌ [CallKit] Video call audio config failed: \(error.localizedDescription)")
+            }
         }
+        
+        // Set flag AND post notification
+        isAudioSessionReady = true
+        NSLog("✅✅✅ [CallKit] Audio session FULLY READY")
+        NotificationCenter.default.post(name: NSNotification.Name("CallKitAudioSessionReady"), object: nil)
+        
+        // Belt-and-suspenders: also tell ActiveCallManager (session may not exist yet on cold start)
+        ActiveCallManager.shared.activateAudioForCallKit()
     }
     
     func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
-        print("📞 [CallKit] Audio session deactivated")
+        NSLog("📞 [CallKit] didDeactivate — audio session deactivated")
+        
+        // Tell RTCAudioSession the system deactivated audio
+        let rtcAudioSession = RTCAudioSession.sharedInstance()
+        rtcAudioSession.audioSessionDidDeactivate(audioSession)
+        rtcAudioSession.isAudioEnabled = false
+        
         if dismissedForVideoCall {
-            // Video call: don't reset audio ready flag - WKWebView manages its own audio session
             print("📞 [CallKit] Keeping isAudioSessionReady=true (video call active)")
             dismissedForVideoCall = false
         } else if dismissedForVoiceCall {
-            // Voice call: keep flag (safety net — shouldn't happen now since we keep CallKit active)
-            print("📞 [CallKit] Keeping isAudioSessionReady=true (voice call active)")
+            NSLog("📞 [CallKit] Voice call dismissed — reactivating RTCAudioSession")
             dismissedForVoiceCall = false
+            // Re-activate for native WebRTC to continue
+            rtcAudioSession.audioSessionDidActivate(audioSession)
+            rtcAudioSession.isAudioEnabled = true
         } else {
             isAudioSessionReady = false
         }

@@ -368,13 +368,25 @@ final class NativeVoiceCallSession: ObservableObject {
     func endCall() {
         guard !isCallEnded else { return }
         isCallEnded = true
-        NSLog("📞 [NativeSession] User ended call")
+        NSLog("📞 [NativeSession] Ending call — dismissing UI immediately")
 
-        signalingService?.sendEndCall()
-        performCleanup(removeRoom: true)
-
+        // 1. Dismiss UI FIRST for instant feedback
         DispatchQueue.main.async { [weak self] in
             self?.shouldDismiss = true
+        }
+
+        // 2. Send end signal to remote peer
+        signalingService?.sendEndCall()
+
+        // 3. End CallKit call IMMEDIATELY (before cleanup) for fast UI dismiss
+        if let uuid = callKitUUID ?? CallKitManager.shared.getCallUUID(for: roomId) {
+            CallKitManager.shared.endCall(uuid: uuid, reason: .remoteEnded)
+            NSLog("📞 [NativeSession] CallKit call ended: \(uuid)")
+        }
+
+        // 4. Cleanup async — don't block the UI dismiss
+        DispatchQueue.main.async { [weak self] in
+            self?.performCleanup(removeRoom: true)
         }
     }
 
@@ -401,10 +413,11 @@ final class NativeVoiceCallSession: ObservableObject {
         signalingService?.stop(removeRoom: removeRoom)
         signalingService = nil
 
-        // End CallKit if still active (both incoming and outgoing)
-        if let uuid = callKitUUID ?? CallKitManager.shared.getCallUUID(for: roomId) {
+        // CallKit call is already ended in endCall() before cleanup.
+        // Only end here if cleanup is called from stop() without endCall().
+        if !isCallEnded, let uuid = callKitUUID ?? CallKitManager.shared.getCallUUID(for: roomId) {
             CallKitManager.shared.endCall(uuid: uuid, reason: .remoteEnded)
-            NSLog("📞 [NativeSession] Ended CallKit call: \(uuid)")
+            NSLog("📞 [NativeSession] Ended CallKit call from cleanup: \(uuid)")
         }
         callKitUUID = nil
 

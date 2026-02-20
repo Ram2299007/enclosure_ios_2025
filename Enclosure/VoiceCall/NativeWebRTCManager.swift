@@ -45,7 +45,16 @@ final class NativeWebRTCManager: NSObject {
         let rtcAudioSession = RTCAudioSession.sharedInstance()
         rtcAudioSession.useManualAudio = true
         rtcAudioSession.isAudioEnabled = false
-        NSLog("✅ [NativeWebRTC] RTCAudioSession: useManualAudio=true")
+        
+        // Pre-configure the audio session settings WebRTC should use.
+        // These are applied when RTCAudioSession is activated (via didActivate).
+        // Do NOT configure AVAudioSession directly — let CallKit + RTCAudioSession manage it.
+        let config = RTCAudioSessionConfiguration.webRTC()
+        config.category = AVAudioSession.Category.playAndRecord.rawValue
+        config.categoryOptions = [.allowBluetooth, .allowBluetoothA2DP]
+        config.mode = AVAudioSession.Mode.voiceChat.rawValue
+        RTCAudioSessionConfiguration.setWebRTC(config)
+        NSLog("✅ [NativeWebRTC] RTCAudioSession: useManualAudio=true, config=voiceChat+bluetooth")
 
         RTCInitializeSSL()
         factory = RTCPeerConnectionFactory()
@@ -268,8 +277,13 @@ final class NativeWebRTCManager: NSObject {
 
     /// Call when CallKit audio session is active (didActivate or audio ready).
     /// This tells WebRTC's audio engine to start capturing mic audio.
+    /// NOTE: didActivate now directly activates RTCAudioSession, so this may be a no-op.
     func activateAudioSession() {
         let rtcAudioSession = RTCAudioSession.sharedInstance()
+        if rtcAudioSession.isAudioEnabled {
+            NSLog("ℹ️ [NativeWebRTC] RTCAudioSession already enabled — skipping (didActivate handled it)")
+            return
+        }
         rtcAudioSession.audioSessionDidActivate(audioSession)
         rtcAudioSession.isAudioEnabled = true
         NSLog("✅ [NativeWebRTC] RTCAudioSession activated — mic capture enabled")
