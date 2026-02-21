@@ -186,7 +186,7 @@ struct MainActivityOld: View {
                                 .scaledToFit()
                                 .frame(width: 55, height: 55)
                         }
-                        .frame(width: 70, height: 70)
+                        .frame(width: 70, height: activeCallManager.hasActiveCall ? 58 : 70)
                         .padding(.leading, 25)
 
                         Spacer()

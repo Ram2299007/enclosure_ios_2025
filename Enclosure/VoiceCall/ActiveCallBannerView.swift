@@ -14,19 +14,19 @@ struct ActiveCallBannerView: View {
 
     // Dark/light adaptive colors
     private var bannerBg: Color {
-        colorScheme == .dark ? Color(hex: "#011224") : Color.white
+        colorScheme == .dark ? Color(hex: "#011224") : themeColor
     }
     private var primaryText: Color {
-        colorScheme == .dark ? .white : Color(hex: "#011224")
+        .white
     }
     private var secondaryText: Color {
-        colorScheme == .dark ? .white.opacity(0.6) : Color(hex: "#011224").opacity(0.55)
+        .white.opacity(0.7)
     }
     private var muteBtnBg: Color {
-        colorScheme == .dark ? Color.white.opacity(0.12) : Color(hex: "#011224").opacity(0.08)
+        Color.white.opacity(0.15)
     }
     private var gradientOpacity: Double {
-        colorScheme == .dark ? 0.15 : 0.08
+        colorScheme == .dark ? 0.15 : 0.12
     }
 
     private var statusBarHeight: CGFloat {
@@ -103,7 +103,7 @@ struct ActiveCallBannerView: View {
                                 .frame(width: 34, height: 34)
                             Image(systemName: session.isMuted ? "mic.slash.fill" : "mic.fill")
                                 .font(.system(size: 14))
-                                .foregroundColor(session.isMuted ? .white : primaryText)
+                                .foregroundColor(.white)
                         }
                     }
                     .buttonStyle(.plain)
@@ -111,14 +111,14 @@ struct ActiveCallBannerView: View {
                     // Tap to return
                     Text("RETURN")
                         .font(.custom("Inter18pt-Bold", size: 10))
-                        .foregroundColor(themeColor)
+                        .foregroundColor(.white)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(themeColor.opacity(colorScheme == .dark ? 0.15 : 0.1))
+                        .background(Color.white.opacity(0.15))
                         .clipShape(Capsule())
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 10)
+                .padding(.vertical, 8)
             }
             .background(
                 bannerBg
@@ -129,7 +129,7 @@ struct ActiveCallBannerView: View {
                             endPoint: .trailing
                         )
                     )
-                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.08), radius: 4, x: 0, y: 2)
+                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 4, x: 0, y: 2)
             )
         }
         .buttonStyle(.plain)
