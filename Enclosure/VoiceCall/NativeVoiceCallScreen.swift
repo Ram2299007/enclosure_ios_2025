@@ -243,8 +243,8 @@ struct NativeVoiceCallScreen: View {
 
                 // Audio output — single tap toggle (like Android)
                 controlButton(
-                    imageName: session.isSpeakerOn ? "speaker" : "earpiece",
-                    systemFallback: session.isSpeakerOn ? "speaker.wave.3.fill" : "speaker.fill",
+                    imageName: "speaker",
+                    systemFallback: "speaker.wave.3.fill",
                     isActive: session.isSpeakerOn
                 ) {
                     session.setAudioOutput(speaker: !session.isSpeakerOn)

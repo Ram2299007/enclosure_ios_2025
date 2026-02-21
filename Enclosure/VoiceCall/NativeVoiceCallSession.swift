@@ -213,6 +213,14 @@ final class NativeVoiceCallSession: ObservableObject {
             NotificationCenter.default.removeObserver(obs)
             callKitAudioReadyObserver = nil
         }
+        // OUTGOING CALL: Restart ringtone after didActivate.
+        // The initial startRingtone() runs BEFORE didActivate, but didActivate
+        // reconfigures the audio session (RTCAudioSession.audioSessionDidActivate)
+        // which kills the AVAudioPlayer. Restart it now that audio is stable.
+        if payload.isSender && !isCallConnected {
+            NSLog("🔔 [NativeSession] Restarting ringtone after didActivate")
+            startRingtone()
+        }
     }
 
     private func configureAudioForOutgoing() {
@@ -253,18 +261,24 @@ final class NativeVoiceCallSession: ObservableObject {
 
     private func startRingtone() {
         guard payload.isSender else { return }
+        // Stop any existing player before (re)starting
+        ringtonePlayer?.stop()
+        ringtonePlayer = nil
         if let url = Bundle.main.url(forResource: "ringtone", withExtension: "mp3") {
             do {
                 ringtonePlayer = try AVAudioPlayer(contentsOf: url)
                 ringtonePlayer?.numberOfLoops = -1
+                ringtonePlayer?.volume = 1.0
+                ringtonePlayer?.prepareToPlay()
                 // Play through earpiece (not speaker) — like WhatsApp outgoing call
                 try audioSession.overrideOutputAudioPort(.none)
-                ringtonePlayer?.volume = 1.0
                 ringtonePlayer?.play()
-                NSLog("🔔 [NativeSession] Ringtone playing through earpiece")
+                NSLog("🔔 [NativeSession] Ringtone started (isPlaying=\(ringtonePlayer?.isPlaying ?? false))")
             } catch {
                 NSLog("❌ [NativeSession] Failed to start ringtone: \(error.localizedDescription)")
             }
+        } else {
+            NSLog("❌ [NativeSession] ringtone.mp3 not found in bundle")
         }
     }
 
