@@ -119,6 +119,14 @@ final class CallLogViewModel: ObservableObject {
                     }
                     
                     self.cacheManager.cacheCallLogs(sanitized, type: self.cacheType)
+                    
+                    // Persist contact info for callback from native Phone app Recents.
+                    // Call log entries have all fields (fToken, voipToken, deviceType).
+                    for section in sanitized {
+                        for userInfo in section.userInfo {
+                            RecentCallContactStore.shared.saveFromCallLogEntry(userInfo)
+                        }
+                    }
                 } else {
                     self.errorMessage = message
                     if self.sections.isEmpty {

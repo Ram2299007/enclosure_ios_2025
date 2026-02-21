@@ -102,8 +102,10 @@ class CallKitManager: NSObject {
         activeCalls[uuid] = callInfo
         
         // Create call update
+        // Use receiverId in the handle so we can look up the contact
+        // when user taps this call from iPhone's native Phone app Recents.
         let update = CXCallUpdate()
-        update.remoteHandle = CXHandle(type: .generic, value: callerName)
+        update.remoteHandle = CXHandle(type: .generic, value: receiverId)
         
         // Show caller name with call type on single line
         NSLog("🔍 [CallKit] isVideoCall = \(isVideoCall)")
@@ -111,8 +113,8 @@ class CallKitManager: NSObject {
         
         update.localizedCallerName = callerName
         
-        NSLog("📞 [CallKit] Display text: '\(callerName)'")
-        print("📞 [CallKit] Format: Caller • CallType")
+        NSLog("📞 [CallKit] Display text: '\(callerName)' (handle=\(receiverId))")
+        print("📞 [CallKit] Format: Caller • CallType (handle=receiverId)")
         
         // Set hasVideo based on actual call type.
         // Voice calls: hasVideo=false → iOS shows "Enclosure Audio" (not "Enclosure Video")
@@ -207,9 +209,10 @@ class CallKitManager: NSObject {
         )
         activeCalls[uuid] = callInfo
         
-        let handle = CXHandle(type: .generic, value: callerName)
+        let handle = CXHandle(type: .generic, value: receiverId)
         let startAction = CXStartCallAction(call: uuid, handle: handle)
         startAction.isVideo = false
+        startAction.contactIdentifier = callerName
         
         let transaction = CXTransaction(action: startAction)
         callController.request(transaction) { error in
@@ -396,10 +399,57 @@ extension CallKitManager: CXProviderDelegate {
     }
     
     func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
-        print("📞 [CallKit] Starting outgoing call: \(action.callUUID)")
+        let handleValue = action.handle.value
+        NSLog("📞 [CallKit] CXStartCallAction: uuid=\(action.callUUID), handle=\(handleValue)")
         
-        // Don't configure audio here - CallKit will call didActivate
-        action.fulfill()
+        // If this UUID is already in activeCalls, it's an app-initiated outgoing call — just fulfill.
+        if activeCalls[action.callUUID] != nil {
+            NSLog("📞 [CallKit] App-initiated outgoing call — fulfilling")
+            action.fulfill()
+            return
+        }
+        
+        // Otherwise, this is a CALLBACK from native Phone app Recents.
+        // The handle value is the receiverId (friendId) we stored when the call was reported.
+        NSLog("📞 [CallKit] 📱 Callback from Phone app Recents! handle (friendId) = \(handleValue)")
+        
+        // End this CallKit call immediately — we'll start our own via the normal flow.
+        action.fail()
+        
+        // Look up the stored contact info and post notification to initiate the call.
+        DispatchQueue.main.async {
+            if let contact = RecentCallContactStore.shared.getContact(for: handleValue) {
+                NSLog("📞 [CallKit] Found stored contact: \(contact.fullName) — initiating Enclosure call")
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("InitiateCallFromRecents"),
+                    object: nil,
+                    userInfo: [
+                        "friendId": contact.friendId,
+                        "fullName": contact.fullName,
+                        "photo": contact.photo,
+                        "fToken": contact.fToken,
+                        "voipToken": contact.voipToken,
+                        "deviceType": contact.deviceType,
+                        "mobileNo": contact.mobileNo
+                    ]
+                )
+            } else {
+                NSLog("⚠️ [CallKit] No stored contact for handle \(handleValue) — posting with handle only")
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("InitiateCallFromRecents"),
+                    object: nil,
+                    userInfo: [
+                        "friendId": handleValue,
+                        "fullName": action.contactIdentifier ?? "Unknown",
+                        "photo": "",
+                        "fToken": "",
+                        "voipToken": "",
+                        "deviceType": "",
+                        "mobileNo": ""
+                    ]
+                )
+            }
+        }
     }
     
     func provider(_ provider: CXProvider, perform action: CXSetHeldCallAction) {

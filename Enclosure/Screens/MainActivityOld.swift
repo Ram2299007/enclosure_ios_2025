@@ -1292,6 +1292,63 @@ struct MainActivityOld: View {
                 print("✅✅✅ [MainActivityOld] VoiceCallScreen ACTIVE")
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("InitiateCallFromRecents"))) { notification in
+            // User tapped a recent Enclosure call in the native Phone app → initiate outgoing voice call
+            guard let userInfo = notification.userInfo as? [String: String] else {
+                NSLog("⚠️ [MainActivityOld] InitiateCallFromRecents: userInfo missing")
+                return
+            }
+            
+            let friendId = userInfo["friendId"] ?? ""
+            let fullName = userInfo["fullName"] ?? "Unknown"
+            let photo = userInfo["photo"] ?? ""
+            let fToken = userInfo["fToken"] ?? ""
+            let voipToken = userInfo["voipToken"] ?? ""
+            let deviceType = userInfo["deviceType"] ?? ""
+            let mobileNo = userInfo["mobileNo"] ?? ""
+            
+            NSLog("📞 [MainActivityOld] InitiateCallFromRecents: \(fullName) (id=\(friendId))")
+            
+            guard !friendId.isEmpty, !fToken.isEmpty else {
+                NSLog("⚠️ [MainActivityOld] InitiateCallFromRecents: Missing friendId or fToken, cannot call")
+                Constant.showToast(message: "Unable to call — contact info unavailable. Open the app first.")
+                return
+            }
+            
+            // Don't start a new call if one is already active
+            guard incomingVoiceCallPayload == nil, incomingVideoCallPayload == nil,
+                  activeCallManager.activeSession == nil else {
+                NSLog("⚠️ [MainActivityOld] InitiateCallFromRecents: A call is already active, ignoring")
+                return
+            }
+            
+            let roomId = "\(Int(Date().timeIntervalSince1970 * 1000))\(Int.random(in: 1000...9999))"
+            
+            let payload = VoiceCallPayload(
+                receiverId: friendId,
+                receiverName: fullName,
+                receiverPhoto: photo,
+                receiverToken: fToken,
+                receiverDeviceType: deviceType,
+                receiverPhone: mobileNo,
+                roomId: roomId,
+                isSender: true
+            )
+            
+            incomingVoiceCallPayload = payload
+            
+            // Send push notification to the receiver
+            MessageUploadService.shared.sendVoiceCallNotification(
+                receiverToken: fToken,
+                receiverDeviceType: deviceType,
+                receiverId: friendId,
+                receiverPhone: mobileNo,
+                roomId: roomId,
+                voipToken: voipToken
+            )
+            
+            NSLog("✅ [MainActivityOld] InitiateCallFromRecents: Call initiated to \(fullName)")
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("IncomingCallCancelled"))) { notification in
             let roomId = (notification.userInfo as? [String: String])?["roomId"] ?? ""
             NSLog("📞 [MainActivityOld] IncomingCallCancelled received. roomId=\(roomId)")

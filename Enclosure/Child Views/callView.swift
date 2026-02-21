@@ -653,6 +653,17 @@ extension callView {
     }
 
     private func startVoiceCall(for contact: CallingContactModel) {
+        // Persist contact info for callback from native Phone app Recents
+        RecentCallContactStore.shared.saveFromOutgoingCall(
+            friendId: contact.uid,
+            fullName: contact.fullName,
+            photo: contact.photo,
+            fToken: contact.fToken,
+            voipToken: contact.voipToken,
+            deviceType: contact.deviceType,
+            mobileNo: contact.mobileNo
+        )
+        
         requestMicrophonePermission { granted in
             guard granted else {
                 Constant.showToast(message: "Microphone permission is required for voice calls.")
@@ -680,6 +691,9 @@ extension callView {
     }
 
     private func startVoiceCall(for entry: CallLogUserInfo) {
+        // Persist contact info for callback from native Phone app Recents
+        RecentCallContactStore.shared.saveFromCallLogEntry(entry)
+        
         requestMicrophonePermission { granted in
             guard granted else {
                 Constant.showToast(message: "Microphone permission is required for voice calls.")

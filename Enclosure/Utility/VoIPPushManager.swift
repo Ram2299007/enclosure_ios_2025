@@ -252,6 +252,19 @@ extension VoIPPushManager: PKPushRegistryDelegate {
 
         registerIncomingCallContext(roomId: roomId, callerName: callerName, callerPhoto: callerPhoto, isVideoCall: isVideoCall)
 
+        // Persist caller info for callback from native Phone app Recents.
+        // fToken/voipToken/deviceType are unavailable here — they'll be populated
+        // when call logs are loaded later.
+        RecentCallContactStore.shared.saveFromOutgoingCall(
+            friendId: receiverId,
+            fullName: callerName,
+            photo: callerPhoto,
+            fToken: "",
+            voipToken: "",
+            deviceType: "",
+            mobileNo: receiverPhone
+        )
+
         // Start observing for caller-cancel signal (Android parity)
         // Voice: removeCallNotification/<myUid>/<pushKey>
         // Video: removeVideoCallNotification/<myUid>/<pushKey>

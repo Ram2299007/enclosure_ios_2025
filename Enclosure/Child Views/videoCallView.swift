@@ -809,6 +809,17 @@ extension videoCallView {
     }
     
     private func startVideoCall(for contact: CallingContactModel) {
+        // Persist contact info for callback from native Phone app Recents
+        RecentCallContactStore.shared.saveFromOutgoingCall(
+            friendId: contact.uid,
+            fullName: contact.fullName,
+            photo: contact.photo,
+            fToken: contact.fToken,
+            voipToken: contact.voipToken,
+            deviceType: contact.deviceType,
+            mobileNo: contact.mobileNo
+        )
+        
         requestCameraAndMicrophonePermission { granted in
             guard granted else {
                 Constant.showToast(message: "Camera and microphone permissions are required for video calls.")
@@ -837,6 +848,9 @@ extension videoCallView {
     }
     
     private func startVideoCall(for entry: CallLogUserInfo) {
+        // Persist contact info for callback from native Phone app Recents
+        RecentCallContactStore.shared.saveFromCallLogEntry(entry)
+        
         requestCameraAndMicrophonePermission { granted in
             guard granted else {
                 Constant.showToast(message: "Camera and microphone permissions are required for video calls.")
