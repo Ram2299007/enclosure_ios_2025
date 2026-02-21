@@ -14,7 +14,7 @@ struct ActiveCallBannerView: View {
 
     // Dark/light adaptive colors
     private var bannerBg: Color {
-        colorScheme == .dark ? Color(hex: "#011224") : themeColor
+        Color(hex: "#011224")
     }
     private var primaryText: Color {
         .white
