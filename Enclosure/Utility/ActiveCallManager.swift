@@ -13,6 +13,9 @@ final class ActiveCallManager: ObservableObject {
     /// The currently active voice call session (started on CallKit answer, before UI)
     @Published private(set) var activeSession: NativeVoiceCallSession?
 
+    /// Payload for the active call — used to re-present call screen from banner
+    @Published private(set) var activePayload: VoiceCallPayload?
+
     /// Whether a voice call is currently active
     var hasActiveCall: Bool { activeSession != nil }
 
@@ -57,15 +60,19 @@ final class ActiveCallManager: ObservableObject {
         // CRITICAL: Session must exist BEFORE action.fulfill() triggers didActivate,
         // otherwise activateAudioForCallKit() finds nil session on cold start.
         self.activeSession = session
+        self.activePayload = payload
         CallLogger.success("Session created for room=\(roomId), caller=\(callerName) — starting WebRTC (isAudioReady=\(CallKitManager.shared.isAudioSessionReady))", category: .session)
         NSLog("✅ [ActiveCallManager] Session created — starting WebRTC immediately (isAudioReady=\(CallKitManager.shared.isAudioSessionReady))")
         session.start()
     }
 
     /// Set an outgoing session (created by NativeVoiceCallScreen for outgoing calls)
-    func setOutgoingSession(_ session: NativeVoiceCallSession) {
+    func setOutgoingSession(_ session: NativeVoiceCallSession, payload: VoiceCallPayload? = nil) {
         DispatchQueue.main.async {
             self.activeSession = session
+            if let payload = payload {
+                self.activePayload = payload
+            }
             NSLog("✅ [ActiveCallManager] Outgoing session registered")
         }
     }
@@ -119,6 +126,7 @@ final class ActiveCallManager: ObservableObject {
     func clearSession() {
         DispatchQueue.main.async {
             self.activeSession = nil
+            self.activePayload = nil
             NSLog("🔴 [ActiveCallManager] Session cleared")
         }
     }

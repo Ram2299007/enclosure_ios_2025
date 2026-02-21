@@ -422,6 +422,12 @@ final class NativeVoiceCallSession: ObservableObject {
     }
 
     private func performCleanup(removeRoom: Bool) {
+        // Send removeCallNotification for missed calls (sender, not connected).
+        // Must be here (not just in stop()) because user may have pressed back
+        // and the call screen's onDisappear won't fire stop().
+        if isCallEnded && payload.isSender && !isCallConnected {
+            sendRemoveCallNotificationIfNeeded()
+        }
         callTimer?.invalidate()
         callTimer = nil
         reconnectTimer?.invalidate()

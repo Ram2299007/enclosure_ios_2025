@@ -8,18 +8,17 @@ struct NativeVoiceCallScreen: View {
     @StateObject private var session: NativeVoiceCallSession
 
     init(payload: VoiceCallPayload) {
-        // For incoming calls: reuse the already-running session from ActiveCallManager
-        // (started immediately on CallKit answer, before UI appeared — audio already connected)
-        // For outgoing calls: create a new session
-        if !payload.isSender, let existingSession = ActiveCallManager.shared.activeSession {
+        // Reuse existing session from ActiveCallManager if available.
+        // This handles: incoming (background start), outgoing, AND returning from back button.
+        if let existingSession = ActiveCallManager.shared.activeSession {
             _session = StateObject(wrappedValue: existingSession)
-            NSLog("🔥 [NativeVoiceCallScreen] init — reusing ActiveCallManager session (background start)")
+            NSLog("🔥 [NativeVoiceCallScreen] init — reusing ActiveCallManager session")
         } else {
             let newSession = NativeVoiceCallSession(payload: payload)
             _session = StateObject(wrappedValue: newSession)
             // Register outgoing session with ActiveCallManager for CallKit sync
             if payload.isSender {
-                ActiveCallManager.shared.setOutgoingSession(newSession)
+                ActiveCallManager.shared.setOutgoingSession(newSession, payload: payload)
             }
             NSLog("🔥 [NativeVoiceCallScreen] init — new session created (isSender=\(payload.isSender))")
         }
@@ -60,8 +59,14 @@ struct NativeVoiceCallScreen: View {
             session.start()
         }
         .onDisappear {
-            NSLog("📺 [NativeVoiceCallScreen] disappeared — stopping session")
-            session.stop()
+            // Only stop session if call was actually ended (endCall sets shouldDismiss).
+            // If user just pressed back arrow, keep session alive for background call.
+            if session.shouldDismiss {
+                NSLog("📺 [NativeVoiceCallScreen] disappeared — call ended, stopping session")
+                session.stop()
+            } else {
+                NSLog("📺 [NativeVoiceCallScreen] disappeared — call still active (user pressed back)")
+            }
         }
         .onReceive(session.$shouldDismiss) { should in
             if should { dismiss() }
@@ -106,7 +111,11 @@ struct NativeVoiceCallScreen: View {
 
     private var topBar: some View {
         HStack {
-            Button(action: { session.endCall() }) {
+            Button(action: {
+                // Go back — keep call running in background (WhatsApp style)
+                NSLog("📺 [NativeVoiceCallScreen] Back pressed — dismissing UI, call stays active")
+                dismiss()
+            }) {
                 ZStack {
                     Circle()
                         .fill(Color.white.opacity(0.1))

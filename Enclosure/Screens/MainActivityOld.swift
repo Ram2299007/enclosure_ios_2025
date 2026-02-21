@@ -96,6 +96,10 @@ struct MainActivityOld: View {
     // Reliable pending call observer (survives background/lockscreen transitions)
     @ObservedObject private var pendingCallManager = PendingCallManager.shared
     
+    // Active call banner (WhatsApp-like) — observe ActiveCallManager for ongoing call
+    @ObservedObject private var activeCallManager = ActiveCallManager.shared
+    @State private var showActiveCallScreen = false
+    
     // DEBUG: Test button to verify screen presentation works
     #if DEBUG
     @State private var showTestShareScreen: Bool = false
@@ -158,6 +162,17 @@ struct MainActivityOld: View {
                     }
                 
                 VStack(spacing:0) {
+
+                // MARK: - WhatsApp-like Active Call Banner
+                // Shows at top when user presses back on call screen (call still running)
+                if let session = activeCallManager.activeSession,
+                   !session.shouldDismiss,
+                   incomingVoiceCallPayload == nil {
+                    ActiveCallBannerView(session: session) {
+                        // Tap → re-open call screen
+                        showActiveCallScreen = true
+                    }
+                }
 
                 if(isMainContentVisible){
                     HStack{
@@ -1023,6 +1038,16 @@ struct MainActivityOld: View {
                         // Reset payload
                         incomingVoiceCallPayload = nil
                     }
+            }
+            .fullScreenCover(isPresented: $showActiveCallScreen) {
+                // Re-present call screen from active call banner
+                if let payload = activeCallManager.activePayload {
+                    VoiceCallScreen(payload: payload)
+                        .onDisappear {
+                            showActiveCallScreen = false
+                            NSLog("📞 [MainActivityOld] Call screen re-dismissed from banner")
+                        }
+                }
             }
             .fullScreenCover(item: $incomingVideoCallPayload) { payload in
                 VideoCallScreen(payload: payload)
