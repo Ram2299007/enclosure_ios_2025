@@ -254,31 +254,32 @@ struct NativeVoiceCallScreen: View {
         }
     }
 
-    // Android-matched button style:
-    // Inactive (OFF): dark #011224 circle + white icon
-    // Active (ON): white circle + dark #011224 icon
+    // Android-matched button style (from stylesVoice.css):
+    // Inactive (OFF): rgba(255,255,255,0.1) — .control-btn
+    // Active (ON): var(--theme-color) opacity 0.7 — .control-btn.muted / .control-btn.active
+    // ThemeColorKey default: #00A3E9 (same as Android Constant.ThemeColorKey)
     private func controlButton(
         imageName: String,
         systemFallback: String,
         isActive: Bool,
         action: @escaping () -> Void
     ) -> some View {
-        let darkColor = Color(hex: "011224")
-        Button(action: action) {
+        let themeColor = Color(hex: Constant.themeColor)
+        return Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(isActive ? Color.white : darkColor)
+                    .fill(isActive ? themeColor.opacity(0.7) : Color.white.opacity(0.1))
                     .frame(width: 64, height: 64)
                 if let img = UIImage(named: imageName) {
                     Image(uiImage: img)
                         .resizable()
                         .renderingMode(.template)
                         .frame(width: 28, height: 28)
-                        .foregroundColor(isActive ? darkColor : .white)
+                        .foregroundColor(.white)
                 } else {
                     Image(systemName: systemFallback)
                         .font(.system(size: 22))
-                        .foregroundColor(isActive ? darkColor : .white)
+                        .foregroundColor(.white)
                 }
             }
         }
