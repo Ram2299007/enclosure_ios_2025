@@ -254,9 +254,17 @@ final class NativeVoiceCallSession: ObservableObject {
     private func startRingtone() {
         guard payload.isSender else { return }
         if let url = Bundle.main.url(forResource: "ringtone", withExtension: "mp3") {
-            ringtonePlayer = try? AVAudioPlayer(contentsOf: url)
-            ringtonePlayer?.numberOfLoops = -1
-            ringtonePlayer?.play()
+            do {
+                ringtonePlayer = try AVAudioPlayer(contentsOf: url)
+                ringtonePlayer?.numberOfLoops = -1
+                // Play through earpiece (not speaker) — like WhatsApp outgoing call
+                try audioSession.overrideOutputAudioPort(.none)
+                ringtonePlayer?.volume = 1.0
+                ringtonePlayer?.play()
+                NSLog("🔔 [NativeSession] Ringtone playing through earpiece")
+            } catch {
+                NSLog("❌ [NativeSession] Failed to start ringtone: \(error.localizedDescription)")
+            }
         }
     }
 

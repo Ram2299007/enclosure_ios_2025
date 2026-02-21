@@ -6,7 +6,6 @@ import SwiftUI
 struct NativeVoiceCallScreen: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var session: NativeVoiceCallSession
-    @State private var showAudioMenu = false
 
     init(payload: VoiceCallPayload) {
         // For incoming calls: reuse the already-running session from ActiveCallManager
@@ -51,10 +50,6 @@ struct NativeVoiceCallScreen: View {
                 controlsContainer
             }
 
-            // Audio output menu overlay
-            if showAudioMenu {
-                audioOutputMenu
-            }
         }
         .ignoresSafeArea()
         .onAppear {
@@ -246,112 +241,49 @@ struct NativeVoiceCallScreen: View {
                     }
                 }
 
-                // Audio output
+                // Audio output — single tap toggle (like Android)
                 controlButton(
-                    imageName: audioOutputImageName,
+                    imageName: session.isSpeakerOn ? "speaker" : "earpiece",
                     systemFallback: session.isSpeakerOn ? "speaker.wave.3.fill" : "speaker.fill",
                     isActive: session.isSpeakerOn
                 ) {
-                    showAudioMenu.toggle()
+                    session.setAudioOutput(speaker: !session.isSpeakerOn)
                 }
             }
             .offset(y: -28) // .controls { top: -28px; }
         }
     }
 
-    private var audioOutputImageName: String {
-        if session.isBluetoothAvailable { return "bluetooth" }
-        return session.isSpeakerOn ? "speaker" : "earpiece"
-    }
-
+    // Android-matched button style:
+    // Inactive (OFF): dark #011224 circle + white icon
+    // Active (ON): white circle + dark #011224 icon
     private func controlButton(
         imageName: String,
         systemFallback: String,
         isActive: Bool,
         action: @escaping () -> Void
     ) -> some View {
+        let darkColor = Color(hex: "011224")
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(isActive ? Color(hex: "FF0000").opacity(0.7) : Color.white.opacity(0.1))
+                    .fill(isActive ? Color.white : darkColor)
                     .frame(width: 64, height: 64)
                 if let img = UIImage(named: imageName) {
                     Image(uiImage: img)
                         .resizable()
                         .renderingMode(.template)
                         .frame(width: 28, height: 28)
-                        .foregroundColor(.white)
+                        .foregroundColor(isActive ? darkColor : .white)
                 } else {
                     Image(systemName: systemFallback)
                         .font(.system(size: 22))
-                        .foregroundColor(.white)
+                        .foregroundColor(isActive ? darkColor : .white)
                 }
             }
         }
     }
 
-    // MARK: - Audio Output Menu
-    // Matches: .audio-output-menu { bottom: 70px; background-color: #011224; border-radius: 12px; min-width: 120px; }
-    // .audio-option { padding: 12px 24px; color: #ffffff; font-size: 16px; font-weight: 500; }
-
-    private var audioOutputMenu: some View {
-        ZStack {
-            // Dismiss tap area
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture { showAudioMenu = false }
-
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
-                    VStack(spacing: 0) {
-                        audioMenuOption(label: "Normal", icon: "earpiece", systemIcon: "ear") {
-                            session.setAudioOutput(speaker: false)
-                            showAudioMenu = false
-                        }
-                        audioMenuOption(label: "Speaker", icon: "speaker", systemIcon: "speaker.wave.3") {
-                            session.setAudioOutput(speaker: true)
-                            showAudioMenu = false
-                        }
-                        if session.isBluetoothAvailable {
-                            audioMenuOption(label: "Bluetooth", icon: "bluetooth", systemIcon: "headphones") {
-                                showAudioMenu = false
-                            }
-                        }
-                    }
-                    .padding(.vertical, 8)
-                    .background(Color(hex: "#011224"))
-                    .cornerRadius(12)
-                    .frame(minWidth: 120)
-                    .fixedSize()
-                    Spacer().frame(width: 20)
-                }
-                .padding(.bottom, 80 + safeAreaBottom + 38) // above controls container + button offset
-            }
-        }
-    }
-
-    private func audioMenuOption(label: String, icon: String, systemIcon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                if let img = UIImage(named: icon) {
-                    Image(uiImage: img)
-                        .resizable()
-                        .renderingMode(.template)
-                        .frame(width: 20, height: 20)
-                } else {
-                    Image(systemName: systemIcon).font(.system(size: 18))
-                }
-                Text(label)
-                    .font(.system(size: 16, weight: .medium))
-                Spacer()
-            }
-            .foregroundColor(.white)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 12)
-        }
-    }
 
     // MARK: - Helpers
 
