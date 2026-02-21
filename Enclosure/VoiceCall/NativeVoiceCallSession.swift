@@ -23,6 +23,9 @@ final class NativeVoiceCallSession: ObservableObject {
     @Published var callDuration: TimeInterval = 0
     @Published var isBluetoothAvailable: Bool = false
 
+    /// Whether this device initiated the call (true = outgoing, false = incoming)
+    var isSender: Bool { payload.isSender }
+
     // MARK: - Private
     private let payload: VoiceCallPayload
     private let roomId: String
