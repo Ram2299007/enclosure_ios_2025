@@ -122,7 +122,8 @@ final class NativeVoiceCallSession: ObservableObject {
             configureAudioForOutgoing()
             // Bridge audio session to WebRTC for mic capture
             webRTCManager?.activateAudioSession()
-            startRingtone()
+            // Ringtone is started after CallKit didActivate (in activateWebRTCAudio)
+            // Starting here gets killed when didActivate reconfigures audio session
             enableProximitySensor()
         } else {
             // Incoming call: CallKit owns the audio session.
@@ -213,12 +214,11 @@ final class NativeVoiceCallSession: ObservableObject {
             NotificationCenter.default.removeObserver(obs)
             callKitAudioReadyObserver = nil
         }
-        // OUTGOING CALL: Restart ringtone after didActivate.
-        // The initial startRingtone() runs BEFORE didActivate, but didActivate
-        // reconfigures the audio session (RTCAudioSession.audioSessionDidActivate)
-        // which kills the AVAudioPlayer. Restart it now that audio is stable.
-        if payload.isSender && !isCallConnected {
-            NSLog("🔔 [NativeSession] Restarting ringtone after didActivate")
+        // OUTGOING CALL: Start ringtone after didActivate.
+        // AVAudioPlayer must be created AFTER didActivate reconfigures the audio session,
+        // otherwise it gets killed. Only start once — skip if already playing.
+        if payload.isSender && !isCallConnected && !(ringtonePlayer?.isPlaying ?? false) {
+            NSLog("🔔 [NativeSession] Starting ringtone after didActivate")
             startRingtone()
         }
     }
