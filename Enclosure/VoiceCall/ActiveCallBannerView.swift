@@ -2,57 +2,97 @@ import SwiftUI
 
 /// WhatsApp-like active call banner — shown at top of MainActivityOld when
 /// the user presses back on the call screen while a call is still running.
-/// Displays: green bar with caller name, timer, mute button.
-/// Tapping the banner re-opens the call screen.
+/// Modern design with app theme color, Inter font, and smooth animations.
 struct ActiveCallBannerView: View {
     @ObservedObject var session: NativeVoiceCallSession
     var onTap: () -> Void
 
+    @State private var isPulsing = false
+
+    private let themeColor = Color(hex: Constant.themeColor)
+    private let darkBg = Color(hex: "#011224")
+
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 10) {
-                // Pulsing green dot
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 8, height: 8)
+            HStack(spacing: 12) {
 
-                // Caller name
-                Text(session.callerName.isEmpty ? "Voice Call" : session.callerName)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
+                // Pulsing call indicator
+                ZStack {
+                    Circle()
+                        .fill(Color.green.opacity(0.3))
+                        .frame(width: 20, height: 20)
+                        .scaleEffect(isPulsing ? 1.4 : 1.0)
+                        .opacity(isPulsing ? 0 : 0.6)
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 10, height: 10)
+                }
 
-                // Timer
-                Text(formattedDuration(session.callDuration))
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white.opacity(0.9))
-                    .monospacedDigit()
+                // Caller name + status
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(session.callerName.isEmpty ? "Voice Call" : session.callerName)
+                        .font(.custom("Inter18pt-SemiBold", size: 14))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "phone.fill")
+                            .font(.system(size: 9))
+                            .foregroundColor(themeColor)
+                        Text(session.isCallConnected ? "Ongoing · \(formattedDuration(session.callDuration))" : "Connecting...")
+                            .font(.custom("Inter18pt-Medium", size: 11))
+                            .foregroundColor(.white.opacity(0.7))
+                            .monospacedDigit()
+                    }
+                }
 
                 Spacer()
 
                 // Mute toggle
                 Button(action: {
+                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                    impactFeedback.impactOccurred()
                     session.setMuted(!session.isMuted)
                 }) {
-                    Image(systemName: session.isMuted ? "mic.slash.fill" : "mic.fill")
-                        .font(.system(size: 16))
-                        .foregroundColor(.white)
-                        .frame(width: 32, height: 32)
-                        .background(Color.white.opacity(0.2))
-                        .clipShape(Circle())
+                    ZStack {
+                        Circle()
+                            .fill(session.isMuted ? themeColor.opacity(0.7) : Color.white.opacity(0.12))
+                            .frame(width: 34, height: 34)
+                        Image(systemName: session.isMuted ? "mic.slash.fill" : "mic.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(.white)
+                    }
                 }
                 .buttonStyle(.plain)
 
-                // Tap to return indicator
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.7))
+                // Tap to return
+                Text("RETURN")
+                    .font(.custom("Inter18pt-Bold", size: 10))
+                    .foregroundColor(themeColor)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(themeColor.opacity(0.15))
+                    .clipShape(Capsule())
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            .background(Color.green)
+            .background(
+                darkBg
+                    .overlay(
+                        LinearGradient(
+                            colors: [themeColor.opacity(0.15), Color.clear],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+            )
         }
         .buttonStyle(.plain)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                isPulsing = true
+            }
+        }
     }
 
     private func formattedDuration(_ duration: TimeInterval) -> String {
