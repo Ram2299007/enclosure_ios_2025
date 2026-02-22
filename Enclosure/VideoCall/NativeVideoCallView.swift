@@ -277,10 +277,14 @@ struct NativeVideoCallView: View {
     }
 }
 
-// MARK: - RTCEAGLVideoView SwiftUI Wrapper
+// MARK: - RTCEAGLVideoView SwiftUI Wrapper (Aspect-Fill / Center-Crop)
 
 struct EAGLVideoViewWrapper: UIViewRepresentable {
     let view: RTCEAGLVideoView
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(videoView: view)
+    }
 
     func makeUIView(context: Context) -> UIView {
         let container = UIView()
@@ -288,18 +292,82 @@ struct EAGLVideoViewWrapper: UIViewRepresentable {
         container.clipsToBounds = true
 
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.contentMode = .scaleAspectFit
+        view.delegate = context.coordinator
         container.addSubview(view)
 
-        NSLayoutConstraint.activate([
-            view.topAnchor.constraint(equalTo: container.topAnchor),
-            view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            view.bottomAnchor.constraint(equalTo: container.bottomAnchor)
-        ])
+        // Center the video view inside the container
+        let centerX = view.centerXAnchor.constraint(equalTo: container.centerXAnchor)
+        let centerY = view.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+        // Initial size = container size (will be updated by delegate for aspect-fill)
+        let width = view.widthAnchor.constraint(equalTo: container.widthAnchor)
+        let height = view.heightAnchor.constraint(equalTo: container.heightAnchor)
+
+        // Lower priority so aspect-fill constraints can override
+        width.priority = .defaultLow
+        height.priority = .defaultLow
+
+        NSLayoutConstraint.activate([centerX, centerY, width, height])
+
+        context.coordinator.container = container
+        context.coordinator.widthConstraint = width
+        context.coordinator.heightConstraint = height
 
         return container
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {}
+
+    // Coordinator tracks video frame size and applies aspect-fill constraints
+    class Coordinator: NSObject, RTCVideoViewDelegate {
+        weak var container: UIView?
+        var widthConstraint: NSLayoutConstraint?
+        var heightConstraint: NSLayoutConstraint?
+        private let videoView: RTCEAGLVideoView
+        private var videoSize: CGSize = .zero
+
+        init(videoView: RTCEAGLVideoView) {
+            self.videoView = videoView
+        }
+
+        func videoView(_ videoView: RTCVideoRenderer, didChangeVideoSize size: CGSize) {
+            guard size.width > 0, size.height > 0 else { return }
+            videoSize = size
+            DispatchQueue.main.async { [weak self] in
+                self?.updateAspectFill()
+            }
+        }
+
+        private func updateAspectFill() {
+            guard let container = container, videoSize.width > 0, videoSize.height > 0 else { return }
+            let containerSize = container.bounds.size
+            guard containerSize.width > 0, containerSize.height > 0 else { return }
+
+            let videoAspect = videoSize.width / videoSize.height
+            let containerAspect = containerSize.width / containerSize.height
+
+            // Aspect-fill: scale video to FILL container (overflow is clipped)
+            if videoAspect > containerAspect {
+                // Video is wider → match height, overflow width
+                widthConstraint?.isActive = false
+                heightConstraint?.isActive = false
+                widthConstraint = videoView.widthAnchor.constraint(
+                    equalTo: container.heightAnchor, multiplier: videoAspect)
+                heightConstraint = videoView.heightAnchor.constraint(
+                    equalTo: container.heightAnchor)
+            } else {
+                // Video is taller → match width, overflow height
+                widthConstraint?.isActive = false
+                heightConstraint?.isActive = false
+                widthConstraint = videoView.widthAnchor.constraint(
+                    equalTo: container.widthAnchor)
+                heightConstraint = videoView.heightAnchor.constraint(
+                    equalTo: container.widthAnchor, multiplier: 1.0 / videoAspect)
+            }
+            widthConstraint?.priority = .required
+            heightConstraint?.priority = .required
+            widthConstraint?.isActive = true
+            heightConstraint?.isActive = true
+            container.layoutIfNeeded()
+        }
+    }
 }
