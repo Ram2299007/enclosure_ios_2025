@@ -1,29 +1,17 @@
 import SwiftUI
 import UIKit
-import WebKit
 import AVFoundation
 
 struct VideoCallScreen: View {
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var session: VideoCallSession
-
+    private let payload: VideoCallPayload
+    
     init(payload: VideoCallPayload) {
-        _session = StateObject(wrappedValue: VideoCallSession(payload: payload))
+        self.payload = payload
     }
 
     var body: some View {
-        FullScreenVideoCallViewControllerRepresentable(session: session)
-            .onAppear {
-                session.start()
-            }
-            .onDisappear {
-                session.stop()
-            }
-            .onReceive(session.$shouldDismiss) { shouldDismiss in
-                if shouldDismiss {
-                    dismiss()
-                }
-            }
+        NativeVideoCallScreen(payload: payload)
     }
 }
 
