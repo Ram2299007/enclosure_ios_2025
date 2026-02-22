@@ -496,9 +496,13 @@ extension NativeVideoCallSession: PeerJSClientDelegate {
         }
 
         guard let sdpString = sdp["sdp"] as? String, !sdpString.isEmpty else {
-            NSLog("⚠️ [VideoSession] OFFER has no valid SDP — skipping")
+            NSLog("⚠️ [VideoSession] OFFER has no valid SDP — sdp keys=\(sdp.keys.sorted()), types=\(sdp.mapValues { type(of: $0) })")
             return
         }
+
+        let preview = sdpString.prefix(200)
+        NSLog("📋 [VideoSession] SDP string length=\(sdpString.count) preview=\(preview)")
+        NSLog("📋 [VideoSession] SDP starts with v=0? \(sdpString.hasPrefix("v=0"))")
 
         remotePeerId = peerId
         connectionId = connId // use the caller's connectionId for this media connection
@@ -506,11 +510,14 @@ extension NativeVideoCallSession: PeerJSClientDelegate {
         createPeerConnection()
         guard let pc = peerConnection else { return }
 
+        NSLog("📋 [VideoSession] PC signaling state before setRemote: \(pc.signalingState.rawValue)")
         let remoteDesc = RTCSessionDescription(type: .offer, sdp: sdpString)
         pc.setRemoteDescription(remoteDesc) { [weak self] error in
             guard let self = self else { return }
             if let error = error {
-                NSLog("❌ [VideoSession] setRemote offer: \(error)"); return
+                NSLog("❌ [VideoSession] setRemote offer: \(error)")
+                NSLog("❌ [VideoSession] SDP was length=\(sdpString.count) firstLine=\(sdpString.components(separatedBy: "\n").first ?? "empty")")
+                return
             }
             let constraints = RTCMediaConstraints(
                 mandatoryConstraints: ["OfferToReceiveAudio": "true", "OfferToReceiveVideo": "true"],

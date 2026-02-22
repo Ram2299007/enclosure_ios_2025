@@ -208,17 +208,51 @@ final class PeerJSClient: NSObject, URLSessionWebSocketDelegate {
         case "OFFER":
             guard let src = json["src"] as? String,
                   let payload = json["payload"] as? [String: Any],
-                  let sdp = payload["sdp"] as? [String: Any],
-                  let connId = payload["connectionId"] as? String else { return }
-            NSLog("📥 [PeerJS] OFFER from \(src) connId=\(connId)")
+                  let connId = payload["connectionId"] as? String else {
+                NSLog("⚠️ [PeerJS] OFFER missing src/payload/connectionId")
+                return
+            }
+
+            // Robust SDP extraction — handle dict, JSON string, or raw SDP string
+            var sdpDict: [String: Any]?
+            if let dict = payload["sdp"] as? [String: Any] {
+                sdpDict = dict
+            } else if let sdpJsonStr = payload["sdp"] as? String,
+                      let d = sdpJsonStr.data(using: .utf8),
+                      let parsed = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+                sdpDict = parsed
+            } else if let rawSdp = payload["sdp"] as? String {
+                // Raw SDP string (not wrapped in {type, sdp})
+                sdpDict = ["type": "offer", "sdp": rawSdp]
+            }
+
+            guard let sdp = sdpDict else {
+                NSLog("⚠️ [PeerJS] OFFER has unrecognized sdp format: \(type(of: payload["sdp"]))")
+                return
+            }
+
+            let sdpPreview = String(describing: sdp).prefix(300)
+            NSLog("📥 [PeerJS] OFFER from \(src) connId=\(connId) sdpKeys=\(sdp.keys.sorted()) preview=\(sdpPreview)")
             delegate?.peerJSClient(self, didReceiveOffer: sdp, connectionId: connId, from: src)
 
         case "ANSWER":
             guard let src = json["src"] as? String,
                   let payload = json["payload"] as? [String: Any],
-                  let sdp = payload["sdp"] as? [String: Any],
                   let connId = payload["connectionId"] as? String else { return }
-            NSLog("📥 [PeerJS] ANSWER from \(src)")
+
+            var sdpDict: [String: Any]?
+            if let dict = payload["sdp"] as? [String: Any] {
+                sdpDict = dict
+            } else if let sdpJsonStr = payload["sdp"] as? String,
+                      let d = sdpJsonStr.data(using: .utf8),
+                      let parsed = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+                sdpDict = parsed
+            } else if let rawSdp = payload["sdp"] as? String {
+                sdpDict = ["type": "answer", "sdp": rawSdp]
+            }
+
+            guard let sdp = sdpDict else { return }
+            NSLog("📥 [PeerJS] ANSWER from \(src) sdpKeys=\(sdp.keys.sorted())")
             delegate?.peerJSClient(self, didReceiveAnswer: sdp, connectionId: connId, from: src)
 
         case "CANDIDATE":
