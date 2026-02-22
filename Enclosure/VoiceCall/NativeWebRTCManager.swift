@@ -10,6 +10,12 @@ protocol NativeWebRTCManagerDelegate: AnyObject {
     func webRTCManager(_ manager: NativeWebRTCManager, didDisconnectPeer peerId: String)
     func webRTCManagerDidReceiveRemoteAudio(_ manager: NativeWebRTCManager)
     func webRTCManagerCallEnded(_ manager: NativeWebRTCManager)
+    func webRTCManager(_ manager: NativeWebRTCManager, didReceiveRemoteVideoTrack track: RTCVideoTrack, forPeer peerId: String)
+}
+
+// Default empty implementation so audio-only callers don't need to implement video methods
+extension NativeWebRTCManagerDelegate {
+    func webRTCManager(_ manager: NativeWebRTCManager, didReceiveRemoteVideoTrack track: RTCVideoTrack, forPeer peerId: String) {}
 }
 
 // MARK: - NativeWebRTCManager
@@ -22,8 +28,13 @@ final class NativeWebRTCManager: NSObject {
     private var peerConnections: [String: RTCPeerConnection] = [:]
     private var delegateWrappers: [String: PeerConnectionDelegateWrapper] = [:]
     private var localAudioTrack: RTCAudioTrack?
+    private(set) var localVideoTrack: RTCVideoTrack?
+    private var videoSource: RTCVideoSource?
+    private var cameraCapturer: RTCCameraVideoCapturer?
+    private(set) var currentCameraPosition: AVCaptureDevice.Position = .front
     private var localStream: RTCMediaStream?
     private var isMuted: Bool = false
+    private(set) var isVideoCall: Bool = false
     private let audioSession = AVAudioSession.sharedInstance()
 
     // ICE servers (STUN + TURN)
@@ -39,37 +50,37 @@ final class NativeWebRTCManager: NSObject {
     ]
 
     // MARK: - Init
-    override init() {
+    /// isVideo: set true for video calls (uses .videoChat mode + speaker default)
+    init(isVideo: Bool = false) {
+        self.isVideoCall = isVideo
+
         // Tell WebRTC to use manual audio — required for CallKit integration.
-        // Without this, WebRTC fights CallKit for audio session and mic capture fails.
         let rtcAudioSession = RTCAudioSession.sharedInstance()
         rtcAudioSession.useManualAudio = true
-        
-        // CRITICAL: On lock screen + cold start, didActivate may fire BEFORE this init.
-        // If CallKit already activated audio, do NOT reset isAudioEnabled — that undoes
-        // the activation and causes "no mic" on lock screen answered calls.
-        // Only disable audio if CallKit hasn't activated yet (normal flow).
+
         if !CallKitManager.shared.isAudioSessionReady {
             rtcAudioSession.isAudioEnabled = false
             NSLog("📞 [NativeWebRTC] Audio not yet active — isAudioEnabled=false (will activate on didActivate)")
         } else {
             NSLog("📞 [NativeWebRTC] CallKit audio ALREADY active — keeping isAudioEnabled=\(rtcAudioSession.isAudioEnabled)")
         }
-        
-        // Pre-configure the audio session settings WebRTC should use.
-        // These are applied when RTCAudioSession is activated (via didActivate).
-        // Do NOT configure AVAudioSession directly — let CallKit + RTCAudioSession manage it.
+
         let config = RTCAudioSessionConfiguration.webRTC()
         config.category = AVAudioSession.Category.playAndRecord.rawValue
-        config.categoryOptions = [.allowBluetooth, .allowBluetoothA2DP]
-        config.mode = AVAudioSession.Mode.voiceChat.rawValue
+        if isVideo {
+            config.categoryOptions = [.allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker]
+            config.mode = AVAudioSession.Mode.videoChat.rawValue
+        } else {
+            config.categoryOptions = [.allowBluetooth, .allowBluetoothA2DP]
+            config.mode = AVAudioSession.Mode.voiceChat.rawValue
+        }
         RTCAudioSessionConfiguration.setWebRTC(config)
-        NSLog("✅ [NativeWebRTC] RTCAudioSession: useManualAudio=true, config=voiceChat+bluetooth")
+        NSLog("✅ [NativeWebRTC] RTCAudioSession: useManualAudio=true, mode=\(isVideo ? "videoChat" : "voiceChat")")
 
         RTCInitializeSSL()
         factory = RTCPeerConnectionFactory()
         super.init()
-        NSLog("✅ [NativeWebRTC] RTCPeerConnectionFactory created")
+        NSLog("✅ [NativeWebRTC] RTCPeerConnectionFactory created (isVideo=\(isVideo))")
     }
 
     deinit {
@@ -135,6 +146,64 @@ final class NativeWebRTCManager: NSObject {
         NSLog("✅ [NativeWebRTC] Local audio track + stream created")
     }
 
+    // MARK: - Local Video Track (for video calls)
+
+    func createLocalVideoTrack() {
+        guard localVideoTrack == nil else { return }
+        let source = factory.videoSource()
+        videoSource = source
+        let capturer = RTCCameraVideoCapturer(delegate: source)
+        cameraCapturer = capturer
+        let track = factory.videoTrack(with: source, trackId: "video0")
+        track.isEnabled = true
+        localVideoTrack = track
+
+        // Add to existing stream or create one
+        if let stream = localStream {
+            stream.addVideoTrack(track)
+        }
+
+        startCapture(with: capturer)
+        NSLog("✅ [NativeWebRTC] Local video track created + capturing")
+    }
+
+    private func startCapture(with capturer: RTCCameraVideoCapturer) {
+        let devices = RTCCameraVideoCapturer.captureDevices()
+        guard let device = devices.first(where: { $0.position == currentCameraPosition })
+                ?? devices.first else {
+            NSLog("❌ [NativeWebRTC] No camera device found")
+            return
+        }
+        let formats = RTCCameraVideoCapturer.supportedFormats(for: device)
+        let tw: Int32 = 640, th: Int32 = 480
+        var best: AVCaptureDevice.Format?
+        var bestDiff = Int32.max
+        for f in formats {
+            let d = CMVideoFormatDescriptionGetDimensions(f.formatDescription)
+            let diff = abs(d.width - tw) + abs(d.height - th)
+            if diff < bestDiff { bestDiff = diff; best = f }
+        }
+        guard let format = best else { return }
+        capturer.startCapture(with: device, format: format, fps: 30)
+        let d = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+        NSLog("📷 [NativeWebRTC] Capturing \(d.width)×\(d.height)@30fps (\(currentCameraPosition == .front ? "front" : "back"))")
+    }
+
+    func switchCamera() {
+        guard let capturer = cameraCapturer else { return }
+        currentCameraPosition = (currentCameraPosition == .front) ? .back : .front
+        startCapture(with: capturer)
+    }
+
+    func setVideoEnabled(_ enabled: Bool) {
+        localVideoTrack?.isEnabled = enabled
+    }
+
+    func stopVideoCapture() {
+        cameraCapturer?.stopCapture()
+        cameraCapturer = nil
+    }
+
     // MARK: - Peer Connection
 
     func createPeerConnection(forPeer peerId: String) -> RTCPeerConnection? {
@@ -179,10 +248,9 @@ final class NativeWebRTCManager: NSObject {
     func createOffer(forPeer peerId: String) {
         guard let pc = createPeerConnection(forPeer: peerId) else { return }
 
-        let constraints = RTCMediaConstraints(
-            mandatoryConstraints: ["OfferToReceiveAudio": "true"],
-            optionalConstraints: nil
-        )
+        var mandatory = ["OfferToReceiveAudio": "true"]
+        if localVideoTrack != nil { mandatory["OfferToReceiveVideo"] = "true" }
+        let constraints = RTCMediaConstraints(mandatoryConstraints: mandatory, optionalConstraints: nil)
 
         pc.offer(for: constraints) { [weak self] sdp, error in
             guard let self = self, let sdp = sdp else {
@@ -222,10 +290,9 @@ final class NativeWebRTCManager: NSObject {
     }
 
     private func createAnswer(forPeer peerId: String, pc: RTCPeerConnection) {
-        let constraints = RTCMediaConstraints(
-            mandatoryConstraints: ["OfferToReceiveAudio": "true"],
-            optionalConstraints: nil
-        )
+        var mandatory = ["OfferToReceiveAudio": "true"]
+        if localVideoTrack != nil { mandatory["OfferToReceiveVideo"] = "true" }
+        let constraints = RTCMediaConstraints(mandatoryConstraints: mandatory, optionalConstraints: nil)
         pc.answer(for: constraints) { [weak self] sdp, error in
             guard let self = self, let sdp = sdp else {
                 NSLog("❌ [NativeWebRTC] createAnswer failed for \(peerId): \(error?.localizedDescription ?? "nil")")
@@ -319,10 +386,9 @@ final class NativeWebRTCManager: NSObject {
         }
 
         NSLog("🔄 [NativeWebRTC] ICE restart for peer: \(peerId)")
-        let constraints = RTCMediaConstraints(
-            mandatoryConstraints: ["IceRestart": "true", "OfferToReceiveAudio": "true"],
-            optionalConstraints: nil
-        )
+        var mandatory = ["IceRestart": "true", "OfferToReceiveAudio": "true"]
+        if localVideoTrack != nil { mandatory["OfferToReceiveVideo"] = "true" }
+        let constraints = RTCMediaConstraints(mandatoryConstraints: mandatory, optionalConstraints: nil)
 
         pc.offer(for: constraints) { [weak self] sdp, error in
             guard let self = self, let sdp = sdp else {
@@ -350,10 +416,13 @@ final class NativeWebRTCManager: NSObject {
     }
 
     func stopAll() {
+        stopVideoCapture()
         peerConnections.values.forEach { $0.close() }
         peerConnections.removeAll()
         delegateWrappers.removeAll()
         localAudioTrack = nil
+        localVideoTrack = nil
+        videoSource = nil
         localStream = nil
         NSLog("🔴 [NativeWebRTC] All peer connections closed")
     }
@@ -366,9 +435,13 @@ final class NativeWebRTCManager: NSObject {
     }
 
     fileprivate func onRemoteStreamAdded(_ stream: RTCMediaStream, peerId: String) {
-        NSLog("🔊 [NativeWebRTC] Remote stream from peer: \(peerId), audioTracks: \(stream.audioTracks.count)")
+        NSLog("🔊 [NativeWebRTC] Remote stream from peer: \(peerId), audio=\(stream.audioTracks.count), video=\(stream.videoTracks.count)")
         if !stream.audioTracks.isEmpty {
             delegate?.webRTCManagerDidReceiveRemoteAudio(self)
+        }
+        if let videoTrack = stream.videoTracks.first {
+            NSLog("📹 [NativeWebRTC] Remote video track received from: \(peerId)")
+            delegate?.webRTCManager(self, didReceiveRemoteVideoTrack: videoTrack, forPeer: peerId)
         }
     }
 }
