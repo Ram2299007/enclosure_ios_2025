@@ -326,12 +326,19 @@ final class NativeVideoCallSession: NSObject, ObservableObject {
                     return
                 }
 
-                // Connect to new peers
+                // Connect to new peers — only initiate if we are the SENDER.
+                // Android always calls connectToPeer() when it discovers a peer,
+                // so when iOS is receiver we just wait for the PeerJS OFFER.
                 for pid in peerIds {
-                    if self.remotePeerId == nil && !self.hasSentOffer {
-                        NSLog("📹 [VideoSession] new peer found: \(pid) — initiating call")
+                    if self.remotePeerId == nil {
                         self.remotePeerId = pid
-                        self.initiateCallToPeer(pid)
+                        NSLog("📹 [VideoSession] peer discovered: \(pid) (isSender=\(self.payload.isSender))")
+                        if self.payload.isSender && !self.hasSentOffer {
+                            NSLog("📹 [VideoSession] I am sender — initiating call to \(pid)")
+                            self.initiateCallToPeer(pid)
+                        } else {
+                            NSLog("📹 [VideoSession] I am receiver — waiting for OFFER from \(pid)")
+                        }
                     }
                 }
             }
@@ -404,7 +411,11 @@ final class NativeVideoCallSession: NSObject, ObservableObject {
     // MARK: - Helpers
 
     fileprivate func onICECandidate(_ candidate: RTCIceCandidate) {
-        guard let dst = remotePeerId else { return }
+        guard let dst = remotePeerId else {
+            NSLog("⚠️ [VideoSession] ICE candidate generated but no remotePeerId yet — dropping")
+            return
+        }
+        NSLog("📤 [VideoSession] Sending ICE candidate to \(dst) connId=\(connectionId) mid=\(candidate.sdpMid ?? "nil")")
         peerJSClient.sendCandidate(
             candidate: candidate.sdp,
             sdpMid: candidate.sdpMid ?? "0",
@@ -469,11 +480,28 @@ extension NativeVideoCallSession: PeerJSClientDelegate {
     }
 
     func peerJSClient(_ client: PeerJSClient, didReceiveOffer sdp: [String: Any], connectionId connId: String, from peerId: String) {
-        NSLog("📥 [VideoSession] OFFER from \(peerId)")
-        guard let sdpString = sdp["sdp"] as? String else { return }
+        NSLog("📥 [VideoSession] OFFER from \(peerId) connId=\(connId)")
+
+        // Skip data-channel offers (dc_*) — they don't carry media SDP
+        if connId.hasPrefix("dc_") {
+            NSLog("⏭️ [VideoSession] Ignoring data-channel offer (dc_*) from \(peerId)")
+            return
+        }
+
+        // If we already sent our own offer (glare), ignore the incoming offer.
+        // Our OFFER→ANSWER flow is already in progress.
+        if hasSentOffer {
+            NSLog("⏭️ [VideoSession] Ignoring incoming OFFER — we already sent our own offer (glare)")
+            return
+        }
+
+        guard let sdpString = sdp["sdp"] as? String, !sdpString.isEmpty else {
+            NSLog("⚠️ [VideoSession] OFFER has no valid SDP — skipping")
+            return
+        }
 
         remotePeerId = peerId
-        connectionId = connId // use the same connectionId from the caller
+        connectionId = connId // use the caller's connectionId for this media connection
 
         createPeerConnection()
         guard let pc = peerConnection else { return }
@@ -518,8 +546,12 @@ extension NativeVideoCallSession: PeerJSClientDelegate {
 
     func peerJSClient(_ client: PeerJSClient, didReceiveCandidate candidate: [String: Any], connectionId: String, from peerId: String) {
         guard let sdp = candidate["candidate"] as? String,
-              let sdpMid = candidate["sdpMid"] as? String else { return }
+              let sdpMid = candidate["sdpMid"] as? String else {
+            NSLog("⚠️ [VideoSession] Received malformed ICE candidate from \(peerId)")
+            return
+        }
         let sdpMLineIndex = (candidate["sdpMLineIndex"] as? Int32) ?? 0
+        NSLog("📥 [VideoSession] ICE candidate from \(peerId) mid=\(sdpMid)")
         let ice = RTCIceCandidate(sdp: sdp, sdpMLineIndex: sdpMLineIndex, sdpMid: sdpMid)
         peerConnection?.add(ice)
     }
