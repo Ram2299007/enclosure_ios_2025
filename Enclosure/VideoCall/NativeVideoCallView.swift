@@ -35,31 +35,30 @@ struct NativeVideoCallView: View {
 
                 // ── Full-screen video (remote when connected, local otherwise) ──
                 fullScreenVideo
+                    .onTapGesture { toggleControls() }
 
-                // ── Caller name overlay (visible before + after connect) ──
+                // ── Caller name overlay ──
                 callerNameOverlay
+                    .allowsHitTesting(false)
                     .opacity(showControls ? 1 : 0)
                     .animation(.easeInOut(duration: 0.4), value: showControls)
 
                 // ── Top bar ──
                 topBar
+                    .allowsHitTesting(showControls)
                     .opacity(showControls ? 1 : 0)
                     .offset(y: showControls ? 0 : -80)
                     .animation(.easeInOut(duration: 0.4), value: showControls)
 
                 // ── Controls bar ──
                 controlsBar
+                    .allowsHitTesting(showControls)
                     .opacity(showControls ? 1 : 0)
                     .offset(y: showControls ? 0 : 120)
                     .animation(.easeInOut(duration: 0.4), value: showControls)
 
                 // ── Secondary video (local PiP when connected) ──
                 secondaryVideo(geometry: geometry)
-
-                // ── Tap catcher for show/hide controls ──
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture { toggleControls() }
             }
         }
         .statusBar(hidden: true)
@@ -289,7 +288,7 @@ struct EAGLVideoViewWrapper: UIViewRepresentable {
         container.clipsToBounds = true
 
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.contentMode = .scaleAspectFill
+        view.contentMode = .scaleAspectFit
         container.addSubview(view)
 
         NSLayoutConstraint.activate([
