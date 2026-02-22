@@ -341,13 +341,12 @@ extension CallKitManager: CXProviderDelegate {
             self?.onAnswerCall?(roomId, receiverId, receiverPhone, isVideoCall)
         }
         
-        // Dismiss CallKit full-screen UI after answering for BOTH video and voice calls.
-        // CallKit full-screen blocks WKWebView from accessing camera+mic.
-        // Once CallKit UI is dismissed, WKWebView getUserMedia() will work.
+        // Dismiss CallKit full-screen UI after answering for video calls.
+        // Native WebRTC doesn't need the 1s delay that WebView required.
         if callInfo.isVideoCall {
-            print("📞 [CallKit] Video call - dismissing CallKit UI so camera+mic can start (1.0s delay)")
+            print("📞 [CallKit] Video call - dismissing CallKit UI (0.3s delay)")
             dismissedForVideoCall = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 print("📞 [CallKit] Now dismissing CallKit UI for video call")
                 self.provider.reportCall(with: action.callUUID, endedAt: Date(), reason: .answeredElsewhere)
                 self.activeCalls.removeValue(forKey: action.callUUID)

@@ -341,16 +341,19 @@ extension VoIPPushManager: PKPushRegistryDelegate {
             self.stopObservingRemoveCallNotification()
             self.clearIncomingCallContext(roomId: roomId)
 
-            // Store in PendingCallManager IMMEDIATELY (reliable, survives background transitions)
+            // Start WebRTC session IMMEDIATELY for BOTH voice and video calls.
+            // Audio/video connects in background BEFORE UI appears (like WhatsApp).
+            // Call screens will attach to the already-running session.
             if isVideoCall {
+                ActiveCallManager.shared.startIncomingVideoSession(
+                    roomId: roomId, receiverId: receiverId,
+                    receiverPhone: receiverPhone, callerName: callerName, callerPhoto: callerPhoto
+                )
                 PendingCallManager.shared.setPendingVideoCall(
                     roomId: roomId, receiverId: receiverId,
                     receiverPhone: receiverPhone, callerName: callerName, callerPhoto: callerPhoto
                 )
             } else {
-                // VOICE CALL: Start WebRTC session IMMEDIATELY via ActiveCallManager.
-                // Audio connects in background BEFORE UI appears (like WhatsApp).
-                // NativeVoiceCallScreen will attach to this already-running session.
                 ActiveCallManager.shared.startIncomingSession(
                     roomId: roomId, receiverId: receiverId,
                     receiverPhone: receiverPhone, callerName: callerName, callerPhoto: callerPhoto

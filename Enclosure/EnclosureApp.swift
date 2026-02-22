@@ -373,20 +373,22 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         CallKitManager.shared.onAnswerCall = { roomId, receiverId, receiverPhone, isVideoCall in
             print("📞 [CallKit] User answered call - Room: \(roomId)")
 
-            // Start voice call session immediately (background-safe, audio connects before UI)
-            if !isVideoCall {
-                ActiveCallManager.shared.startIncomingSession(
+            // Start WebRTC session IMMEDIATELY for BOTH voice and video calls.
+            // Audio/video connects in background BEFORE UI appears (like WhatsApp).
+            if isVideoCall {
+                ActiveCallManager.shared.startIncomingVideoSession(
                     roomId: roomId, receiverId: receiverId,
                     receiverPhone: receiverPhone, callerName: callerName, callerPhoto: callerPhoto
                 )
-            }
-            // Store pending call for UI presentation
-            if isVideoCall {
                 PendingCallManager.shared.setPendingVideoCall(
                     roomId: roomId, receiverId: receiverId,
                     receiverPhone: receiverPhone, callerName: callerName, callerPhoto: callerPhoto
                 )
             } else {
+                ActiveCallManager.shared.startIncomingSession(
+                    roomId: roomId, receiverId: receiverId,
+                    receiverPhone: receiverPhone, callerName: callerName, callerPhoto: callerPhoto
+                )
                 PendingCallManager.shared.setPendingVoiceCall(
                     roomId: roomId, receiverId: receiverId,
                     receiverPhone: receiverPhone, callerName: callerName, callerPhoto: callerPhoto

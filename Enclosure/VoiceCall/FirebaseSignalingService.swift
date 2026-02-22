@@ -7,6 +7,7 @@ enum SignalingMessageType: String {
     case offer      = "offer"
     case answer     = "answer"
     case candidate  = "candidate"
+    case candidates = "candidates"
     case endCall    = "endCall"
 }
 
@@ -44,6 +45,10 @@ final class FirebaseSignalingService {
     private var peersHandle: DatabaseHandle?
     private var signalingHandle: DatabaseHandle?
     private var knownPeers: Set<String> = []
+
+    // ICE candidate batching — collect candidates for 150ms then send as single Firebase write
+    private var pendingCandidates: [String: [RTCIceCandidate]] = [:]
+    private var candidateBatchTimers: [String: DispatchWorkItem] = [:]
 
     // MARK: - Init
     init(roomId: String, myPeerId: String, myName: String, myPhoto: String) {
@@ -187,6 +192,14 @@ final class FirebaseSignalingService {
                     if let candidateDict = json["candidate"] as? [String: Any] {
                         self.delegate?.signalingService(self, didReceiveICECandidate: candidateDict, fromPeer: sender)
                     }
+                case .candidates:
+                    // Batch: array of ICE candidates in one message
+                    if let arr = json["candidates"] as? [[String: Any]] {
+                        NSLog("📨 [Signaling] Received \(arr.count) batched candidates from \(sender)")
+                        for c in arr {
+                            self.delegate?.signalingService(self, didReceiveICECandidate: c, fromPeer: sender)
+                        }
+                    }
                 case .endCall:
                     self.delegate?.signalingServiceReceivedEndCall(self, fromPeer: sender)
                 }
@@ -216,18 +229,38 @@ final class FirebaseSignalingService {
     }
 
     func sendICECandidate(_ candidate: RTCIceCandidate, toPeer peerId: String) {
-        let candidateDict: [String: Any] = [
-            "candidate": candidate.sdp,
-            "sdpMid": candidate.sdpMid ?? "",
-            "sdpMLineIndex": candidate.sdpMLineIndex
-        ]
+        // Batch ICE candidates: collect for 150ms then send all in one Firebase write
+        if pendingCandidates[peerId] == nil {
+            pendingCandidates[peerId] = []
+        }
+        pendingCandidates[peerId]?.append(candidate)
+
+        // Cancel existing timer for this peer and start a new 150ms debounce
+        candidateBatchTimers[peerId]?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.flushCandidates(forPeer: peerId)
+        }
+        candidateBatchTimers[peerId] = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: workItem)
+    }
+
+    /// Flush all pending ICE candidates for a peer as a single batched Firebase write
+    private func flushCandidates(forPeer peerId: String) {
+        guard let candidates = pendingCandidates[peerId], !candidates.isEmpty else { return }
+        pendingCandidates[peerId] = nil
+        candidateBatchTimers[peerId] = nil
+
+        let candidatesArray: [[String: Any]] = candidates.map { c in
+            ["candidate": c.sdp, "sdpMid": c.sdpMid ?? "", "sdpMLineIndex": c.sdpMLineIndex]
+        }
         let message: [String: Any] = [
-            "type": SignalingMessageType.candidate.rawValue,
+            "type": SignalingMessageType.candidates.rawValue,
             "sender": myPeerId,
             "receiver": peerId,
-            "candidate": candidateDict
+            "candidates": candidatesArray
         ]
         sendMessage(message)
+        NSLog("📤 [Signaling] Sent \(candidates.count) batched candidates to \(peerId)")
     }
 
     func sendEndCall() {

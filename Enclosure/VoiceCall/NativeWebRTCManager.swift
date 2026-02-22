@@ -41,8 +41,6 @@ final class NativeWebRTCManager: NSObject {
     // ICE servers (STUN + TURN)
     private let iceServers: [RTCIceServer] = [
         RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"]),
-        RTCIceServer(urlStrings: ["stun:stun1.l.google.com:19302"]),
-        RTCIceServer(urlStrings: ["stun:stun2.l.google.com:19302"]),
         RTCIceServer(
             urlStrings: ["turn:relay1.expressturn.com:3478"],
             username: "efWBBHBEBKZEFW8XHM",

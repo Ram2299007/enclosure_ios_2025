@@ -38,10 +38,10 @@ final class NativeVideoCallSession: ObservableObject {
     private let myPhoto: String
     private let myPeerId: String
 
-    private var webRTCManager: NativeWebRTCManager?
+    private(set) var webRTCManager: NativeWebRTCManager?
     private var signalingService: FirebaseSignalingService?
 
-    private var remoteVideoTrack: RTCVideoTrack?
+    private(set) var remoteVideoTrack: RTCVideoTrack?
     private var callTimer: Timer?
     private var callKitAudioReadyObserver: NSObjectProtocol?
 
@@ -146,6 +146,12 @@ final class NativeVideoCallSession: ObservableObject {
 
     func stop() {
         performCleanup(removeRoom: isCallEnded)
+    }
+
+    /// Called by ActiveCallManager when CallKit didActivate fires
+    func activateWebRTCAudio() {
+        webRTCManager?.activateAudioSession()
+        NSLog("✅ [VideoSession] WebRTC audio activated via ActiveCallManager")
     }
 
     func toggleMicrophone() {

@@ -15,24 +15,41 @@ struct NativeVideoCallScreen: View {
     @StateObject private var session: NativeVideoCallSession
 
     init(payload: VideoCallPayload) {
-        _session = StateObject(wrappedValue: NativeVideoCallSession(payload: payload))
+        // Reuse existing session from ActiveCallManager (started immediately on answer,
+        // before UI appears — like voice calls). Only create new for outgoing calls.
+        if let existing = ActiveCallManager.shared.activeVideoSession {
+            _session = StateObject(wrappedValue: existing)
+        } else {
+            let s = NativeVideoCallSession(payload: payload)
+            _session = StateObject(wrappedValue: s)
+        }
     }
 
     var body: some View {
         NativeVideoCallView(session: session)
             .onAppear {
-                // Create renderers once (onAppear only fires once, unlike init which
-                // SwiftUI may call multiple times during parent re-renders)
+                // Attach renderers (session may already be running from ActiveCallManager)
                 if session.localRenderer == nil {
                     let local = RTCEAGLVideoView(frame: .zero)
                     let remote = RTCEAGLVideoView(frame: .zero)
                     session.localRenderer = local
                     session.remoteRenderer = remote
+                    // Attach local renderer to already-running video track
+                    if let vt = session.webRTCManager?.localVideoTrack {
+                        vt.add(local)
+                        NSLog("📹 [VideoScreen] Late-attached local renderer to running session")
+                    }
+                    // Attach remote renderer to already-received remote video track
+                    if let rt = session.remoteVideoTrack {
+                        rt.add(remote)
+                        NSLog("📹 [VideoScreen] Late-attached remote renderer to running session")
+                    }
                 }
-                session.start()
+                session.start() // no-op if already started (guard !hasStarted)
             }
             .onDisappear {
                 session.stop()
+                ActiveCallManager.shared.clearVideoSession()
             }
             .onReceive(session.$shouldDismiss) { shouldDismiss in
                 if shouldDismiss {
