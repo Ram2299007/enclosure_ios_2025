@@ -15,20 +15,20 @@ struct NativeVideoCallScreen: View {
     @StateObject private var session: NativeVideoCallSession
 
     init(payload: VideoCallPayload) {
-        let s = NativeVideoCallSession(payload: payload)
-
-        // Create EAGL renderers (OpenGL — works on all iOS devices)
-        let local = RTCEAGLVideoView(frame: .zero)
-        let remote = RTCEAGLVideoView(frame: .zero)
-        s.localRenderer = local
-        s.remoteRenderer = remote
-
-        _session = StateObject(wrappedValue: s)
+        _session = StateObject(wrappedValue: NativeVideoCallSession(payload: payload))
     }
 
     var body: some View {
         NativeVideoCallView(session: session)
             .onAppear {
+                // Create renderers once (onAppear only fires once, unlike init which
+                // SwiftUI may call multiple times during parent re-renders)
+                if session.localRenderer == nil {
+                    let local = RTCEAGLVideoView(frame: .zero)
+                    let remote = RTCEAGLVideoView(frame: .zero)
+                    session.localRenderer = local
+                    session.remoteRenderer = remote
+                }
                 session.start()
             }
             .onDisappear {
