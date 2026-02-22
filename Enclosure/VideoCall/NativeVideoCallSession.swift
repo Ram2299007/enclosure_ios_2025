@@ -48,6 +48,7 @@ final class NativeVideoCallSession: ObservableObject {
     private var hasStarted = false
     private var isCallEnded = false
     private var removeCallNotificationSent = false
+    private var disconnectWorkItem: DispatchWorkItem?
 
     // MARK: - Init
 
@@ -196,6 +197,8 @@ final class NativeVideoCallSession: ObservableObject {
     // MARK: - Cleanup
 
     private func performCleanup(removeRoom: Bool) {
+        disconnectWorkItem?.cancel()
+        disconnectWorkItem = nil
         callTimer?.invalidate()
         callTimer = nil
 
@@ -285,6 +288,9 @@ extension NativeVideoCallSession: NativeWebRTCManagerDelegate {
 
     func webRTCManager(_ manager: NativeWebRTCManager, didConnectPeer peerId: String) {
         NSLog("✅ [VideoSession] Peer connected: \(peerId)")
+        // Cancel any pending disconnect timer — ICE recovered
+        disconnectWorkItem?.cancel()
+        disconnectWorkItem = nil
         onCallConnected()
     }
 
@@ -293,12 +299,16 @@ extension NativeVideoCallSession: NativeWebRTCManagerDelegate {
         guard !isCallEnded else { return }
         // ICE 'closed' fires during cleanup — ignore if webRTCManager already nil
         guard webRTCManager != nil else { return }
+        // Cancel any existing timer before starting a new one
+        disconnectWorkItem?.cancel()
         // Allow brief recovery window before ending (ICE disconnects can be transient)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+        let workItem = DispatchWorkItem { [weak self] in
             guard let self = self, !self.isCallEnded else { return }
             NSLog("🔴 [VideoSession] Peer still disconnected after 3s — ending call")
             self.endCall()
         }
+        disconnectWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: workItem)
     }
 
     func webRTCManagerDidReceiveRemoteAudio(_ manager: NativeWebRTCManager) {
