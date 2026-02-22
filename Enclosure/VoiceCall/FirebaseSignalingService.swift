@@ -169,9 +169,10 @@ final class FirebaseSignalingService {
 
                 let sender = json["sender"] as? String ?? ""
                 let typeStr = json["type"] as? String ?? ""
+                let snapshotKey = snapshot.key
                 guard let type = SignalingMessageType(rawValue: typeStr) else { return }
 
-                NSLog("📨 [Signaling] Received \(typeStr) from \(sender)")
+                NSLog("📨 [Signaling] Received \(typeStr) from \(sender) (key=\(snapshotKey))")
 
                 switch type {
                 case .offer:

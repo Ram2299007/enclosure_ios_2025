@@ -291,8 +291,14 @@ extension NativeVideoCallSession: NativeWebRTCManagerDelegate {
     func webRTCManager(_ manager: NativeWebRTCManager, didDisconnectPeer peerId: String) {
         NSLog("🔴 [VideoSession] Peer disconnected: \(peerId)")
         guard !isCallEnded else { return }
-        // For video calls, end call on disconnect (no ICE restart for now)
-        DispatchQueue.main.async { [weak self] in self?.endCall() }
+        // ICE 'closed' fires during cleanup — ignore if webRTCManager already nil
+        guard webRTCManager != nil else { return }
+        // Allow brief recovery window before ending (ICE disconnects can be transient)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            guard let self = self, !self.isCallEnded else { return }
+            NSLog("🔴 [VideoSession] Peer still disconnected after 3s — ending call")
+            self.endCall()
+        }
     }
 
     func webRTCManagerDidReceiveRemoteAudio(_ manager: NativeWebRTCManager) {

@@ -36,6 +36,7 @@ final class NativeWebRTCManager: NSObject {
     private var isMuted: Bool = false
     private(set) var isVideoCall: Bool = false
     private let audioSession = AVAudioSession.sharedInstance()
+    private var answerSetForPeer: Set<String> = []   // Guard: prevent duplicate answer processing
 
     // ICE servers (STUN + TURN)
     private let iceServers: [RTCIceServer] = [
@@ -315,9 +316,16 @@ final class NativeWebRTCManager: NSObject {
             NSLog("⚠️ [NativeWebRTC] No peer connection for answer from: \(peerId)")
             return
         }
+        // Guard: only set answer once per peer (Firebase may deliver duplicates)
+        guard !answerSetForPeer.contains(peerId) else {
+            NSLog("⚠️ [NativeWebRTC] Ignoring duplicate answer from: \(peerId) — already set")
+            return
+        }
+        answerSetForPeer.insert(peerId)
         let sdp = RTCSessionDescription(type: .answer, sdp: sdpString)
-        pc.setRemoteDescription(sdp) { error in
+        pc.setRemoteDescription(sdp) { [weak self] error in
             if let error = error {
+                self?.answerSetForPeer.remove(peerId)
                 NSLog("❌ [NativeWebRTC] setRemoteDescription (answer) failed for \(peerId): \(error.localizedDescription)")
             } else {
                 NSLog("✅ [NativeWebRTC] Remote answer set for peer: \(peerId)")
@@ -412,6 +420,7 @@ final class NativeWebRTCManager: NSObject {
         guard let pc = peerConnections[peerId] else { return }
         pc.close()
         peerConnections.removeValue(forKey: peerId)
+        answerSetForPeer.remove(peerId)
         NSLog("🔴 [NativeWebRTC] Peer connection closed for: \(peerId)")
     }
 
@@ -420,6 +429,7 @@ final class NativeWebRTCManager: NSObject {
         peerConnections.values.forEach { $0.close() }
         peerConnections.removeAll()
         delegateWrappers.removeAll()
+        answerSetForPeer.removeAll()
         localAudioTrack = nil
         localVideoTrack = nil
         videoSource = nil
