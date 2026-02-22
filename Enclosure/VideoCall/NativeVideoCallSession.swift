@@ -350,6 +350,12 @@ extension NativeVideoCallSession: FirebaseSignalingDelegate {
     }
 
     func signalingServicePeerCountDroppedToZero(_ service: FirebaseSignalingService) {
+        // If call was already connected via WebRTC, ignore Firebase peer count
+        // (WebRTC connection is independent of Firebase peer entries)
+        if isCallConnected {
+            NSLog("📹 [VideoSession] Peer count 0 but call already connected — ignoring")
+            return
+        }
         NSLog("📹 [VideoSession] Peer count 0 — ending call")
         if !isCallEnded {
             DispatchQueue.main.async { [weak self] in self?.endCall() }
