@@ -2,24 +2,34 @@
 //  NativeVideoCallScreen.swift
 //  Enclosure
 //
-//  Native video call screen that replaces WebView implementation
+//  Native video call screen that replaces WebView implementation.
+//  Creates RTCEAGLVideoView renderers, attaches them to the session,
+//  then hands everything to the SwiftUI view layer.
 //
 
 import SwiftUI
+import WebRTC
 
 struct NativeVideoCallScreen: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var session: NativeVideoCallSession
-    
+
     init(payload: VideoCallPayload) {
-        _session = StateObject(wrappedValue: NativeVideoCallSession(payload: payload))
+        let s = NativeVideoCallSession(payload: payload)
+
+        // Create EAGL renderers (OpenGL — works on all iOS devices)
+        let local = RTCEAGLVideoView(frame: .zero)
+        let remote = RTCEAGLVideoView(frame: .zero)
+        s.localRenderer = local
+        s.remoteRenderer = remote
+
+        _session = StateObject(wrappedValue: s)
     }
-    
+
     var body: some View {
         NativeVideoCallView(session: session)
             .onAppear {
-                // Setup video views
-                setupVideoViews()
+                session.start()
             }
             .onDisappear {
                 session.stop()
@@ -29,38 +39,5 @@ struct NativeVideoCallScreen: View {
                     dismiss()
                 }
             }
-    }
-    
-    private func setupVideoViews() {
-        // Create video renderers with proper frame
-        let screenBounds = UIScreen.main.bounds
-        let localVideoView = RTCMTLVideoView(frame: CGRect(x: 0, y: 0, width: screenBounds.width, height: screenBounds.height))
-        let remoteVideoView = RTCMTLVideoView(frame: CGRect(x: 0, y: 0, width: screenBounds.width, height: screenBounds.height))
-        
-        // Configure video views
-        localVideoView.contentMode = .scaleAspectFill
-        remoteVideoView.contentMode = .scaleAspectFill
-        
-        // Set them on the session
-        session.localVideoView = localVideoView
-        session.remoteVideoView = remoteVideoView
-    }
-}
-
-// Preview
-struct NativeVideoCallScreen_Previews: PreviewProvider {
-    static var previews: some View {
-        let payload = VideoCallPayload(
-            receiverId: "123",
-            receiverName: "Test User",
-            receiverPhoto: "",
-            receiverToken: "",
-            receiverDeviceType: "",
-            receiverPhone: "",
-            roomId: "test_room",
-            isSender: true
-        )
-        
-        NativeVideoCallScreen(payload: payload)
     }
 }
