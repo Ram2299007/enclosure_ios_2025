@@ -318,7 +318,7 @@ struct EAGLVideoViewWrapper: UIViewRepresentable {
     func updateUIView(_ uiView: UIView, context: Context) {}
 
     // Coordinator tracks video frame size and applies aspect-fill constraints
-    class Coordinator: NSObject, RTCVideoViewDelegate {
+    class Coordinator: NSObject, RTCEAGLVideoViewDelegate {
         weak var container: UIView?
         var widthConstraint: NSLayoutConstraint?
         var heightConstraint: NSLayoutConstraint?
@@ -329,7 +329,7 @@ struct EAGLVideoViewWrapper: UIViewRepresentable {
             self.videoView = videoView
         }
 
-        func videoView(_ videoView: RTCVideoRenderer, didChangeVideoSize size: CGSize) {
+        func videoView(_ videoView: RTCEAGLVideoView, didChangeVideoSize size: CGSize) {
             guard size.width > 0, size.height > 0 else { return }
             videoSize = size
             DispatchQueue.main.async { [weak self] in
