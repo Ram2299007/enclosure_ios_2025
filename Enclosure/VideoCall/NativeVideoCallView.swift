@@ -286,8 +286,9 @@ struct EAGLVideoViewWrapper: UIViewRepresentable {
         Coordinator(videoView: view)
     }
 
-    func makeUIView(context: Context) -> UIView {
-        let container = UIView()
+    func makeUIView(context: Context) -> AspectFillContainer {
+        let container = AspectFillContainer()
+        container.coordinator = context.coordinator
         container.backgroundColor = .black
         container.clipsToBounds = true
 
@@ -315,7 +316,16 @@ struct EAGLVideoViewWrapper: UIViewRepresentable {
         return container
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {}
+    func updateUIView(_ uiView: AspectFillContainer, context: Context) {}
+
+    // Custom container that re-triggers aspect-fill when its layout changes
+    class AspectFillContainer: UIView {
+        weak var coordinator: Coordinator?
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            coordinator?.retryAspectFill()
+        }
+    }
 
     // Coordinator tracks video frame size and applies aspect-fill constraints
     class Coordinator: NSObject, RTCEAGLVideoViewDelegate {
@@ -327,6 +337,11 @@ struct EAGLVideoViewWrapper: UIViewRepresentable {
 
         init(videoView: RTCEAGLVideoView) {
             self.videoView = videoView
+        }
+
+        /// Called by AspectFillContainer.layoutSubviews when container bounds change
+        func retryAspectFill() {
+            updateAspectFill()
         }
 
         func videoView(_ videoView: RTCEAGLVideoView, didChangeVideoSize size: CGSize) {
