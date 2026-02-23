@@ -436,6 +436,11 @@ struct videoCallView: View {
         }
         .fullScreenCover(item: $activeVideoCallPayload) { payload in
             VideoCallScreen(payload: payload)
+                .onDisappear {
+                    if !ActiveCallManager.shared.isInPiPMode {
+                        activeVideoCallPayload = nil
+                    }
+                }
         }
     }
 }

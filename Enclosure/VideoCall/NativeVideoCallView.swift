@@ -110,9 +110,9 @@ struct NativeVideoCallView: View {
     private var topBar: some View {
         VStack {
             HStack {
-                // Back button
+                // Back button → PiP mode (call keeps running)
                 Button {
-                    session.endCall()
+                    ActiveCallManager.shared.isInPiPMode = true
                 } label: {
                     Circle()
                         .fill(Color.white.opacity(0.15))

@@ -25,6 +25,9 @@ final class ActiveCallManager: ObservableObject {
     /// Whether a voice call is currently active
     var hasActiveCall: Bool { activeSession != nil || activeVideoSession != nil }
 
+    /// Whether the video call is currently in PiP (Picture-in-Picture) mode
+    @Published var isInPiPMode = false
+
     private init() {
         CallLogger.log("ActiveCallManager initialized", category: .session)
         NSLog("✅ [ActiveCallManager] Initialized")
@@ -193,6 +196,7 @@ final class ActiveCallManager: ObservableObject {
         DispatchQueue.main.async {
             self.activeVideoSession = nil
             self.activeVideoPayload = nil
+            self.isInPiPMode = false
             NSLog("🔴 [ActiveCallManager] Video session cleared")
         }
     }

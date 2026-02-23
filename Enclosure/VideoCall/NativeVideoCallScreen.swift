@@ -33,9 +33,13 @@ struct NativeVideoCallScreen: View {
         _session = StateObject(wrappedValue: session)
     }
 
+    @ObservedObject private var callManager = ActiveCallManager.shared
+
     var body: some View {
         NativeVideoCallView(session: session)
             .onAppear {
+                // Exiting PiP → back to full screen
+                ActiveCallManager.shared.isInPiPMode = false
                 // Late-attach renderers to already-running tracks (incoming call path)
                 if let local = session.localRenderer, let vt = session.webRTCManager?.localVideoTrack {
                     vt.add(local)
@@ -48,11 +52,19 @@ struct NativeVideoCallScreen: View {
                 session.start() // no-op if already started (guard !hasStarted)
             }
             .onDisappear {
-                session.stop()
-                ActiveCallManager.shared.clearVideoSession()
+                // Only stop session if NOT entering PiP (call ended or navigated away)
+                if !ActiveCallManager.shared.isInPiPMode {
+                    session.stop()
+                    ActiveCallManager.shared.clearVideoSession()
+                }
             }
             .onReceive(session.$shouldDismiss) { shouldDismiss in
                 if shouldDismiss {
+                    dismiss()
+                }
+            }
+            .onChange(of: callManager.isInPiPMode) { isPiP in
+                if isPiP {
                     dismiss()
                 }
             }

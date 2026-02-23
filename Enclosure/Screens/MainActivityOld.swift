@@ -99,6 +99,7 @@ struct MainActivityOld: View {
     // Active call banner (WhatsApp-like) — observe ActiveCallManager for ongoing call
     @ObservedObject private var activeCallManager = ActiveCallManager.shared
     @State private var showActiveCallScreen = false
+    @State private var showVideoCallFromPiP = false
     
     // DEBUG: Test button to verify screen presentation works
     #if DEBUG
@@ -1054,8 +1055,36 @@ struct MainActivityOld: View {
                     .onDisappear {
                         NSLog("📞 [MainActivityOld] VideoCallScreen dismissed")
                         print("📞 [MainActivityOld] Video call ended")
-                        incomingVideoCallPayload = nil
+                        // Only clear payload if NOT entering PiP
+                        if !ActiveCallManager.shared.isInPiPMode {
+                            incomingVideoCallPayload = nil
+                        }
                     }
+            }
+            .fullScreenCover(isPresented: $showVideoCallFromPiP) {
+                if let payload = activeCallManager.activeVideoPayload {
+                    VideoCallScreen(payload: payload)
+                        .onDisappear {
+                            NSLog("📞 [MainActivityOld] VideoCallScreen re-dismissed from PiP")
+                            if !ActiveCallManager.shared.isInPiPMode {
+                                showVideoCallFromPiP = false
+                            }
+                        }
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                // PiP floating overlay
+                if activeCallManager.isInPiPMode, let session = activeCallManager.activeVideoSession {
+                    VideoCallPiPView(session: session, callManager: activeCallManager)
+                }
+            }
+            .onChange(of: activeCallManager.isInPiPMode) { isPiP in
+                if !isPiP && activeCallManager.activeVideoSession != nil {
+                    // User tapped PiP → re-open full screen
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        showVideoCallFromPiP = true
+                    }
+                }
             }
             .onChange(of: incomingVoiceCallPayload) { newValue in
                 if let payload = newValue {
