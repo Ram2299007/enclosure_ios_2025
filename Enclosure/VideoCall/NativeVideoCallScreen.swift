@@ -17,33 +17,33 @@ struct NativeVideoCallScreen: View {
     init(payload: VideoCallPayload) {
         // Reuse existing session from ActiveCallManager (started immediately on answer,
         // before UI appears — like voice calls). Only create new for outgoing calls.
+        let session: NativeVideoCallSession
         if let existing = ActiveCallManager.shared.activeVideoSession {
-            _session = StateObject(wrappedValue: existing)
+            session = existing
         } else {
-            let s = NativeVideoCallSession(payload: payload)
-            _session = StateObject(wrappedValue: s)
+            session = NativeVideoCallSession(payload: payload)
+            // Register outgoing session with ActiveCallManager
+            ActiveCallManager.shared.setOutgoingVideoSession(session, payload: payload)
         }
+        // Create renderers eagerly so video shows immediately (no black screen)
+        if session.localRenderer == nil {
+            session.localRenderer = RTCEAGLVideoView(frame: .zero)
+            session.remoteRenderer = RTCEAGLVideoView(frame: .zero)
+        }
+        _session = StateObject(wrappedValue: session)
     }
 
     var body: some View {
         NativeVideoCallView(session: session)
             .onAppear {
-                // Attach renderers (session may already be running from ActiveCallManager)
-                if session.localRenderer == nil {
-                    let local = RTCEAGLVideoView(frame: .zero)
-                    let remote = RTCEAGLVideoView(frame: .zero)
-                    session.localRenderer = local
-                    session.remoteRenderer = remote
-                    // Attach local renderer to already-running video track
-                    if let vt = session.webRTCManager?.localVideoTrack {
-                        vt.add(local)
-                        NSLog("📹 [VideoScreen] Late-attached local renderer to running session")
-                    }
-                    // Attach remote renderer to already-received remote video track
-                    if let rt = session.remoteVideoTrack {
-                        rt.add(remote)
-                        NSLog("📹 [VideoScreen] Late-attached remote renderer to running session")
-                    }
+                // Late-attach renderers to already-running tracks (incoming call path)
+                if let local = session.localRenderer, let vt = session.webRTCManager?.localVideoTrack {
+                    vt.add(local)
+                    NSLog("📹 [VideoScreen] Late-attached local renderer to running session")
+                }
+                if let remote = session.remoteRenderer, let rt = session.remoteVideoTrack {
+                    rt.add(remote)
+                    NSLog("📹 [VideoScreen] Late-attached remote renderer to running session")
                 }
                 session.start() // no-op if already started (guard !hasStarted)
             }

@@ -145,6 +145,11 @@ final class NativeVideoCallSession: ObservableObject {
     // MARK: - Public API
 
     func stop() {
+        // Only send removeVideoCallNotification if call was NOT connected (missed call).
+        // Sending after a connected call leaves stale entries in Firebase.
+        if isCallEnded && payload.isSender && !isCallConnected {
+            sendRemoveCallNotificationIfNeeded()
+        }
         performCleanup(removeRoom: isCallEnded)
     }
 
@@ -188,10 +193,6 @@ final class NativeVideoCallSession: ObservableObject {
             CallKitManager.shared.endCall(uuid: uuid, reason: .remoteEnded)
         }
 
-        // Send removeVideoCallNotification
-        if payload.isSender && !isCallConnected {
-            sendRemoveCallNotificationIfNeeded()
-        }
         cleanupRemoveCallNotificationForSelf()
 
         // Cleanup
@@ -203,6 +204,11 @@ final class NativeVideoCallSession: ObservableObject {
     // MARK: - Cleanup
 
     private func performCleanup(removeRoom: Bool) {
+        // Send removeVideoCallNotification for missed calls (sender, not connected).
+        // Same pattern as voice calls — only when call ended without connecting.
+        if isCallEnded && payload.isSender && !isCallConnected {
+            sendRemoveCallNotificationIfNeeded()
+        }
         disconnectWorkItem?.cancel()
         disconnectWorkItem = nil
         callTimer?.invalidate()
