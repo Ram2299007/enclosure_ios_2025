@@ -8,6 +8,36 @@
 import SwiftUI
 import WebRTC
 
+/// Simple UIViewRepresentable for PiP — avoids the constraint-based
+/// AspectFillContainer that crashes when RTCEAGLVideoView moves hierarchies.
+private struct PiPVideoWrapper: UIViewRepresentable {
+    let videoView: RTCEAGLVideoView
+
+    func makeUIView(context: Context) -> UIView {
+        let container = UIView()
+        container.backgroundColor = .black
+        container.clipsToBounds = true
+
+        // Remove from old superview if still attached
+        videoView.removeFromSuperview()
+        // Remove all existing constraints on the video view
+        videoView.removeConstraints(videoView.constraints)
+        videoView.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(videoView)
+
+        // Simple fill — just pin edges (PiP is small, no need for aspect-fill)
+        NSLayoutConstraint.activate([
+            videoView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            videoView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            videoView.topAnchor.constraint(equalTo: container.topAnchor),
+            videoView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+        return container
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
+}
+
 struct VideoCallPiPView: View {
     @ObservedObject var session: NativeVideoCallSession
     @ObservedObject var callManager: ActiveCallManager
@@ -19,12 +49,12 @@ struct VideoCallPiPView: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            // Video content
+            // Video content — use simple wrapper to avoid constraint crashes
             Group {
                 if session.isCallConnected, let remote = session.remoteRenderer {
-                    EAGLVideoViewWrapper(view: remote)
+                    PiPVideoWrapper(videoView: remote)
                 } else if let local = session.localRenderer {
-                    EAGLVideoViewWrapper(view: local)
+                    PiPVideoWrapper(videoView: local)
                         .scaleEffect(x: -1, y: 1)
                 } else {
                     Color.black

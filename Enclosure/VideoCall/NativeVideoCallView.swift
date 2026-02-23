@@ -93,7 +93,7 @@ struct NativeVideoCallView: View {
 
     private var callerNameOverlay: some View {
         VStack {
-            Spacer().frame(height: 80)
+            Spacer().frame(height: 120)
             Text(session.callerName)
                 .font(.system(size: 20, weight: .medium))
                 .foregroundColor(.white)
@@ -125,8 +125,20 @@ struct NativeVideoCallView: View {
                 }
 
                 Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 60)
+            Spacer()
+        }
+    }
 
-                // Placeholder add-member
+    private var controlsBar: some View {
+        VStack {
+            Spacer()
+
+            // Add member button (above controls)
+            HStack {
+                Spacer()
                 Circle()
                     .fill(Color.white.opacity(0.15))
                     .frame(width: 44, height: 44)
@@ -135,16 +147,9 @@ struct NativeVideoCallView: View {
                             .foregroundColor(.white)
                             .font(.system(size: 18, weight: .medium))
                     )
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 8)
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 20)
-            Spacer()
-        }
-    }
-
-    private var controlsBar: some View {
-        VStack {
-            Spacer()
 
             // Semi-transparent container (matches Android .controls-container)
             ZStack {
