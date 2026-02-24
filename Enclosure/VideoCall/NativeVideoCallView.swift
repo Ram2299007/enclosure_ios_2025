@@ -227,18 +227,12 @@ struct NativeVideoCallView: View {
         showControls ? CGSize(width: 140, height: 186) : CGSize(width: 90, height: 120)
     }
 
-    /// Bottom margin: Android compact=20px, expanded=140px
-    private var secondaryBottomMargin: CGFloat {
-        showControls ? 140 : 20
-    }
-
     /// Default position for the secondary video (bottom-right, accounting for controls)
     private func defaultPosition(geometry: GeometryProxy) -> CGPoint {
         let size = secondaryVideoSize
-        let rightMargin: CGFloat = showControls ? 10 : 20
         return CGPoint(
-            x: geometry.size.width - size.width / 2 - rightMargin,
-            y: geometry.size.height - size.height / 2 - secondaryBottomMargin
+            x: geometry.size.width - size.width / 2 - edgeMargin,
+            y: geometry.size.height - size.height / 2 - (showControls ? 120 : 20) - edgeMargin
         )
     }
 
@@ -274,21 +268,23 @@ struct NativeVideoCallView: View {
 
                             if currentX < -hideThreshold {
                                 // Hide off left edge
+                                let clampedY = clampY(currentY, geometry: geometry)
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                     hiddenSide = .left
                                     secondaryPosition = CGPoint(
                                         x: -(size.width / 2 + 20),
-                                        y: currentY
+                                        y: clampedY
                                     )
                                     dragOffset = .zero
                                 }
                             } else if currentX > screenW + hideThreshold {
                                 // Hide off right edge
+                                let clampedY = clampY(currentY, geometry: geometry)
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                     hiddenSide = .right
                                     secondaryPosition = CGPoint(
                                         x: screenW + size.width / 2 + 20,
-                                        y: currentY
+                                        y: clampedY
                                     )
                                     dragOffset = .zero
                                 }
@@ -389,29 +385,39 @@ struct NativeVideoCallView: View {
         }
     }
 
+    private let edgeMargin: CGFloat = 10
+
     /// Returns the snapped absolute position for the secondary video
     private func snapToEdge(currentX: CGFloat, currentY: CGFloat, geometry: GeometryProxy) -> CGPoint {
         let size = secondaryVideoSize
         let hw = size.width / 2
         let hh = size.height / 2
-        let margin: CGFloat = 20
 
-        // Snap X to nearest horizontal edge
+        // Snap X to nearest horizontal edge — always keep edgeMargin from screen border
         var snapX: CGFloat
         if currentX < geometry.size.width / 2 {
-            snapX = hw + margin
+            snapX = hw + edgeMargin
         } else {
-            snapX = geometry.size.width - hw - margin
+            snapX = geometry.size.width - hw - edgeMargin
         }
 
-        // Clamp Y — respect top bar and bottom controls
+        // Clamp Y — top: below top bar area, bottom: above controls container
         let topLimit = hh + 80
-        let bottomLimit = geometry.size.height - hh - (showControls ? 140 : 30)
+        // Controls bar: 80px height + buttons at -28px offset = ~108px from bottom, plus margin
+        let bottomLimit = geometry.size.height - hh - (showControls ? 120 : 20) - edgeMargin
         var snapY = currentY
         if snapY < topLimit { snapY = topLimit }
         if snapY > bottomLimit { snapY = bottomLimit }
 
         return CGPoint(x: snapX, y: snapY)
+    }
+
+    /// Clamp Y so hidden video's arrow doesn't go behind controls
+    private func clampY(_ y: CGFloat, geometry: GeometryProxy) -> CGFloat {
+        let hh = secondaryVideoSize.height / 2
+        let topLimit = hh + 80
+        let bottomLimit = geometry.size.height - hh - (showControls ? 120 : 20) - edgeMargin
+        return min(max(y, topLimit), bottomLimit)
     }
 }
 
