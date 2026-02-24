@@ -29,11 +29,14 @@ struct NativeVideoCallView: View {
 
     @State private var showControls = true
     @State private var controlsTimer: Timer?
-    @State private var secondaryVideoOffset = CGSize.zero
     @State private var showAddMemberSheet = false
     @State private var secondaryVideoAppeared = false
     @State private var isDragging = false
     @State private var hiddenSide: HiddenSide = .visible
+    /// Absolute snapped position of secondary video center. nil = use default.
+    @State private var secondaryPosition: CGPoint? = nil
+    /// Live drag offset from current position (reset to .zero on drag end)
+    @State private var dragOffset: CGSize = .zero
 
     /// WhatsApp-style: secondary video can be hidden off-screen left or right
     enum HiddenSide { case visible, left, right }
@@ -87,7 +90,8 @@ struct NativeVideoCallView: View {
         .onReceive(session.$isCallConnected) { connected in
             if connected {
                 withAnimation(.easeInOut(duration: 0.3)) {
-                    secondaryVideoOffset = .zero
+                    secondaryPosition = nil  // reset to default position
+                    dragOffset = .zero
                 }
             }
         }
@@ -228,13 +232,21 @@ struct NativeVideoCallView: View {
         showControls ? 140 : 20
     }
 
+    /// Default position for the secondary video (bottom-right, accounting for controls)
+    private func defaultPosition(geometry: GeometryProxy) -> CGPoint {
+        let size = secondaryVideoSize
+        let rightMargin: CGFloat = showControls ? 10 : 20
+        return CGPoint(
+            x: geometry.size.width - size.width / 2 - rightMargin,
+            y: geometry.size.height - size.height / 2 - secondaryBottomMargin
+        )
+    }
+
     @ViewBuilder
     private func secondaryVideo(geometry: GeometryProxy) -> some View {
         if session.isCallConnected, let local = session.localRenderer, !session.isCameraOff {
             let size = secondaryVideoSize
-            let rightMargin: CGFloat = showControls ? 10 : 20
-            let defaultX = geometry.size.width - size.width / 2 - rightMargin
-            let defaultY = geometry.size.height - size.height / 2 - secondaryBottomMargin
+            let pos = secondaryPosition ?? defaultPosition(geometry: geometry)
 
             EAGLVideoViewWrapper(view: local)
                 .frame(width: size.width, height: size.height)
@@ -244,44 +256,52 @@ struct NativeVideoCallView: View {
                 .scaleEffect(secondaryVideoAppeared ? 1.0 : 0.3)
                 .opacity(secondaryVideoAppeared ? 1.0 : 0.0)
                 .position(
-                    x: defaultX + secondaryVideoOffset.width,
-                    y: defaultY + secondaryVideoOffset.height
+                    x: pos.x + dragOffset.width,
+                    y: pos.y + dragOffset.height
                 )
                 .gesture(
                     DragGesture(minimumDistance: 4)
                         .onChanged { value in
                             isDragging = true
-                            secondaryVideoOffset = value.translation
+                            dragOffset = value.translation
                         }
                         .onEnded { value in
                             isDragging = false
-                            let currentX = defaultX + value.translation.width
+                            let currentX = pos.x + value.translation.width
+                            let currentY = pos.y + value.translation.height
                             let screenW = geometry.size.width
                             let hideThreshold = size.width * 0.6
 
                             if currentX < -hideThreshold {
-                                // Dragged far enough left → hide off left edge
+                                // Hide off left edge
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                     hiddenSide = .left
-                                    secondaryVideoOffset = CGSize(
-                                        width: -(defaultX + size.width + 20),
-                                        height: value.translation.height
+                                    secondaryPosition = CGPoint(
+                                        x: -(size.width / 2 + 20),
+                                        y: currentY
                                     )
+                                    dragOffset = .zero
                                 }
                             } else if currentX > screenW + hideThreshold {
-                                // Dragged far enough right → hide off right edge
+                                // Hide off right edge
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                     hiddenSide = .right
-                                    secondaryVideoOffset = CGSize(
-                                        width: (screenW - defaultX) + size.width + 20,
-                                        height: value.translation.height
+                                    secondaryPosition = CGPoint(
+                                        x: screenW + size.width / 2 + 20,
+                                        y: currentY
                                     )
+                                    dragOffset = .zero
                                 }
                             } else {
-                                // Normal snap to edge
+                                // Snap to nearest edge
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                     hiddenSide = .visible
-                                    snapToEdge(translation: value.translation, geometry: geometry)
+                                    secondaryPosition = snapToEdge(
+                                        currentX: currentX,
+                                        currentY: currentY,
+                                        geometry: geometry
+                                    )
+                                    dragOffset = .zero
                                 }
                             }
                         }
@@ -304,13 +324,13 @@ struct NativeVideoCallView: View {
     private func hiddenArrowTab(geometry: GeometryProxy) -> some View {
         if session.isCallConnected && hiddenSide != .visible && !session.isCameraOff {
             let isLeft = hiddenSide == .left
-            let arrowY = geometry.size.height * 0.5
+            let arrowY = secondaryPosition?.y ?? geometry.size.height * 0.5
 
             Button {
-                // Bring secondary video back to the nearest edge
+                // Bring secondary video back to the nearest edge it was hidden from
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
                     hiddenSide = .visible
-                    secondaryVideoOffset = .zero
+                    secondaryPosition = defaultPosition(geometry: geometry)
                 }
             } label: {
                 ZStack {
@@ -356,10 +376,6 @@ struct NativeVideoCallView: View {
     private func toggleControls() {
         withAnimation(.easeInOut(duration: 0.4)) {
             showControls.toggle()
-            // Only reset offset if video is visible (not hidden off-screen)
-            if hiddenSide == .visible {
-                secondaryVideoOffset = .zero
-            }
         }
         resetControlsTimer()
     }
@@ -369,21 +385,13 @@ struct NativeVideoCallView: View {
         controlsTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: false) { _ in
             withAnimation(.easeInOut(duration: 0.4)) {
                 showControls = false
-                if self.hiddenSide == .visible {
-                    self.secondaryVideoOffset = .zero
-                }
             }
         }
     }
 
-    private func snapToEdge(translation: CGSize, geometry: GeometryProxy) {
+    /// Returns the snapped absolute position for the secondary video
+    private func snapToEdge(currentX: CGFloat, currentY: CGFloat, geometry: GeometryProxy) -> CGPoint {
         let size = secondaryVideoSize
-        let rightMargin: CGFloat = showControls ? 10 : 20
-        let defaultX = geometry.size.width - size.width / 2 - rightMargin
-        let defaultY = geometry.size.height - size.height / 2 - secondaryBottomMargin
-
-        let currentX = defaultX + translation.width
-        let currentY = defaultY + translation.height
         let hw = size.width / 2
         let hh = size.height / 2
         let margin: CGFloat = 20
@@ -403,10 +411,7 @@ struct NativeVideoCallView: View {
         if snapY < topLimit { snapY = topLimit }
         if snapY > bottomLimit { snapY = bottomLimit }
 
-        secondaryVideoOffset = CGSize(
-            width: snapX - defaultX,
-            height: snapY - defaultY
-        )
+        return CGPoint(x: snapX, y: snapY)
     }
 }
 
