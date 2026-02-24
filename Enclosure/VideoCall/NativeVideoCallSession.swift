@@ -128,7 +128,7 @@ final class NativeVideoCallSession: ObservableObject {
         NSLog("📹 [VideoSession] start() complete")
     }
 
-    /// Set up system PiP — call from NativeVideoCallScreen when view appears
+    /// Set up system PiP — call from MainActivityOld (persistent view hierarchy)
     func setupSystemPiP(sourceView: UIView) {
         guard systemPiPController == nil else { return }
         let controller = VideoCallPiPController()
@@ -139,12 +139,19 @@ final class NativeVideoCallSession: ObservableObject {
                 ActiveCallManager.shared.isInPiPMode = false
             }
         }
-        self.systemPiPController = controller
-        // If remote track already arrived, attach
-        if let track = remoteVideoTrack {
-            controller.attachToTrack(track)
+        // Provide call duration for timer display
+        controller.callDurationProvider = { [weak self] in
+            self?.callDuration ?? 0
         }
-        NSLog("✅ [VideoSession] System PiP controller set up")
+        self.systemPiPController = controller
+        // Attach tracks that are already available
+        if let track = remoteVideoTrack {
+            controller.attachRemoteTrack(track)
+        }
+        if let localTrack = webRTCManager?.localVideoTrack {
+            controller.attachLocalTrack(localTrack)
+        }
+        NSLog("✅ [VideoSession] System PiP controller set up (local + remote + timer)")
     }
 
     // MARK: - WebRTC Setup
@@ -160,6 +167,10 @@ final class NativeVideoCallSession: ObservableObject {
         if let lr = localRenderer, let vt = manager.localVideoTrack {
             vt.add(lr)
             NSLog("📹 [VideoSession] local renderer attached")
+        }
+        // Attach local track to system PiP if already set up
+        if let vt = manager.localVideoTrack {
+            systemPiPController?.attachLocalTrack(vt)
         }
         NSLog("✅ [VideoSession] WebRTC manager ready (audio + video)")
     }
@@ -259,7 +270,8 @@ final class NativeVideoCallSession: ObservableObject {
         // Remove renderers
         if let lr = localRenderer { webRTCManager?.localVideoTrack?.remove(lr) }
         if let rr = remoteRenderer { remoteVideoTrack?.remove(rr) }
-        if let track = remoteVideoTrack { systemPiPController?.detachFromTrack(track) }
+        if let track = remoteVideoTrack { systemPiPController?.detachRemoteTrack(track) }
+        if let localTrack = webRTCManager?.localVideoTrack { systemPiPController?.detachLocalTrack(localTrack) }
         remoteVideoTrack = nil
 
         // Tear down system PiP
@@ -385,8 +397,8 @@ extension NativeVideoCallSession: NativeWebRTCManagerDelegate {
                 track.add(rr)
                 NSLog("📹 [VideoSession] Remote video attached to renderer")
             }
-            // Also attach system PiP renderer
-            self.systemPiPController?.attachToTrack(track)
+            // Also attach system PiP remote renderer
+            self.systemPiPController?.attachRemoteTrack(track)
         }
     }
 }

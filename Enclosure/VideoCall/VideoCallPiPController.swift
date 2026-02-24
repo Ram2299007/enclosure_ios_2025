@@ -2,7 +2,8 @@
 // Enclosure
 //
 // System-level PiP using AVPictureInPictureController for video calls.
-// Shows remote video in a native iOS PiP window when the app goes to background.
+// Shows both local + remote video and a timer in a native iOS PiP window
+// when the app goes to background. Same design as the in-app PiP overlay.
 // Uses AVPictureInPictureVideoCallViewController (iOS 15+).
 
 import AVKit
@@ -13,16 +14,18 @@ import WebRTC
 // Receives WebRTC video frames and feeds them to an AVSampleBufferDisplayLayer.
 
 final class SampleBufferRenderer: NSObject, RTCVideoRenderer {
-    let displayLayer = AVSampleBufferDisplayLayer()
+    let displayLayer: AVSampleBufferDisplayLayer
 
-    func setSize(_ size: CGSize) {
-        // No-op — layer resizes automatically
+    init(displayLayer: AVSampleBufferDisplayLayer) {
+        self.displayLayer = displayLayer
+        super.init()
     }
+
+    func setSize(_ size: CGSize) {}
 
     func renderFrame(_ frame: RTCVideoFrame?) {
         guard let frame = frame else { return }
 
-        // Get CVPixelBuffer from the frame
         let pixelBuffer: CVPixelBuffer?
         if let cvBuffer = frame.buffer as? RTCCVPixelBuffer {
             pixelBuffer = cvBuffer.pixelBuffer
@@ -33,12 +36,9 @@ final class SampleBufferRenderer: NSObject, RTCVideoRenderer {
         }
         guard let pb = pixelBuffer else { return }
 
-        // Create CMSampleBuffer
         var formatDescription: CMVideoFormatDescription?
         CMVideoFormatDescriptionCreateForImageBuffer(
-            allocator: nil,
-            imageBuffer: pb,
-            formatDescriptionOut: &formatDescription
+            allocator: nil, imageBuffer: pb, formatDescriptionOut: &formatDescription
         )
         guard let format = formatDescription else { return }
 
@@ -50,25 +50,20 @@ final class SampleBufferRenderer: NSObject, RTCVideoRenderer {
 
         var sampleBuffer: CMSampleBuffer?
         CMSampleBufferCreateReadyWithImageBuffer(
-            allocator: nil,
-            imageBuffer: pb,
-            formatDescription: format,
-            sampleTiming: &timing,
-            sampleBufferOut: &sampleBuffer
+            allocator: nil, imageBuffer: pb, formatDescription: format,
+            sampleTiming: &timing, sampleBufferOut: &sampleBuffer
         )
         guard let buffer = sampleBuffer else { return }
 
         DispatchQueue.main.async { [weak self] in
             guard let layer = self?.displayLayer else { return }
-            if layer.status == .failed {
-                layer.flush()
-            }
+            if layer.status == .failed { layer.flush() }
             layer.enqueue(buffer)
         }
     }
 
-    // Convert I420 buffer to CVPixelBuffer (fallback for software-decoded frames)
-    private static func pixelBuffer(from i420: RTCI420Buffer) -> CVPixelBuffer? {
+    // Convert I420 → NV12 CVPixelBuffer (fallback for software-decoded frames)
+    static func pixelBuffer(from i420: RTCI420Buffer) -> CVPixelBuffer? {
         let width = Int(i420.width)
         let height = Int(i420.height)
 
@@ -79,15 +74,14 @@ final class SampleBufferRenderer: NSObject, RTCVideoRenderer {
         let status = CVPixelBufferCreate(
             nil, width, height,
             kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
-            attrs as CFDictionary,
-            &pixelBuffer
+            attrs as CFDictionary, &pixelBuffer
         )
         guard status == kCVReturnSuccess, let pb = pixelBuffer else { return nil }
 
         CVPixelBufferLockBaseAddress(pb, [])
         defer { CVPixelBufferUnlockBaseAddress(pb, []) }
 
-        // Copy Y plane
+        // Y plane
         let yDest = CVPixelBufferGetBaseAddressOfPlane(pb, 0)!
         let yDestStride = CVPixelBufferGetBytesPerRowOfPlane(pb, 0)
         let ySrc = i420.dataY
@@ -96,7 +90,7 @@ final class SampleBufferRenderer: NSObject, RTCVideoRenderer {
             memcpy(yDest + row * yDestStride, ySrc + row * ySrcStride, min(width, ySrcStride))
         }
 
-        // Interleave U+V into UV plane (NV12 format)
+        // Interleave U+V → UV plane (NV12)
         let uvDest = CVPixelBufferGetBaseAddressOfPlane(pb, 1)!
         let uvDestStride = CVPixelBufferGetBytesPerRowOfPlane(pb, 1)
         let uSrc = i420.dataU
@@ -114,32 +108,89 @@ final class SampleBufferRenderer: NSObject, RTCVideoRenderer {
                 uvRowPtr[col * 2 + 1] = vRowPtr[col]
             }
         }
-
         return pb
     }
 }
 
-// MARK: - SampleBufferVideoCallView
-// UIView backed by AVSampleBufferDisplayLayer for PiP content.
+// MARK: - PiPContentViewController
+// Custom VC for the PiP window: remote (full), local (small corner), timer badge.
 
-final class SampleBufferVideoCallView: UIView {
-    override class var layerClass: AnyClass { AVSampleBufferDisplayLayer.self }
+final class PiPContentViewController: AVPictureInPictureVideoCallViewController {
+    let remoteLayer = AVSampleBufferDisplayLayer()
+    let localLayer = AVSampleBufferDisplayLayer()
+    let timerLabel = UILabel()
 
-    var sampleBufferLayer: AVSampleBufferDisplayLayer {
-        return layer as! AVSampleBufferDisplayLayer
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+
+        // Remote video — fills entire PiP
+        remoteLayer.videoGravity = .resizeAspectFill
+        view.layer.addSublayer(remoteLayer)
+
+        // Local video — small overlay in top-right
+        localLayer.videoGravity = .resizeAspectFill
+        localLayer.cornerRadius = 6
+        localLayer.masksToBounds = true
+        localLayer.borderColor = UIColor.white.cgColor
+        localLayer.borderWidth = 1.5
+        view.layer.addSublayer(localLayer)
+
+        // Timer badge — bottom center
+        timerLabel.text = "00:00"
+        timerLabel.textColor = .white
+        timerLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+        timerLabel.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+        timerLabel.textAlignment = .center
+        timerLabel.layer.cornerRadius = 8
+        timerLabel.clipsToBounds = true
+        view.addSubview(timerLabel)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let b = view.bounds
+
+        // Remote fills everything
+        remoteLayer.frame = b
+
+        // Local: 30% width, 4:3 aspect, top-right with padding
+        let localW = b.width * 0.30
+        let localH = localW * (4.0 / 3.0)
+        localLayer.frame = CGRect(
+            x: b.width - localW - 6,
+            y: 6,
+            width: localW,
+            height: localH
+        )
+
+        // Timer: bottom center
+        let timerW: CGFloat = 58
+        let timerH: CGFloat = 20
+        timerLabel.frame = CGRect(
+            x: (b.width - timerW) / 2,
+            y: b.height - timerH - 6,
+            width: timerW,
+            height: timerH
+        )
     }
 }
 
 // MARK: - VideoCallPiPController
-// Manages system-level PiP for video calls using AVPictureInPictureController.
+// Manages system-level PiP for video calls. Shows both videos + timer.
 
 final class VideoCallPiPController: NSObject, AVPictureInPictureControllerDelegate {
 
     private var pipController: AVPictureInPictureController?
-    private var pipVideoCallVC: AVPictureInPictureVideoCallViewController?
+    private var pipContentVC: PiPContentViewController?
     private var sourceView: UIView?
-    private(set) var sampleBufferRenderer: SampleBufferRenderer?
+    private var remoteRenderer: SampleBufferRenderer?
+    private var localRenderer: SampleBufferRenderer?
     private var isSetUp = false
+
+    // Timer
+    private var timerUpdateTimer: Timer?
+    var callDurationProvider: (() -> TimeInterval)?
 
     // Called when PiP is restored (user taps to return to app)
     var onRestoreFromPiP: (() -> Void)?
@@ -154,24 +205,21 @@ final class VideoCallPiPController: NSObject, AVPictureInPictureControllerDelega
         self.sourceView = sourceView
         isSetUp = true
 
-        // Create the renderer that feeds WebRTC frames to AVSampleBufferDisplayLayer
-        let renderer = SampleBufferRenderer()
-        self.sampleBufferRenderer = renderer
+        // Create PiP content VC with both layers
+        let contentVC = PiPContentViewController()
+        contentVC.preferredContentSize = CGSize(width: 1080, height: 1920)
+        self.pipContentVC = contentVC
 
-        // Create PiP video call VC
-        let pipVC = AVPictureInPictureVideoCallViewController()
-        pipVC.preferredContentSize = CGSize(width: 1080, height: 1920)
+        // Renderers feed WebRTC frames → display layers
+        let remote = SampleBufferRenderer(displayLayer: contentVC.remoteLayer)
+        let local = SampleBufferRenderer(displayLayer: contentVC.localLayer)
+        self.remoteRenderer = remote
+        self.localRenderer = local
 
-        // Add the display layer to the PiP VC's view
-        renderer.displayLayer.frame = pipVC.view.bounds
-        renderer.displayLayer.videoGravity = .resizeAspectFill
-        pipVC.view.layer.addSublayer(renderer.displayLayer)
-        self.pipVideoCallVC = pipVC
-
-        // Create PiP content source
+        // PiP content source
         let contentSource = AVPictureInPictureController.ContentSource(
             activeVideoCallSourceView: sourceView,
-            contentViewController: pipVC
+            contentViewController: contentVC
         )
 
         let controller = AVPictureInPictureController(contentSource: contentSource)
@@ -179,48 +227,76 @@ final class VideoCallPiPController: NSObject, AVPictureInPictureControllerDelega
         controller.delegate = self
         self.pipController = controller
 
-        NSLog("✅ [PiPController] System PiP set up")
+        NSLog("✅ [PiPController] System PiP set up (local + remote + timer)")
     }
 
     func startPiP() {
         guard let controller = pipController, !controller.isPictureInPictureActive else { return }
         controller.startPictureInPicture()
+        startTimerUpdates()
         NSLog("▶️ [PiPController] Starting system PiP")
     }
 
     func stopPiP() {
         guard let controller = pipController, controller.isPictureInPictureActive else { return }
         controller.stopPictureInPicture()
+        stopTimerUpdates()
         NSLog("⏹️ [PiPController] Stopping system PiP")
     }
 
     func tearDown() {
         stopPiP()
-        sampleBufferRenderer = nil
+        stopTimerUpdates()
+        remoteRenderer = nil
+        localRenderer = nil
         pipController = nil
-        pipVideoCallVC = nil
+        pipContentVC = nil
         sourceView = nil
         isSetUp = false
         NSLog("🔴 [PiPController] Torn down")
     }
 
-    // Attach renderer to a WebRTC video track
-    func attachToTrack(_ track: RTCVideoTrack) {
-        guard let renderer = sampleBufferRenderer else { return }
+    // MARK: - Track attachment
+
+    func attachRemoteTrack(_ track: RTCVideoTrack) {
+        guard let renderer = remoteRenderer else { return }
         track.add(renderer)
-        NSLog("📹 [PiPController] Attached SampleBufferRenderer to video track")
+        NSLog("📹 [PiPController] Attached remote renderer")
     }
 
-    func detachFromTrack(_ track: RTCVideoTrack) {
-        guard let renderer = sampleBufferRenderer else { return }
+    func detachRemoteTrack(_ track: RTCVideoTrack) {
+        guard let renderer = remoteRenderer else { return }
         track.remove(renderer)
-        NSLog("📹 [PiPController] Detached SampleBufferRenderer from video track")
+        NSLog("📹 [PiPController] Detached remote renderer")
     }
 
-    // Update display layer frame when PiP VC layout changes
-    func updateLayout() {
-        guard let pipVC = pipVideoCallVC, let renderer = sampleBufferRenderer else { return }
-        renderer.displayLayer.frame = pipVC.view.bounds
+    func attachLocalTrack(_ track: RTCVideoTrack) {
+        guard let renderer = localRenderer else { return }
+        track.add(renderer)
+        NSLog("📹 [PiPController] Attached local renderer")
+    }
+
+    func detachLocalTrack(_ track: RTCVideoTrack) {
+        guard let renderer = localRenderer else { return }
+        track.remove(renderer)
+        NSLog("📹 [PiPController] Detached local renderer")
+    }
+
+    // MARK: - Timer
+
+    private func startTimerUpdates() {
+        timerUpdateTimer?.invalidate()
+        timerUpdateTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self = self, let duration = self.callDurationProvider?() else { return }
+            let mins = Int(duration) / 60
+            let secs = Int(duration) % 60
+            self.pipContentVC?.timerLabel.text = String(format: "%02d:%02d", mins, secs)
+        }
+    }
+
+    private func stopTimerUpdates() {
+        timerUpdateTimer?.invalidate()
+        timerUpdateTimer = nil
     }
 
     // MARK: - AVPictureInPictureControllerDelegate
@@ -234,6 +310,7 @@ final class VideoCallPiPController: NSObject, AVPictureInPictureControllerDelega
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        stopTimerUpdates()
         NSLog("⏹️ [PiPController] System PiP stopped")
     }
 
