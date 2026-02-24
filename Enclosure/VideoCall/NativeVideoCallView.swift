@@ -32,6 +32,11 @@ struct NativeVideoCallView: View {
     @State private var secondaryVideoOffset = CGSize.zero
     @State private var showAddMemberSheet = false
     @State private var secondaryVideoAppeared = false
+    @State private var isDragging = false
+    @State private var hiddenSide: HiddenSide = .visible
+
+    /// WhatsApp-style: secondary video can be hidden off-screen left or right
+    enum HiddenSide { case visible, left, right }
 
     /// Theme color derived from Constant.themeColor (a hex String)
     private var themeColor: Color { Color(hex: Constant.themeColor) }
@@ -70,6 +75,9 @@ struct NativeVideoCallView: View {
 
                 // ── Secondary video (local PiP when connected) ──
                 secondaryVideo(geometry: geometry)
+
+                // ── WhatsApp-style arrow tab when secondary video is hidden ──
+                hiddenArrowTab(geometry: geometry)
             }
         }
         .statusBar(hidden: true)
@@ -240,17 +248,45 @@ struct NativeVideoCallView: View {
                     y: defaultY + secondaryVideoOffset.height
                 )
                 .gesture(
-                    DragGesture()
+                    DragGesture(minimumDistance: 4)
                         .onChanged { value in
+                            isDragging = true
                             secondaryVideoOffset = value.translation
                         }
                         .onEnded { value in
-                            withAnimation(.spring()) {
-                                snapToEdge(translation: value.translation, geometry: geometry)
+                            isDragging = false
+                            let currentX = defaultX + value.translation.width
+                            let screenW = geometry.size.width
+                            let hideThreshold = size.width * 0.6
+
+                            if currentX < -hideThreshold {
+                                // Dragged far enough left → hide off left edge
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    hiddenSide = .left
+                                    secondaryVideoOffset = CGSize(
+                                        width: -(defaultX + size.width + 20),
+                                        height: value.translation.height
+                                    )
+                                }
+                            } else if currentX > screenW + hideThreshold {
+                                // Dragged far enough right → hide off right edge
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    hiddenSide = .right
+                                    secondaryVideoOffset = CGSize(
+                                        width: (screenW - defaultX) + size.width + 20,
+                                        height: value.translation.height
+                                    )
+                                }
+                            } else {
+                                // Normal snap to edge
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    hiddenSide = .visible
+                                    snapToEdge(translation: value.translation, geometry: geometry)
+                                }
                             }
                         }
                 )
-                .animation(.easeInOut(duration: 0.3), value: showControls)
+                .animation(isDragging ? nil : .easeInOut(duration: 0.3), value: showControls)
                 .zIndex(22)
                 .onAppear {
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
@@ -260,6 +296,39 @@ struct NativeVideoCallView: View {
                 .onDisappear {
                     secondaryVideoAppeared = false
                 }
+        }
+    }
+
+    /// WhatsApp-style arrow indicator on the edge when secondary video is hidden off-screen
+    @ViewBuilder
+    private func hiddenArrowTab(geometry: GeometryProxy) -> some View {
+        if session.isCallConnected && hiddenSide != .visible && !session.isCameraOff {
+            let isLeft = hiddenSide == .left
+            let arrowY = geometry.size.height * 0.5
+
+            Button {
+                // Bring secondary video back to the nearest edge
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                    hiddenSide = .visible
+                    secondaryVideoOffset = .zero
+                }
+            } label: {
+                ZStack {
+                    Capsule()
+                        .fill(Color.white.opacity(0.25))
+                        .frame(width: 28, height: 56)
+
+                    Image(systemName: isLeft ? "chevron.right" : "chevron.left")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.white)
+                }
+            }
+            .position(
+                x: isLeft ? 14 : geometry.size.width - 14,
+                y: arrowY
+            )
+            .transition(.opacity.combined(with: .scale(scale: 0.6)))
+            .zIndex(23)
         }
     }
 
@@ -287,7 +356,10 @@ struct NativeVideoCallView: View {
     private func toggleControls() {
         withAnimation(.easeInOut(duration: 0.4)) {
             showControls.toggle()
-            secondaryVideoOffset = .zero
+            // Only reset offset if video is visible (not hidden off-screen)
+            if hiddenSide == .visible {
+                secondaryVideoOffset = .zero
+            }
         }
         resetControlsTimer()
     }
@@ -297,7 +369,9 @@ struct NativeVideoCallView: View {
         controlsTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: false) { _ in
             withAnimation(.easeInOut(duration: 0.4)) {
                 showControls = false
-                secondaryVideoOffset = .zero
+                if self.hiddenSide == .visible {
+                    self.secondaryVideoOffset = .zero
+                }
             }
         }
     }
