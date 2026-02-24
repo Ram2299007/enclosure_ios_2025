@@ -81,25 +81,33 @@ function isWifiConnected() {
     return true;
 }
 
-// Get ICE servers - always use public STUN/TURN servers
+// Get ICE servers — public STUN servers for primary P2P connectivity.
+// TURN relay is fallback ONLY when direct/STUN fails (symmetric NAT, firewall, network blockage).
+// WebRTC ICE priority: host candidates > srflx (STUN) > relay (TURN)
 function getIceServers() {
     console.log('[ICE Servers Config] Getting ICE servers configuration...');
-    // Always use public STUN/TURN servers for better connectivity
     const iceServers = [
+        // Primary: public Google STUN servers (free, reliable)
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
         { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' },
+        // Fallback ONLY: TURN relay — used when direct P2P / STUN fails
+        // (e.g. symmetric NAT, corporate firewall, carrier-grade NAT)
         {
-            urls: 'turn:openrelay.metered.ca:80',
-            username: 'openrelay.project',
-            credential: 'openrelay'
+            urls: [
+                'turn:relay1.expressturn.com:3478',              // UDP
+                'turn:relay1.expressturn.com:3478?transport=tcp'  // TCP fallback
+            ],
+            username: 'efWBBHBEBKZEFW8XHM',
+            credential: '7Dn4xMUvLCGCnMBL'
         }
     ];
-    console.log('[ICE Servers Config] Using public STUN/TURN servers:');
+    console.log('[ICE Servers Config] Using public STUN servers + TURN fallback:');
     iceServers.forEach((server, index) => {
-        if (server.urls) {
-            console.log(`[ICE Servers Config]   ${index + 1}. ${server.urls}${server.username ? ' (with credentials)' : ''}`);
-        }
+        const urls = Array.isArray(server.urls) ? server.urls.join(', ') : server.urls;
+        console.log(`[ICE Servers Config]   ${index + 1}. ${urls}${server.username ? ' (TURN fallback)' : ''}`);
     });
     return iceServers;
 }

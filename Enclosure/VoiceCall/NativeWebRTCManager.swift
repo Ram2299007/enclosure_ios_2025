@@ -38,11 +38,25 @@ final class NativeWebRTCManager: NSObject {
     private let audioSession = AVAudioSession.sharedInstance()
     private var answerSetForPeer: Set<String> = []   // Guard: prevent duplicate answer processing
 
-    // ICE servers (STUN + TURN)
+    // ICE servers — public STUN servers used primarily for direct P2P connectivity.
+    // TURN relay is fallback ONLY when direct/STUN fails (symmetric NAT, firewall, network blockage).
+    // WebRTC ICE priority: host candidates > srflx (STUN) > relay (TURN)
     private let iceServers: [RTCIceServer] = [
-        RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"]),
+        // Primary: public Google STUN servers (free, reliable)
+        RTCIceServer(urlStrings: [
+            "stun:stun.l.google.com:19302",
+            "stun:stun1.l.google.com:19302",
+            "stun:stun2.l.google.com:19302",
+            "stun:stun3.l.google.com:19302",
+            "stun:stun4.l.google.com:19302"
+        ]),
+        // Fallback ONLY: TURN relay — used when direct P2P / STUN fails
+        // (e.g. symmetric NAT, corporate firewall, carrier-grade NAT)
         RTCIceServer(
-            urlStrings: ["turn:relay1.expressturn.com:3478"],
+            urlStrings: [
+                "turn:relay1.expressturn.com:3478",       // UDP
+                "turn:relay1.expressturn.com:3478?transport=tcp" // TCP fallback
+            ],
             username: "efWBBHBEBKZEFW8XHM",
             credential: "7Dn4xMUvLCGCnMBL"
         )
@@ -213,6 +227,7 @@ final class NativeWebRTCManager: NSObject {
 
         let config = RTCConfiguration()
         config.iceServers = iceServers
+        config.iceTransportPolicy = .all  // Use STUN/host first; TURN relay only as fallback
         config.continualGatheringPolicy = .gatherContinually
         config.iceCandidatePoolSize = 10
         // Network resilience: allow ICE restart and use both IPv4/IPv6
