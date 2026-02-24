@@ -257,18 +257,29 @@ struct NativeVideoCallView: View {
                     DragGesture(minimumDistance: 4)
                         .onChanged { value in
                             isDragging = true
-                            dragOffset = value.translation
+                            // Clamp drag so video stays within safe bounds
+                            let bounds = safeBounds(for: size, geometry: geometry)
+                            let rawX = pos.x + value.translation.width
+                            let rawY = pos.y + value.translation.height
+                            let clampedX = min(max(rawX, bounds.minX), bounds.maxX)
+                            let clampedY = min(max(rawY, bounds.minY), bounds.maxY)
+                            dragOffset = CGSize(
+                                width: clampedX - pos.x,
+                                height: clampedY - pos.y
+                            )
                         }
                         .onEnded { value in
                             isDragging = false
-                            let currentX = pos.x + value.translation.width
-                            let currentY = pos.y + value.translation.height
+                            let bounds = safeBounds(for: size, geometry: geometry)
+                            let rawX = pos.x + value.translation.width
+                            let rawY = pos.y + value.translation.height
+                            let clampedX = min(max(rawX, bounds.minX), bounds.maxX)
+                            let clampedY = min(max(rawY, bounds.minY), bounds.maxY)
                             let screenW = geometry.size.width
-                            let hideThreshold = size.width * 0.6
 
-                            if currentX < -hideThreshold {
+                            // WhatsApp-style hide: only if dragged firmly to the very edge
+                            if clampedX <= bounds.minX && value.translation.width < -size.width {
                                 // Hide off left edge
-                                let clampedY = clampY(currentY, geometry: geometry)
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                     hiddenSide = .left
                                     secondaryPosition = CGPoint(
@@ -277,9 +288,8 @@ struct NativeVideoCallView: View {
                                     )
                                     dragOffset = .zero
                                 }
-                            } else if currentX > screenW + hideThreshold {
+                            } else if clampedX >= bounds.maxX && value.translation.width > size.width {
                                 // Hide off right edge
-                                let clampedY = clampY(currentY, geometry: geometry)
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                     hiddenSide = .right
                                     secondaryPosition = CGPoint(
@@ -289,12 +299,12 @@ struct NativeVideoCallView: View {
                                     dragOffset = .zero
                                 }
                             } else {
-                                // Snap to nearest edge
+                                // Snap to nearest edge within bounds
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                     hiddenSide = .visible
                                     secondaryPosition = snapToEdge(
-                                        currentX: currentX,
-                                        currentY: currentY,
+                                        currentX: clampedX,
+                                        currentY: clampedY,
                                         geometry: geometry
                                     )
                                     dragOffset = .zero
@@ -373,6 +383,8 @@ struct NativeVideoCallView: View {
         withAnimation(.easeInOut(duration: 0.4)) {
             showControls.toggle()
         }
+        // Re-clamp position for new size after controls toggle
+        reclampPosition()
         resetControlsTimer()
     }
 
@@ -382,18 +394,31 @@ struct NativeVideoCallView: View {
             withAnimation(.easeInOut(duration: 0.4)) {
                 showControls = false
             }
+            // Re-clamp position for compact size
+            self.reclampPosition()
         }
     }
 
     private let edgeMargin: CGFloat = 10
 
+    /// Safe bounds for the secondary video center point (stays within screen, respects top bar & controls)
+    private func safeBounds(for size: CGSize, geometry: GeometryProxy) -> (minX: CGFloat, maxX: CGFloat, minY: CGFloat, maxY: CGFloat) {
+        let hw = size.width / 2
+        let hh = size.height / 2
+        let minX = hw + edgeMargin
+        let maxX = geometry.size.width - hw - edgeMargin
+        let minY = hh + 80  // below top bar
+        let maxY = geometry.size.height - hh - (showControls ? 120 : 20) - edgeMargin  // above controls
+        return (minX, maxX, minY, maxY)
+    }
+
     /// Returns the snapped absolute position for the secondary video
     private func snapToEdge(currentX: CGFloat, currentY: CGFloat, geometry: GeometryProxy) -> CGPoint {
         let size = secondaryVideoSize
         let hw = size.width / 2
-        let hh = size.height / 2
+        let bounds = safeBounds(for: size, geometry: geometry)
 
-        // Snap X to nearest horizontal edge — always keep edgeMargin from screen border
+        // Snap X to nearest horizontal edge
         var snapX: CGFloat
         if currentX < geometry.size.width / 2 {
             snapX = hw + edgeMargin
@@ -401,23 +426,30 @@ struct NativeVideoCallView: View {
             snapX = geometry.size.width - hw - edgeMargin
         }
 
-        // Clamp Y — top: below top bar area, bottom: above controls container
-        let topLimit = hh + 80
-        // Controls bar: 80px height + buttons at -28px offset = ~108px from bottom, plus margin
-        let bottomLimit = geometry.size.height - hh - (showControls ? 120 : 20) - edgeMargin
-        var snapY = currentY
-        if snapY < topLimit { snapY = topLimit }
-        if snapY > bottomLimit { snapY = bottomLimit }
+        // Clamp Y within safe bounds
+        let snapY = min(max(currentY, bounds.minY), bounds.maxY)
 
         return CGPoint(x: snapX, y: snapY)
     }
 
-    /// Clamp Y so hidden video's arrow doesn't go behind controls
-    private func clampY(_ y: CGFloat, geometry: GeometryProxy) -> CGFloat {
-        let hh = secondaryVideoSize.height / 2
-        let topLimit = hh + 80
-        let bottomLimit = geometry.size.height - hh - (showControls ? 120 : 20) - edgeMargin
-        return min(max(y, topLimit), bottomLimit)
+    /// Re-clamp secondaryPosition for current size/controls state (called after controls toggle)
+    private func reclampPosition() {
+        guard hiddenSide == .visible, let pos = secondaryPosition else { return }
+        // Use a GeometryReader-free approach: schedule on next layout
+        // We can use UIScreen bounds as fallback
+        let screen = UIScreen.main.bounds
+        let size = secondaryVideoSize
+        let hw = size.width / 2
+        let hh = size.height / 2
+        let minX = hw + edgeMargin
+        let maxX = screen.width - hw - edgeMargin
+        let minY = hh + 80
+        let maxY = screen.height - hh - (showControls ? 120 : 20) - edgeMargin
+        let newX = min(max(pos.x, minX), maxX)
+        let newY = min(max(pos.y, minY), maxY)
+        withAnimation(.easeInOut(duration: 0.3)) {
+            secondaryPosition = CGPoint(x: newX, y: newY)
+        }
     }
 }
 
