@@ -73,25 +73,6 @@ struct VideoCallPiPView: View {
                     .padding(4)
             }
 
-            // Timer badge (top-left)
-            if session.isCallConnected {
-                VStack {
-                    HStack {
-                        Text(formattedDuration)
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.black.opacity(0.6))
-                            .cornerRadius(6)
-                            .padding(5)
-                        Spacer()
-                    }
-                    Spacer()
-                }
-                .frame(width: pipSize.width, height: pipSize.height)
-                .allowsHitTesting(false)
-            }
         }
         .frame(width: pipSize.width, height: pipSize.height)
         .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -117,12 +98,6 @@ struct VideoCallPiPView: View {
         }
         .transition(.scale.combined(with: .opacity))
         .animation(.spring(response: 0.3), value: callManager.isInPiPMode)
-    }
-
-    private var formattedDuration: String {
-        let m = Int(session.callDuration) / 60
-        let s = Int(session.callDuration) % 60
-        return String(format: "%02d:%02d", m, s)
     }
 
     private func snapToEdge() {
