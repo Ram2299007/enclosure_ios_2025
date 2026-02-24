@@ -30,8 +30,8 @@ struct NativeVideoCallView: View {
     @State private var showControls = true
     @State private var controlsTimer: Timer?
     @State private var secondaryVideoOffset = CGSize.zero
-    @State private var secondaryVideoSize = CGSize(width: 120, height: 160)
     @State private var showAddMemberSheet = false
+    @State private var secondaryVideoAppeared = false
 
     /// Theme color derived from Constant.themeColor (a hex String)
     private var themeColor: Color { Color(hex: Constant.themeColor) }
@@ -209,17 +209,32 @@ struct NativeVideoCallView: View {
         }
     }
 
+    /// Secondary video size: compact (controls hidden) vs expanded (controls visible)
+    /// Android: compact = max-width:20%, expanded = max-width:50%
+    private var secondaryVideoSize: CGSize {
+        showControls ? CGSize(width: 140, height: 186) : CGSize(width: 90, height: 120)
+    }
+
+    /// Bottom margin: Android compact=20px, expanded=140px
+    private var secondaryBottomMargin: CGFloat {
+        showControls ? 140 : 20
+    }
+
     @ViewBuilder
     private func secondaryVideo(geometry: GeometryProxy) -> some View {
         if session.isCallConnected, let local = session.localRenderer, !session.isCameraOff {
-            let defaultX = geometry.size.width - secondaryVideoSize.width / 2 - 20
-            let defaultY = geometry.size.height - secondaryVideoSize.height / 2 - 140
+            let size = secondaryVideoSize
+            let rightMargin: CGFloat = showControls ? 10 : 20
+            let defaultX = geometry.size.width - size.width / 2 - rightMargin
+            let defaultY = geometry.size.height - size.height / 2 - secondaryBottomMargin
 
             EAGLVideoViewWrapper(view: local)
-                .frame(width: secondaryVideoSize.width, height: secondaryVideoSize.height)
+                .frame(width: size.width, height: size.height)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .scaleEffect(x: -1, y: 1) // mirror
-                .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
+                .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 4)
+                .scaleEffect(secondaryVideoAppeared ? 1.0 : 0.3)
+                .opacity(secondaryVideoAppeared ? 1.0 : 0.0)
                 .position(
                     x: defaultX + secondaryVideoOffset.width,
                     y: defaultY + secondaryVideoOffset.height
@@ -231,11 +246,20 @@ struct NativeVideoCallView: View {
                         }
                         .onEnded { value in
                             withAnimation(.spring()) {
-                                snapToEdge(translation: value.translation, geometry: geometry, defaultX: defaultX, defaultY: defaultY)
+                                snapToEdge(translation: value.translation, geometry: geometry)
                             }
                         }
                 )
+                .animation(.easeInOut(duration: 0.3), value: showControls)
                 .zIndex(22)
+                .onAppear {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                        secondaryVideoAppeared = true
+                    }
+                }
+                .onDisappear {
+                    secondaryVideoAppeared = false
+                }
         }
     }
 
@@ -261,22 +285,33 @@ struct NativeVideoCallView: View {
     }
 
     private func toggleControls() {
-        withAnimation(.easeInOut(duration: 0.4)) { showControls.toggle() }
+        withAnimation(.easeInOut(duration: 0.4)) {
+            showControls.toggle()
+            secondaryVideoOffset = .zero
+        }
         resetControlsTimer()
     }
 
     private func resetControlsTimer() {
         controlsTimer?.invalidate()
         controlsTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: false) { _ in
-            withAnimation(.easeInOut(duration: 0.4)) { showControls = false }
+            withAnimation(.easeInOut(duration: 0.4)) {
+                showControls = false
+                secondaryVideoOffset = .zero
+            }
         }
     }
 
-    private func snapToEdge(translation: CGSize, geometry: GeometryProxy, defaultX: CGFloat, defaultY: CGFloat) {
+    private func snapToEdge(translation: CGSize, geometry: GeometryProxy) {
+        let size = secondaryVideoSize
+        let rightMargin: CGFloat = showControls ? 10 : 20
+        let defaultX = geometry.size.width - size.width / 2 - rightMargin
+        let defaultY = geometry.size.height - size.height / 2 - secondaryBottomMargin
+
         let currentX = defaultX + translation.width
         let currentY = defaultY + translation.height
-        let hw = secondaryVideoSize.width / 2
-        let hh = secondaryVideoSize.height / 2
+        let hw = size.width / 2
+        let hh = size.height / 2
         let margin: CGFloat = 20
 
         // Snap X to nearest horizontal edge
@@ -287,10 +322,12 @@ struct NativeVideoCallView: View {
             snapX = geometry.size.width - hw - margin
         }
 
-        // Clamp Y
+        // Clamp Y — respect top bar and bottom controls
+        let topLimit = hh + 80
+        let bottomLimit = geometry.size.height - hh - (showControls ? 140 : 30)
         var snapY = currentY
-        if snapY < hh + 80 { snapY = hh + 80 }
-        if snapY > geometry.size.height - hh - 120 { snapY = geometry.size.height - hh - 120 }
+        if snapY < topLimit { snapY = topLimit }
+        if snapY > bottomLimit { snapY = bottomLimit }
 
         secondaryVideoOffset = CGSize(
             width: snapX - defaultX,
