@@ -31,6 +31,7 @@ struct NativeVideoCallView: View {
     @State private var controlsTimer: Timer?
     @State private var secondaryVideoOffset = CGSize.zero
     @State private var secondaryVideoSize = CGSize(width: 120, height: 160)
+    @State private var showAddMemberSheet = false
 
     /// Theme color derived from Constant.themeColor (a hex String)
     private var themeColor: Color { Color(hex: Constant.themeColor) }
@@ -137,14 +138,25 @@ struct NativeVideoCallView: View {
                 Spacer()
 
                 // Add member button (same line as back arrow)
-                Circle()
-                    .fill(Color.white.opacity(0.15))
-                    .frame(width: 44, height: 44)
-                    .overlay(
-                        Image(systemName: "person.badge.plus")
-                            .foregroundColor(.white)
-                            .font(.system(size: 18, weight: .medium))
+                Button {
+                    showAddMemberSheet = true
+                } label: {
+                    Circle()
+                        .fill(Color.white.opacity(0.15))
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Image(systemName: "person.badge.plus")
+                                .foregroundColor(.white)
+                                .font(.system(size: 18, weight: .medium))
+                        )
+                }
+                .sheet(isPresented: $showAddMemberSheet) {
+                    AddMemberSheet(
+                        roomId: session.payload.roomId ?? "",
+                        isVideoCall: true,
+                        currentReceiverId: session.payload.receiverId
                     )
+                }
             }
             .padding(.horizontal, 12)
             .padding(.top, 60)

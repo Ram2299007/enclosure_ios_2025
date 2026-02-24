@@ -1940,6 +1940,60 @@ class ApiService {
     
     
     
+    // MARK: - Group Calling API (matches Android Webservice.create_group_calling)
+    static func create_group_calling(
+        uid: String,
+        friendId: String,
+        invitedFriendList: String,
+        date: String,
+        startTime: String,
+        callingFlag: String,
+        endTime: String,
+        callType: String,
+        completion: @escaping (Bool, String) -> Void
+    ) {
+        let url = Constant.baseURL + "create_group_calling"
+        let parameters: [String: Any] = [
+            "uid": uid,
+            "friend_id": friendId,
+            "invited_friend_list": invitedFriendList,
+            "date": date,
+            "start_time": startTime,
+            "calling_flag": callingFlag,
+            "end_time": endTime,
+            "call_type": callType
+        ]
+
+        print("📞 [ApiService] create_group_calling - URL: \(url), params: \(parameters)")
+
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .validate()
+            .responseData { response in
+                switch response.result {
+                case .success(let data):
+                    if let raw = String(data: data, encoding: .utf8) {
+                        print("📞 [ApiService] create_group_calling response: \(raw)")
+                    }
+                    do {
+                        if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                            var errorCode = ""
+                            if let ec = json["error_code"] as? String { errorCode = ec }
+                            else if let ec = json["error_code"] as? Int { errorCode = String(ec) }
+                            let message = json["message"] as? String ?? ""
+                            completion(errorCode == "200", message)
+                        } else {
+                            completion(false, "Invalid response")
+                        }
+                    } catch {
+                        completion(false, error.localizedDescription)
+                    }
+                case .failure(let error):
+                    print("🔴 [ApiService] create_group_calling error: \(error.localizedDescription)")
+                    completion(false, error.localizedDescription)
+                }
+            }
+    }
+
     static func get_calling_contact_list(uid: String, completion: @escaping (Bool, String, [CallingContactModel]?) -> Void) {
         let url = Constant.baseURL + "get_calling_contact_list"
         let parameters: [String: Any] = ["uid": uid]

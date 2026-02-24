@@ -6,6 +6,7 @@ import SwiftUI
 struct NativeVoiceCallScreen: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var session: NativeVoiceCallSession
+    @State private var showAddMemberSheet = false
 
     init(payload: VoiceCallPayload) {
         // Reuse existing session from ActiveCallManager if available.
@@ -134,7 +135,7 @@ struct NativeVoiceCallScreen: View {
                 }
             }
             Spacer()
-            Button(action: { /* Add member */ }) {
+            Button(action: { showAddMemberSheet = true }) {
                 ZStack {
                     Circle()
                         .fill(Color.white.opacity(0.1))
@@ -151,6 +152,13 @@ struct NativeVoiceCallScreen: View {
                             .foregroundColor(.white)
                     }
                 }
+            }
+            .sheet(isPresented: $showAddMemberSheet) {
+                AddMemberSheet(
+                    roomId: session.roomIdForAddMember,
+                    isVideoCall: false,
+                    currentReceiverId: session.receiverIdForAddMember
+                )
             }
         }
         .padding(.horizontal, 22) // left: 10px + padding: 0 12px

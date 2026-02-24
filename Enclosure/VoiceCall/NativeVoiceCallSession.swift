@@ -26,6 +26,10 @@ final class NativeVoiceCallSession: ObservableObject {
     /// Whether this device initiated the call (true = outgoing, false = incoming)
     var isSender: Bool { payload.isSender }
 
+    /// Exposed for AddMemberSheet
+    var roomIdForAddMember: String { roomId }
+    var receiverIdForAddMember: String { payload.receiverId }
+
     // MARK: - Private
     private let payload: VoiceCallPayload
     private let roomId: String
