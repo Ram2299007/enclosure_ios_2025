@@ -130,6 +130,7 @@ final class SampleBufferRenderer: NSObject, RTCVideoRenderer {
 final class PiPContentViewController: AVPictureInPictureVideoCallViewController {
     let remoteLayer = AVSampleBufferDisplayLayer()
     let localLayer = AVSampleBufferDisplayLayer()
+    let localShadowLayer = CALayer()
 
     var remoteRotation: RTCVideoRotation = ._0
     var localRotation: RTCVideoRotation = ._0
@@ -142,12 +143,17 @@ final class PiPContentViewController: AVPictureInPictureVideoCallViewController 
         remoteLayer.videoGravity = .resizeAspectFill
         view.layer.addSublayer(remoteLayer)
 
+        // Shadow layer behind local video
+        localShadowLayer.shadowColor = UIColor.black.cgColor
+        localShadowLayer.shadowOpacity = 0.5
+        localShadowLayer.shadowRadius = 3
+        localShadowLayer.shadowOffset = CGSize(width: 0, height: 2)
+        view.layer.addSublayer(localShadowLayer)
+
         // Local video — small overlay bottom-right (matches in-app PiP design)
         localLayer.videoGravity = .resizeAspectFill
         localLayer.cornerRadius = 6
         localLayer.masksToBounds = true
-        localLayer.borderColor = UIColor.white.withAlphaComponent(0.5).cgColor
-        localLayer.borderWidth = 1
         view.layer.addSublayer(localLayer)
     }
 
@@ -182,6 +188,15 @@ final class PiPContentViewController: AVPictureInPictureVideoCallViewController 
             width: localW,
             height: localH
         )
+        // Shadow layer matches local rect (no rotation — just a shadow shape)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        localShadowLayer.frame = localRect
+        localShadowLayer.cornerRadius = 6
+        localShadowLayer.backgroundColor = UIColor.black.cgColor
+        localShadowLayer.shadowPath = UIBezierPath(roundedRect: localShadowLayer.bounds, cornerRadius: 6).cgPath
+        CATransaction.commit()
+
         applyRotation(to: localLayer, rect: localRect, rotation: localRotation, mirror: true)
     }
 

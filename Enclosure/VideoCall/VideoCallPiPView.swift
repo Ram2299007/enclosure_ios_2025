@@ -65,10 +65,7 @@ struct VideoCallPiPView: View {
                 PiPVideoWrapper(videoView: local)
                     .frame(width: localSize.width, height: localSize.height)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.white.opacity(0.5), lineWidth: 1)
-                    )
+                    .shadow(color: .black.opacity(0.5), radius: 3, x: 0, y: 2)
                     .scaleEffect(x: -1, y: 1) // mirror front camera
                     .padding(4)
             }
