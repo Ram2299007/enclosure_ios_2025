@@ -125,6 +125,16 @@ struct NativeVideoCallView: View {
                 }
 
                 Spacer()
+
+                // Add member button (same line as back arrow)
+                Circle()
+                    .fill(Color.white.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Image(systemName: "person.badge.plus")
+                            .foregroundColor(.white)
+                            .font(.system(size: 18, weight: .medium))
+                    )
             }
             .padding(.horizontal, 12)
             .padding(.top, 60)
@@ -135,21 +145,6 @@ struct NativeVideoCallView: View {
     private var controlsBar: some View {
         VStack {
             Spacer()
-
-            // Add member button (above controls)
-            HStack {
-                Spacer()
-                Circle()
-                    .fill(Color.white.opacity(0.15))
-                    .frame(width: 44, height: 44)
-                    .overlay(
-                        Image(systemName: "person.badge.plus")
-                            .foregroundColor(.white)
-                            .font(.system(size: 18, weight: .medium))
-                    )
-                    .padding(.trailing, 16)
-                    .padding(.bottom, 8)
-            }
 
             // Semi-transparent container (matches Android .controls-container)
             ZStack {
@@ -359,6 +354,8 @@ struct EAGLVideoViewWrapper: UIViewRepresentable {
 
         private func updateAspectFill() {
             guard let container = container, videoSize.width > 0, videoSize.height > 0 else { return }
+            // Safety: skip if video view was moved to a different hierarchy (e.g. PiP)
+            guard videoView.superview === container else { return }
             let containerSize = container.bounds.size
             guard containerSize.width > 0, containerSize.height > 0 else { return }
 
