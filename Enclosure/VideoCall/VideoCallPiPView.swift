@@ -46,76 +46,55 @@ struct VideoCallPiPView: View {
     @State private var dragOffset = CGSize.zero
 
     private let pipSize = CGSize(width: 130, height: 180)
+    private let localSize = CGSize(width: 45, height: 60)
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            // Video content — use simple wrapper to avoid constraint crashes
+        ZStack(alignment: .bottomTrailing) {
+            // Remote video (fills PiP)
             Group {
                 if session.isCallConnected, let remote = session.remoteRenderer {
                     PiPVideoWrapper(videoView: remote)
-                } else if let local = session.localRenderer {
-                    PiPVideoWrapper(videoView: local)
-                        .scaleEffect(x: -1, y: 1)
                 } else {
                     Color.black
                 }
             }
             .frame(width: pipSize.width, height: pipSize.height)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
 
-            // Duration badge
+            // Local video (small overlay in bottom-right)
+            if let local = session.localRenderer, !session.isCameraOff {
+                PiPVideoWrapper(videoView: local)
+                    .frame(width: localSize.width, height: localSize.height)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.white.opacity(0.5), lineWidth: 1)
+                    )
+                    .scaleEffect(x: -1, y: 1) // mirror front camera
+                    .padding(4)
+            }
+
+            // Timer badge (top-left)
             if session.isCallConnected {
-                Text(formattedDuration)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.black.opacity(0.6))
-                    .cornerRadius(8)
-                    .padding(6)
-                    .allowsHitTesting(false)
-            }
-
-            // End call (X) button
-            VStack {
-                Spacer()
-                HStack {
-                    // End call
-                    Button {
-                        session.endCall()
-                    } label: {
-                        Circle()
-                            .fill(Color.red.opacity(0.9))
-                            .frame(width: 32, height: 32)
-                            .overlay(
-                                Image(systemName: "phone.down.fill")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(.white)
-                            )
+                VStack {
+                    HStack {
+                        Text(formattedDuration)
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.black.opacity(0.6))
+                            .cornerRadius(6)
+                            .padding(5)
+                        Spacer()
                     }
-
                     Spacer()
-
-                    // Expand to full screen
-                    Button {
-                        callManager.isInPiPMode = false
-                    } label: {
-                        Circle()
-                            .fill(Color.white.opacity(0.3))
-                            .frame(width: 32, height: 32)
-                            .overlay(
-                                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(.white)
-                            )
-                    }
                 }
-                .padding(.horizontal, 8)
-                .padding(.bottom, 8)
+                .frame(width: pipSize.width, height: pipSize.height)
+                .allowsHitTesting(false)
             }
-            .frame(width: pipSize.width, height: pipSize.height)
         }
         .frame(width: pipSize.width, height: pipSize.height)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: .black.opacity(0.4), radius: 10, x: 0, y: 5)
         .position(
             x: position.x + dragOffset.width,
@@ -153,15 +132,13 @@ struct VideoCallPiPView: View {
         let hh = pipSize.height / 2
         let margin: CGFloat = 12
 
-        // Snap X to nearest edge
         if position.x < screenW / 2 {
             position.x = hw + margin
         } else {
             position.x = screenW - hw - margin
         }
 
-        // Clamp Y
-        let minY = hh + 60  // below status bar
+        let minY = hh + 60
         let maxY = screenH - hh - 40
         position.y = min(max(position.y, minY), maxY)
     }

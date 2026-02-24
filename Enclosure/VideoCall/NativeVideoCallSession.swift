@@ -11,6 +11,7 @@ import Foundation
 import WebRTC
 import FirebaseDatabase
 import AVFoundation
+import AVKit
 import UIKit
 
 final class NativeVideoCallSession: ObservableObject {
@@ -49,6 +50,11 @@ final class NativeVideoCallSession: ObservableObject {
     private var isCallEnded = false
     private var removeCallNotificationSent = false
     private var disconnectWorkItem: DispatchWorkItem?
+
+    // System PiP (background PiP)
+    private(set) var systemPiPController: VideoCallPiPController?
+    private var appBackgroundObserver: NSObjectProtocol?
+    private var appForegroundObserver: NSObjectProtocol?
 
     // MARK: - Init
 
@@ -107,7 +113,38 @@ final class NativeVideoCallSession: ObservableObject {
                 }
             }
         }
+        // Observe app lifecycle for system PiP
+        appBackgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.systemPiPController?.startPiP()
+        }
+        appForegroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.systemPiPController?.stopPiP()
+        }
+
         NSLog("📹 [VideoSession] start() complete")
+    }
+
+    /// Set up system PiP — call from NativeVideoCallScreen when view appears
+    func setupSystemPiP(sourceView: UIView) {
+        guard systemPiPController == nil else { return }
+        let controller = VideoCallPiPController()
+        controller.setup(sourceView: sourceView)
+        controller.onRestoreFromPiP = { [weak self] in
+            guard self != nil else { return }
+            DispatchQueue.main.async {
+                ActiveCallManager.shared.isInPiPMode = false
+            }
+        }
+        self.systemPiPController = controller
+        // If remote track already arrived, attach
+        if let track = remoteVideoTrack {
+            controller.attachToTrack(track)
+        }
+        NSLog("✅ [VideoSession] System PiP controller set up")
     }
 
     // MARK: - WebRTC Setup
@@ -222,7 +259,16 @@ final class NativeVideoCallSession: ObservableObject {
         // Remove renderers
         if let lr = localRenderer { webRTCManager?.localVideoTrack?.remove(lr) }
         if let rr = remoteRenderer { remoteVideoTrack?.remove(rr) }
+        if let track = remoteVideoTrack { systemPiPController?.detachFromTrack(track) }
         remoteVideoTrack = nil
+
+        // Tear down system PiP
+        systemPiPController?.tearDown()
+        systemPiPController = nil
+        if let obs = appBackgroundObserver { NotificationCenter.default.removeObserver(obs) }
+        if let obs = appForegroundObserver { NotificationCenter.default.removeObserver(obs) }
+        appBackgroundObserver = nil
+        appForegroundObserver = nil
 
         webRTCManager?.deactivateAudioSession()
         webRTCManager?.stopAll()
@@ -339,6 +385,8 @@ extension NativeVideoCallSession: NativeWebRTCManagerDelegate {
                 track.add(rr)
                 NSLog("📹 [VideoSession] Remote video attached to renderer")
             }
+            // Also attach system PiP renderer
+            self.systemPiPController?.attachToTrack(track)
         }
     }
 }
