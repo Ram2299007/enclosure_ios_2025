@@ -244,3 +244,23 @@ final class VideoCallPiPController: NSObject, AVPictureInPictureControllerDelega
         completionHandler(true)
     }
 }
+
+// MARK: - PiPSourceViewBridge
+// Invisible UIViewRepresentable that captures a UIView reference for AVPictureInPictureController.
+// Must be placed in a persistent view hierarchy (e.g. MainActivityOld) so the source view
+// remains alive when the full-screen video call is dismissed for in-app PiP.
+
+import SwiftUI
+
+struct PiPSourceViewBridge: UIViewRepresentable {
+    let onViewReady: (UIView) -> Void
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        DispatchQueue.main.async { onViewReady(view) }
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
+}

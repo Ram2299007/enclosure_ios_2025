@@ -10,21 +10,6 @@
 import SwiftUI
 import WebRTC
 
-/// Invisible bridge to capture a UIView reference for AVPictureInPictureController source.
-private struct PiPSourceViewBridge: UIViewRepresentable {
-    let onViewReady: (UIView) -> Void
-
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        view.backgroundColor = .clear
-        // Dispatch so the view is in the hierarchy before setup
-        DispatchQueue.main.async { onViewReady(view) }
-        return view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {}
-}
-
 struct NativeVideoCallScreen: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var session: NativeVideoCallSession
@@ -52,12 +37,6 @@ struct NativeVideoCallScreen: View {
 
     var body: some View {
         NativeVideoCallView(session: session)
-            .background(
-                // Invisible bridge to provide source view for system PiP
-                PiPSourceViewBridge { sourceView in
-                    session.setupSystemPiP(sourceView: sourceView)
-                }
-            )
             .onAppear {
                 // Exiting PiP → back to full screen
                 ActiveCallManager.shared.isInPiPMode = false

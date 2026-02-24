@@ -1078,6 +1078,15 @@ struct MainActivityOld: View {
                     VideoCallPiPView(session: session, callManager: activeCallManager)
                 }
             }
+            .background {
+                // Persistent invisible source view for system background PiP.
+                // Must stay in hierarchy even when full-screen video call is dismissed.
+                if activeCallManager.activeVideoSession != nil {
+                    PiPSourceViewBridge { sourceView in
+                        activeCallManager.activeVideoSession?.setupSystemPiP(sourceView: sourceView)
+                    }
+                }
+            }
             .onChange(of: activeCallManager.isInPiPMode) { isPiP in
                 if !isPiP && activeCallManager.activeVideoSession != nil {
                     // User tapped PiP → re-open full screen

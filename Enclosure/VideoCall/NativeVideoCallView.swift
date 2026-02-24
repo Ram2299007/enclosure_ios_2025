@@ -10,6 +10,16 @@
 import SwiftUI
 import AVFoundation
 import WebRTC
+import ObjectiveC
+
+// Persist last known video size on RTCEAGLVideoView so new coordinators can recover it
+private var _lastVideoSizeKey: UInt8 = 0
+extension RTCEAGLVideoView {
+    var lastKnownVideoSize: CGSize {
+        get { objc_getAssociatedObject(self, &_lastVideoSizeKey) as? CGSize ?? .zero }
+        set { objc_setAssociatedObject(self, &_lastVideoSizeKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+    }
+}
 
 // MARK: - NativeVideoCallView
 
@@ -283,7 +293,10 @@ struct EAGLVideoViewWrapper: UIViewRepresentable {
     let view: RTCEAGLVideoView
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(videoView: view)
+        let coord = Coordinator(videoView: view)
+        // Recover persisted video size so aspect-fill works immediately on reuse
+        coord.videoSize = view.lastKnownVideoSize
+        return coord
     }
 
     func makeUIView(context: Context) -> AspectFillContainer {
@@ -316,7 +329,36 @@ struct EAGLVideoViewWrapper: UIViewRepresentable {
         return container
     }
 
-    func updateUIView(_ uiView: AspectFillContainer, context: Context) {}
+    func updateUIView(_ uiView: AspectFillContainer, context: Context) {
+        // Ensure delegate is always the current coordinator
+        view.delegate = context.coordinator
+        // Re-parent video view if it was moved (e.g. returned from PiP)
+        if view.superview !== uiView {
+            // Remove all existing constraints referencing the video view
+            for constraint in view.constraints {
+                view.removeConstraint(constraint)
+            }
+            view.removeFromSuperview()
+            view.translatesAutoresizingMaskIntoConstraints = false
+            uiView.addSubview(view)
+            NSLayoutConstraint.activate([
+                view.centerXAnchor.constraint(equalTo: uiView.centerXAnchor),
+                view.centerYAnchor.constraint(equalTo: uiView.centerYAnchor)
+            ])
+            context.coordinator.container = uiView
+            // Reset constraints so aspect-fill recalculates
+            let w = view.widthAnchor.constraint(equalTo: uiView.widthAnchor)
+            let h = view.heightAnchor.constraint(equalTo: uiView.heightAnchor)
+            w.priority = .defaultLow
+            h.priority = .defaultLow
+            w.isActive = true
+            h.isActive = true
+            context.coordinator.widthConstraint = w
+            context.coordinator.heightConstraint = h
+        }
+        // Trigger aspect-fill update on next layout pass
+        uiView.setNeedsLayout()
+    }
 
     // Custom container that re-triggers aspect-fill when its layout changes
     class AspectFillContainer: UIView {
@@ -333,7 +375,7 @@ struct EAGLVideoViewWrapper: UIViewRepresentable {
         var widthConstraint: NSLayoutConstraint?
         var heightConstraint: NSLayoutConstraint?
         private let videoView: RTCEAGLVideoView
-        private var videoSize: CGSize = .zero
+        var videoSize: CGSize = .zero
 
         init(videoView: RTCEAGLVideoView) {
             self.videoView = videoView
@@ -347,6 +389,7 @@ struct EAGLVideoViewWrapper: UIViewRepresentable {
         func videoView(_ videoView: RTCEAGLVideoView, didChangeVideoSize size: CGSize) {
             guard size.width > 0, size.height > 0 else { return }
             videoSize = size
+            videoView.lastKnownVideoSize = size
             DispatchQueue.main.async { [weak self] in
                 self?.updateAspectFill()
             }
