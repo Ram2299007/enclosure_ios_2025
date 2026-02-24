@@ -50,6 +50,8 @@ final class NativeVideoCallSession: ObservableObject {
     private var isCallEnded = false
     private var removeCallNotificationSent = false
     private var disconnectWorkItem: DispatchWorkItem?
+    private var ringtonePlayer: AVAudioPlayer?
+    private let audioSession = AVAudioSession.sharedInstance()
 
     // System PiP (background PiP)
     private(set) var systemPiPController: VideoCallPiPController?
@@ -83,6 +85,7 @@ final class NativeVideoCallSession: ObservableObject {
         if payload.isSender {
             webRTCManager?.configureAudioSession(useEarpiece: false) // speaker for video
             webRTCManager?.activateAudioSession()
+            startRingtone()
         } else {
             if CallKitManager.shared.isAudioSessionReady {
                 NSLog("✅ [VideoSession] CallKit audio already active")
@@ -201,6 +204,10 @@ final class NativeVideoCallSession: ObservableObject {
     func activateWebRTCAudio() {
         webRTCManager?.activateAudioSession()
         NSLog("✅ [VideoSession] WebRTC audio activated via ActiveCallManager")
+        // Start ringtone for outgoing calls after audio activation (incoming path)
+        if payload.isSender && !isCallConnected && !(ringtonePlayer?.isPlaying ?? false) {
+            startRingtone()
+        }
     }
 
     func toggleMicrophone() {
@@ -253,6 +260,7 @@ final class NativeVideoCallSession: ObservableObject {
         if isCallEnded && payload.isSender && !isCallConnected {
             sendRemoveCallNotificationIfNeeded()
         }
+        stopRingtone()
         disconnectWorkItem?.cancel()
         disconnectWorkItem = nil
         callTimer?.invalidate()
@@ -298,6 +306,7 @@ final class NativeVideoCallSession: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.isCallConnected = true
+            self.stopRingtone()
             self.startCallTimer()
             NSLog("✅✅✅ [VideoSession] CALL CONNECTED!")
         }
@@ -311,6 +320,35 @@ final class NativeVideoCallSession: ObservableObject {
         callTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             DispatchQueue.main.async { self?.callDuration += 1 }
         }
+    }
+
+    // MARK: - Ringtone
+
+    private func startRingtone() {
+        guard payload.isSender else { return }
+        ringtonePlayer?.stop()
+        ringtonePlayer = nil
+        if let url = Bundle.main.url(forResource: "ringtone", withExtension: "mp3") {
+            do {
+                ringtonePlayer = try AVAudioPlayer(contentsOf: url)
+                ringtonePlayer?.numberOfLoops = -1
+                ringtonePlayer?.volume = 1.0
+                ringtonePlayer?.prepareToPlay()
+                // Video calls default to speaker
+                try audioSession.overrideOutputAudioPort(.speaker)
+                ringtonePlayer?.play()
+                NSLog("🔔 [VideoSession] Ringtone started (speaker)")
+            } catch {
+                NSLog("❌ [VideoSession] Failed to start ringtone: \(error.localizedDescription)")
+            }
+        } else {
+            NSLog("❌ [VideoSession] ringtone.mp3 not found in bundle")
+        }
+    }
+
+    private func stopRingtone() {
+        ringtonePlayer?.stop()
+        ringtonePlayer = nil
     }
 
     // MARK: - Notifications
