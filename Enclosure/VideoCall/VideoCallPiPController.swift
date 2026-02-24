@@ -17,7 +17,6 @@ final class SampleBufferRenderer: NSObject, RTCVideoRenderer {
     let displayLayer: AVSampleBufferDisplayLayer
     private(set) var currentRotation: RTCVideoRotation = ._0
     var onRotationChanged: ((RTCVideoRotation) -> Void)?
-    var onFrameReceived: (() -> Void)?
 
     init(displayLayer: AVSampleBufferDisplayLayer) {
         self.displayLayer = displayLayer
@@ -71,7 +70,6 @@ final class SampleBufferRenderer: NSObject, RTCVideoRenderer {
             guard let self = self, let layer = self.displayLayer as AVSampleBufferDisplayLayer? else { return }
             if layer.status == .failed { layer.flush() }
             layer.enqueue(buffer)
-            self.onFrameReceived?()
         }
     }
 
@@ -135,32 +133,6 @@ final class PiPContentViewController: AVPictureInPictureVideoCallViewController 
 
     var remoteRotation: RTCVideoRotation = ._0
     var localRotation: RTCVideoRotation = ._0
-
-    // Hide local layer when camera frames stop (iOS suspends capture in background)
-    private var localStaleTimer: Timer?
-    private var isLocalHidden = false
-
-    func localFrameArrived() {
-        // Show local layer if it was hidden
-        if isLocalHidden {
-            isLocalHidden = false
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            localLayer.isHidden = false
-            CATransaction.commit()
-        }
-        // Reset stale timer — hide after 1s of no frames
-        localStaleTimer?.invalidate()
-        localStaleTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
-            guard let self = self else { return }
-            self.isLocalHidden = true
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            self.localLayer.isHidden = true
-            CATransaction.commit()
-            NSLog("📹 [PiPVC] Local video hidden (camera suspended)")
-        }
-    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -288,9 +260,6 @@ final class VideoCallPiPController: NSObject, AVPictureInPictureControllerDelega
         let local = SampleBufferRenderer(displayLayer: contentVC.localLayer)
         local.onRotationChanged = { [weak contentVC] rotation in
             contentVC?.updateLocalRotation(rotation)
-        }
-        local.onFrameReceived = { [weak contentVC] in
-            contentVC?.localFrameArrived()
         }
         self.remoteRenderer = remote
         self.localRenderer = local
