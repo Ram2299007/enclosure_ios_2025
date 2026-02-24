@@ -106,12 +106,12 @@ final class SampleBufferRenderer: NSObject, RTCVideoRenderer {
         let halfHeight = height / 2
         let halfWidth = width / 2
         for row in 0..<halfHeight {
-            let uvRow = uvDest + row * uvDestStride
-            let uRow = uSrc + row * uStride
-            let vRow = vSrc + row * vStride
+            let uvRowPtr = (uvDest + row * uvDestStride).assumingMemoryBound(to: UInt8.self)
+            let uRowPtr = uSrc + row * uStride
+            let vRowPtr = vSrc + row * vStride
             for col in 0..<halfWidth {
-                uvRow[col * 2] = uRow[col]
-                uvRow[col * 2 + 1] = vRow[col]
+                uvRowPtr[col * 2] = uRowPtr[col]
+                uvRowPtr[col * 2 + 1] = vRowPtr[col]
             }
         }
 
