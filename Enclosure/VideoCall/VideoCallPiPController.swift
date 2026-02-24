@@ -15,6 +15,8 @@ import WebRTC
 
 final class SampleBufferRenderer: NSObject, RTCVideoRenderer {
     let displayLayer: AVSampleBufferDisplayLayer
+    private(set) var currentRotation: RTCVideoRotation = ._0
+    var onRotationChanged: ((RTCVideoRotation) -> Void)?
 
     init(displayLayer: AVSampleBufferDisplayLayer) {
         self.displayLayer = displayLayer
@@ -25,6 +27,15 @@ final class SampleBufferRenderer: NSObject, RTCVideoRenderer {
 
     func renderFrame(_ frame: RTCVideoFrame?) {
         guard let frame = frame else { return }
+
+        // Track rotation changes
+        if frame.rotation != currentRotation {
+            currentRotation = frame.rotation
+            let rot = frame.rotation
+            DispatchQueue.main.async { [weak self] in
+                self?.onRotationChanged?(rot)
+            }
+        }
 
         let pixelBuffer: CVPixelBuffer?
         if let cvBuffer = frame.buffer as? RTCCVPixelBuffer {
@@ -113,12 +124,15 @@ final class SampleBufferRenderer: NSObject, RTCVideoRenderer {
 }
 
 // MARK: - PiPContentViewController
-// Custom VC for the PiP window: remote (full), local (small corner), timer badge.
+// Custom VC for the PiP window: remote (full), local (small bottom-right).
+// Handles WebRTC frame rotation so video isn't displayed sideways.
 
 final class PiPContentViewController: AVPictureInPictureVideoCallViewController {
     let remoteLayer = AVSampleBufferDisplayLayer()
     let localLayer = AVSampleBufferDisplayLayer()
-    let timerLabel = UILabel()
+
+    var remoteRotation: RTCVideoRotation = ._0
+    var localRotation: RTCVideoRotation = ._0
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -128,56 +142,88 @@ final class PiPContentViewController: AVPictureInPictureVideoCallViewController 
         remoteLayer.videoGravity = .resizeAspectFill
         view.layer.addSublayer(remoteLayer)
 
-        // Local video — small overlay in top-right
+        // Local video — small overlay bottom-right (matches in-app PiP design)
         localLayer.videoGravity = .resizeAspectFill
         localLayer.cornerRadius = 6
         localLayer.masksToBounds = true
-        localLayer.borderColor = UIColor.white.cgColor
-        localLayer.borderWidth = 1.5
+        localLayer.borderColor = UIColor.white.withAlphaComponent(0.5).cgColor
+        localLayer.borderWidth = 1
         view.layer.addSublayer(localLayer)
-
-        // Timer badge — bottom center
-        timerLabel.text = "00:00"
-        timerLabel.textColor = .white
-        timerLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
-        timerLabel.backgroundColor = UIColor.black.withAlphaComponent(0.55)
-        timerLabel.textAlignment = .center
-        timerLabel.layer.cornerRadius = 8
-        timerLabel.clipsToBounds = true
-        view.addSubview(timerLabel)
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        layoutLayers()
+    }
+
+    func updateRemoteRotation(_ rotation: RTCVideoRotation) {
+        remoteRotation = rotation
+        layoutLayers()
+    }
+
+    func updateLocalRotation(_ rotation: RTCVideoRotation) {
+        localRotation = rotation
+        layoutLayers()
+    }
+
+    private func layoutLayers() {
         let b = view.bounds
+        guard b.width > 0, b.height > 0 else { return }
 
-        // Remote fills everything
-        remoteLayer.frame = b
+        // Remote — fills entire PiP
+        applyRotation(to: remoteLayer, rect: b, rotation: remoteRotation, mirror: false)
 
-        // Local: 30% width, 4:3 aspect, top-right with padding
-        let localW = b.width * 0.30
+        // Local — bottom-right, matching in-app PiP proportions
+        let localW = b.width * 0.35
         let localH = localW * (4.0 / 3.0)
-        localLayer.frame = CGRect(
-            x: b.width - localW - 6,
-            y: 6,
+        let localRect = CGRect(
+            x: b.width - localW - 4,
+            y: b.height - localH - 4,
             width: localW,
             height: localH
         )
+        applyRotation(to: localLayer, rect: localRect, rotation: localRotation, mirror: true)
+    }
 
-        // Timer: bottom center
-        let timerW: CGFloat = 58
-        let timerH: CGFloat = 20
-        timerLabel.frame = CGRect(
-            x: (b.width - timerW) / 2,
-            y: b.height - timerH - 6,
-            width: timerW,
-            height: timerH
-        )
+    /// Apply rotation transform to an AVSampleBufferDisplayLayer.
+    /// For 90°/270° rotations, swaps bounds so the landscape pixel buffer
+    /// fills the layer correctly before being rotated to portrait.
+    /// `mirror` adds horizontal flip for front camera.
+    private func applyRotation(to layer: AVSampleBufferDisplayLayer,
+                               rect: CGRect,
+                               rotation: RTCVideoRotation,
+                               mirror: Bool) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+
+        let isRotated = (rotation == ._90 || rotation == ._270)
+
+        // Swap bounds for 90°/270° so content fills correctly before rotation
+        if isRotated {
+            layer.bounds = CGRect(x: 0, y: 0, width: rect.height, height: rect.width)
+        } else {
+            layer.bounds = CGRect(x: 0, y: 0, width: rect.width, height: rect.height)
+        }
+        layer.position = CGPoint(x: rect.midX, y: rect.midY)
+
+        var transform = CATransform3DIdentity
+        switch rotation {
+        case ._90:  transform = CATransform3DMakeRotation(.pi / 2, 0, 0, 1)
+        case ._180: transform = CATransform3DMakeRotation(.pi, 0, 0, 1)
+        case ._270: transform = CATransform3DMakeRotation(-.pi / 2, 0, 0, 1)
+        default: break
+        }
+        if mirror {
+            transform = CATransform3DConcat(transform, CATransform3DMakeScale(-1, 1, 1))
+        }
+        layer.transform = transform
+
+        CATransaction.commit()
     }
 }
 
 // MARK: - VideoCallPiPController
-// Manages system-level PiP for video calls. Shows both videos + timer.
+// Manages system-level PiP for video calls. Shows both videos, no timer.
 
 final class VideoCallPiPController: NSObject, AVPictureInPictureControllerDelegate {
 
@@ -187,10 +233,6 @@ final class VideoCallPiPController: NSObject, AVPictureInPictureControllerDelega
     private var remoteRenderer: SampleBufferRenderer?
     private var localRenderer: SampleBufferRenderer?
     private var isSetUp = false
-
-    // Timer
-    private var timerUpdateTimer: Timer?
-    var callDurationProvider: (() -> TimeInterval)?
 
     // Called when PiP is restored (user taps to return to app)
     var onRestoreFromPiP: (() -> Void)?
@@ -212,7 +254,13 @@ final class VideoCallPiPController: NSObject, AVPictureInPictureControllerDelega
 
         // Renderers feed WebRTC frames → display layers
         let remote = SampleBufferRenderer(displayLayer: contentVC.remoteLayer)
+        remote.onRotationChanged = { [weak contentVC] rotation in
+            contentVC?.updateRemoteRotation(rotation)
+        }
         let local = SampleBufferRenderer(displayLayer: contentVC.localLayer)
+        local.onRotationChanged = { [weak contentVC] rotation in
+            contentVC?.updateLocalRotation(rotation)
+        }
         self.remoteRenderer = remote
         self.localRenderer = local
 
@@ -227,26 +275,23 @@ final class VideoCallPiPController: NSObject, AVPictureInPictureControllerDelega
         controller.delegate = self
         self.pipController = controller
 
-        NSLog("✅ [PiPController] System PiP set up (local + remote + timer)")
+        NSLog("✅ [PiPController] System PiP set up (local + remote)")
     }
 
     func startPiP() {
         guard let controller = pipController, !controller.isPictureInPictureActive else { return }
         controller.startPictureInPicture()
-        startTimerUpdates()
         NSLog("▶️ [PiPController] Starting system PiP")
     }
 
     func stopPiP() {
         guard let controller = pipController, controller.isPictureInPictureActive else { return }
         controller.stopPictureInPicture()
-        stopTimerUpdates()
         NSLog("⏹️ [PiPController] Stopping system PiP")
     }
 
     func tearDown() {
         stopPiP()
-        stopTimerUpdates()
         remoteRenderer = nil
         localRenderer = nil
         pipController = nil
@@ -282,23 +327,6 @@ final class VideoCallPiPController: NSObject, AVPictureInPictureControllerDelega
         NSLog("📹 [PiPController] Detached local renderer")
     }
 
-    // MARK: - Timer
-
-    private func startTimerUpdates() {
-        timerUpdateTimer?.invalidate()
-        timerUpdateTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self = self, let duration = self.callDurationProvider?() else { return }
-            let mins = Int(duration) / 60
-            let secs = Int(duration) % 60
-            self.pipContentVC?.timerLabel.text = String(format: "%02d:%02d", mins, secs)
-        }
-    }
-
-    private func stopTimerUpdates() {
-        timerUpdateTimer?.invalidate()
-        timerUpdateTimer = nil
-    }
-
     // MARK: - AVPictureInPictureControllerDelegate
 
     func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
@@ -310,7 +338,6 @@ final class VideoCallPiPController: NSObject, AVPictureInPictureControllerDelega
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        stopTimerUpdates()
         NSLog("⏹️ [PiPController] System PiP stopped")
     }
 

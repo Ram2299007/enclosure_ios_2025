@@ -139,10 +139,6 @@ final class NativeVideoCallSession: ObservableObject {
                 ActiveCallManager.shared.isInPiPMode = false
             }
         }
-        // Provide call duration for timer display
-        controller.callDurationProvider = { [weak self] in
-            self?.callDuration ?? 0
-        }
         self.systemPiPController = controller
         // Attach tracks that are already available
         if let track = remoteVideoTrack {
@@ -151,7 +147,7 @@ final class NativeVideoCallSession: ObservableObject {
         if let localTrack = webRTCManager?.localVideoTrack {
             controller.attachLocalTrack(localTrack)
         }
-        NSLog("✅ [VideoSession] System PiP controller set up (local + remote + timer)")
+        NSLog("✅ [VideoSession] System PiP controller set up (local + remote)")
     }
 
     // MARK: - WebRTC Setup
