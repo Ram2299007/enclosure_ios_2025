@@ -99,10 +99,19 @@ final class ActiveCallManager: ObservableObject {
 
     /// Called from CallKit CXEndCallAction
     func endCallFromCallKit() {
-        guard let session = activeSession else { return }
-        DispatchQueue.main.async {
-            session.endCall()
-            NSLog("📞 [ActiveCallManager] CallKit → end call")
+        if let session = activeSession {
+            DispatchQueue.main.async {
+                session.endCall()
+                NSLog("📞 [ActiveCallManager] CallKit → end voice call")
+            }
+            return
+        }
+        if let videoSession = activeVideoSession {
+            DispatchQueue.main.async {
+                videoSession.endCall()
+                NSLog("📞 [ActiveCallManager] CallKit → end video call")
+            }
+            return
         }
     }
 

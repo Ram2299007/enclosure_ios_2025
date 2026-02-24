@@ -284,6 +284,10 @@ final class NativeVideoCallSession: ObservableObject {
 
         signalingService?.stop(removeRoom: removeRoom)
         signalingService = nil
+
+        // Clear from ActiveCallManager (dismisses in-app PiP overlay)
+        ActiveCallManager.shared.clearVideoSession()
+
         NSLog("🔴 [VideoSession] cleanup complete")
     }
 

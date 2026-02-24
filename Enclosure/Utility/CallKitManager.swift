@@ -547,6 +547,12 @@ extension CallKitManager: CXProviderDelegate {
             // Re-activate for native WebRTC to continue
             rtcAudioSession.audioSessionDidActivate(audioSession)
             rtcAudioSession.isAudioEnabled = true
+        } else if ActiveCallManager.shared.hasActiveCall {
+            // Active call still running (e.g., lock screen transition, cancel unlock).
+            // Re-activate audio so the call doesn't drop.
+            NSLog("📞 [CallKit] didDeactivate during active call — re-activating audio (lock screen fix)")
+            rtcAudioSession.audioSessionDidActivate(audioSession)
+            rtcAudioSession.isAudioEnabled = true
         } else {
             isAudioSessionReady = false
         }

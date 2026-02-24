@@ -172,6 +172,24 @@ final class PiPContentViewController: AVPictureInPictureVideoCallViewController 
         layoutLayers()
     }
 
+    /// Hide local video + shadow when app is in background (camera suspended by iOS)
+    func hideLocalVideo() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        localLayer.isHidden = true
+        localShadowLayer.isHidden = true
+        CATransaction.commit()
+    }
+
+    /// Show local video + shadow when app returns to foreground
+    func showLocalVideo() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        localLayer.isHidden = false
+        localShadowLayer.isHidden = false
+        CATransaction.commit()
+    }
+
     private func layoutLayers() {
         let b = view.bounds
         guard b.width > 0, b.height > 0 else { return }
@@ -248,6 +266,8 @@ final class VideoCallPiPController: NSObject, AVPictureInPictureControllerDelega
     private var remoteRenderer: SampleBufferRenderer?
     private var localRenderer: SampleBufferRenderer?
     private var isSetUp = false
+    private var bgObserver: NSObjectProtocol?
+    private var fgObserver: NSObjectProtocol?
 
     // Called when PiP is restored (user taps to return to app)
     var onRestoreFromPiP: (() -> Void)?
@@ -290,6 +310,18 @@ final class VideoCallPiPController: NSObject, AVPictureInPictureControllerDelega
         controller.delegate = self
         self.pipController = controller
 
+        // Hide local video when app backgrounds (iOS suspends camera → frozen frame)
+        bgObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+        ) { [weak contentVC] _ in
+            contentVC?.hideLocalVideo()
+        }
+        fgObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
+        ) { [weak contentVC] _ in
+            contentVC?.showLocalVideo()
+        }
+
         NSLog("✅ [PiPController] System PiP set up (local + remote)")
     }
 
@@ -307,6 +339,10 @@ final class VideoCallPiPController: NSObject, AVPictureInPictureControllerDelega
 
     func tearDown() {
         stopPiP()
+        if let obs = bgObserver { NotificationCenter.default.removeObserver(obs) }
+        if let obs = fgObserver { NotificationCenter.default.removeObserver(obs) }
+        bgObserver = nil
+        fgObserver = nil
         remoteRenderer = nil
         localRenderer = nil
         pipController = nil
