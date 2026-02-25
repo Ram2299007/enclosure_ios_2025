@@ -77,14 +77,17 @@ class CallKitManager: NSObject {
         callerPhoto: String,
         roomId: String,
         callerUid: String = "",
+        callerPhone: String = "",
         receiverId: String,
         receiverPhone: String,
         isVideoCall: Bool = false,
         completion: @escaping (Error?, UUID?) -> Void
     ) {
         let uuid = UUID()
-        // Use callerUid for CXHandle so Phone app Recents identifies the caller correctly
         let handleId = callerUid.isEmpty ? receiverId : callerUid
+        // Use phone number for CXHandle when available — native Phone app matches
+        // against iOS Contacts to show profile pic and phone number in Recents.
+        let trimmedPhone = callerPhone.trimmingCharacters(in: .whitespacesAndNewlines)
         
         let callType = isVideoCall ? "VIDEO" : "VOICE"
         CallLogger.log("Reporting incoming \(callType) call: Caller=\(callerName), Room=\(roomId), UUID=\(uuid.uuidString)", category: .callkit)
@@ -92,6 +95,7 @@ class CallKitManager: NSObject {
         print("   - Caller: \(callerName)")
         print("   - Room ID: \(roomId)")
         print("   - UUID: \(uuid.uuidString)")
+        print("   - Caller Phone: \(trimmedPhone.isEmpty ? "(none)" : trimmedPhone)")
         
         // Store call info
         let callInfo = CallInfo(
@@ -107,19 +111,24 @@ class CallKitManager: NSObject {
         activeCalls[uuid] = callInfo
         
         // Create call update
-        // Use callerUid in the handle so we can look up the contact
-        // when user taps this call from iPhone's native Phone app Recents.
+        // Use .phoneNumber handle when phone is available so native Phone app
+        // matches against iOS Contacts (shows profile picture and phone number).
+        // Fall back to .generic with callerUid for lookup in Recents callback.
         let update = CXCallUpdate()
-        update.remoteHandle = CXHandle(type: .generic, value: handleId)
+        if !trimmedPhone.isEmpty {
+            update.remoteHandle = CXHandle(type: .phoneNumber, value: trimmedPhone)
+            NSLog("📞 [CallKit] Using .phoneNumber handle: \(trimmedPhone)")
+        } else {
+            update.remoteHandle = CXHandle(type: .generic, value: handleId)
+            NSLog("📞 [CallKit] Using .generic handle: \(handleId) (no phone available)")
+        }
         
-        // Show caller name with call type on single line
         NSLog("🔍 [CallKit] isVideoCall = \(isVideoCall)")
         print("🔍 [CallKit] Call type: \(isVideoCall ? "VIDEO" : "VOICE")")
         
         update.localizedCallerName = callerName
         
-        NSLog("📞 [CallKit] Display text: '\(callerName)' (handle=\(handleId))")
-        print("📞 [CallKit] Format: Caller • CallType (handle=callerUid)")
+        NSLog("📞 [CallKit] Display: '\(callerName)' handle=\(trimmedPhone.isEmpty ? handleId : trimmedPhone)")
         
         // Set hasVideo based on actual call type.
         // Voice calls: hasVideo=false → iOS shows "Enclosure Audio" (not "Enclosure Video")
@@ -415,15 +424,26 @@ extension CallKitManager: CXProviderDelegate {
         }
         
         // Otherwise, this is a CALLBACK from native Phone app Recents.
-        // The handle value is the callerUid (friendId) we stored when the call was reported.
-        NSLog("📞 [CallKit] 📱 Callback from Phone app Recents! handle (callerUid) = \(handleValue)")
+        // Handle could be a phone number (.phoneNumber) or a UID (.generic).
+        let handleType = action.handle.type
+        NSLog("📞 [CallKit] 📱 Callback from Phone app Recents! handle=\(handleValue), type=\(handleType == .phoneNumber ? "phoneNumber" : "generic")")
         
         // End this CallKit call immediately — we'll start our own via the normal flow.
         action.fail()
         
         // Look up the stored contact info and post notification to initiate the call.
         DispatchQueue.main.async {
-            if let contact = RecentCallContactStore.shared.getContact(for: handleValue) {
+            // Try lookup: first by friendId (UID), then by phone number
+            var contact: RecentCallContact?
+            if handleType == .phoneNumber {
+                contact = RecentCallContactStore.shared.getContactByPhone(handleValue)
+                NSLog("📞 [CallKit] Phone lookup for \(handleValue): \(contact != nil ? "FOUND \(contact!.fullName)" : "NOT FOUND")")
+            }
+            if contact == nil {
+                contact = RecentCallContactStore.shared.getContact(for: handleValue)
+            }
+            
+            if let contact = contact {
                 NSLog("📞 [CallKit] Found stored contact: \(contact.fullName) (fToken empty=\(contact.fToken.isEmpty)) — initiating Enclosure call")
                 NotificationCenter.default.post(
                     name: NSNotification.Name("InitiateCallFromRecents"),
@@ -451,7 +471,7 @@ extension CallKitManager: CXProviderDelegate {
                         "fToken": "",
                         "voipToken": "",
                         "deviceType": "",
-                        "mobileNo": "",
+                        "mobileNo": handleType == .phoneNumber ? handleValue : "",
                         "isVideoCall": "0"
                     ]
                 )

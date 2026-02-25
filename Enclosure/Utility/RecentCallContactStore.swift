@@ -147,6 +147,24 @@ final class RecentCallContactStore {
         return contacts[friendId]
     }
     
+    /// Look up a contact by phone number (for CXStartCallAction when handle is .phoneNumber)
+    func getContactByPhone(_ phone: String) -> RecentCallContact? {
+        let trimmed = phone.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let contacts = loadAll()
+        // Match by exact mobileNo or by suffix (handles country code differences)
+        let digits = trimmed.filter { $0.isNumber }
+        return contacts.values.first { contact in
+            let contactDigits = contact.mobileNo.filter { $0.isNumber }
+            if contactDigits == digits { return true }
+            // Suffix match: last 10 digits
+            if digits.count >= 10 && contactDigits.count >= 10 {
+                return contactDigits.suffix(10) == digits.suffix(10)
+            }
+            return false
+        }
+    }
+    
     // MARK: - Persistence
     
     private func loadAll() -> [String: RecentCallContact] {

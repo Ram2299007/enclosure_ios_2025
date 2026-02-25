@@ -97,10 +97,12 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                          ?? (userInfo["incoming"] as? String)
                          ?? receiverId
 
-            // Resolve caller name from locally saved contacts
+            // Resolve caller name/photo/phone from locally saved contacts
             let savedContact = RecentCallContactStore.shared.getContact(for: callerUid)
             let callerName = (savedContact != nil && !savedContact!.fullName.isEmpty) ? savedContact!.fullName : payloadName
             let callerPhoto = (savedContact != nil && !savedContact!.photo.isEmpty) ? savedContact!.photo : payloadPhoto
+            let payloadSenderPhone = (userInfo["senderPhone"] as? String) ?? ""
+            let callerPhone = (savedContact != nil && !savedContact!.mobileNo.isEmpty) ? savedContact!.mobileNo : payloadSenderPhone
 
             VoIPPushManager.shared.registerIncomingCallContext(
                 roomId: roomId,
@@ -128,6 +130,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                     callerPhoto: callerPhoto,
                     roomId: roomId,
                     callerUid: callerUid,
+                    callerPhone: callerPhone,
                     receiverId: receiverId,
                     receiverPhone: receiverPhone,
                     isVideoCall: isVideoCall
@@ -282,10 +285,12 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                              ?? (userInfo["incoming"] as? String)
                              ?? receiverId
 
-                // Resolve caller name from locally saved contacts
+                // Resolve caller name/photo/phone from locally saved contacts
                 let savedContactBg = RecentCallContactStore.shared.getContact(for: callerUidBg)
                 let callerName = (savedContactBg != nil && !savedContactBg!.fullName.isEmpty) ? savedContactBg!.fullName : payloadNameBg
                 let callerPhoto = (savedContactBg != nil && !savedContactBg!.photo.isEmpty) ? savedContactBg!.photo : payloadPhotoBg
+                let payloadSenderPhoneBg = (userInfo["senderPhone"] as? String) ?? ""
+                let callerPhoneBg = (savedContactBg != nil && !savedContactBg!.mobileNo.isEmpty) ? savedContactBg!.mobileNo : payloadSenderPhoneBg
                 
                 NSLog("📞 [NotificationDelegate] Call data: caller='\(callerName)', room='\(roomId)'")
                 
@@ -296,6 +301,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                         callerPhoto: callerPhoto,
                         roomId: roomId,
                         callerUid: callerUidBg,
+                        callerPhone: callerPhoneBg,
                         receiverId: receiverId,
                         receiverPhone: receiverPhone,
                         isVideoCall: isVideoCall

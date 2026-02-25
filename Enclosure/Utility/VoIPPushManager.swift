@@ -203,15 +203,18 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         let receiverId = (userInfo["receiverId"] as? String) ?? ""
         let receiverPhone = (userInfo["phone"] as? String) ?? ""
         let bodyKey = (userInfo["bodyKey"] as? String) ?? ""
+        let payloadSenderPhone = (userInfo["senderPhone"] as? String) ?? ""
         // Caller's UID (the person calling us)
         let callerUid = (userInfo["uid"] as? String)
                      ?? (userInfo["incoming"] as? String)
                      ?? receiverId
         
-        // Resolve caller name from locally saved contacts (shows name user saved, not sender's profile name)
+        // Resolve caller name/photo/phone from locally saved contacts
         let savedContact = RecentCallContactStore.shared.getContact(for: callerUid)
         let callerName = (savedContact != nil && !savedContact!.fullName.isEmpty) ? savedContact!.fullName : payloadName
         let callerPhoto = (savedContact != nil && !savedContact!.photo.isEmpty) ? savedContact!.photo : payloadPhoto
+        // Caller's phone number for CXHandle — native Phone app uses this to match iOS Contacts
+        let callerPhone = (savedContact != nil && !savedContact!.mobileNo.isEmpty) ? savedContact!.mobileNo : payloadSenderPhone
         
         CallLogger.log("Caller: \(callerName), Room: \(roomId), BodyKey: \(bodyKey)", category: .voip)
         NSLog("📞 [VoIP] Extracted Data:")
@@ -273,7 +276,7 @@ extension VoIPPushManager: PKPushRegistryDelegate {
             fToken: "",
             voipToken: "",
             deviceType: "",
-            mobileNo: "",
+            mobileNo: callerPhone,
             isVideoCall: isVideoCall
         )
 
@@ -315,6 +318,7 @@ extension VoIPPushManager: PKPushRegistryDelegate {
             callerPhoto: callerPhoto,
             roomId: roomId,
             callerUid: callerUid,
+            callerPhone: callerPhone,
             receiverId: receiverId,
             receiverPhone: receiverPhone,
             isVideoCall: isVideoCall

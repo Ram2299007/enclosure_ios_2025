@@ -830,6 +830,7 @@ class MessageUploadService {
         let myUid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         let myName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
         let myPhoto = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
+        let myPhone = UserDefaults.standard.string(forKey: Constant.PHONE_NUMBERKEY) ?? ""
         
         // Get VoIP token for iOS devices
         let trimmedVoipToken = voipToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -861,6 +862,7 @@ class MessageUploadService {
                 senderUid: myUid,
                 senderName: myName,
                 senderPhoto: myPhoto,
+                senderPhone: myPhone,
                 voipToken: trimmedVoipToken  // 🆕 Pass VoIP token
             )
         }
@@ -877,6 +879,7 @@ class MessageUploadService {
         senderUid: String,
         senderName: String,
         senderPhoto: String,
+        senderPhone: String = "",
         voipToken: String? = nil  // 🆕 VoIP token for iOS CallKit
     ) {
         // FCM endpoint - direct to FCM (matching Android)
@@ -939,8 +942,10 @@ class MessageUploadService {
             // Send VoIP Push directly to APNs
             sendVoIPPushToAPNs(
                 voipToken: actualVoipToken,  // ✅ Use actual VoIP token from contact/call log
+                senderUid: senderUid,
                 senderName: senderName,
                 senderPhoto: senderPhoto,
+                senderPhone: senderPhone,
                 roomId: roomId,
                 receiverId: receiverId,
                 receiverPhone: receiverPhone,
@@ -1017,8 +1022,10 @@ class MessageUploadService {
     // MARK: - Send VoIP Push to APNs for Instant CallKit
     private func sendVoIPPushToAPNs(
         voipToken: String,
+        senderUid: String = "",
         senderName: String,
         senderPhoto: String,
+        senderPhone: String = "",
         roomId: String,
         receiverId: String,
         receiverPhone: String,
@@ -1048,7 +1055,10 @@ class MessageUploadService {
             "receiverId": receiverId,
             "phone": receiverPhone,
             "bodyKey": bodyKey,
-            "user_nameKey": senderName
+            "user_nameKey": senderName,
+            "uid": senderUid,
+            "incoming": senderUid,
+            "senderPhone": senderPhone
         ]
         
         print("📞 [VOIP] Payload: \(voipPayload)")
@@ -1289,6 +1299,7 @@ WD1jSDfoH82QVsoiO1pQqtcfyWfrvUOUSCieWt+BOVLDDsLFLL1VTz5u3ZQ9oHbP
         let myUid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         let myName = UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
         let myPhoto = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
+        let myPhone = UserDefaults.standard.string(forKey: Constant.PHONE_NUMBERKEY) ?? ""
         
         // Get VoIP token for iOS devices
         let trimmedVoipToken = voipToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -1320,6 +1331,7 @@ WD1jSDfoH82QVsoiO1pQqtcfyWfrvUOUSCieWt+BOVLDDsLFLL1VTz5u3ZQ9oHbP
                 senderUid: myUid,
                 senderName: myName,
                 senderPhoto: myPhoto,
+                senderPhone: myPhone,
                 voipToken: trimmedVoipToken  // 🆕 Pass VoIP token
             )
         }
@@ -1336,6 +1348,7 @@ WD1jSDfoH82QVsoiO1pQqtcfyWfrvUOUSCieWt+BOVLDDsLFLL1VTz5u3ZQ9oHbP
         senderUid: String,
         senderName: String,
         senderPhoto: String,
+        senderPhone: String = "",
         voipToken: String? = nil  // 🆕 VoIP token for iOS CallKit
     ) {
         // FCM endpoint - direct to FCM (matching Android)
@@ -1398,8 +1411,10 @@ WD1jSDfoH82QVsoiO1pQqtcfyWfrvUOUSCieWt+BOVLDDsLFLL1VTz5u3ZQ9oHbP
             // Send VoIP Push directly to APNs
             sendVoIPPushToAPNs(
                 voipToken: actualVoipToken,  // ✅ Use actual VoIP token from contact/call log
+                senderUid: senderUid,
                 senderName: senderName,
                 senderPhoto: senderPhoto,
+                senderPhone: senderPhone,
                 roomId: roomId,
                 receiverId: receiverId,
                 receiverPhone: receiverPhone,
