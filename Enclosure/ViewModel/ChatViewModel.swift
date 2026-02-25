@@ -130,6 +130,19 @@ class ChatViewModel: ObservableObject {
                     print("🔵 [ChatViewModel] ===== END FCM TOKENS =====")
                     
                     self.cacheManager.cacheChats(self.chatList)
+                    // Save to RecentCallContactStore (App Group) so NSE can
+                    // look up phone numbers for local iOS Contacts name resolution
+                    for contact in self.chatList {
+                        RecentCallContactStore.shared.saveFromOutgoingCall(
+                            friendId: contact.uid,
+                            fullName: contact.fullName,
+                            photo: contact.photo,
+                            fToken: contact.fToken,
+                            voipToken: "",
+                            deviceType: contact.deviceType,
+                            mobileNo: contact.mobileNo
+                        )
+                    }
                     print("🔵 [ChatViewModel] Contacts cached to SQLite database")
                     
                     // Optionally refresh device_type from get_profile only when value is "1" or "2" (same format as get_user_active_chat_list)

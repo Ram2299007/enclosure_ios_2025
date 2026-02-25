@@ -2,6 +2,7 @@ import Foundation
 import UserNotifications
 import UIKit
 import Intents
+import Contacts
 import os
 
 /// Notification Service Extension for Communication Notifications
@@ -116,6 +117,7 @@ final class NotificationService: UNNotificationServiceExtension {
         // Resolve sender name from locally saved contacts (App Group shared storage)
         // Shows name the user saved in their contacts, not the sender's profile name
         var senderName = payloadSenderName
+        var senderPhone = ""
         if !senderUid.isEmpty, let savedContact = lookupContact(for: senderUid) {
             if !savedContact.fullName.isEmpty {
                 senderName = savedContact.fullName
@@ -123,17 +125,27 @@ final class NotificationService: UNNotificationServiceExtension {
             if !savedContact.photo.isEmpty && photoUrlString.isEmpty {
                 photoUrlString = savedContact.photo
             }
+            if let phone = savedContact.mobileNo, !phone.isEmpty {
+                senderPhone = phone
+            }
+        }
+
+        // Look up local contact name from iOS Contacts by phone number (like WhatsApp)
+        if !senderPhone.isEmpty, let localName = resolveLocalContactName(for: senderPhone) {
+            NSLog("📇 [NotificationService] Local contact name: \(localName) (phone: \(senderPhone))")
+            senderName = localName
         }
 
         NSLog("🔔 [NotificationService] Preparing Communication Notification:")
         NSLog("   - senderName: \(senderName) (payload: \(payloadSenderName))")
         NSLog("   - senderUid: \(senderUid)")
+        NSLog("   - senderPhone: \(senderPhone.isEmpty ? "MISSING" : senderPhone)")
         NSLog("   - message: \(message)")
         NSLog("   - photoUrl: \(photoUrlString.isEmpty ? "MISSING" : photoUrlString)")
 
         if let url = URL(string: photoUrlString), !photoUrlString.isEmpty {
-            let cachesDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-            let profileCacheDir = cachesDir.appendingPathComponent("ProfilePictures", isDirectory: true)
+            // Use shared App Group cache directory (same as main app's ProfilePictureCacheManager)
+            let profileCacheDir = sharedProfilePicCacheDir()
             let cachePath = profileCacheDir.appendingPathComponent("\(senderUid).jpg")
 
             if FileManager.default.fileExists(atPath: cachePath.path),
@@ -349,6 +361,7 @@ final class NotificationService: UNNotificationServiceExtension {
         let friendId: String
         let fullName: String
         let photo: String
+        let mobileNo: String?
     }
 
     private func lookupContact(for uid: String) -> StoredContact? {
@@ -358,6 +371,39 @@ final class NotificationService: UNNotificationServiceExtension {
         // Decode the dictionary of contacts (keyed by friendId)
         guard let dict = try? JSONDecoder().decode([String: StoredContact].self, from: data) else { return nil }
         return dict[uid]
+    }
+
+    /// Look up the local contact name from iOS Contacts by phone number (like WhatsApp).
+    /// Returns the name the user saved in their phone's address book.
+    private func resolveLocalContactName(for phoneNumber: String) -> String? {
+        let trimmed = phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard CNContactStore.authorizationStatus(for: .contacts) == .authorized else { return nil }
+        let store = CNContactStore()
+        let keysToFetch: [CNKeyDescriptor] = [
+            CNContactFormatter.descriptorForRequiredKeys(for: .fullName),
+            CNContactNicknameKey as CNKeyDescriptor
+        ]
+        do {
+            let predicate = CNContact.predicateForContacts(matching: CNPhoneNumber(stringValue: trimmed))
+            let contacts = try store.unifiedContacts(matching: predicate, keysToFetch: keysToFetch)
+            guard let contact = contacts.first else { return nil }
+            if !contact.nickname.isEmpty { return contact.nickname }
+            return CNContactFormatter.string(from: contact, style: .fullName)
+        } catch {
+            NSLog("⚠️ [NotificationService] CNContact lookup error: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// Shared App Group profile pic cache directory (same as main app's ProfilePictureCacheManager)
+    private func sharedProfilePicCacheDir() -> URL {
+        let fm = FileManager.default
+        let sharedContainer = fm.containerURL(forSecurityApplicationGroupIdentifier: "group.com.enclosure.data")
+        let baseDir = sharedContainer ?? fm.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        let dir = baseDir.appendingPathComponent("ProfilePictures", isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
     }
 
     private func stringValue(_ value: Any?) -> String {

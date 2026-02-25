@@ -295,8 +295,17 @@ final class CommunicationNotificationManager {
         let photoUrlString = data["photo"] as? String ?? ""
         let selectionCount = data["selectionCount"] as? String ?? "1"
         
-        let displayName = user_nameKey.isEmpty ? (userName.isEmpty ? "Unknown" : userName) : user_nameKey
+        var displayName = user_nameKey.isEmpty ? (userName.isEmpty ? "Unknown" : userName) : user_nameKey
         let displayMessage = Self.displayMessageForNotification(message: message, selectionCount: selectionCount)
+        
+        // Resolve local contact name from iOS Contacts (like WhatsApp)
+        if !senderUid.isEmpty {
+            let savedContact = RecentCallContactStore.shared.getContact(for: senderUid)
+            if let phone = savedContact?.mobileNo, !phone.isEmpty,
+               let localName = LocalContactResolver.shared.resolveLocalName(for: phone) {
+                displayName = localName
+            }
+        }
         
         // Load profile picture from local cache
         ProfilePictureCacheManager.shared.getCachedProfileImage(

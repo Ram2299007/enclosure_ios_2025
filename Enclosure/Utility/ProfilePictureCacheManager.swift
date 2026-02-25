@@ -19,9 +19,11 @@ final class ProfilePictureCacheManager {
     private let fileManager = FileManager.default
     
     private init() {
-        // Use caches directory for profile pictures (can be cleared by system if needed)
-        let cachesDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        cacheDirectory = cachesDir.appendingPathComponent("ProfilePictures", isDirectory: true)
+        // Use App Group shared container so both main app and Notification Service Extension
+        // can access the same cached profile pictures (fixes profile pics not showing in notifications)
+        let sharedContainer = fileManager.containerURL(forSecurityApplicationGroupIdentifier: "group.com.enclosure.data")
+        let baseDir = sharedContainer ?? fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        cacheDirectory = baseDir.appendingPathComponent("ProfilePictures", isDirectory: true)
         
         // Create directory if it doesn't exist
         try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)

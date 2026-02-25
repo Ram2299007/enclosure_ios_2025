@@ -250,6 +250,12 @@ extension VoIPPushManager: PKPushRegistryDelegate {
             }
         }
         
+        // Look up local contact name from iOS Contacts by phone number (like WhatsApp)
+        if !callerPhone.isEmpty, let localName = LocalContactResolver.shared.resolveLocalName(for: callerPhone) {
+            NSLog("📇 [VoIP] Local contact name: \(localName) (phone: \(callerPhone))")
+            callerName = localName
+        }
+        
         CallLogger.log("Caller: \(callerName), Room: \(roomId), BodyKey: \(bodyKey)", category: .voip)
         NSLog("📞 [VoIP] Extracted Data:")
         NSLog("📞 [VoIP]   Caller UID: \(callerUid) (missing=\(callerUidMissing))")

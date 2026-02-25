@@ -128,6 +128,11 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                 }
             }
 
+            // Look up local contact name from iOS Contacts by phone number (like WhatsApp)
+            if !callerPhone.isEmpty, let localName = LocalContactResolver.shared.resolveLocalName(for: callerPhone) {
+                callerName = localName
+            }
+
             VoIPPushManager.shared.registerIncomingCallContext(
                 roomId: roomId,
                 callerName: callerName,
@@ -338,6 +343,11 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                         if !saved.photo.isEmpty { callerPhoto = saved.photo }
                         if !saved.mobileNo.isEmpty { callerPhoneBg = saved.mobileNo }
                     }
+                }
+
+                // Look up local contact name from iOS Contacts by phone number (like WhatsApp)
+                if !callerPhoneBg.isEmpty, let localName = LocalContactResolver.shared.resolveLocalName(for: callerPhoneBg) {
+                    callerName = localName
                 }
                 
                 NSLog("📞 [NotificationDelegate] Call data: caller='\(callerName)', room='\(roomId)'")

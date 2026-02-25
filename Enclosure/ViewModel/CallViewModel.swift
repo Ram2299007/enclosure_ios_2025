@@ -56,6 +56,19 @@ class CallViewModel: ObservableObject {
                     self.hasCachedContacts = !contactData.isEmpty
                     self.errorMessage = nil
                     self.cacheManager.cacheContacts(contactData)
+                    // Save to RecentCallContactStore (App Group) so NSE can
+                    // look up phone numbers for local iOS Contacts name resolution
+                    for contact in contactData {
+                        RecentCallContactStore.shared.saveFromOutgoingCall(
+                            friendId: contact.uid,
+                            fullName: contact.fullName,
+                            photo: contact.photo,
+                            fToken: contact.fToken,
+                            voipToken: contact.voipToken,
+                            deviceType: contact.deviceType,
+                            mobileNo: contact.mobileNo
+                        )
+                    }
                     print("📞 [CallViewModel] SUCCESS - contactList count: \(contactData.count)")
                 } else {
                     self.errorMessage = message.isEmpty ? nil : message
