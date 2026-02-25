@@ -2827,9 +2827,14 @@ struct ChattingScreen: View {
             return
         }
         
-        // If we already have messages (cached data), don't show loader (matching Android)
+        // If we already have messages (cached data), don't show loader but ensure listener is attached
         if !messages.isEmpty {
             print("📱 [fetchMessages] Messages already available, skipping network fetch")
+            // Re-attach realtime listener if it was removed (e.g. after navigating back)
+            if !fullListenerAttached {
+                print("📱 [fetchMessages] ⚠️ Listener not attached, re-attaching for realtime updates")
+                attachFullListener(receiverRoom: receiverRoom)
+            }
             listener?()
             return
         }
@@ -7100,6 +7105,25 @@ struct MessageFramePreferenceKey: PreferenceKey {
     }
 }
 
+// MARK: - Global Frame Capture for Long Press Position
+// Uses a static dictionary to reliably capture message frame positions.
+// PreferenceKey approach fails in LazyVStack on real devices.
+// This captures frame via .onAppear in GeometryReader background.
+private struct MessageFrameCapture {
+    static var frames: [String: CGRect] = [:]
+    
+    static func update(messageId: String, frame: CGRect) {
+        frames[messageId] = frame
+    }
+    
+    static func getCenter(messageId: String) -> CGPoint {
+        guard let frame = frames[messageId], frame != .zero else {
+            return .zero
+        }
+        return CGPoint(x: frame.midX, y: frame.midY)
+    }
+}
+
 struct FirstVisibleItemPreferenceKey: PreferenceKey {
     static var defaultValue: Int? = nil
     static func reduce(value: inout Int?, nextValue: () -> Int?) {
@@ -7385,14 +7409,13 @@ struct DynamicImageView: View {
                         ZStack {
                             // iOS glassmorphism background (iOS 26 glass style)
                             Circle()
-                                .fill(.ultraThinMaterial) // Glass effect
+                                .fill(Color.black.opacity(0.55)) // Professional dark bg - visible in both modes
                                 .frame(width: 35, height: 35)
                                 .overlay(
-                                    // Subtle border for glass effect
                                     Circle()
-                                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                        .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                                 )
-                                .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                                .shadow(color: Color.black.opacity(0.25), radius: 6, x: 0, y: 2)
                             
                             // Download icon (using Android downloaddown.png icon)
                             Image("downloaddown")
@@ -7410,26 +7433,8 @@ struct DynamicImageView: View {
                 
                 // Download progress overlay (matching Android downloadPercentageImageSender)
                 // Centered on image (matching Android layout_centerInParent="true")
-                // Using iOS glassmorphism effect (iOS 26 glass style)
                 if showDownloadProgress && isDownloading {
-                    ZStack {
-                        // iOS glassmorphism background (iOS 26 glass style)
-                        Circle()
-                            .fill(.ultraThinMaterial) // Glass effect
-                            .frame(width: 60, height: 60)
-                            .overlay(
-                                // Subtle border for glass effect
-                                Circle()
-                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                            )
-                            .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
-                        
-                        // Progress percentage text (matching Android downloadPercentageImageSender)
-                        Text("\(Int(downloadProgress))%")
-                            .font(.custom("Inter18pt-Bold", size: 15))
-                            .foregroundColor(.white)
-                            .shadow(color: Color.black.opacity(0.3), radius: 2, x: 0, y: 1)
-                    }
+                    LiquidGlassProgressView(progress: downloadProgress)
                 }
             }
             .frame(width: imageSize.width, height: imageSize.height) // Dynamic size based on image dimensions
@@ -7711,11 +7716,11 @@ struct ReceiverDynamicImageView: View {
                         ZStack {
                             // iOS glassmorphism background (iOS 26 glass style)
                             Circle()
-                                .fill(.ultraThinMaterial)
+                                .fill(Color.black.opacity(0.55))
                                 .frame(width: 35, height: 35)
                                 .overlay(
                                     Circle()
-                                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                        .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                                 )
                                 .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
                             
@@ -7735,23 +7740,7 @@ struct ReceiverDynamicImageView: View {
                 
                 // Download progress overlay (matching Android downloadPercentageImage)
                 if showDownloadProgress && isDownloading {
-                    ZStack {
-                        // iOS glassmorphism background
-                        Circle()
-                            .fill(.ultraThinMaterial)
-                            .frame(width: 60, height: 60)
-                            .overlay(
-                                Circle()
-                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                            )
-                            .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
-                        
-                        // Progress percentage text
-                        Text("\(Int(downloadProgress))%")
-                            .font(.custom("Inter18pt-Bold", size: 15))
-                            .foregroundColor(.white)
-                            .shadow(color: Color.black.opacity(0.3), radius: 2, x: 0, y: 1)
-                    }
+                    LiquidGlassProgressView(progress: downloadProgress)
                 }
             }
             .frame(width: imageSize.width, height: imageSize.height)
@@ -8180,11 +8169,11 @@ struct SenderVideoView: View {
                 }) {
                     ZStack {
                         Circle()
-                            .fill(.ultraThinMaterial)
+                            .fill(Color.black.opacity(0.55))
                             .frame(width: 35, height: 35)
                             .overlay(
                                 Circle()
-                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                             )
                             .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
                         
@@ -8202,20 +8191,7 @@ struct SenderVideoView: View {
             
             // Download percentage (matching Android downloadPercentageVideoSender TextView)
             if showDownloadProgress && isDownloading {
-                ZStack {
-                    Circle()
-                        .fill(.ultraThinMaterial)
-                        .frame(width: 60, height: 60)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                        )
-                        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
-                    
-                    Text("\(Int(downloadProgress))%")
-                        .font(.custom("Inter18pt-Bold", size: 15))
-                        .foregroundColor(.white)
-                }
+                LiquidGlassProgressView(progress: downloadProgress)
             }
             
             // Pause button (matching Android pauseButtonVideoSender ImageButton)
@@ -8233,11 +8209,11 @@ struct SenderVideoView: View {
                 }) {
                     ZStack {
                         Circle()
-                            .fill(.ultraThinMaterial)
+                            .fill(Color.black.opacity(0.55))
                             .frame(width: 30, height: 30)
                             .overlay(
                                 Circle()
-                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                             )
                         
                         Image(systemName: "pause.fill")
@@ -8643,11 +8619,11 @@ struct ReceiverVideoView: View {
                 }) {
                     ZStack {
                         Circle()
-                            .fill(.ultraThinMaterial)
+                            .fill(Color.black.opacity(0.55))
                             .frame(width: 35, height: 35)
                             .overlay(
                                 Circle()
-                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                             )
                             .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
                         
@@ -8663,20 +8639,7 @@ struct ReceiverVideoView: View {
             
             // Download percentage (matching Android downloadPercentageVideo TextView)
             if showDownloadProgress && isDownloading {
-                ZStack {
-                    Circle()
-                        .fill(.ultraThinMaterial)
-                        .frame(width: 60, height: 60)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                        )
-                        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
-                    
-                    Text("\(Int(downloadProgress))%")
-                        .font(.custom("Inter18pt-Bold", size: 15))
-                        .foregroundColor(.white)
-                }
+                LiquidGlassProgressView(progress: downloadProgress)
             }
             
             // Pause button (matching Android pauseButtonVideo ImageButton)
@@ -8695,11 +8658,11 @@ struct ReceiverVideoView: View {
                 }) {
                     ZStack {
                         Circle()
-                            .fill(.ultraThinMaterial)
+                            .fill(Color.black.opacity(0.55))
                             .frame(width: 30, height: 30)
                             .overlay(
                                 Circle()
-                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                             )
                         
                         Image(systemName: "pause.fill")
@@ -8799,6 +8762,7 @@ struct SenderDocumentView: View {
     @State private var showPdfPreview: Bool = false
     @State private var pdfPreviewImage: UIImage? = nil
     @State private var fileCheckTimer: Timer? = nil
+    @State private var progressTimer: Timer? = nil
     @State private var showDocumentPreview: Bool = false
     @State private var documentPreviewURL: URL? = nil
     // Audio player state
@@ -9102,9 +9066,9 @@ struct SenderDocumentView: View {
                 .padding(.bottom, 2) // paddingBottom="3dp" - reduced to minimize vertical space
                 .fixedSize(horizontal: false, vertical: true) // layout_height="wrap_content" - minimize vertical space
                 .background(
-                    // Background matching doc_sender_bg drawable: radius="20dp"
+                    // Background matching doc_sender_bg drawable: radius="20dp", solid color="#D6D8DE"
                     RoundedRectangle(cornerRadius: 20) // android:radius="20dp"
-                        .fill(Color(hex: "#e7ebf4")) // Solid color (opacity applied to container)
+                        .fill(Color(hex: "#D6D8DE")) // Matching Android doc_sender_bg
                 )
                 .opacity(0.8) // alpha="0.8" on entire container (matching Android alpha on LinearLayout)
                 .padding(.horizontal, 3) // layout_marginHorizontal="3dp" (outside background, between icon and info)
@@ -9126,11 +9090,11 @@ struct SenderDocumentView: View {
                                 ZStack {
                                     // iOS glassmorphism background (matching SelectionBunchLayout)
                                     Circle()
-                                        .fill(.ultraThinMaterial)
+                                        .fill(Color.black.opacity(0.55))
                                         .frame(width: 35, height: 35)
                                         .overlay(
                                             Circle()
-                                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                                .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                                         )
                                         .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
                                     
@@ -9151,23 +9115,9 @@ struct SenderDocumentView: View {
                                 .frame(width: 40, height: 4)
                         }
                         
-                        // Download percentage - matching SelectionBunchLayout glassmorphism style
+                        // Download percentage - liquid glass style
                         if showDownloadProgress && isDownloading {
-                            ZStack {
-                                // iOS glassmorphism background (matching SelectionBunchLayout)
-                                Circle()
-                                    .fill(.ultraThinMaterial)
-                                    .frame(width: 60, height: 60)
-                                    .overlay(
-                                        Circle()
-                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                                    )
-                                    .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
-                                
-                                Text("\(Int(downloadProgress))%")
-                                    .font(.custom("Inter18pt-Bold", size: 15))
-                                    .foregroundColor(.white)
-                            }
+                            LiquidGlassProgressView(progress: downloadProgress, size: 55)
                         }
                     }
                     .frame(width: 60, height: 60)
@@ -9221,6 +9171,12 @@ struct SenderDocumentView: View {
             // Check if local file exists and we have a URL to download
             checkLocalFileAndUpdateUI()
             
+            // Sync download state and start progress timer
+            if !fileName.isEmpty {
+                syncDownloadState(fileName: fileName)
+                startProgressTimer(fileName: fileName)
+            }
+            
             // Start periodic check for local file (in case file is being saved asynchronously)
             startFileCheckTimer()
             
@@ -9230,9 +9186,58 @@ struct SenderDocumentView: View {
             }
         }
         .onDisappear {
-            // Stop timer when view disappears
+            // Stop timers when view disappears
             fileCheckTimer?.invalidate()
             fileCheckTimer = nil
+            progressTimer?.invalidate()
+            progressTimer = nil
+        }
+    }
+    
+    // Sync download state from BackgroundDownloadManager
+    private func syncDownloadState(fileName: String) {
+        if BackgroundDownloadManager.shared.isDownloading(fileName: fileName) {
+            isDownloading = true
+            showDownloadButton = false
+            showDownloadProgress = true
+            if let progress = BackgroundDownloadManager.shared.getProgress(fileName: fileName) {
+                downloadProgress = progress
+            }
+        } else if hasLocalFile {
+            isDownloading = false
+            showDownloadButton = false
+            showDownloadProgress = false
+        } else if !documentUrl.isEmpty {
+            isDownloading = false
+            showDownloadButton = true
+            showDownloadProgress = false
+        }
+    }
+    
+    // Start timer to periodically check download progress
+    private func startProgressTimer(fileName: String) {
+        progressTimer?.invalidate()
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            if BackgroundDownloadManager.shared.isDownloading(fileName: fileName) {
+                if let progress = BackgroundDownloadManager.shared.getProgress(fileName: fileName) {
+                    downloadProgress = progress
+                    isDownloading = true
+                    showDownloadProgress = true
+                    showDownloadButton = false
+                }
+            } else {
+                if hasLocalFile {
+                    isDownloading = false
+                    showDownloadProgress = false
+                    showDownloadButton = false
+                } else {
+                    isDownloading = false
+                    showDownloadProgress = false
+                    showDownloadButton = true
+                }
+                progressTimer?.invalidate()
+                progressTimer = nil
+            }
         }
     }
     
@@ -9424,11 +9429,11 @@ struct SenderDocumentView: View {
                 }) {
                     ZStack {
                         Circle()
-                            .fill(.ultraThinMaterial)
+                            .fill(Color.black.opacity(0.55))
                             .frame(width: 35, height: 35)
                             .overlay(
                                 Circle()
-                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                             )
                             .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
                         
@@ -9451,20 +9456,7 @@ struct SenderDocumentView: View {
             
             // Download percentage - matching Android downloadPercentageAudioSender
             if showDownloadProgress && isDownloading {
-                ZStack {
-                    Circle()
-                        .fill(.ultraThinMaterial)
-                        .frame(width: 60, height: 60)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                        )
-                        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
-                    
-                    Text("\(Int(downloadProgress))%")
-                        .font(.custom("Inter18pt-Bold", size: 15))
-                        .foregroundColor(.white)
-                }
+                LiquidGlassProgressView(progress: downloadProgress, size: 55)
             }
         }
         .frame(width: 60, height: 60)
@@ -9779,6 +9771,7 @@ struct ReceiverDocumentView: View {
     @State private var showProgressBar: Bool = false
     @State private var showPdfPreview: Bool = false
     @State private var pdfPreviewImage: UIImage? = nil
+    @State private var progressTimer: Timer? = nil
     @State private var showDocumentPreview: Bool = false
     @State private var documentPreviewURL: URL? = nil
     // Audio player state
@@ -9994,11 +9987,11 @@ struct ReceiverDocumentView: View {
                                 ZStack {
                                     // iOS glassmorphism background (matching SelectionBunchLayout)
                                     Circle()
-                                        .fill(.ultraThinMaterial)
+                                        .fill(Color.black.opacity(0.55))
                                         .frame(width: 35, height: 35)
                                         .overlay(
                                             Circle()
-                                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                                .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                                         )
                                         .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
                                     
@@ -10019,23 +10012,9 @@ struct ReceiverDocumentView: View {
                                 .frame(width: 40, height: 4)
                         }
                         
-                        // Download percentage - matching SelectionBunchLayout glassmorphism style
+                        // Download percentage - liquid glass style
                         if showDownloadProgress && isDownloading {
-                            ZStack {
-                                // iOS glassmorphism background (matching SelectionBunchLayout)
-                                Circle()
-                                    .fill(.ultraThinMaterial)
-                                    .frame(width: 60, height: 60)
-                                    .overlay(
-                                        Circle()
-                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                                    )
-                                    .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
-                                
-                                Text("\(Int(downloadProgress))%")
-                                    .font(.custom("Inter18pt-Bold", size: 15))
-                                    .foregroundColor(.white)
-                            }
+                            LiquidGlassProgressView(progress: downloadProgress, size: 55)
                         }
                         
                     }
@@ -10177,9 +10156,66 @@ struct ReceiverDocumentView: View {
                 showDownloadButton = true
             }
             
+            // Sync download state and start progress timer
+            if !fileName.isEmpty {
+                syncDownloadState(fileName: fileName)
+                startProgressTimer(fileName: fileName)
+            }
+            
             // Load PDF preview if PDF
             if isPdf {
                 loadPdfPreview()
+            }
+        }
+        .onDisappear {
+            progressTimer?.invalidate()
+            progressTimer = nil
+        }
+    }
+    
+    // Sync download state from BackgroundDownloadManager
+    private func syncDownloadState(fileName: String) {
+        if BackgroundDownloadManager.shared.isDownloading(fileName: fileName) {
+            isDownloading = true
+            showDownloadButton = false
+            showDownloadProgress = true
+            if let progress = BackgroundDownloadManager.shared.getProgress(fileName: fileName) {
+                downloadProgress = progress
+            }
+        } else if hasLocalFile {
+            isDownloading = false
+            showDownloadButton = false
+            showDownloadProgress = false
+        } else if !documentUrl.isEmpty {
+            isDownloading = false
+            showDownloadButton = true
+            showDownloadProgress = false
+        }
+    }
+    
+    // Start timer to periodically check download progress
+    private func startProgressTimer(fileName: String) {
+        progressTimer?.invalidate()
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            if BackgroundDownloadManager.shared.isDownloading(fileName: fileName) {
+                if let progress = BackgroundDownloadManager.shared.getProgress(fileName: fileName) {
+                    downloadProgress = progress
+                    isDownloading = true
+                    showDownloadProgress = true
+                    showDownloadButton = false
+                }
+            } else {
+                if hasLocalFile {
+                    isDownloading = false
+                    showDownloadProgress = false
+                    showDownloadButton = false
+                } else {
+                    isDownloading = false
+                    showDownloadProgress = false
+                    showDownloadButton = true
+                }
+                progressTimer?.invalidate()
+                progressTimer = nil
             }
         }
     }
@@ -10270,11 +10306,11 @@ struct ReceiverDocumentView: View {
                 }) {
                     ZStack {
                         Circle()
-                            .fill(.ultraThinMaterial)
+                            .fill(Color.black.opacity(0.55))
                             .frame(width: 35, height: 35)
                             .overlay(
                                 Circle()
-                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                             )
                             .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
                         
@@ -10297,20 +10333,7 @@ struct ReceiverDocumentView: View {
             
             // Download percentage - matching Android downloadPercentageAudioReceiver
             if showDownloadProgress && isDownloading {
-                ZStack {
-                    Circle()
-                        .fill(.ultraThinMaterial)
-                        .frame(width: 60, height: 60)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                        )
-                        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
-                    
-                    Text("\(Int(downloadProgress))%")
-                        .font(.custom("Inter18pt-Bold", size: 15))
-                        .foregroundColor(.white)
-                }
+                LiquidGlassProgressView(progress: downloadProgress, size: 55)
             }
         }
         .frame(width: 60, height: 60)
@@ -11281,11 +11304,11 @@ struct SenderImageBunchView: View {
                 }) {
                     ZStack {
                         Circle()
-                            .fill(.ultraThinMaterial)
+                            .fill(Color.black.opacity(0.55))
                             .frame(width: 35, height: 35)
                             .overlay(
                                 Circle()
-                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                             )
                             .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
                         
@@ -11302,20 +11325,7 @@ struct SenderImageBunchView: View {
             // Download progress overlay (matching Android downloadPercentageImageSenderBunch)
             // Centered on the bunch layout (matching Android layout_centerInParent="true")
             if showDownloadProgress && isDownloading {
-                ZStack {
-                    Circle()
-                        .fill(.ultraThinMaterial)
-                        .frame(width: 60, height: 60)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                        )
-                        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
-                    
-                    Text("\(Int(downloadProgress))%")
-                        .font(.custom("Inter18pt-Bold", size: 15))
-                        .foregroundColor(.white)
-                }
+                LiquidGlassProgressView(progress: downloadProgress)
             }
         }
         .onTapGesture {
@@ -11598,11 +11608,11 @@ struct ReceiverImageBunchView: View {
                 }) {
                     ZStack {
                         Circle()
-                            .fill(.ultraThinMaterial)
+                            .fill(Color.black.opacity(0.55))
                             .frame(width: 35, height: 35)
                             .overlay(
                                 Circle()
-                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                             )
                             .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
                         
@@ -11619,20 +11629,7 @@ struct ReceiverImageBunchView: View {
             // Download progress overlay (matching Android downloadPercentageImageSenderBunch)
             // Centered on the bunch layout (matching Android layout_centerInParent="true")
             if showDownloadProgress && isDownloading {
-                ZStack {
-                    Circle()
-                        .fill(.ultraThinMaterial)
-                        .frame(width: 60, height: 60)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                        )
-                        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
-                    
-                    Text("\(Int(downloadProgress))%")
-                        .font(.custom("Inter18pt-Bold", size: 15))
-                        .foregroundColor(.white)
-                }
+                LiquidGlassProgressView(progress: downloadProgress)
             }
         }
         .onTapGesture {
@@ -12365,7 +12362,6 @@ struct MessageBubbleView: View {
     let isLastMessage: Bool
     @GestureState private var dragTranslation: CGSize = .zero
     @State private var isDragging: Bool = false
-    @State private var viewFrame: CGRect = .zero
     @State private var receiverProgressCompleted: Bool = false
     private let halfSwipeThreshold: CGFloat = 60
     @Environment(\.colorScheme) private var colorScheme
@@ -12502,15 +12498,6 @@ struct MessageBubbleView: View {
         .contentShape(Rectangle())
         .offset(x: isDragging && dragTranslation.width > 0 ? min(dragTranslation.width, halfSwipeThreshold) : 0)
         .overlay(swipeFeedbackOverlay)
-        .background(
-            GeometryReader { geometry in
-                Color.clear
-                    .preference(key: MessageFramePreferenceKey.self, value: geometry.frame(in: .global))
-            }
-        )
-        .onPreferenceChange(MessageFramePreferenceKey.self) { frame in
-            viewFrame = frame // Update synchronously to avoid delays
-        }
         .onChange(of: message.id) { _ in
             receiverProgressCompleted = false
         }
@@ -12524,15 +12511,25 @@ struct MessageBubbleView: View {
                 receiverProgressCompleted = false
             }
         }
-        // Use onLongPressGesture which allows scrolling to take priority
-        .onLongPressGesture(minimumDuration: 0.5, maximumDistance: 20) {
-            // Prefer swipe-to-reply over long press
-            if isDragging || dragTranslation != .zero {
-                return
+        // Continuously capture message frame during scroll via GeometryReader
+        // (onAppear only fires once — stale after scrolling; PreferenceKey fails on real devices)
+        // Updates static dictionary (not @State) so no re-render loops
+        .background(
+            GeometryReader { proxy in
+                let frame = proxy.frame(in: .global)
+                let _ = DispatchQueue.main.async {
+                    MessageFrameCapture.update(messageId: message.id, frame: frame)
+                }
+                return Color.clear
             }
-            // Long press detected - trigger callback with exact touch location
+        )
+        // Native SwiftUI long press — doesn't block taps on buttons/images
+        .onLongPressGesture(minimumDuration: 0.5, maximumDistance: 20) {
+            if isDragging || dragTranslation != .zero { return }
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            onLongPress?(message, CGPoint(x: viewFrame.midX, y: viewFrame.midY))
+            let position = MessageFrameCapture.getCenter(messageId: message.id)
+            print("📍 [MessageBubble] Long press - frame center: \(position), messageId: \(message.id)")
+            onLongPress?(message, position)
         }
         // Only apply swipe gesture if not in multi-select mode to avoid gesture conflicts
         // Use highPriorityGesture for swipe so it doesn't interfere with ScrollView
@@ -13826,9 +13823,9 @@ struct MessageBubbleView: View {
     // Shows animated horizontal progress bar when receiverLoader == 0 (pending message)
     private func progressIndicatorView(isSender: Bool) -> some View {
         let themeColor = Color(hex: Constant.themeColor)
-        // Sender: use themeColor for both track and indicator; Receiver: use gray (no theme color)
-        let indicatorColor = isSender ? themeColor : Color("gray3")
-        let trackColor = isSender ? themeColor : Color("gray3")
+        // Both sender and receiver use themeColor for progress indicator line (matching ThemeColorKey)
+        let indicatorColor = themeColor
+        let trackColor = themeColor
         let cornerRadius: CGFloat = isSender ? 20 : 10
         
         // Show pending progress for sender, and for receiver only on last message
@@ -13868,8 +13865,8 @@ struct MessageBubbleView: View {
                 )
             }
             // Show animated horizontal progress bar for pending messages (matching Android viewnew LinearProgressIndicator)
-            let pendingIndicatorColor = isReceiverPending ? Color("gray3") : themeColor
-            let pendingTrackColor = isReceiverPending ? Color("gray3").opacity(0.3) : themeColor.opacity(0.3)
+            let pendingIndicatorColor = themeColor
+            let pendingTrackColor = themeColor.opacity(0.3)
             return AnyView(
                 AnimatedProgressBarView(
                     indicatorColor: pendingIndicatorColor,
@@ -14939,11 +14936,11 @@ struct SenderContactView: View {
                             ZStack {
                                 // iOS glassmorphism background (matching SelectionBunchLayout)
                                 Circle()
-                                    .fill(.ultraThinMaterial)
+                                    .fill(Color.black.opacity(0.55))
                                     .frame(width: 35, height: 35)
                                     .overlay(
                                         Circle()
-                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                            .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                                     )
                                     .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
                                 
@@ -14960,18 +14957,9 @@ struct SenderContactView: View {
                     
                     // Circular gradient icon - matching Android contact_gradient_cirlce
                     ZStack {
-                        // Gradient circle background
+                        // Solid circle background - matching Android #D6D8DE
                         Circle()
-                            .fill(
-                                LinearGradient(
-                                    gradient: Gradient(colors: [
-                                        Color(hex: "#E8E8E8"),
-                                        Color(hex: "#D0D0D0")
-                                    ]),
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
+                            .fill(Color(hex: "#D6D8DE"))
                             .frame(width: 45, height: 45)
                         
                         // First letter text - matching Android firstText
@@ -15020,7 +15008,11 @@ struct SenderContactView: View {
                     .padding(.vertical, 2)
                     .background(
                         RoundedRectangle(cornerRadius: 20) // Android save_bg_for_all uses 20dp radius
-                            .fill(Color(hex: "#E8E8E8"))
+                            .fill(Color(hex: "#D6D8DE"))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .stroke(Color(hex: "#D6D8DE"), lineWidth: 0.8) // Android: stroke width="0.8dp" color="#D6D8DE"
+                            )
                     )
                 }
                 .padding(.top, 10)
@@ -15277,11 +15269,11 @@ struct ReceiverContactView: View {
                             ZStack {
                                 // iOS glassmorphism background (matching SelectionBunchLayout)
                                 Circle()
-                                    .fill(.ultraThinMaterial)
+                                    .fill(Color.black.opacity(0.55))
                                     .frame(width: 35, height: 35)
                                     .overlay(
                                         Circle()
-                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                            .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                                     )
                                     .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
                                 
@@ -15366,10 +15358,10 @@ struct ReceiverContactView: View {
                 .padding(.horizontal, 2) // Android: padding="2dp" on LinearLayout (horizontal)
                 .background(
                     RoundedRectangle(cornerRadius: 20) // Android: corners radius="20dp"
-                        .fill(Color.black) // Android: solid color="black"
+                        .fill(colorScheme == .dark ? Color.white.opacity(0.12) : Color.black) // Light: black (Android), Dark: subtle light fill for visibility
                         .overlay(
                             RoundedRectangle(cornerRadius: 20)
-                                .stroke(Color.black, lineWidth: 0.8) // Android: stroke width="0.8dp" color="black"
+                                .stroke(colorScheme == .dark ? Color.white.opacity(0.3) : Color.black, lineWidth: 0.8) // Light: black stroke, Dark: visible light stroke
                         )
                 )
                 .padding(.top, 10) // Android: layout_marginTop="10dp"
@@ -15806,6 +15798,7 @@ struct ReceiverVoiceAudioView: View {
     @State private var downloadProgress: Double = 0.0
     @State private var showDownloadProgress: Bool = false
     @State private var showMusicPlayerBottomSheet: Bool = false
+    @State private var progressTimer: Timer? = nil
     
     // Get local audios directory
     private func getLocalAudiosDirectory() -> URL {
@@ -15843,17 +15836,17 @@ struct ReceiverVoiceAudioView: View {
                 HStack(alignment: .center, spacing: 0) {
                     // Download controls - matching Android audioDownloadControlsReceiver RelativeLayout
                     // Android: layout_marginEnd="7dp"
-                    if !hasLocalFile && !isDownloading {
+                    if !hasLocalFile && !isDownloading && showDownloadButton {
                         Button(action: {
                             downloadAudio()
                         }) {
                             ZStack {
                                 Circle()
-                                    .fill(.ultraThinMaterial)
+                                    .fill(Color.black.opacity(0.55))
                                     .frame(width: 35, height: 35)
                                     .overlay(
                                         Circle()
-                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                            .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                                     )
                                     .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
                                 
@@ -15866,6 +15859,12 @@ struct ReceiverVoiceAudioView: View {
                             }
                         }
                         .padding(.trailing, 7) // Android: layout_marginEnd="7dp"
+                    }
+                    
+                    // Download progress indicator
+                    if showDownloadProgress && isDownloading {
+                        LiquidGlassProgressView(progress: downloadProgress, size: 45)
+                            .padding(.trailing, 7)
                     }
                     
                     // Play button - matching Android micePlay AppCompatImageButton
@@ -15933,9 +15932,65 @@ struct ReceiverVoiceAudioView: View {
             } else if !audioUrl.isEmpty {
                 showDownloadButton = true
             }
+            // Sync download state and start progress timer
+            let fileName = extractFileName(from: audioUrl)
+            if !fileName.isEmpty {
+                syncDownloadState(fileName: fileName)
+                startProgressTimer(fileName: fileName)
+            }
         }
         .onDisappear {
             stopAudioPlayer()
+            progressTimer?.invalidate()
+            progressTimer = nil
+        }
+    }
+    
+    // Sync download state from BackgroundDownloadManager
+    private func syncDownloadState(fileName: String) {
+        if BackgroundDownloadManager.shared.isDownloading(fileName: fileName) {
+            isDownloading = true
+            showDownloadButton = false
+            showDownloadProgress = true
+            if let progress = BackgroundDownloadManager.shared.getProgress(fileName: fileName) {
+                downloadProgress = progress
+            }
+        } else if hasLocalFile {
+            isDownloading = false
+            showDownloadButton = false
+            showDownloadProgress = false
+        } else if !audioUrl.isEmpty {
+            isDownloading = false
+            showDownloadButton = true
+            showDownloadProgress = false
+        }
+    }
+    
+    // Start timer to periodically check download progress
+    private func startProgressTimer(fileName: String) {
+        progressTimer?.invalidate()
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            if BackgroundDownloadManager.shared.isDownloading(fileName: fileName) {
+                if let progress = BackgroundDownloadManager.shared.getProgress(fileName: fileName) {
+                    downloadProgress = progress
+                    isDownloading = true
+                    showDownloadProgress = true
+                    showDownloadButton = false
+                }
+            } else {
+                checkLocalFile()
+                if hasLocalFile {
+                    isDownloading = false
+                    showDownloadProgress = false
+                    showDownloadButton = false
+                } else {
+                    isDownloading = false
+                    showDownloadProgress = false
+                    showDownloadButton = true
+                }
+                progressTimer?.invalidate()
+                progressTimer = nil
+            }
         }
     }
     
@@ -17654,41 +17709,35 @@ struct MessageLongPressDialog: View {
     @State private var showEmojiPicker: Bool = false
     @State private var emojiListenerHandle: DatabaseHandle?
     
-    // Animation state for Android-style unfold animation
-    // Initial values: sender starts at -45°, receiver at 45°, both scale from 0
-    @State private var rotationAngle: Double = 0.0 // Will be set based on isSentByMe
-    @State private var scaleValue: CGFloat = 0.0
+    // Animation state for WhatsApp-style scale animation
+    // Opens from exact touch point with smooth scale up, no rotation
+    @State private var scaleValue: CGFloat = 0.01
     @State private var opacityValue: Double = 0.0
     @State private var backdropOpacity: Double = 0.0
-    @State private var isDismissing: Bool = false // Track if we're currently dismissing
-    
-    // Presentation tuning for a softer, magical feel
-    private let presentRotation: Double = 12
-    private let dismissRotation: Double = 18
-    private let presentScale: CGFloat = 0.92
-    private let dismissScale: CGFloat = 0.86
+    @State private var isDismissing: Bool = false
     
     // Helper function for smooth dismissal
     private func dismissDialog() {
         guard !isDismissing else { return } // Prevent multiple taps
         isDismissing = true
         animateOut()
-        // Dismiss after animation completes (slightly longer to ensure smooth transition)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            isPresented = false
+        // Dismiss after animation completes
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            withAnimation(.easeOut(duration: 0.15)) {
+                isPresented = false
+            }
             isDismissing = false
         }
     }
     
     private func animateIn() {
-        rotationAngle = presentRotation
-        scaleValue = presentScale
+        scaleValue = 0.01
         opacityValue = 0.0
         backdropOpacity = 0.0
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
-                rotationAngle = 0.0
+            // WhatsApp-style: fast spring scale up from touch point
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82, blendDuration: 0)) {
                 scaleValue = 1.0
                 opacityValue = 1.0
                 backdropOpacity = 1.0
@@ -17697,9 +17746,9 @@ struct MessageLongPressDialog: View {
     }
     
     private func animateOut() {
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
-            rotationAngle = dismissRotation
-            scaleValue = dismissScale
+        // WhatsApp-style: quick scale down back to touch point
+        withAnimation(.easeOut(duration: 0.2)) {
+            scaleValue = 0.01
             opacityValue = 0.0
             backdropOpacity = 0.0
         }
@@ -17967,9 +18016,9 @@ struct MessageLongPressDialog: View {
     @ViewBuilder
     private func progressIndicatorPreviewView(isSender: Bool) -> some View {
         let themeColor = Color(hex: Constant.themeColor)
-        // Sender: use themeColor for both track and indicator (per ThemeColorKey); Receiver: asset colors
-        let indicatorColor = isSender ? themeColor : Color("line")
-        let trackColor = isSender ? themeColor : Color("line")
+        // Both sender and receiver use themeColor for progress indicator line (matching ThemeColorKey)
+        let indicatorColor = themeColor
+        let trackColor = themeColor
         let cornerRadius: CGFloat = isSender ? 20 : 10
         
         return ZStack(alignment: .leading) {
@@ -18630,13 +18679,11 @@ struct MessageLongPressDialog: View {
                     )
                 
                 // Dialog content positioned at exact touch location
-                // Match reference file: use HStack with Spacers for X positioning, offset only for Y
+                // WhatsApp-style: sender right margin 10px, receiver left margin 10px
                 HStack(spacing: 0) {
-                    // For sender (end gravity): add spacer at start to push content to right
-                    // For receiver (start gravity): no spacer - content aligns to left
                     if isSentByMe {
-                                    Spacer()
-                                }
+                        Spacer()
+                    }
                     
                     VStack(alignment: isSentByMe ? .trailing : .leading, spacing: 0) {
                         ScrollView {
@@ -18898,14 +18945,12 @@ struct MessageLongPressDialog: View {
                             .padding(.bottom, 20) // layout_marginBottom="20dp"
                     }
                 }
-                .frame(width: 310)
-                .frame(maxHeight: geometry.size.height * 0.8)
-                .allowsHitTesting(true) // Allow touches on ScrollView content
-                // Android unfold animation: rotate and scale with correct anchor points
-                // Apply animation to content VStack so anchor is relative to 310-width content, not full-width container
-                // Both sender and receiver animate from top-left
-                .rotationEffect(.degrees(rotationAngle), anchor: .topLeading)
-                .scaleEffect(scaleValue, anchor: .topLeading)
+                .frame(width: min(geometry.size.width - 20, 380))
+                .frame(maxHeight: geometry.size.height - 40)
+                .allowsHitTesting(true)
+                // WhatsApp-style: pure scale from touch point, no rotation
+                // Sender scales from top-right (message is on right), receiver from top-left
+                .scaleEffect(scaleValue, anchor: isSentByMe ? .topTrailing : .topLeading)
                 .opacity(opacityValue)
                     
                     // For receiver (start gravity): add spacer at end
@@ -18914,10 +18959,12 @@ struct MessageLongPressDialog: View {
                         Spacer()
             }
                 }
-                .frame(maxWidth: .infinity) // Ensure HStack takes full width
+                .frame(maxWidth: .infinity)
+                // 10px margin on both sides for clean edge spacing
+                .padding(.horizontal, 10)
             }
-            .frame(maxWidth: .infinity) // Ensure ZStack content takes full width
-            .offset(x: 0, y: adjustedOffsetY(in: geometry)) // Only offset Y, X is handled by HStack padding (matching reference file)
+            .frame(maxWidth: .infinity)
+            .offset(x: 0, y: adjustedOffsetY(in: geometry))
                 .zIndex(1) // Dialog content on top of blur
                 .background(Color.clear.contentShape(Rectangle()).allowsHitTesting(false)) // Don't block touches in empty areas
             }
@@ -18946,40 +18993,62 @@ struct MessageLongPressDialog: View {
     // Horizontal spacing constant - exactly 10px from edges
     private let horizontalSpacing: CGFloat = 10
 
-    // Calculate adjusted offset Y - position dialog at exact touch location
+    // Calculate adjusted offset Y - position dialog at exact touch location within safe bounds
     private func adjustedOffsetY(in geometry: GeometryProxy) -> CGFloat {
-        // Estimate message preview height (similar to contactCardHeight in ChatLongPressDialog)
-        // This is approximate - actual height may vary based on message type
-        let messagePreviewHeight: CGFloat = 100 // Approximate height for message preview
-        let emojiCardHeight: CGFloat = 60 // Emoji reactions card height
-        let actionButtonsHeight: CGFloat = 200 // Action buttons card height
-        let dialogHeight = emojiCardHeight + messagePreviewHeight + actionButtonsHeight
-        let padding: CGFloat = 20
+        let safeBottom = geometry.safeAreaInsets.bottom
+        let screenH = geometry.size.height
+        let emojiCardHeight: CGFloat = 60
+        let minPad: CGFloat = 10
         
-        // Check if position is valid (not zero)
+        // Fallback: center vertically
         guard position.y > 0 else {
-            // If position is invalid, center dialog vertically
-            let centeredY = (geometry.size.height - dialogHeight) / 2
-            print("🟣 [MessageLongPressDialog] Invalid position, centering dialog at Y: \(centeredY)")
-            return max(centeredY, padding)
+            let centeredY = screenH * 0.15
+            print("🟣 [MessageLongPressDialog] Invalid position, centering at Y: \(centeredY)")
+            return centeredY
         }
         
         let frame = geometry.frame(in: .global)
-        // position is now the exact touch location in global coordinates
-        // Convert to local coordinates within the dialog's parent view
         let localY = position.y - frame.minY
         
-        // Position dialog so the touch location is near the center of the emoji card
-        // This provides a better UX - the dialog appears centered around where the user touched
-        let emojiCardCenterOffset = emojiCardHeight / 2
-        let dialogTopY = localY - emojiCardCenterOffset
+        // Estimate actual dialog height based on message type
+        let messagePreviewHeight: CGFloat = estimateMessagePreviewHeight()
+        let actionButtonsHeight: CGFloat = 200  // Multi-Select + Reply + Forward + Copy + Delete
+        let totalDialogHeight = emojiCardHeight + messagePreviewHeight + actionButtonsHeight
         
-        // Ensure dialog stays within screen bounds
-        let maxY = geometry.size.height - dialogHeight - padding
-        let minY = padding
+        // Place emoji card above the touch point so message preview aligns with the pressed message
+        let dialogTopY = localY - emojiCardHeight
         
-        print("🟣 [MessageLongPressDialog] Positioning - Touch Y: \(position.y), Local Y: \(localY), Dialog Top Y: \(dialogTopY), isSentByMe: \(isSentByMe)")
-        return min(max(dialogTopY, minY), maxY)
+        // Clamp within safe area bounds (ensure bottom options stay within screen)
+        let minY = minPad
+        let maxY = screenH - totalDialogHeight - minPad - safeBottom
+        let clampedY = min(max(dialogTopY, minY), max(maxY, minY))
+        
+        print("🟣 [MessageLongPressDialog] Touch Y: \(position.y), Local Y: \(localY), Dialog Height: \(totalDialogHeight), Clamped Y: \(clampedY), isSentByMe: \(isSentByMe)")
+        return clampedY
+    }
+    
+    // Estimate message preview height based on message type
+    private func estimateMessagePreviewHeight() -> CGFloat {
+        var height: CGFloat = 100  // Base height for text messages
+        
+        if message.dataType == Constant.img && !message.document.isEmpty {
+            height = 200  // Image preview
+        } else if message.dataType == Constant.video && !message.document.isEmpty {
+            height = 200  // Video preview
+        } else if message.dataType == Constant.doc {
+            height = 100  // Document preview
+        } else if message.dataType == Constant.contact {
+            height = 80   // Contact preview
+        } else if message.dataType == Constant.voiceAudio {
+            height = 80   // Voice audio preview
+        }
+        
+        // Add extra height for reply layout if present
+        if message.replyKey == "ReplyKey" {
+            height += 40
+        }
+        
+        return height
     }
     
     // MARK: - Emoji Reactions View (matching Android emojiCard and emojiLongRec)

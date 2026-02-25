@@ -3134,9 +3134,14 @@ struct GroupChattingScreen: View {
             return
         }
         
-        // If we already have messages (cached data), don't show loader (matching Android)
+        // If we already have messages (cached data), don't show loader but ensure listener is attached
         if !messages.isEmpty {
             print("📱 [fetchMessages] Group messages already available, skipping network fetch")
+            // Re-attach realtime listener if it was removed (e.g. after navigating back)
+            if firebaseListenerHandle == nil {
+                print("📱 [fetchMessages] ⚠️ Listener not attached, re-attaching for realtime updates")
+                attachFullListener(senderRoom: senderRoom)
+            }
             listener?()
             return
         }
@@ -4578,18 +4583,12 @@ struct GroupMessageLongPressDialog: View {
     @State private var showEmojiPicker: Bool = false
     @State private var emojiListenerHandle: DatabaseHandle?
     
-    // Animation state for Android-style unfold animation
-    @State private var rotationAngle: Double = 0.0
-    @State private var scaleValue: CGFloat = 0.0
+    // Animation state for WhatsApp-style scale animation
+    // Opens from exact touch point with smooth scale up, no rotation
+    @State private var scaleValue: CGFloat = 0.01
     @State private var opacityValue: Double = 0.0
     @State private var backdropOpacity: Double = 0.0
-    @State private var isDismissing: Bool = false // Track if we're currently dismissing
-    
-    // Presentation tuning for a softer, magical feel
-    private let presentRotation: Double = 12
-    private let dismissRotation: Double = 18
-    private let presentScale: CGFloat = 0.92
-    private let dismissScale: CGFloat = 0.86
+    @State private var isDismissing: Bool = false
     
     // Helper function for smooth dismissal
     private func dismissDialog() {
@@ -4597,21 +4596,22 @@ struct GroupMessageLongPressDialog: View {
         isDismissing = true
         animateOut()
         // Dismiss after animation completes
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            isPresented = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            withAnimation(.easeOut(duration: 0.15)) {
+                isPresented = false
+            }
             isDismissing = false
         }
     }
     
     private func animateIn() {
-        rotationAngle = presentRotation
-        scaleValue = presentScale
+        scaleValue = 0.01
         opacityValue = 0.0
         backdropOpacity = 0.0
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
-                rotationAngle = 0.0
+            // WhatsApp-style: fast spring scale up from touch point
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82, blendDuration: 0)) {
                 scaleValue = 1.0
                 opacityValue = 1.0
                 backdropOpacity = 1.0
@@ -4620,9 +4620,9 @@ struct GroupMessageLongPressDialog: View {
     }
     
     private func animateOut() {
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
-            rotationAngle = dismissRotation
-            scaleValue = dismissScale
+        // WhatsApp-style: quick scale down back to touch point
+        withAnimation(.easeOut(duration: 0.2)) {
+            scaleValue = 0.01
             opacityValue = 0.0
             backdropOpacity = 0.0
         }
@@ -4961,14 +4961,11 @@ struct GroupMessageLongPressDialog: View {
                                 .padding(.bottom, 20) // layout_marginBottom="20dp"
                             }
                         }
-                        .frame(width: 310)
-                        .frame(maxHeight: geometry.size.height * 0.8)
+                        .frame(width: min(geometry.size.width - 20, 380))
+                        .frame(maxHeight: geometry.size.height - 40)
                         .allowsHitTesting(true) // Allow touches on ScrollView content
-                        // Android unfold animation: rotate and scale with correct anchor points
-                        // Apply animation to content VStack so anchor is relative to 310-width content, not full-width container
-                        // Both sender and receiver animate from top-left
-                        .rotationEffect(.degrees(rotationAngle), anchor: .topLeading)
-                        .scaleEffect(scaleValue, anchor: .topLeading)
+                        // WhatsApp-style: pure scale from touch point, no rotation
+                        .scaleEffect(scaleValue, anchor: isSentByMe ? .topTrailing : .topLeading)
                         .opacity(opacityValue)
                     }
                     
@@ -4978,8 +4975,10 @@ struct GroupMessageLongPressDialog: View {
                         Spacer()
                     }
                 }
-                .frame(maxWidth: .infinity) // Ensure HStack takes full width
-            .offset(x: 0, y: adjustedOffsetY(in: geometry)) // Only offset Y, X is handled by HStack padding (matching reference file)
+                .frame(maxWidth: .infinity)
+                // 10px margin on both sides for clean edge spacing
+                .padding(.horizontal, 10)
+            .offset(x: 0, y: adjustedOffsetY(in: geometry))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity) // Ensure GeometryReader fills entire ZStack
             .zIndex(1) // Dialog content on top of blur
@@ -5007,40 +5006,62 @@ struct GroupMessageLongPressDialog: View {
         }
     }
     
-    // Calculate adjusted offset Y - position dialog at exact touch location
+    // Calculate adjusted offset Y - position dialog at exact touch location within safe bounds
     private func adjustedOffsetY(in geometry: GeometryProxy) -> CGFloat {
-        // Estimate message preview height (similar to contactCardHeight in ChatLongPressDialog)
-        // This is approximate - actual height may vary based on message type
-        let messagePreviewHeight: CGFloat = 100 // Approximate height for message preview
-        let emojiCardHeight: CGFloat = 60 // Emoji reactions card height
-        let actionButtonsHeight: CGFloat = 100 // Action buttons card height (Delete + Copy or just Delete)
-        let dialogHeight = emojiCardHeight + messagePreviewHeight + actionButtonsHeight
-        let padding: CGFloat = 20
+        let safeBottom = geometry.safeAreaInsets.bottom
+        let screenH = geometry.size.height
+        let emojiCardHeight: CGFloat = 60
+        let minPad: CGFloat = 10
         
-        // Check if position is valid (not zero)
+        // Fallback: center vertically
         guard position.y > 0 else {
-            // If position is invalid, center dialog vertically
-            let centeredY = (geometry.size.height - dialogHeight) / 2
-            print("🟣 [GroupMessageLongPressDialog] Invalid position, centering dialog at Y: \(centeredY)")
-            return max(centeredY, padding)
+            let centeredY = screenH * 0.15
+            print("🟣 [GroupMessageLongPressDialog] Invalid position, centering at Y: \(centeredY)")
+            return centeredY
         }
         
         let frame = geometry.frame(in: .global)
-        // position is now the exact touch location in global coordinates
-        // Convert to local coordinates within the dialog's parent view
         let localY = position.y - frame.minY
         
-        // Position dialog so the touch location is near the center of the emoji card
-        // This provides a better UX - the dialog appears centered around where the user touched
-        let emojiCardCenterOffset = emojiCardHeight / 2
-        let dialogTopY = localY - emojiCardCenterOffset
+        // Estimate actual dialog height based on message type
+        let messagePreviewHeight: CGFloat = estimateMessagePreviewHeight()
+        let actionButtonsHeight: CGFloat = 160  // Reply + Copy + Delete (group has fewer options)
+        let totalDialogHeight = emojiCardHeight + messagePreviewHeight + actionButtonsHeight
         
-        // Ensure dialog stays within screen bounds
-        let maxY = geometry.size.height - dialogHeight - padding
-        let minY = padding
+        // Place emoji card above the touch point so message preview aligns with the pressed message
+        let dialogTopY = localY - emojiCardHeight
         
-        print("🟣 [GroupMessageLongPressDialog] Positioning - Touch Y: \(position.y), Local Y: \(localY), Dialog Top Y: \(dialogTopY), isSentByMe: \(isSentByMe)")
-        return min(max(dialogTopY, minY), maxY)
+        // Clamp within safe area bounds (ensure bottom options stay within screen)
+        let minY = minPad
+        let maxY = screenH - totalDialogHeight - minPad - safeBottom
+        let clampedY = min(max(dialogTopY, minY), max(maxY, minY))
+        
+        print("🟣 [GroupMessageLongPressDialog] Touch Y: \(position.y), Local Y: \(localY), Dialog Height: \(totalDialogHeight), Clamped Y: \(clampedY), isSentByMe: \(isSentByMe)")
+        return clampedY
+    }
+    
+    // Estimate message preview height based on message type
+    private func estimateMessagePreviewHeight() -> CGFloat {
+        var height: CGFloat = 100  // Base height for text messages
+        
+        if message.dataType == Constant.img && !message.document.isEmpty {
+            height = 200  // Image preview
+        } else if message.dataType == Constant.video && !message.document.isEmpty {
+            height = 200  // Video preview
+        } else if message.dataType == Constant.doc {
+            height = 100  // Document preview
+        } else if message.dataType == Constant.contact {
+            height = 80   // Contact preview
+        } else if message.dataType == Constant.voiceAudio {
+            height = 80   // Voice audio preview
+        }
+        
+        // Add extra height for reply layout if present
+        if message.replyKey == "ReplyKey" {
+            height += 40
+        }
+        
+        return height
     }
     
     // MARK: - Message Preview Views

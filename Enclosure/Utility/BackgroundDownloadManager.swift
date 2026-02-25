@@ -17,6 +17,7 @@ class BackgroundDownloadManager: NSObject {
     private var activeDownloads: [String: Any] = [:] // Can hold both StorageDownloadTask and URLSessionDownloadTask
     private var downloadProgress: [String: Double] = [:]
     private var downloadNotifications: [String: String] = [:] // fileName -> notificationId
+    private var progressObservations: [String: NSKeyValueObservation] = [:] // Retain KVO observations for HTTP downloads
     
     private override init() {
         super.init()
@@ -186,6 +187,7 @@ class BackgroundDownloadManager: NSObject {
             if let error = error {
                 self.activeDownloads.removeValue(forKey: fileName)
                 self.downloadProgress.removeValue(forKey: fileName)
+                self.progressObservations.removeValue(forKey: fileName)
                 
                 // Remove progress notification
                 if let notificationId = self.downloadNotifications[fileName] {
@@ -210,6 +212,7 @@ class BackgroundDownloadManager: NSObject {
                 let error = NSError(domain: "DownloadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data received"])
                 self.activeDownloads.removeValue(forKey: fileName)
                 self.downloadProgress.removeValue(forKey: fileName)
+                self.progressObservations.removeValue(forKey: fileName)
                 
                 // Remove progress notification
                 if let notificationId = self.downloadNotifications[fileName] {
@@ -245,6 +248,7 @@ class BackgroundDownloadManager: NSObject {
                 
                 self.activeDownloads.removeValue(forKey: fileName)
                 self.downloadProgress.removeValue(forKey: fileName)
+                self.progressObservations.removeValue(forKey: fileName)
                 
                 // Remove notification when download completes
                 if let notificationId = self.downloadNotifications[fileName] {
@@ -260,6 +264,7 @@ class BackgroundDownloadManager: NSObject {
             } catch {
                 self.activeDownloads.removeValue(forKey: fileName)
                 self.downloadProgress.removeValue(forKey: fileName)
+                self.progressObservations.removeValue(forKey: fileName)
                 
                 self.showErrorNotification(fileName: fileName, error: error)
                 
@@ -276,7 +281,7 @@ class BackgroundDownloadManager: NSObject {
         // Store task
         activeDownloads[fileName] = task
         
-        // Track progress
+        // Track progress - store observation to keep it alive
         let observation = task.progress.observe(\.fractionCompleted) { progress, _ in
             let progressPercent = progress.fractionCompleted * 100.0
             self.downloadProgress[fileName] = progressPercent
@@ -290,8 +295,8 @@ class BackgroundDownloadManager: NSObject {
             }
         }
         
-        // Keep observation alive
-        _ = observation
+        // Retain observation so KVO keeps firing
+        progressObservations[fileName] = observation
         
         // Start download
         task.resume()
@@ -382,6 +387,7 @@ class BackgroundDownloadManager: NSObject {
             activeDownloads.removeValue(forKey: fileName)
             downloadProgress.removeValue(forKey: fileName)
             downloadNotifications.removeValue(forKey: fileName)
+            progressObservations.removeValue(forKey: fileName)
         }
     }
     
@@ -396,6 +402,7 @@ class BackgroundDownloadManager: NSObject {
             activeDownloads.removeValue(forKey: key)
             downloadProgress.removeValue(forKey: key)
             downloadNotifications.removeValue(forKey: key)
+            progressObservations.removeValue(forKey: key)
         }
     }
     
@@ -638,6 +645,7 @@ class BackgroundDownloadManager: NSObject {
             if let error = error {
                 self.activeDownloads.removeValue(forKey: downloadKey)
                 self.downloadProgress.removeValue(forKey: downloadKey)
+                self.progressObservations.removeValue(forKey: downloadKey)
                 
                 // Remove progress notification
                 if let notificationId = self.downloadNotifications[fileName] {
@@ -662,6 +670,7 @@ class BackgroundDownloadManager: NSObject {
                 let error = NSError(domain: "DownloadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data received"])
                 self.activeDownloads.removeValue(forKey: downloadKey)
                 self.downloadProgress.removeValue(forKey: downloadKey)
+                self.progressObservations.removeValue(forKey: downloadKey)
                 
                 // Remove progress notification
                 if let notificationId = self.downloadNotifications[fileName] {
@@ -705,6 +714,7 @@ class BackgroundDownloadManager: NSObject {
                         PhotosLibraryHelper.shared.saveVideoToPhotosLibrary(videoData: fileData, fileName: fileName) { success, error in
                             self.activeDownloads.removeValue(forKey: downloadKey)
                             self.downloadProgress.removeValue(forKey: downloadKey)
+                            self.progressObservations.removeValue(forKey: downloadKey)
                             
                             // Remove notification when download completes
                             if let notificationId = self.downloadNotifications[fileName] {
@@ -735,6 +745,7 @@ class BackgroundDownloadManager: NSObject {
                             
                             self.activeDownloads.removeValue(forKey: downloadKey)
                             self.downloadProgress.removeValue(forKey: downloadKey)
+                            self.progressObservations.removeValue(forKey: downloadKey)
                             
                             // Remove notification when download completes
                             if let notificationId = self.downloadNotifications[fileName] {
@@ -759,6 +770,7 @@ class BackgroundDownloadManager: NSObject {
                 } else {
                     self.activeDownloads.removeValue(forKey: downloadKey)
                     self.downloadProgress.removeValue(forKey: downloadKey)
+                    self.progressObservations.removeValue(forKey: downloadKey)
                     
                     let error = NSError(domain: "DownloadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to read downloaded file"])
                     self.showErrorNotification(fileName: fileName, error: error)
@@ -777,6 +789,7 @@ class BackgroundDownloadManager: NSObject {
             } catch {
                 self.activeDownloads.removeValue(forKey: downloadKey)
                 self.downloadProgress.removeValue(forKey: downloadKey)
+                self.progressObservations.removeValue(forKey: downloadKey)
                 
                 self.showErrorNotification(fileName: fileName, error: error)
                 
@@ -796,7 +809,7 @@ class BackgroundDownloadManager: NSObject {
         // Store task
         activeDownloads[downloadKey] = task
         
-        // Track progress
+        // Track progress - store observation to keep it alive
         let observation = task.progress.observe(\.fractionCompleted) { progress, _ in
             let progressPercent = progress.fractionCompleted * 100.0
             self.downloadProgress[downloadKey] = progressPercent
@@ -810,8 +823,8 @@ class BackgroundDownloadManager: NSObject {
             }
         }
         
-        // Keep observation alive
-        _ = observation
+        // Retain observation so KVO keeps firing
+        progressObservations[downloadKey] = observation
         
         // Start download
         task.resume()
