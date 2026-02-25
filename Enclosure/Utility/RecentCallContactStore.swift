@@ -147,6 +147,14 @@ final class RecentCallContactStore {
         return contacts[friendId]
     }
     
+    /// Look up a contact by photo URL (when caller UID is missing from VoIP payload, e.g. Android caller)
+    func getContactByPhoto(_ photoUrl: String) -> RecentCallContact? {
+        let trimmed = photoUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let contacts = loadAll()
+        return contacts.values.first { $0.photo == trimmed }
+    }
+    
     /// Look up a contact by phone number (for CXStartCallAction when handle is .phoneNumber)
     func getContactByPhone(_ phone: String) -> RecentCallContact? {
         let trimmed = phone.trimmingCharacters(in: .whitespacesAndNewlines)

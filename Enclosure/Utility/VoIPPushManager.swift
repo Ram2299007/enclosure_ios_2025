@@ -205,21 +205,56 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         let bodyKey = (userInfo["bodyKey"] as? String) ?? ""
         let payloadSenderPhone = (userInfo["senderPhone"] as? String) ?? ""
         // Caller's UID (the person calling us)
-        let callerUid = (userInfo["uid"] as? String)
+        var callerUid = (userInfo["uid"] as? String)
                      ?? (userInfo["incoming"] as? String)
-                     ?? receiverId
+                     ?? ""
         
-        // Resolve caller name/photo/phone from locally saved contacts
-        let savedContact = RecentCallContactStore.shared.getContact(for: callerUid)
-        let callerName = (savedContact != nil && !savedContact!.fullName.isEmpty) ? savedContact!.fullName : payloadName
-        let callerPhoto = (savedContact != nil && !savedContact!.photo.isEmpty) ? savedContact!.photo : payloadPhoto
-        // Caller's phone number for CXHandle — native Phone app uses this to match iOS Contacts
-        let callerPhone = (savedContact != nil && !savedContact!.mobileNo.isEmpty) ? savedContact!.mobileNo : payloadSenderPhone
+        // Detect missing caller UID (Android VoIP push doesn't include uid/incoming).
+        // When callerUid is empty or equals receiverId (our own UID), try to identify
+        // the real caller by their photo URL from cached contacts.
+        let myUid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        let callerUidMissing = callerUid.isEmpty || callerUid == receiverId || callerUid == myUid
+        
+        var callerName = payloadName
+        var callerPhoto = payloadPhoto
+        var callerPhone = payloadSenderPhone
+        
+        if callerUidMissing {
+            NSLog("📞 [VoIP] ⚠️ Caller UID missing in payload — resolving by photo URL")
+            // Try RecentCallContactStore first (UserDefaults, fast)
+            if let photoMatch = RecentCallContactStore.shared.getContactByPhoto(payloadPhoto) {
+                callerUid = photoMatch.friendId
+                if !photoMatch.fullName.isEmpty { callerName = photoMatch.fullName }
+                if !photoMatch.mobileNo.isEmpty { callerPhone = photoMatch.mobileNo }
+                NSLog("📞 [VoIP] ✅ Resolved caller from RecentCallContactStore: uid=\(callerUid), name=\(callerName), phone=\(callerPhone)")
+            }
+            // Fallback: try CallCacheManager (SQLite contact list cache)
+            else if let cachedContact = CallCacheManager.shared.fetchContactByPhoto(payloadPhoto) {
+                callerUid = cachedContact.uid
+                callerName = cachedContact.fullName
+                callerPhone = cachedContact.mobileNo
+                callerPhoto = cachedContact.photo
+                NSLog("📞 [VoIP] ✅ Resolved caller from CallCacheManager: uid=\(callerUid), name=\(callerName), phone=\(callerPhone)")
+            } else {
+                // Last resort: use receiverId (will be wrong but prevents crash)
+                if callerUid.isEmpty { callerUid = receiverId }
+                NSLog("📞 [VoIP] ⚠️ Could not resolve caller — using fallback uid=\(callerUid)")
+            }
+        } else {
+            // Normal path: uid was in payload, resolve name/photo from cache
+            let savedContact = RecentCallContactStore.shared.getContact(for: callerUid)
+            if let saved = savedContact {
+                if !saved.fullName.isEmpty { callerName = saved.fullName }
+                if !saved.photo.isEmpty { callerPhoto = saved.photo }
+                if !saved.mobileNo.isEmpty { callerPhone = saved.mobileNo }
+            }
+        }
         
         CallLogger.log("Caller: \(callerName), Room: \(roomId), BodyKey: \(bodyKey)", category: .voip)
         NSLog("📞 [VoIP] Extracted Data:")
-        NSLog("📞 [VoIP]   Caller UID: \(callerUid)")
+        NSLog("📞 [VoIP]   Caller UID: \(callerUid) (missing=\(callerUidMissing))")
         NSLog("📞 [VoIP]   Caller Name: \(callerName) (payload: \(payloadName))")
+        NSLog("📞 [VoIP]   Caller Phone: \(callerPhone.isEmpty ? "(none)" : callerPhone)")
         NSLog("📞 [VoIP]   Room ID: \(roomId)")
         NSLog("📞 [VoIP]   Receiver ID: \(receiverId)")
         NSLog("📞 [VoIP]   Body Key: '\(bodyKey)'")

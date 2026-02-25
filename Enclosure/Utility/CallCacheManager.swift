@@ -41,6 +41,28 @@ final class CallCacheManager {
         load(key: "contacts", completion: completion)
     }
     
+    /// Synchronous lookup: find a cached contact by photo URL.
+    /// Used when VoIP push from Android doesn't include caller UID.
+    func fetchContactByPhoto(_ photoUrl: String) -> CallingContactModel? {
+        let trimmed = photoUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let db = self.db else { return nil }
+        
+        let sql = "SELECT payload FROM call_cache WHERE cache_key = ? LIMIT 1;"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return nil }
+        sqlite3_bind_text(statement, 1, "contacts", -1, SQLITE_TRANSIENT)
+        
+        guard sqlite3_step(statement) == SQLITE_ROW,
+              let blobPointer = sqlite3_column_blob(statement, 0) else { return nil }
+        
+        let size = Int(sqlite3_column_bytes(statement, 0))
+        let data = Data(bytes: blobPointer, count: size)
+        guard let contacts = try? JSONDecoder().decode([CallingContactModel].self, from: data) else { return nil }
+        return contacts.first { $0.photo == trimmed }
+    }
+    
     func cacheInviteContacts(_ contacts: [InviteContactModel]) {
         store(contacts, for: "invite_contacts")
     }

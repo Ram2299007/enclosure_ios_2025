@@ -93,16 +93,40 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             let receiverId = (userInfo["receiverId"] as? String) ?? ""
             let receiverPhone = (userInfo["phone"] as? String) ?? ""
             // Caller's UID (the person calling us)
-            let callerUid = (userInfo["uid"] as? String)
+            var callerUid = (userInfo["uid"] as? String)
                          ?? (userInfo["incoming"] as? String)
-                         ?? receiverId
-
-            // Resolve caller name/photo/phone from locally saved contacts
-            let savedContact = RecentCallContactStore.shared.getContact(for: callerUid)
-            let callerName = (savedContact != nil && !savedContact!.fullName.isEmpty) ? savedContact!.fullName : payloadName
-            let callerPhoto = (savedContact != nil && !savedContact!.photo.isEmpty) ? savedContact!.photo : payloadPhoto
+                         ?? ""
             let payloadSenderPhone = (userInfo["senderPhone"] as? String) ?? ""
-            let callerPhone = (savedContact != nil && !savedContact!.mobileNo.isEmpty) ? savedContact!.mobileNo : payloadSenderPhone
+
+            // Detect missing caller UID (Android VoIP push doesn't include uid/incoming)
+            let myUid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+            let uidMissing = callerUid.isEmpty || callerUid == receiverId || callerUid == myUid
+
+            var callerName = payloadName
+            var callerPhoto = payloadPhoto
+            var callerPhone = payloadSenderPhone
+
+            if uidMissing {
+                NSLog("📞 [NotificationDelegate] ⚠️ Caller UID missing — resolving by photo URL")
+                if let photoMatch = RecentCallContactStore.shared.getContactByPhoto(payloadPhoto) {
+                    callerUid = photoMatch.friendId
+                    if !photoMatch.fullName.isEmpty { callerName = photoMatch.fullName }
+                    if !photoMatch.mobileNo.isEmpty { callerPhone = photoMatch.mobileNo }
+                } else if let cached = CallCacheManager.shared.fetchContactByPhoto(payloadPhoto) {
+                    callerUid = cached.uid
+                    callerName = cached.fullName
+                    callerPhone = cached.mobileNo
+                } else {
+                    if callerUid.isEmpty { callerUid = receiverId }
+                }
+            } else {
+                let savedContact = RecentCallContactStore.shared.getContact(for: callerUid)
+                if let saved = savedContact {
+                    if !saved.fullName.isEmpty { callerName = saved.fullName }
+                    if !saved.photo.isEmpty { callerPhoto = saved.photo }
+                    if !saved.mobileNo.isEmpty { callerPhone = saved.mobileNo }
+                }
+            }
 
             VoIPPushManager.shared.registerIncomingCallContext(
                 roomId: roomId,
@@ -281,16 +305,40 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                 let receiverId = (userInfo["receiverId"] as? String) ?? ""
                 let receiverPhone = (userInfo["phone"] as? String) ?? ""
                 // Caller's UID (the person calling us)
-                let callerUidBg = (userInfo["uid"] as? String)
+                var callerUidBg = (userInfo["uid"] as? String)
                              ?? (userInfo["incoming"] as? String)
-                             ?? receiverId
-
-                // Resolve caller name/photo/phone from locally saved contacts
-                let savedContactBg = RecentCallContactStore.shared.getContact(for: callerUidBg)
-                let callerName = (savedContactBg != nil && !savedContactBg!.fullName.isEmpty) ? savedContactBg!.fullName : payloadNameBg
-                let callerPhoto = (savedContactBg != nil && !savedContactBg!.photo.isEmpty) ? savedContactBg!.photo : payloadPhotoBg
+                             ?? ""
                 let payloadSenderPhoneBg = (userInfo["senderPhone"] as? String) ?? ""
-                let callerPhoneBg = (savedContactBg != nil && !savedContactBg!.mobileNo.isEmpty) ? savedContactBg!.mobileNo : payloadSenderPhoneBg
+
+                // Detect missing caller UID (Android VoIP push doesn't include uid/incoming)
+                let myUidBg = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+                let uidMissingBg = callerUidBg.isEmpty || callerUidBg == receiverId || callerUidBg == myUidBg
+
+                var callerName = payloadNameBg
+                var callerPhoto = payloadPhotoBg
+                var callerPhoneBg = payloadSenderPhoneBg
+
+                if uidMissingBg {
+                    if let photoMatch = RecentCallContactStore.shared.getContactByPhoto(payloadPhotoBg) {
+                        callerUidBg = photoMatch.friendId
+                        if !photoMatch.fullName.isEmpty { callerName = photoMatch.fullName }
+                        if !photoMatch.mobileNo.isEmpty { callerPhoneBg = photoMatch.mobileNo }
+                    } else if let cached = CallCacheManager.shared.fetchContactByPhoto(payloadPhotoBg) {
+                        callerUidBg = cached.uid
+                        callerName = cached.fullName
+                        callerPhoneBg = cached.mobileNo
+                        callerPhoto = cached.photo
+                    } else {
+                        if callerUidBg.isEmpty { callerUidBg = receiverId }
+                    }
+                } else {
+                    let savedContactBg = RecentCallContactStore.shared.getContact(for: callerUidBg)
+                    if let saved = savedContactBg {
+                        if !saved.fullName.isEmpty { callerName = saved.fullName }
+                        if !saved.photo.isEmpty { callerPhoto = saved.photo }
+                        if !saved.mobileNo.isEmpty { callerPhoneBg = saved.mobileNo }
+                    }
+                }
                 
                 NSLog("📞 [NotificationDelegate] Call data: caller='\(callerName)', room='\(roomId)'")
                 
