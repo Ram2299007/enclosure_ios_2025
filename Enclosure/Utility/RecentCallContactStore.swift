@@ -17,7 +17,36 @@ struct RecentCallContact: Codable {
     let voipToken: String
     let deviceType: String
     let mobileNo: String
+    let isVideoCall: Bool
     let updatedAt: Date
+
+    /// Backward-compatible decoder: isVideoCall defaults to false if missing.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        friendId   = try c.decode(String.self, forKey: .friendId)
+        fullName   = try c.decode(String.self, forKey: .fullName)
+        photo      = try c.decode(String.self, forKey: .photo)
+        fToken     = try c.decode(String.self, forKey: .fToken)
+        voipToken  = try c.decode(String.self, forKey: .voipToken)
+        deviceType = try c.decode(String.self, forKey: .deviceType)
+        mobileNo   = try c.decode(String.self, forKey: .mobileNo)
+        isVideoCall = (try? c.decode(Bool.self, forKey: .isVideoCall)) ?? false
+        updatedAt  = try c.decode(Date.self, forKey: .updatedAt)
+    }
+
+    init(friendId: String, fullName: String, photo: String, fToken: String,
+         voipToken: String, deviceType: String, mobileNo: String,
+         isVideoCall: Bool = false, updatedAt: Date = Date()) {
+        self.friendId = friendId
+        self.fullName = fullName
+        self.photo = photo
+        self.fToken = fToken
+        self.voipToken = voipToken
+        self.deviceType = deviceType
+        self.mobileNo = mobileNo
+        self.isVideoCall = isVideoCall
+        self.updatedAt = updatedAt
+    }
 }
 
 final class RecentCallContactStore {
@@ -25,8 +54,12 @@ final class RecentCallContactStore {
     
     private let storageKey = "enclosure_recent_call_contacts"
     private let maxEntries = 50
+    /// Use App Group UserDefaults so Notification Service Extension can also resolve names
+    private let defaults: UserDefaults
     
-    private init() {}
+    private init() {
+        defaults = UserDefaults(suiteName: "group.com.enclosure.data") ?? .standard
+    }
     
     // MARK: - Save Contact
     
@@ -47,6 +80,7 @@ final class RecentCallContactStore {
                 voipToken: contact.voipToken.isEmpty ? existing.voipToken : contact.voipToken,
                 deviceType: contact.deviceType.isEmpty ? existing.deviceType : contact.deviceType,
                 mobileNo: contact.mobileNo.isEmpty ? existing.mobileNo : contact.mobileNo,
+                isVideoCall: contact.isVideoCall,
                 updatedAt: Date()
             )
             contacts[contact.friendId] = merged
@@ -68,7 +102,7 @@ final class RecentCallContactStore {
     }
     
     /// Convenience: save from a CallLogUserInfo entry (call log list).
-    func saveFromCallLogEntry(_ entry: CallLogUserInfo) {
+    func saveFromCallLogEntry(_ entry: CallLogUserInfo, isVideoCall: Bool = false) {
         let contact = RecentCallContact(
             friendId: entry.friendId,
             fullName: entry.fullName,
@@ -77,7 +111,7 @@ final class RecentCallContactStore {
             voipToken: entry.voipToken,
             deviceType: entry.deviceType,
             mobileNo: entry.mobileNo,
-            updatedAt: Date()
+            isVideoCall: isVideoCall
         )
         saveContact(contact)
     }
@@ -90,7 +124,8 @@ final class RecentCallContactStore {
         fToken: String,
         voipToken: String,
         deviceType: String,
-        mobileNo: String
+        mobileNo: String,
+        isVideoCall: Bool = false
     ) {
         let contact = RecentCallContact(
             friendId: friendId,
@@ -100,7 +135,7 @@ final class RecentCallContactStore {
             voipToken: voipToken,
             deviceType: deviceType,
             mobileNo: mobileNo,
-            updatedAt: Date()
+            isVideoCall: isVideoCall
         )
         saveContact(contact)
     }
@@ -115,7 +150,7 @@ final class RecentCallContactStore {
     // MARK: - Persistence
     
     private func loadAll() -> [String: RecentCallContact] {
-        guard let data = UserDefaults.standard.data(forKey: storageKey) else { return [:] }
+        guard let data = defaults.data(forKey: storageKey) else { return [:] }
         do {
             return try JSONDecoder().decode([String: RecentCallContact].self, from: data)
         } catch {
@@ -127,7 +162,7 @@ final class RecentCallContactStore {
     private func saveAll(_ contacts: [String: RecentCallContact]) {
         do {
             let data = try JSONEncoder().encode(contacts)
-            UserDefaults.standard.set(data, forKey: storageKey)
+            defaults.set(data, forKey: storageKey)
         } catch {
             NSLog("⚠️ [RecentCallContactStore] Failed to encode: \(error.localizedDescription)")
         }

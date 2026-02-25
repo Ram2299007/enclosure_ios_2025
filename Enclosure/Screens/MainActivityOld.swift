@@ -1331,25 +1331,57 @@ struct MainActivityOld: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("InitiateCallFromRecents"))) { notification in
-            // User tapped a recent Enclosure call in the native Phone app → initiate outgoing voice call
+            // User tapped a recent Enclosure call in the native Phone app → initiate outgoing call
             guard let userInfo = notification.userInfo as? [String: String] else {
                 NSLog("⚠️ [MainActivityOld] InitiateCallFromRecents: userInfo missing")
                 return
             }
             
             let friendId = userInfo["friendId"] ?? ""
-            let fullName = userInfo["fullName"] ?? "Unknown"
-            let photo = userInfo["photo"] ?? ""
-            let fToken = userInfo["fToken"] ?? ""
-            let voipToken = userInfo["voipToken"] ?? ""
-            let deviceType = userInfo["deviceType"] ?? ""
-            let mobileNo = userInfo["mobileNo"] ?? ""
+            var fullName = userInfo["fullName"] ?? "Unknown"
+            var photo = userInfo["photo"] ?? ""
+            var fToken = userInfo["fToken"] ?? ""
+            var voipToken = userInfo["voipToken"] ?? ""
+            var deviceType = userInfo["deviceType"] ?? ""
+            var mobileNo = userInfo["mobileNo"] ?? ""
+            let isVideoCall = userInfo["isVideoCall"] == "1"
             
-            NSLog("📞 [MainActivityOld] InitiateCallFromRecents: \(fullName) (id=\(friendId))")
+            NSLog("📞 [MainActivityOld] InitiateCallFromRecents: \(fullName) (id=\(friendId), video=\(isVideoCall))")
             
-            guard !friendId.isEmpty, !fToken.isEmpty else {
-                NSLog("⚠️ [MainActivityOld] InitiateCallFromRecents: Missing friendId or fToken, cannot call")
-                Constant.showToast(message: "Unable to call — contact info unavailable. Open the app first.")
+            guard !friendId.isEmpty else {
+                NSLog("⚠️ [MainActivityOld] InitiateCallFromRecents: Missing friendId, cannot call")
+                Constant.showToast(message: "Unable to call — contact info unavailable.")
+                return
+            }
+            
+            // If fToken is empty, try to look up from cached calling contacts
+            if fToken.isEmpty {
+                NSLog("📞 [MainActivityOld] InitiateCallFromRecents: fToken empty, looking up cached contacts...")
+                CallCacheManager.shared.fetchContacts { cachedContacts in
+                    if let cached = cachedContacts.first(where: { $0.uid == friendId }) {
+                        NSLog("✅ [MainActivityOld] Found contact in cache: \(cached.fullName)")
+                        fToken = cached.fToken
+                        voipToken = cached.voipToken
+                        deviceType = cached.deviceType
+                        mobileNo = cached.mobileNo.isEmpty ? mobileNo : cached.mobileNo
+                        if fullName == "Unknown" || fullName.isEmpty { fullName = cached.fullName }
+                        if photo.isEmpty { photo = cached.photo }
+                        // Re-save with complete data
+                        RecentCallContactStore.shared.saveFromOutgoingCall(
+                            friendId: friendId, fullName: fullName, photo: photo,
+                            fToken: fToken, voipToken: voipToken, deviceType: deviceType,
+                            mobileNo: mobileNo, isVideoCall: isVideoCall
+                        )
+                        self.initiateCallFromRecents(
+                            friendId: friendId, fullName: fullName, photo: photo,
+                            fToken: fToken, voipToken: voipToken, deviceType: deviceType,
+                            mobileNo: mobileNo, isVideoCall: isVideoCall
+                        )
+                    } else {
+                        NSLog("⚠️ [MainActivityOld] No cached contact found — cannot call")
+                        Constant.showToast(message: "Unable to call — open the app first to sync contacts.")
+                    }
+                }
                 return
             }
             
@@ -1360,32 +1392,11 @@ struct MainActivityOld: View {
                 return
             }
             
-            let roomId = "\(Int(Date().timeIntervalSince1970 * 1000))\(Int.random(in: 1000...9999))"
-            
-            let payload = VoiceCallPayload(
-                receiverId: friendId,
-                receiverName: fullName,
-                receiverPhoto: photo,
-                receiverToken: fToken,
-                receiverDeviceType: deviceType,
-                receiverPhone: mobileNo,
-                roomId: roomId,
-                isSender: true
+            initiateCallFromRecents(
+                friendId: friendId, fullName: fullName, photo: photo,
+                fToken: fToken, voipToken: voipToken, deviceType: deviceType,
+                mobileNo: mobileNo, isVideoCall: isVideoCall
             )
-            
-            incomingVoiceCallPayload = payload
-            
-            // Send push notification to the receiver
-            MessageUploadService.shared.sendVoiceCallNotification(
-                receiverToken: fToken,
-                receiverDeviceType: deviceType,
-                receiverId: friendId,
-                receiverPhone: mobileNo,
-                roomId: roomId,
-                voipToken: voipToken
-            )
-            
-            NSLog("✅ [MainActivityOld] InitiateCallFromRecents: Call initiated to \(fullName)")
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("IncomingCallCancelled"))) { notification in
             let roomId = (notification.userInfo as? [String: String])?["roomId"] ?? ""
@@ -1408,6 +1419,77 @@ struct MainActivityOld: View {
             } else {
                 NSLog("📞 [MainActivityOld] IncomingCallCancelled - No active video call, safe to clear")
             }
+        }
+    }
+    
+    // MARK: - Initiate Call From Phone App Recents
+    /// Handles both voice and video calls initiated from iPhone's native Phone app Recents.
+    private func initiateCallFromRecents(
+        friendId: String, fullName: String, photo: String,
+        fToken: String, voipToken: String, deviceType: String,
+        mobileNo: String, isVideoCall: Bool
+    ) {
+        guard !fToken.isEmpty else {
+            NSLog("⚠️ [MainActivityOld] initiateCallFromRecents: fToken still empty, cannot call")
+            Constant.showToast(message: "Unable to call — open the app first to sync contacts.")
+            return
+        }
+        
+        // Don't start a new call if one is already active
+        guard incomingVoiceCallPayload == nil, incomingVideoCallPayload == nil,
+              activeCallManager.activeSession == nil else {
+            NSLog("⚠️ [MainActivityOld] initiateCallFromRecents: A call is already active, ignoring")
+            return
+        }
+        
+        let roomId = "\(Int(Date().timeIntervalSince1970 * 1000))\(Int.random(in: 1000...9999))"
+        
+        if isVideoCall {
+            let payload = VideoCallPayload(
+                receiverId: friendId,
+                receiverName: fullName,
+                receiverPhoto: photo,
+                receiverToken: fToken,
+                receiverDeviceType: deviceType,
+                receiverPhone: mobileNo,
+                roomId: roomId,
+                isSender: true
+            )
+            incomingVideoCallPayload = payload
+            incomingVoiceCallPayload = nil
+            
+            MessageUploadService.shared.sendVideoCallNotification(
+                receiverToken: fToken,
+                receiverDeviceType: deviceType,
+                receiverId: friendId,
+                receiverPhone: mobileNo,
+                roomId: roomId,
+                voipToken: voipToken
+            )
+            NSLog("✅ [MainActivityOld] InitiateCallFromRecents: VIDEO call initiated to \(fullName)")
+        } else {
+            let payload = VoiceCallPayload(
+                receiverId: friendId,
+                receiverName: fullName,
+                receiverPhoto: photo,
+                receiverToken: fToken,
+                receiverDeviceType: deviceType,
+                receiverPhone: mobileNo,
+                roomId: roomId,
+                isSender: true
+            )
+            incomingVoiceCallPayload = payload
+            incomingVideoCallPayload = nil
+            
+            MessageUploadService.shared.sendVoiceCallNotification(
+                receiverToken: fToken,
+                receiverDeviceType: deviceType,
+                receiverId: friendId,
+                receiverPhone: mobileNo,
+                roomId: roomId,
+                voipToken: voipToken
+            )
+            NSLog("✅ [MainActivityOld] InitiateCallFromRecents: VOICE call initiated to \(fullName)")
         }
     }
     

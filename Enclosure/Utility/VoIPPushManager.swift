@@ -195,18 +195,28 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         print("📞 [VoIP] Payload: \(userInfo)")
         
         // Extract call data from payload
-        let callerName = (userInfo["name"] as? String) 
+        let payloadName = (userInfo["name"] as? String) 
                       ?? (userInfo["user_nameKey"] as? String) 
                       ?? "Unknown Caller"
-        let callerPhoto = (userInfo["photo"] as? String) ?? ""
+        let payloadPhoto = (userInfo["photo"] as? String) ?? ""
         let roomId = (userInfo["roomId"] as? String) ?? ""
         let receiverId = (userInfo["receiverId"] as? String) ?? ""
         let receiverPhone = (userInfo["phone"] as? String) ?? ""
         let bodyKey = (userInfo["bodyKey"] as? String) ?? ""
+        // Caller's UID (the person calling us)
+        let callerUid = (userInfo["uid"] as? String)
+                     ?? (userInfo["incoming"] as? String)
+                     ?? receiverId
+        
+        // Resolve caller name from locally saved contacts (shows name user saved, not sender's profile name)
+        let savedContact = RecentCallContactStore.shared.getContact(for: callerUid)
+        let callerName = (savedContact != nil && !savedContact!.fullName.isEmpty) ? savedContact!.fullName : payloadName
+        let callerPhoto = (savedContact != nil && !savedContact!.photo.isEmpty) ? savedContact!.photo : payloadPhoto
         
         CallLogger.log("Caller: \(callerName), Room: \(roomId), BodyKey: \(bodyKey)", category: .voip)
         NSLog("📞 [VoIP] Extracted Data:")
-        NSLog("📞 [VoIP]   Caller Name: \(callerName)")
+        NSLog("📞 [VoIP]   Caller UID: \(callerUid)")
+        NSLog("📞 [VoIP]   Caller Name: \(callerName) (payload: \(payloadName))")
         NSLog("📞 [VoIP]   Room ID: \(roomId)")
         NSLog("📞 [VoIP]   Receiver ID: \(receiverId)")
         NSLog("📞 [VoIP]   Body Key: '\(bodyKey)'")
@@ -253,16 +263,18 @@ extension VoIPPushManager: PKPushRegistryDelegate {
         registerIncomingCallContext(roomId: roomId, callerName: callerName, callerPhoto: callerPhoto, isVideoCall: isVideoCall)
 
         // Persist caller info for callback from native Phone app Recents.
+        // Use callerUid (the caller's UID) as friendId so we can look them up later.
         // fToken/voipToken/deviceType are unavailable here — they'll be populated
-        // when call logs are loaded later.
+        // when call logs are loaded later via merge.
         RecentCallContactStore.shared.saveFromOutgoingCall(
-            friendId: receiverId,
+            friendId: callerUid,
             fullName: callerName,
             photo: callerPhoto,
             fToken: "",
             voipToken: "",
             deviceType: "",
-            mobileNo: receiverPhone
+            mobileNo: "",
+            isVideoCall: isVideoCall
         )
 
         // Start observing for caller-cancel signal (Android parity)
@@ -302,6 +314,7 @@ extension VoIPPushManager: PKPushRegistryDelegate {
             callerName: callerName,
             callerPhoto: callerPhoto,
             roomId: roomId,
+            callerUid: callerUid,
             receiverId: receiverId,
             receiverPhone: receiverPhone,
             isVideoCall: isVideoCall

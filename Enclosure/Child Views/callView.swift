@@ -793,6 +793,18 @@ struct CallHistoryHeaderView: View {
     let contact: CallLogUserInfo
     let dateLabel: String
     
+    /// Resolve mobileNo: fall back to cached contact data if empty
+    private var resolvedMobileNo: String {
+        let no = contact.mobileNo.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !no.isEmpty { return no }
+        // Try RecentCallContactStore
+        if let cached = RecentCallContactStore.shared.getContact(for: contact.friendId),
+           !cached.mobileNo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return cached.mobileNo
+        }
+        return ""
+    }
+    
     var body: some View {
         HStack(spacing: 16) {
             CallLogContactCardView(image: contact.photo, themeColor: Constant.themeColor) // Use global theme color
@@ -804,9 +816,11 @@ struct CallHistoryHeaderView: View {
                     .foregroundColor(Color("TextColor"))
                     .lineLimit(1)
                 
-                Text(contact.mobileNo)
-                    .font(.custom("Inter18pt-Medium", size: 14))
-                    .foregroundColor(Color("gray3"))
+                if !resolvedMobileNo.isEmpty {
+                    Text(resolvedMobileNo)
+                        .font(.custom("Inter18pt-Medium", size: 14))
+                        .foregroundColor(Color("gray3"))
+                }
                 
                 if !dateLabel.isEmpty {
                     Text(dateLabel)

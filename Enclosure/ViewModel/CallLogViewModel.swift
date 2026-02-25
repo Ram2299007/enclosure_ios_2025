@@ -122,9 +122,10 @@ final class CallLogViewModel: ObservableObject {
                     
                     // Persist contact info for callback from native Phone app Recents.
                     // Call log entries have all fields (fToken, voipToken, deviceType).
+                    let isVideo = self.logType == .video
                     for section in sanitized {
                         for userInfo in section.userInfo {
-                            RecentCallContactStore.shared.saveFromCallLogEntry(userInfo)
+                            RecentCallContactStore.shared.saveFromCallLogEntry(userInfo, isVideoCall: isVideo)
                         }
                     }
                 } else {

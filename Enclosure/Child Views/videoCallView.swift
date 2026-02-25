@@ -822,7 +822,8 @@ extension videoCallView {
             fToken: contact.fToken,
             voipToken: contact.voipToken,
             deviceType: contact.deviceType,
-            mobileNo: contact.mobileNo
+            mobileNo: contact.mobileNo,
+            isVideoCall: true
         )
         
         requestCameraAndMicrophonePermission { granted in
@@ -854,7 +855,7 @@ extension videoCallView {
     
     private func startVideoCall(for entry: CallLogUserInfo) {
         // Persist contact info for callback from native Phone app Recents
-        RecentCallContactStore.shared.saveFromCallLogEntry(entry)
+        RecentCallContactStore.shared.saveFromCallLogEntry(entry, isVideoCall: true)
         
         requestCameraAndMicrophonePermission { granted in
             guard granted else {

@@ -87,11 +87,20 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             print("📞 [NotificationDelegate] Triggering CallKit IMMEDIATELY...")
             
             // Extract call data
-            let callerName = (userInfo["name"] as? String) ?? (userInfo["user_nameKey"] as? String) ?? "Unknown"
-            let callerPhoto = (userInfo["photo"] as? String) ?? ""
+            let payloadName = (userInfo["name"] as? String) ?? (userInfo["user_nameKey"] as? String) ?? "Unknown"
+            let payloadPhoto = (userInfo["photo"] as? String) ?? ""
             let roomId = (userInfo["roomId"] as? String) ?? ""
             let receiverId = (userInfo["receiverId"] as? String) ?? ""
             let receiverPhone = (userInfo["phone"] as? String) ?? ""
+            // Caller's UID (the person calling us)
+            let callerUid = (userInfo["uid"] as? String)
+                         ?? (userInfo["incoming"] as? String)
+                         ?? receiverId
+
+            // Resolve caller name from locally saved contacts
+            let savedContact = RecentCallContactStore.shared.getContact(for: callerUid)
+            let callerName = (savedContact != nil && !savedContact!.fullName.isEmpty) ? savedContact!.fullName : payloadName
+            let callerPhoto = (savedContact != nil && !savedContact!.photo.isEmpty) ? savedContact!.photo : payloadPhoto
 
             VoIPPushManager.shared.registerIncomingCallContext(
                 roomId: roomId,
@@ -118,6 +127,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                     callerName: callerName,
                     callerPhoto: callerPhoto,
                     roomId: roomId,
+                    callerUid: callerUid,
                     receiverId: receiverId,
                     receiverPhone: receiverPhone,
                     isVideoCall: isVideoCall
@@ -262,11 +272,20 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                 NSLog("📞 [NotificationDelegate] Triggering CallKit NOW...")
                 
                 // Extract call data
-                let callerName = (userInfo["name"] as? String) ?? (userInfo["user_nameKey"] as? String) ?? "Unknown"
-                let callerPhoto = (userInfo["photo"] as? String) ?? ""
+                let payloadNameBg = (userInfo["name"] as? String) ?? (userInfo["user_nameKey"] as? String) ?? "Unknown"
+                let payloadPhotoBg = (userInfo["photo"] as? String) ?? ""
                 let roomId = (userInfo["roomId"] as? String) ?? ""
                 let receiverId = (userInfo["receiverId"] as? String) ?? ""
                 let receiverPhone = (userInfo["phone"] as? String) ?? ""
+                // Caller's UID (the person calling us)
+                let callerUidBg = (userInfo["uid"] as? String)
+                             ?? (userInfo["incoming"] as? String)
+                             ?? receiverId
+
+                // Resolve caller name from locally saved contacts
+                let savedContactBg = RecentCallContactStore.shared.getContact(for: callerUidBg)
+                let callerName = (savedContactBg != nil && !savedContactBg!.fullName.isEmpty) ? savedContactBg!.fullName : payloadNameBg
+                let callerPhoto = (savedContactBg != nil && !savedContactBg!.photo.isEmpty) ? savedContactBg!.photo : payloadPhotoBg
                 
                 NSLog("📞 [NotificationDelegate] Call data: caller='\(callerName)', room='\(roomId)'")
                 
@@ -276,6 +295,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                         callerName: callerName,
                         callerPhoto: callerPhoto,
                         roomId: roomId,
+                        callerUid: callerUidBg,
                         receiverId: receiverId,
                         receiverPhone: receiverPhone,
                         isVideoCall: isVideoCall

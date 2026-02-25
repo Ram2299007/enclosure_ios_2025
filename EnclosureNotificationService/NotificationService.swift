@@ -106,15 +106,27 @@ final class NotificationService: UNNotificationServiceExtension {
         let nestedData = (userInfo["data"] as? [String: Any])?["photo"] as? String
         let rawPhoto = directPhoto ?? nestedData ?? ""
         let invalidValues: Set<String> = ["NA", "na", "null", "nil", "none", ""]
-        let photoUrlString = invalidValues.contains(rawPhoto) ? "" : rawPhoto
+        var photoUrlString = invalidValues.contains(rawPhoto) ? "" : rawPhoto
         let senderUid = stringValue(userInfo["friendUidKey"])
-        let senderName = (userInfo["user_nameKey"] as? String)
+        let payloadSenderName = (userInfo["user_nameKey"] as? String)
             ?? (userInfo["name"] as? String)
             ?? "Unknown"
         let message = userInfo["msgKey"] as? String ?? ""
 
+        // Resolve sender name from locally saved contacts (App Group shared storage)
+        // Shows name the user saved in their contacts, not the sender's profile name
+        var senderName = payloadSenderName
+        if !senderUid.isEmpty, let savedContact = lookupContact(for: senderUid) {
+            if !savedContact.fullName.isEmpty {
+                senderName = savedContact.fullName
+            }
+            if !savedContact.photo.isEmpty && photoUrlString.isEmpty {
+                photoUrlString = savedContact.photo
+            }
+        }
+
         NSLog("🔔 [NotificationService] Preparing Communication Notification:")
-        NSLog("   - senderName: \(senderName)")
+        NSLog("   - senderName: \(senderName) (payload: \(payloadSenderName))")
         NSLog("   - senderUid: \(senderUid)")
         NSLog("   - message: \(message)")
         NSLog("   - photoUrl: \(photoUrlString.isEmpty ? "MISSING" : photoUrlString)")
@@ -329,6 +341,23 @@ final class NotificationService: UNNotificationServiceExtension {
             NSLog("⏳ [NotificationService] Time will expire - delivering bestAttemptContent")
             contentHandler(bestAttemptContent)
         }
+    }
+
+    /// Look up a contact from the shared App Group storage (RecentCallContactStore format).
+    /// Returns (fullName, photo) if found, nil otherwise.
+    private struct StoredContact: Codable {
+        let friendId: String
+        let fullName: String
+        let photo: String
+    }
+
+    private func lookupContact(for uid: String) -> StoredContact? {
+        guard !uid.isEmpty else { return nil }
+        let sharedDefaults = UserDefaults(suiteName: "group.com.enclosure.data")
+        guard let data = sharedDefaults?.data(forKey: "enclosure_recent_call_contacts") else { return nil }
+        // Decode the dictionary of contacts (keyed by friendId)
+        guard let dict = try? JSONDecoder().decode([String: StoredContact].self, from: data) else { return nil }
+        return dict[uid]
     }
 
     private func stringValue(_ value: Any?) -> String {
