@@ -11,7 +11,23 @@ struct ContentView: View {
     @State var isNavigating = false
     @State var isNavigatingToMain = false
     @State var isNavigatingToOnboarding = false
-    @State private var logoImageName = "ec_modern" // Default logo
+    @State private var logoImageName: String = {
+        let themeColor = UserDefaults.standard.string(forKey: Constant.ThemeColorKey) ?? "#00A3E9"
+        switch themeColor {
+        case "#ff0080": return "pinklogopng"
+        case "#00A3E9": return "ec_modern"
+        case "#7adf2a": return "popatilogopng"
+        case "#ec0001": return "redlogopng"
+        case "#16f3ff": return "bluelogopng"
+        case "#FF8A00": return "orangelogopng"
+        case "#7F7F7F": return "graylogopng"
+        case "#D9B845": return "yellowlogopng"
+        case "#346667": return "greenlogoppng"
+        case "#9846D9": return "voiletlogopng"
+        case "#A81010": return "red2logopng"
+        default: return "ec_modern"
+        }
+    }()
 
     // Helper function to hide keyboard
     private func hideKeyboard() {
@@ -128,8 +144,8 @@ struct ContentView: View {
     
     // Start splash thread with 0 delay
     private func startSplashThread() {
-        print("🔍 [ContentView] startSplashThread() called - will call navigateToNextScreen() immediately")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.0) {
+        print("🔍 [ContentView] startSplashThread() called - showing themed splash for 1.5s")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             print("🔍 [ContentView] Navigation triggered")
             navigateToNextScreen()
         }

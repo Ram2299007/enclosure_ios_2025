@@ -976,7 +976,7 @@ struct ChattingScreen: View {
                 )
                 .buttonStyle(.plain)
                 .padding(.leading, 10)
-                .padding(.trailing, 8)
+                .padding(.trailing, 12)  // Add more space before profile
                 
                 // Search field (full width when active - matching Android binding.searchlyt.setVisibility(View.VISIBLE))
                 if showSearch {
@@ -1012,7 +1012,7 @@ struct ChattingScreen: View {
                         recUserId: contact.uid,
                         recUserName: contact.fullName
                     )) {
-                        HStack(spacing: 0) {
+                        HStack(spacing: 8) {
                             // Profile image with border
                             ZStack {
                                 Circle()
@@ -10889,6 +10889,7 @@ struct DocumentPreviewView: View {
                     .padding(.top, 50)
                     
                     Spacer()
+                    .frame(width: 8)  // Add space between back arrow and profile
                     
                     // Menu button (3 dots) - only show for sender/receiver view holders
                     if viewHolderType == "sender" || viewHolderType == "receiver" {

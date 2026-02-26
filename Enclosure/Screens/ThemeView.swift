@@ -405,6 +405,48 @@ struct ThemeView: View {
         }
     }
     
+    private func getAlternateIconName(for color: String) -> String? {
+        switch color {
+        case "#00A3E9": return nil // default theme → primary AppIcon
+        case "#ff0080": return "SplashScreenMyAliasPink"
+        case "#7adf2a": return "SplashScreenMyAliasPopati"
+        case "#ec0001": return "SplashScreenMyAliasRed"
+        case "#16f3ff": return "SplashScreenMyAliasLightBlue"
+        case "#FF8A00": return "SplashScreenMyAliasOrange"
+        case "#7F7F7F": return "SplashScreenMyAliasgray"
+        case "#D9B845": return "SplashScreenMyAliasyellow"
+        case "#346667": return "SplashScreenMyAliasrichgreen"
+        case "#9846D9": return "SplashScreenMyAliasVoilet"
+        case "#A81010": return "SplashScreenMyAliasred2"
+        default: return nil
+        }
+    }
+    
+    private func changeAppIconSilently(to color: String) {
+        guard UIApplication.shared.supportsAlternateIcons else { return }
+        let iconName = getAlternateIconName(for: color)
+        
+        // Swizzle present(_:animated:completion:) to suppress the system alert
+        let presentSel = #selector(UIViewController.present(_:animated:completion:))
+        let noopSel = #selector(UIViewController._noopPresent(_:animated:completion:))
+        guard let originalMethod = class_getInstanceMethod(UIViewController.self, presentSel),
+              let swizzledMethod = class_getInstanceMethod(UIViewController.self, noopSel) else {
+            // Fallback: change icon normally if swizzle fails
+            UIApplication.shared.setAlternateIconName(iconName)
+            return
+        }
+        
+        method_exchangeImplementations(originalMethod, swizzledMethod)
+        
+        UIApplication.shared.setAlternateIconName(iconName) { error in
+            // Restore original present method immediately
+            method_exchangeImplementations(swizzledMethod, originalMethod)
+            if let error = error {
+                print("Error changing app icon: \(error.localizedDescription)")
+            }
+        }
+    }
+    
     private func handleSubmit() {
         isSubmitting = true
         
@@ -426,7 +468,10 @@ struct ThemeView: View {
                         userInfo: ["themeColor": selectedThemeColor]
                     )
                     
-                    // Dismiss immediately after successful upload
+                    // Silently change app icon (no system alert = no stuck screen)
+                    changeAppIconSilently(to: selectedThemeColor)
+                    
+                    // Dismiss immediately — smooth transition
                     dismiss()
                 } else {
                     alertTitle = "Error"
@@ -435,6 +480,14 @@ struct ThemeView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Suppress icon-change alert via swizzle
+extension UIViewController {
+    @objc func _noopPresent(_ viewControllerToPresent: UIViewController, animated flag: Bool, completion: (() -> Void)? = nil) {
+        // Intentionally empty — blocks the system icon-change alert from appearing
+        completion?()
     }
 }
 

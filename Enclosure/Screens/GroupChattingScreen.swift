@@ -511,7 +511,7 @@ struct GroupChattingScreen: View {
                 }
                 .buttonStyle(.plain)
                 .padding(.leading, 10)
-                .padding(.trailing, 8)
+                .padding(.trailing, 12)  // Add more space before profile
                 
                 // Search field (full width when active - matching Android binding.searchlyt.setVisibility(View.VISIBLE))
                 if showSearch {
