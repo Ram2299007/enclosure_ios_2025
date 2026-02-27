@@ -7,6 +7,7 @@
 //  No PeerJS, no WebView.
 //
 
+#if !targetEnvironment(simulator)
 import Foundation
 import WebRTC
 import FirebaseDatabase
@@ -489,3 +490,4 @@ extension NativeVideoCallSession: FirebaseSignalingDelegate {
         }
     }
 }
+#endif

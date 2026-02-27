@@ -157,15 +157,12 @@ struct MainActivityOld: View {
                 )
                 Color("BackgroundColor")
                     .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        hideKeyboard()
-                    }
                 
                 VStack(spacing:0) {
 
                 // MARK: - WhatsApp-like Active Call Banner
                 // Shows at top when user presses back on call screen (call still running)
+                #if !targetEnvironment(simulator)
                 if let session = activeCallManager.activeSession,
                    !session.shouldDismiss,
                    incomingVoiceCallPayload == nil {
@@ -174,6 +171,7 @@ struct MainActivityOld: View {
                         showActiveCallScreen = true
                     }
                 }
+                #endif
 
                 if(isMainContentVisible){
                     HStack{
@@ -1074,26 +1072,32 @@ struct MainActivityOld: View {
             }
             .overlay(alignment: .topTrailing) {
                 // PiP floating overlay
+                #if !targetEnvironment(simulator)
                 if activeCallManager.isInPiPMode, let session = activeCallManager.activeVideoSession {
                     VideoCallPiPView(session: session, callManager: activeCallManager)
                 }
+                #endif
             }
             .background {
                 // Persistent invisible source view for system background PiP.
                 // Must stay in hierarchy even when full-screen video call is dismissed.
+                #if !targetEnvironment(simulator)
                 if activeCallManager.activeVideoSession != nil {
                     PiPSourceViewBridge { sourceView in
                         activeCallManager.activeVideoSession?.setupSystemPiP(sourceView: sourceView)
                     }
                 }
+                #endif
             }
             .onChange(of: activeCallManager.isInPiPMode) { isPiP in
+                #if !targetEnvironment(simulator)
                 if !isPiP && activeCallManager.activeVideoSession != nil {
                     // User tapped PiP → re-open full screen
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         showVideoCallFromPiP = true
                     }
                 }
+                #endif
             }
             .onChange(of: incomingVoiceCallPayload) { newValue in
                 if let payload = newValue {
@@ -1387,7 +1391,7 @@ struct MainActivityOld: View {
             
             // Don't start a new call if one is already active
             guard incomingVoiceCallPayload == nil, incomingVideoCallPayload == nil,
-                  activeCallManager.activeSession == nil else {
+                  !activeCallManager.hasActiveCall else {
                 NSLog("⚠️ [MainActivityOld] InitiateCallFromRecents: A call is already active, ignoring")
                 return
             }
@@ -1437,7 +1441,7 @@ struct MainActivityOld: View {
         
         // Don't start a new call if one is already active
         guard incomingVoiceCallPayload == nil, incomingVideoCallPayload == nil,
-              activeCallManager.activeSession == nil else {
+              !activeCallManager.hasActiveCall else {
             NSLog("⚠️ [MainActivityOld] initiateCallFromRecents: A call is already active, ignoring")
             return
         }

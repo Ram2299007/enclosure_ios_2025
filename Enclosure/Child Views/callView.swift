@@ -57,9 +57,11 @@ struct callView: View {
     }
 
     private var filteredContacts: [CallingContactModel] {
-        guard !trimmedSearchText.isEmpty else { return viewModel.contactList }
+        let contacts = viewModel.contactList.filter { $0.uid != Constant.SenderIdMy }
+        
+        guard !trimmedSearchText.isEmpty else { return contacts }
 
-        return viewModel.contactList.filter { contact in
+        return contacts.filter { contact in
             contact.fullName.lowercased().contains(trimmedSearchText.lowercased()) ||
             contact.mobileNo.contains(trimmedSearchText)
         }
@@ -334,6 +336,7 @@ struct callView: View {
                                     .background(Color("cardBackgroundColornew"))
                                     .cornerRadius(20)
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .allowsHitTesting(false)
                                 } else {
                                     Text("No contacts found")
                                         .font(.custom("Inter18pt-Medium", size: 14))
@@ -342,6 +345,7 @@ struct callView: View {
                                         .background(Color("cardBackgroundColornew"))
                                         .cornerRadius(20)
                                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        .allowsHitTesting(false)
                                 }
                             } else {
                                 let _ = print("📞 [callView] Showing contact list - contactList count: \(filteredContacts.count)")
@@ -807,11 +811,11 @@ struct CallHistoryHeaderView: View {
     
     var body: some View {
         HStack(spacing: 16) {
-            CallLogContactCardView(image: contact.photo, themeColor: Constant.themeColor) // Use global theme color
+            CallLogContactCardView(image: contact.photo, themeColor: contact.themeColor)
                 .padding(.leading, 4)
             
             VStack(alignment: .leading, spacing: 4) {
-                Text(contact.fullName)
+                Text(Constant.formatNameWithYou(uid: contact.friendId, fullName: contact.fullName))
                     .font(.custom("Inter18pt-SemiBold", size: 18))
                     .foregroundColor(Color("TextColor"))
                     .lineLimit(1)
@@ -1199,7 +1203,7 @@ extension callView {
                             HStack(spacing: 0) {
                                 // FrameLayout id="themeBorder" - profile image with border
                                 // marginStart="1dp" marginEnd="16dp" padding="2dp"
-                                CallLogContactCardView(image: callLog.photo, themeColor: Constant.themeColor) // Use global theme color
+                                CallLogContactCardView(image: callLog.photo, themeColor: callLog.themeColor)
                                     .padding(.leading, 1) // marginStart="1dp"
                                     .padding(.trailing, 16) // marginEnd="16dp"
                                 

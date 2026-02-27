@@ -51,10 +51,6 @@ struct forgetScreenOtp: View {
             ZStack { // Use ZStack to overlay content
                 Color("background_color")
                     .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        hideKeyboard()
-                    }
                 
                 VStack {
                     ScrollView {
@@ -269,6 +265,9 @@ struct forgetScreenOtp: View {
                             .padding(.top, 28) // marginTop="28dp"
                         }
                     }
+                    .simultaneousGesture(
+                        TapGesture().onEnded { _ in hideKeyboard() }
+                    )
 
                     Spacer() // Pushes the button to the bottom
 

@@ -227,7 +227,7 @@ struct UserInfoScreen: View {
             
             VStack(alignment: .leading, spacing: 3) {
                 // Name
-                Text(profile?.full_name ?? "Name")
+                Text((profile?.full_name ?? "Name") + (recUserId == Constant.SenderIdMy ? " (You)" : ""))
                     .font(.custom("Inter18pt-SemiBold", size: 19))
                     .foregroundColor(Color("TextColor"))
                 

@@ -95,10 +95,11 @@ struct CallLogUserRowView: View {
     }
     
     private var displayName: String {
-        if entry.fullName.count > 22 {
-            return String(entry.fullName.prefix(22)) + "..."
+        let formattedName = Constant.formatNameWithYou(uid: entry.friendId, fullName: entry.fullName)
+        if formattedName.count > 22 {
+            return String(formattedName.prefix(22)) + "..."
         }
-        return entry.fullName
+        return formattedName
     }
     
     private var callStatusIconName: String {
@@ -334,11 +335,11 @@ struct CallLogUserRowView: View {
 // Call log specific contact card view - matching Android: 48dp image, 2dp padding = 52dp total
 struct CallLogContactCardView: View {
     var image: String?
-    var themeColor: String // Parameter kept for compatibility, but we use global theme
+    var themeColor: String
     
-    // Use global theme color for all users
+    // Use per-user theme color from API, fallback to global theme
     private var borderColor: Color {
-        Color(hex: Constant.themeColor)
+        Color(hex: themeColor.isEmpty ? Constant.themeColor : themeColor)
     }
     
     var body: some View {

@@ -549,7 +549,7 @@ struct GroupChattingScreen: View {
                             // Group icon with border
                             ZStack {
                                 Circle()
-                                    .stroke(Color("blue"), lineWidth: 2)
+                                    .stroke(Color(hex: Constant.themeColor), lineWidth: 2)
                                     .frame(width: 44, height: 44)
                                 
                                 CachedAsyncImage(url: URL(string: group.iconURL)) { image in

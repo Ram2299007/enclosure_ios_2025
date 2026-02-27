@@ -1012,7 +1012,7 @@ extension groupMessageView {
                                 // marginStart="1dp" marginEnd="16dp" padding="2dp"
                                 ZStack {
                                     Circle()
-                                        .stroke(Color("blue"), lineWidth: 2)
+                                        .stroke(Color(hex: Constant.themeColor), lineWidth: 2)
                                         .frame(width: 54, height: 54)
                                     
                                     CachedAsyncImage(url: URL(string: group.iconURL)) { image in

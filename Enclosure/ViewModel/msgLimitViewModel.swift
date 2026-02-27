@@ -61,8 +61,8 @@ class MsgLimitViewModel: ObservableObject {
                         contact.uid != uid // Filter out current user
                         // Note: Add block check if UserActiveContactModel has a block property
                     }
-                    self.chatList = self.allChatList
-                    self.filteredChatList = self.allChatList
+                    self.chatList = self.allChatList.filter { $0.uid != Constant.SenderIdMy }
+                    self.filteredChatList = self.chatList
                     self.hasCachedContacts = !self.allChatList.isEmpty
                     self.cacheManager.cacheMsgLimitContacts(self.allChatList)
                 } else {
@@ -136,11 +136,12 @@ class MsgLimitViewModel: ObservableObject {
     func filterChatList(searchText: String) {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
-            filteredChatList = chatList
+            filteredChatList = chatList.filter { $0.uid != Constant.SenderIdMy }
         } else {
             filteredChatList = chatList.filter { contact in
-                contact.fullName.lowercased().contains(trimmed.lowercased()) ||
-                contact.mobileNo.contains(trimmed)
+                contact.uid != Constant.SenderIdMy &&
+                (contact.fullName.lowercased().contains(trimmed.lowercased()) ||
+                contact.mobileNo.contains(trimmed))
             }
         }
     }
@@ -158,8 +159,8 @@ class MsgLimitViewModel: ObservableObject {
                 }
                 
                 self.allChatList = cachedContacts
-                self.chatList = cachedContacts
-                self.filteredChatList = cachedContacts
+                self.chatList = cachedContacts.filter { $0.uid != Constant.SenderIdMy }
+                self.filteredChatList = self.chatList
                 self.hasCachedContacts = !cachedContacts.isEmpty
                 if shouldStopLoading {
                     self.isLoading = false

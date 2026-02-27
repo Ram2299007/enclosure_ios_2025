@@ -54,8 +54,6 @@ struct whatsTheCode: View {
         ZStack(alignment: .bottom) { // Use ZStack to overlay content and keep bottom fixed
             Color("background_color")
                 .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture { hideKeyboard() }
             
             VStack {
                     ScrollViewReader { proxy in
@@ -253,6 +251,7 @@ struct whatsTheCode: View {
                 }
             }
             .navigationBarHidden(true)
+            .statusBarHidden(true)
             // PopGestureRecognizerSwiftUI: Gesture is enabled by default (like ForthView)
             // We don't call .swipeBackGestureDisabled(), so the native interactive pop gesture works
             .background(

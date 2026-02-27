@@ -144,7 +144,7 @@ struct youView: View {
 
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(profile?.full_name ?? "Name")
+                        Text((profile?.full_name ?? "Name") + " (You)")
                             .font(.custom("Inter18pt-SemiBold", size: 19))
                             .foregroundColor(Color("TextColor"))
 

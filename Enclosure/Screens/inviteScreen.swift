@@ -558,7 +558,7 @@ private struct ActiveContactRow: View {
             CallingContactCardView(image: contact.photo, themeColor: contact.resolvedThemeColor)
             
             VStack(alignment: .leading, spacing: 4) {
-                Text(contact.displayName)
+                Text(Constant.formatNameWithYou(uid: contact.uid, fullName: contact.isActiveUser ? contact.fullName : contact.contactName))
                     .font(.custom("Inter18pt-SemiBold", size: 16))
                     .foregroundColor(Color("TextColor"))
                     .lineLimit(1)
@@ -586,7 +586,7 @@ private struct InviteContactCard: View {
             CallingContactCardView(image: nil, themeColor: contact.resolvedThemeColor)
             
             VStack(alignment: .leading, spacing: 4) {
-                Text(contact.displayName)
+                Text(Constant.formatNameWithYou(uid: contact.uid, fullName: contact.isActiveUser ? contact.fullName : contact.contactName))
                     .font(.custom("Inter18pt-SemiBold", size: 15))
                     .foregroundColor(Color("TextColor"))
                     .lineLimit(1)

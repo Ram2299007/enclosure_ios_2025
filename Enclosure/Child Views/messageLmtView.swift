@@ -386,7 +386,7 @@ struct ContactCardView: View {
                 // Card border background (Android: @drawable/card_border) - using theme color stroke
                 // The border is 2dp wide, so outer circle is 52dp (48 + 2*2)
                 Circle()
-                    .stroke(Color("blue"), lineWidth: 2) // 2dp border stroke with theme color
+                    .stroke(Color(hex: chat.themeColor.isEmpty ? Constant.themeColor : chat.themeColor), lineWidth: 2) // 2dp border stroke with per-user theme color
                     .frame(width: 52, height: 52)
                 
                 // Circular image container - 48dp x 48dp
@@ -399,7 +399,7 @@ struct ContactCardView: View {
             // Android: LinearLayout with layout_weight="1" for name, layout_weight="3" for button container
             HStack(spacing: 0) {
                 // Android: TextView name - fontFamily="@font/inter_bold", maxWidth="200dp", layout_weight="1"
-                Text(chat.fullName)
+                Text(Constant.formatNameWithYou(uid: chat.uid, fullName: chat.fullName))
                     .font(.custom("Inter18pt-SemiBold", size: 16)) // Match groupMessageView group name style
                     .foregroundColor(Color("TextColor"))
                     .lineLimit(1)

@@ -227,48 +227,55 @@ struct CircularSeekBar: View {
     @State private var previousProgress: Int = 0
     var hapticEngine: CHHapticEngine?
 
+    private let circleSize: CGFloat = 210
+    private let thumbRadius: CGFloat = 108
+
     var body: some View {
-        ZStack {
-            Circle()
-                .stroke(Color("cs_circle_color").opacity(0.3), lineWidth: 18)
-                .frame(width: 210, height: 210)
+        GeometryReader { geometry in
+            let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
+            ZStack {
+                Circle()
+                    .stroke(Color("cs_circle_color").opacity(0.3), lineWidth: 18)
+                    .frame(width: circleSize, height: circleSize)
 
-            Circle()
-                .trim(from: 0.0, to: progress / 360)
-                .stroke(Color(hex: Constant.themeColor), style: StrokeStyle(lineWidth: 18, lineCap: .round)) // Use dynamic theme color
-                .frame(width: 210, height: 210)
-                .rotationEffect(.degrees(-90))
+                Circle()
+                    .trim(from: 0.0, to: progress / 360)
+                    .stroke(
+                        Color(hex: Constant.themeColor),
+                        style: StrokeStyle(lineWidth: 18, lineCap: .round)
+                    )
+                    .frame(width: circleSize, height: circleSize)
+                    .rotationEffect(.degrees(-90))
 
-            Circle()
-                .fill(Color(red: 0xF6/255, green: 0xF7/255, blue: 0xFF/255))
-                .frame(width: 24, height: 24)
-                .shadow(color: .black.opacity(0.3), radius: 6, x: 0, y: 4)
-                .offset(x: 108 * cos((progress - 90).toRadians()), y: 108 * sin((progress - 90).toRadians()))
-                .gesture(
-                    DragGesture()
-                        .onChanged { value in
-                            updateProgress(from: value.location)
+                Circle()
+                    .fill(Color(red: 0xF6/255, green: 0xF7/255, blue: 0xFF/255))
+                    .frame(width: 24, height: 24)
+                    .shadow(color: .black.opacity(0.3), radius: 6, x: 0, y: 4)
+                    .offset(
+                        x: thumbRadius * cos((progress - 90).toRadians()),
+                        y: thumbRadius * sin((progress - 90).toRadians())
+                    )
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .contentShape(Circle().scale(1.2))
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let dx = value.location.x - center.x
+                        let dy = value.location.y - center.y
+                        var newAngle = atan2(dy, dx) * 180 / .pi
+                        if newAngle < 0 {
+                            newAngle += 360
                         }
-                )
+                        let roundedProgress = Int(newAngle)
+                        if roundedProgress != previousProgress {
+                            simpleSuccess()
+                            previousProgress = roundedProgress
+                        }
+                        progress = newAngle
+                    }
+            )
         }
-    }
-
-    private func updateProgress(from location: CGPoint) {
-        let center = CGPoint(x: 108, y: 108)
-        let dx = location.x - center.x
-        let dy = location.y - center.y
-        var newAngle = atan2(dy, dx) * 180 / .pi
-
-        if newAngle < 0 {
-            newAngle += 361
-        }
-
-        let roundedProgress = Int(newAngle)
-        if roundedProgress != previousProgress {
-            simpleSuccess()
-            previousProgress = roundedProgress
-        }
-        progress = newAngle
     }
 
     private func simpleSuccess() {

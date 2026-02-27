@@ -11,10 +11,18 @@ struct VoiceCallScreen: View {
     }
 
     var body: some View {
+        #if targetEnvironment(simulator)
+        Text("Voice calling is not available on Simulator")
+            .font(.headline)
+            .foregroundColor(.gray)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.black)
+        #else
         if useNativeWebRTC {
             NativeVoiceCallScreen(payload: payload)
         } else {
             LegacyVoiceCallScreen(payload: payload)
         }
+        #endif
     }
 }

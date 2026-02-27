@@ -1,3 +1,4 @@
+#if !targetEnvironment(simulator)
 import SwiftUI
 
 /// WhatsApp-like active call banner — shown at top of MainActivityOld when
@@ -147,3 +148,4 @@ struct ActiveCallBannerView: View {
         return String(format: "%02d:%02d", minutes, seconds)
     }
 }
+#endif

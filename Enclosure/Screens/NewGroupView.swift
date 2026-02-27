@@ -446,7 +446,7 @@ struct ContactRowView: View {
             ZStack {
                 // Border background (card_border equivalent) - 2dp border
                 Circle()
-                    .stroke(Color("blue"), lineWidth: 2) // 2dp border stroke matching chatView
+                    .stroke(Color(hex: contact.themeColor.isEmpty ? Constant.themeColor : contact.themeColor), lineWidth: 2) // 2dp border stroke with per-user theme color
                     .frame(width: 54, height: 54)
                 
                 CachedAsyncImage(url: URL(string: contact.photo)) { image in
@@ -470,7 +470,7 @@ struct ContactRowView: View {
             .padding(.trailing, 16) // marginEnd="16dp" for FrameLayout matching chatView
             
             // Name text - matching chatView font and size
-            Text(contact.fullName)
+            Text(Constant.formatNameWithYou(uid: contact.uid, fullName: contact.fullName))
                 .font(.custom("Inter18pt-SemiBold", size: 16)) // Matching chatView ContactCardView
                 .foregroundColor(Color("TextColor"))
                 .lineLimit(1) // singleLine="true" equivalent

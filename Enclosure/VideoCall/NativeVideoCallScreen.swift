@@ -7,6 +7,7 @@
 //  then hands everything to the SwiftUI view layer.
 //
 
+#if !targetEnvironment(simulator)
 import SwiftUI
 import WebRTC
 
@@ -70,3 +71,4 @@ struct NativeVideoCallScreen: View {
             }
     }
 }
+#endif

@@ -6,6 +6,7 @@
 // when the app goes to background. Same design as the in-app PiP overlay.
 // Uses AVPictureInPictureVideoCallViewController (iOS 15+).
 
+#if !targetEnvironment(simulator)
 import AVKit
 import UIKit
 import WebRTC
@@ -419,3 +420,4 @@ struct PiPSourceViewBridge: UIViewRepresentable {
 
     func updateUIView(_ uiView: UIView, context: Context) {}
 }
+#endif

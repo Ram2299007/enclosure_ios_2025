@@ -9,6 +9,14 @@ struct VideoCallScreen: View {
     }
 
     var body: some View {
+        #if targetEnvironment(simulator)
+        Text("Video calling is not available on Simulator")
+            .font(.headline)
+            .foregroundColor(.gray)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.black)
+        #else
         NativeVideoCallScreen(payload: payload)
+        #endif
     }
 }

@@ -1,3 +1,4 @@
+#if !targetEnvironment(simulator)
 import Foundation
 import FirebaseDatabase
 import WebRTC
@@ -288,3 +289,4 @@ final class FirebaseSignalingService {
         NSLog("📤 [Signaling] Sent \(message["type"] ?? "?") to \(message["receiver"] ?? "?")")
     }
 }
+#endif

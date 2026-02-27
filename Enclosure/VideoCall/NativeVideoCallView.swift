@@ -7,6 +7,7 @@
 //  to draggable secondary PiP when remote connects.
 //
 
+#if !targetEnvironment(simulator)
 import SwiftUI
 import AVFoundation
 import WebRTC
@@ -597,3 +598,4 @@ struct EAGLVideoViewWrapper: UIViewRepresentable {
         }
     }
 }
+#endif

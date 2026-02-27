@@ -1016,7 +1016,7 @@ struct ChattingScreen: View {
                             // Profile image with border
                             ZStack {
                                 Circle()
-                                    .stroke(Color("blue"), lineWidth: 2)
+                                    .stroke(Color(hex: contact.themeColor.isEmpty ? Constant.themeColor : contact.themeColor), lineWidth: 2)
                                     .frame(width: 44, height: 44)
                                 
                                 CachedAsyncImage(url: URL(string: contact.photo)) { image in
@@ -1037,7 +1037,7 @@ struct ChattingScreen: View {
                             .padding(.trailing, 16)
                             
                             // Name
-                            Text(contact.fullName)
+                            Text(Constant.formatNameWithYou(uid: contact.uid, fullName: contact.fullName))
                                 .font(.custom("Inter18pt-Medium", size: 16))
                                 .foregroundColor(Color("TextColor"))
                                 .lineLimit(1)

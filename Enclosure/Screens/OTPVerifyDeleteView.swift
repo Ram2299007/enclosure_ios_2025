@@ -31,10 +31,6 @@ struct OTPVerifyDeleteView: View {
             ZStack {
                 Color("background_color")
                     .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        hideKeyboard()
-                    }
                 
                 VStack {
                     ScrollView {
@@ -46,6 +42,9 @@ struct OTPVerifyDeleteView: View {
                             resendSection
                         }
                     }
+                    .simultaneousGesture(
+                        TapGesture().onEnded { _ in hideKeyboard() }
+                    )
                     
                     Spacer()
                     

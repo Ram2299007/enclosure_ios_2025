@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		09409CA44961F48F422138A1 /* Pods_Enclosure.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B2CAF9143351DE52EE7BB732 /* Pods_Enclosure.framework */; };
 		C2180BFE2F2FCF1B00480ABD /* EnclosureNotificationContentExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C2180BF72F2FCF1B00480ABD /* EnclosureNotificationContentExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C2449CA02F1FC930003B6DB7 /* PopGestureRecognizerSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = C2449C9F2F1FC930003B6DB7 /* PopGestureRecognizerSwiftUI */; };
 		C261E29A2D95334700E1CFE6 /* Alamofire in Frameworks */ = {isa = PBXBuildFile; productRef = C261E2992D95334700E1CFE6 /* Alamofire */; };
@@ -17,7 +16,6 @@
 		C28154A12EE56B560033FB02 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = C28154A02EE56B560033FB02 /* FirebaseAnalytics */; };
 		C28154A32EE56B560033FB02 /* FirebaseAnalyticsCore in Frameworks */ = {isa = PBXBuildFile; productRef = C28154A22EE56B560033FB02 /* FirebaseAnalyticsCore */; };
 		C28154A52EE56B560033FB02 /* FirebaseAnalyticsIdentitySupport in Frameworks */ = {isa = PBXBuildFile; productRef = C28154A42EE56B560033FB02 /* FirebaseAnalyticsIdentitySupport */; };
-		C28154A72EE56B560033FB02 /* FirebaseAnalyticsOnDeviceConversion in Frameworks */ = {isa = PBXBuildFile; productRef = C28154A62EE56B560033FB02 /* FirebaseAnalyticsOnDeviceConversion */; };
 		C28154A92EE56B560033FB02 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = C28154A82EE56B560033FB02 /* FirebaseAuth */; };
 		C28154AB2EE56B560033FB02 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = C28154AA2EE56B560033FB02 /* FirebaseCrashlytics */; };
 		C28154AD2EE56B560033FB02 /* FirebaseDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = C28154AC2EE56B560033FB02 /* FirebaseDatabase */; };
@@ -82,9 +80,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		969D439ECEFDBF13FB01B657 /* Pods-Enclosure.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Enclosure.debug.xcconfig"; path = "Target Support Files/Pods-Enclosure/Pods-Enclosure.debug.xcconfig"; sourceTree = "<group>"; };
-		AE313E1F12C9BDE8744C6597 /* Pods-Enclosure.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Enclosure.release.xcconfig"; path = "Target Support Files/Pods-Enclosure/Pods-Enclosure.release.xcconfig"; sourceTree = "<group>"; };
-		B2CAF9143351DE52EE7BB732 /* Pods_Enclosure.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Enclosure.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		15A596267C037A605DC43C66 /* Pods-Enclosure.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Enclosure.release.xcconfig"; path = "Target Support Files/Pods-Enclosure/Pods-Enclosure.release.xcconfig"; sourceTree = "<group>"; };
+		1978B070292955F905D3E082 /* libPods-Enclosure.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Enclosure.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB3C7F557CB60F0727B04572 /* Pods-Enclosure.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Enclosure.debug.xcconfig"; path = "Target Support Files/Pods-Enclosure/Pods-Enclosure.debug.xcconfig"; sourceTree = "<group>"; };
 		C2180BF72F2FCF1B00480ABD /* EnclosureNotificationContentExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = EnclosureNotificationContentExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		C22079682D848199006AA986 /* Enclosure.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Enclosure.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C220797D2D84819C006AA986 /* EnclosureTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EnclosureTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -194,8 +192,6 @@
 				C28154B12EE56B560033FB02 /* FirebaseStorage in Frameworks */,
 				C28154AD2EE56B560033FB02 /* FirebaseDatabase in Frameworks */,
 				C261E29D2D95334700E1CFE8 /* FirebaseMessaging in Frameworks */,
-				C28154A72EE56B560033FB02 /* FirebaseAnalyticsOnDeviceConversion in Frameworks */,
-				09409CA44961F48F422138A1 /* Pods_Enclosure.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -233,16 +229,16 @@
 		3772520C73A97BD25E44848F /* Pods */ = {
 			isa = PBXGroup;
 			children = (
-				969D439ECEFDBF13FB01B657 /* Pods-Enclosure.debug.xcconfig */,
-				AE313E1F12C9BDE8744C6597 /* Pods-Enclosure.release.xcconfig */,
+				BB3C7F557CB60F0727B04572 /* Pods-Enclosure.debug.xcconfig */,
+				15A596267C037A605DC43C66 /* Pods-Enclosure.release.xcconfig */,
 			);
 			path = Pods;
 			sourceTree = "<group>";
 		};
-		A153F07B98B51E8830FA3E88 /* Frameworks */ = {
+		6BB14EBB2865FB82F2259F9E /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				B2CAF9143351DE52EE7BB732 /* Pods_Enclosure.framework */,
+				1978B070292955F905D3E082 /* libPods-Enclosure.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -258,7 +254,7 @@
 				C2B6C8DA2F33122B00F17B5E /* EnclosureNotificationService */,
 				C22079692D848199006AA986 /* Products */,
 				3772520C73A97BD25E44848F /* Pods */,
-				A153F07B98B51E8830FA3E88 /* Frameworks */,
+				6BB14EBB2865FB82F2259F9E /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -302,12 +298,12 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = C22079912D84819C006AA986 /* Build configuration list for PBXNativeTarget "Enclosure" */;
 			buildPhases = (
-				B5B5572039F29D89DC48ED2A /* [CP] Check Pods Manifest.lock */,
+				D118A3AD15A97126A4902775 /* [CP] Check Pods Manifest.lock */,
 				C22079642D848199006AA986 /* Sources */,
 				C22079652D848199006AA986 /* Frameworks */,
 				C22079662D848199006AA986 /* Resources */,
 				C2C091432F18C29400932D59 /* Embed Foundation Extensions */,
-				8464A95DF16A2F0C7C02E972 /* [CP] Embed Pods Frameworks */,
+				204957088B0E5F5AA6EC80A9 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -328,7 +324,6 @@
 				C28154A02EE56B560033FB02 /* FirebaseAnalytics */,
 				C28154A22EE56B560033FB02 /* FirebaseAnalyticsCore */,
 				C28154A42EE56B560033FB02 /* FirebaseAnalyticsIdentitySupport */,
-				C28154A62EE56B560033FB02 /* FirebaseAnalyticsOnDeviceConversion */,
 				C28154A82EE56B560033FB02 /* FirebaseAuth */,
 				C28154AA2EE56B560033FB02 /* FirebaseCrashlytics */,
 				C28154AC2EE56B560033FB02 /* FirebaseDatabase */,
@@ -530,7 +525,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		8464A95DF16A2F0C7C02E972 /* [CP] Embed Pods Frameworks */ = {
+		204957088B0E5F5AA6EC80A9 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -551,7 +546,7 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Enclosure/Pods-Enclosure-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		B5B5572039F29D89DC48ED2A /* [CP] Check Pods Manifest.lock */ = {
+		D118A3AD15A97126A4902775 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -834,7 +829,7 @@
 		};
 		C22079922D84819C006AA986 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 969D439ECEFDBF13FB01B657 /* Pods-Enclosure.debug.xcconfig */;
+			baseConfigurationReference = BB3C7F557CB60F0727B04572 /* Pods-Enclosure.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -842,7 +837,7 @@
 				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
 				CODE_SIGN_ENTITLEMENTS = Enclosure/Enclosure.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_ASSET_PATHS = "\"Enclosure/Preview Content\"";
 				DEVELOPMENT_TEAM = XR82K974UJ;
 				ENABLE_PREVIEWS = YES;
@@ -880,7 +875,7 @@
 		};
 		C22079932D84819C006AA986 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = AE313E1F12C9BDE8744C6597 /* Pods-Enclosure.release.xcconfig */;
+			baseConfigurationReference = 15A596267C037A605DC43C66 /* Pods-Enclosure.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -888,7 +883,7 @@
 				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
 				CODE_SIGN_ENTITLEMENTS = Enclosure/EnclosureRelease.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_ASSET_PATHS = "\"Enclosure/Preview Content\"";
 				DEVELOPMENT_TEAM = XR82K974UJ;
 				ENABLE_PREVIEWS = YES;
@@ -1259,11 +1254,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseAnalyticsIdentitySupport;
-		};
-		C28154A62EE56B560033FB02 /* FirebaseAnalyticsOnDeviceConversion */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = C261E29F2D95334700E1CFE9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseAnalyticsOnDeviceConversion;
 		};
 		C28154A82EE56B560033FB02 /* FirebaseAuth */ = {
 			isa = XCSwiftPackageProductDependency;

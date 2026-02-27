@@ -59,6 +59,20 @@ struct Constant{
         return UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? "0"
     }
 
+    // Get current user's full name from UserDefaults
+    static var currentUserName: String {
+        return UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
+    }
+
+    // Format name with "(You)" suffix if it matches current user
+    static func formatNameWithYou(uid: String, fullName: String) -> String {
+        // Check if UID matches current user OR name matches current user's name
+        if uid == SenderIdMy || (!currentUserName.isEmpty && fullName == currentUserName) {
+            return "\(fullName) (You)"
+        }
+        return fullName
+    }
+
     // Get theme color dynamically from UserDefaults
     static var themeColor: String {
         return UserDefaults.standard.string(forKey: Constant.ThemeColorKey) ?? "#00A3E9"

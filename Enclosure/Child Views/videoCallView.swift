@@ -57,9 +57,11 @@ struct videoCallView: View {
     }
 
     private var filteredContacts: [CallingContactModel] {
-        guard !trimmedSearchText.isEmpty else { return viewModel.contactList }
+        let contacts = viewModel.contactList.filter { $0.uid != Constant.SenderIdMy }
+        
+        guard !trimmedSearchText.isEmpty else { return contacts }
 
-        return viewModel.contactList.filter { contact in
+        return contacts.filter { contact in
             contact.fullName.lowercased().contains(trimmedSearchText.lowercased()) ||
             contact.mobileNo.contains(trimmedSearchText)
         }
@@ -331,6 +333,7 @@ struct videoCallView: View {
                                     .background(Color("cardBackgroundColornew"))
                                     .cornerRadius(20)
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .allowsHitTesting(false)
                                 } else {
                                     Text("No contacts found")
                                         .font(.custom("Inter18pt-Medium", size: 14))
@@ -339,6 +342,7 @@ struct videoCallView: View {
                                         .background(Color("cardBackgroundColornew"))
                                         .cornerRadius(20)
                                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        .allowsHitTesting(false)
                                 }
                             } else {
                                 let _ = print("📹 [videoCallView] Showing contact list - contactList count: \(filteredContacts.count)")
@@ -550,7 +554,7 @@ struct VideoCallingContactRowView: View {
             HStack(spacing: 0) {
                 // Profile image with theme border - matching chatView CardView design
                 // Android: marginLeft="20dp", marginRight="20dp" on themeBorder FrameLayout
-                CallingContactCardView(image: contact.photo, themeColor: Constant.themeColor) // Use global theme color
+                CallingContactCardView(image: contact.photo, themeColor: contact.themeColor)
                     .padding(.leading, 20) // marginLeft="20dp"
                     .padding(.trailing, 20) // marginRight="20dp"
                 
@@ -1005,7 +1009,7 @@ extension videoCallView {
                             HStack(spacing: 0) {
                                 // FrameLayout id="themeBorder" - profile image with border
                                 // marginStart="1dp" marginEnd="16dp" padding="2dp"
-                                CallLogContactCardView(image: callLog.photo, themeColor: Constant.themeColor) // Use global theme color
+                                CallLogContactCardView(image: callLog.photo, themeColor: callLog.themeColor)
                                     .padding(.leading, 1) // marginStart="1dp"
                                     .padding(.trailing, 16) // marginEnd="16dp"
                                 
@@ -1013,7 +1017,8 @@ extension videoCallView {
                                 VStack(alignment: .leading, spacing: 0) {
                                     // TextView id="name" - Name
                                     // fontFamily="@font/inter_bold" textSize="16sp" lineHeight="18dp"
-                                    Text(callLog.fullName.count > 22 ? String(callLog.fullName.prefix(22)) + "..." : callLog.fullName)
+                                    let displayName = Constant.formatNameWithYou(uid: callLog.friendId, fullName: callLog.fullName)
+                                    Text(displayName.count > 22 ? String(displayName.prefix(22)) + "..." : displayName)
                                         .font(.custom("Inter18pt-SemiBold", size: 16))
                                         .foregroundColor(Color("TextColor"))
                                         .lineLimit(1)

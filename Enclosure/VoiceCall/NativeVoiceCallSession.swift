@@ -1,3 +1,4 @@
+#if !targetEnvironment(simulator)
 import Foundation
 import FirebaseDatabase
 import AVFoundation
@@ -634,3 +635,4 @@ extension NativeVoiceCallSession: FirebaseSignalingDelegate {
         }
     }
 }
+#endif

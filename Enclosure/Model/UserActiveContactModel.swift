@@ -26,6 +26,7 @@ struct UserActiveContactModel: Codable, Identifiable, Hashable {
     let createdAt: String        // created_at is a string in the JSON
     let block: Bool              // block status (current user blocked the other user)
     let iamblocked: Bool         // iamblocked status (other user blocked current user)
+    let themeColor: String       // per-user theme color from API
 
     enum CodingKeys: String, CodingKey {
         case photo
@@ -44,6 +45,7 @@ struct UserActiveContactModel: Codable, Identifiable, Hashable {
         case createdAt = "created_at"
         case block
         case iamblocked
+        case themeColor
     }
     
     init(from decoder: Decoder) throws {
@@ -87,6 +89,9 @@ struct UserActiveContactModel: Codable, Identifiable, Hashable {
         } else {
             iamblocked = false
         }
+        
+        // Handle themeColor as optional, default to empty string
+        themeColor = (try? container.decode(String.self, forKey: .themeColor)) ?? ""
     }
 
     init(
@@ -105,7 +110,8 @@ struct UserActiveContactModel: Codable, Identifiable, Hashable {
         messageId: String,
         createdAt: String,
         block: Bool = false,
-        iamblocked: Bool = false
+        iamblocked: Bool = false,
+        themeColor: String = ""
     ) {
         self.photo = photo
         self.fullName = fullName
@@ -123,6 +129,7 @@ struct UserActiveContactModel: Codable, Identifiable, Hashable {
         self.createdAt = createdAt
         self.block = block
         self.iamblocked = iamblocked
+        self.themeColor = themeColor
     }
     
     // Hashable conformance

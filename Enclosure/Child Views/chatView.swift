@@ -44,7 +44,7 @@ struct chatView: View {
     var body: some View {
         let _ = print("🟡 [chatView] Rendering - isLoading: \(viewModel.isLoading), errorMessage: '\(viewModel.errorMessage ?? "nil")', chatList count: \(viewModel.chatList.count)")
         
-        return VStack {
+        return VStack(spacing: 0) {
             if viewModel.isLoading && !viewModel.hasCachedChats {
                 let _ = print("🟡 [chatView] Showing LOADING state (no cache)")
                 ZStack {
@@ -89,9 +89,31 @@ struct chatView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 let _ = print("🟡 [chatView] Showing DATA state - \(filteredChatList.count) items (filtered from \(viewModel.chatList.count))")
-                chatListView
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(filteredChatList, id: \.uid) { chat in
+                            ContactCardView(
+                                chat: chat,
+                                selectedChatForNavigation: $selectedChatForNavigation,
+                                onLongPress: { chat, position in
+                                    selectedChatForDialog = chat
+                                    dialogPosition = position
+                                    showLongPressDialog = true
+                                },
+                                onProfileImageTap: { chat in
+                                    // Navigate to UserInfoScreen when profile image is tapped
+                                    selectedUserForInfo = (uid: chat.uid, name: chat.fullName)
+                                    navigateToUserInfoScreen = true
+                                }
+                            )
+                            .background(Color("background_color"))
+                        }
+                    }
+                }
+                .background(Color("background_color"))
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             print("🟡 [chatView] onAppear - fetching chat list for uid: \(Constant.SenderIdMy)")
             viewModel.fetchChatList(uid: Constant.SenderIdMy)
@@ -166,30 +188,7 @@ struct chatView: View {
         )
     }
 
-    private var chatListView: some View {
-        List(filteredChatList, id: \.uid) { chat in
-            ContactCardView(
-                chat: chat,
-                selectedChatForNavigation: $selectedChatForNavigation,
-                onLongPress: { chat, position in
-                    selectedChatForDialog = chat
-                    dialogPosition = position
-                    showLongPressDialog = true
-                },
-                onProfileImageTap: { chat in
-                    // Navigate to UserInfoScreen when profile image is tapped
-                    selectedUserForInfo = (uid: chat.uid, name: chat.fullName)
-                    navigateToUserInfoScreen = true
-                }
-            )
-            .listRowInsets(EdgeInsets())
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color("background_color"))
-        }
-        .listStyle(PlainListStyle())
-        .background(Color("background_color"))
-    }
-
+    
 
     struct ContactCardView: View {
         var chat: UserActiveContactModel
@@ -197,117 +196,103 @@ struct chatView: View {
         var onLongPress: (UserActiveContactModel, CGPoint) -> Void
         var onProfileImageTap: ((UserActiveContactModel) -> Void)? // Callback for profile image tap
         
-        @State private var isPressed = false
-        @State private var exactTouchLocation: CGPoint = .zero
-        @GestureState private var isDetectingLongPress = false
-        @State private var isLongPressing = false
         @State private var profileImageTapped = false // Track if profile image was tapped
+        @State private var rowFrame: CGRect = .zero
         
         var body: some View {
-            GeometryReader { geometry in
-                HStack(alignment: .center, spacing: 0) {
-                    // Contact Image with border - matching Android layout
-                    // FrameLayout equivalent: marginStart="1dp", layout_gravity="center_vertical"
-                    CardView(image: chat.photo)
-                        .padding(.leading, 1) // marginStart="1dp" for FrameLayout
-                        .padding(.trailing, 16) // marginEnd="16dp" for FrameLayout
-                        .onTapGesture {
-                            // Mark that profile image was tapped
-                            profileImageTapped = true
-                            // Open UserInfoScreen when profile image is tapped
-                            onProfileImageTap?(chat)
-                        }
+            HStack(alignment: .center, spacing: 0) {
+                // Contact Image with border - matching Android layout
+                // FrameLayout equivalent: marginStart="1dp", layout_gravity="center_vertical"
+                CardView(image: chat.photo, themeColor: chat.themeColor)
+                    .padding(.leading, 1) // marginStart="1dp" for FrameLayout
+                    .padding(.trailing, 16) // marginEnd="16dp" for FrameLayout
+                    .onTapGesture {
+                        // Mark that profile image was tapped
+                        profileImageTapped = true
+                        // Open UserInfoScreen when profile image is tapped
+                        onProfileImageTap?(chat)
+                    }
 
-                    // Vertical LinearLayout - layout_gravity="center_vertical"
-                    VStack(alignment: .leading, spacing: 0) {
-                        // First horizontal LinearLayout (Name and Time)
-                        HStack(spacing: 0) {
-                            Text(chat.fullName)
-                                .font(.custom("Inter18pt-SemiBold", size: 16))
-                                .foregroundColor(Color("TextColor"))
-                                .lineLimit(1) // singleLine="true" equivalent
-                            
-                            Spacer()
-                            
-                            Text(chat.sentTime)
-                                .font(.custom("Inter18pt-Medium", size: 12))
-                                .foregroundColor(chat.notification > 0 ? Color(hex: Constant.themeColor) : Color("gray3"))
-                                .padding(.trailing, 8) // layout_marginEnd="8dp"
-                        }
+                // Vertical LinearLayout - layout_gravity="center_vertical"
+                VStack(alignment: .leading, spacing: 0) {
+                    // First horizontal LinearLayout (Name and Time)
+                    HStack(spacing: 0) {
+                        Text(Constant.formatNameWithYou(uid: chat.uid, fullName: chat.fullName))
+                            .font(.custom("Inter18pt-SemiBold", size: 16))
+                            .foregroundColor(Color("TextColor"))
+                            .lineLimit(1) // singleLine="true" equivalent
+                        
+                        Spacer()
+                        
+                        Text(chat.sentTime)
+                            .font(.custom("Inter18pt-Medium", size: 12))
+                            .foregroundColor(chat.notification > 0 ? Color(hex: Constant.themeColor) : Color("gray3"))
+                            .padding(.trailing, 8) // layout_marginEnd="8dp"
+                    }
 
-                        // Second horizontal LinearLayout (Caption and Notification)
-                        HStack(alignment: .center, spacing: 0) {
-                            // Caption TextView - matching Android adapter logic
-                            CaptionTextView(chat: chat)
-                                .padding(.top, 2) // layout_marginTop="2dp"
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                    // Second horizontal LinearLayout (Caption and Notification)
+                    HStack(alignment: .center, spacing: 0) {
+                        // Caption TextView - matching Android adapter logic
+                        CaptionTextView(chat: chat)
+                            .padding(.top, 2) // layout_marginTop="2dp"
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
-                            Spacer()
+                        Spacer()
 
-                            // Notification Badge LinearLayout - layout_gravity="end", marginTop="5dp"
-                            if chat.notification > 0 {
-                                NotificationBadge(count: chat.notification)
-                                    .padding(.top, 5) // layout_marginTop="5dp"
-                            }
+                        // Notification Badge LinearLayout - layout_gravity="end", marginTop="5dp"
+                        if chat.notification > 0 {
+                            NotificationBadge(count: chat.notification)
+                                .padding(.top, 5) // layout_marginTop="5dp"
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.leading, 10) // marginStart="10dp" for LinearLayout
-                .padding(.top, 16) // marginTop="16dp" for LinearLayout
-                .padding(.bottom, 16) // marginTop="16dp" for divider View (effective bottom spacing)
-                .contentShape(Rectangle())
-                .background(isPressed ? Color.gray.opacity(0.1) : Color.clear)
-                .scaleEffect(isPressed ? 0.98 : 1.0)
-                .animation(.easeInOut(duration: 0.15), value: isPressed)
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { value in
-                            isPressed = true
-                            // Capture exact touch location
-                            exactTouchLocation = value.location
-                        }
-                        .onEnded { _ in
-                            isPressed = false
-                            // Single tap - only execute if not a long press and profile image wasn't tapped
-                            if !isLongPressing && !profileImageTapped {
-                                print("Tapped: \(chat.fullName)") // Handle single tap
-                                // Store selected user's device_type so notification sends original value (Priti "1", Ram "CED8A147-..." etc.)
-                                ChatCacheManager.shared.upsertContact(chat)
-                                print("[NOTIF_RECEIVER_DEVICE] selected receiver_uid=\(chat.uid) full_name=\(chat.fullName) device_type=\(chat.deviceType)")
-                                // Navigate to chatting screen
-                                DispatchQueue.main.async {
-                                    selectedChatForNavigation = chat
-                                }
-                            }
-                            // Reset flags after a short delay
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                isLongPressing = false
-                                profileImageTapped = false
-                            }
-                        }
-                )
-                .simultaneousGesture(
-                    LongPressGesture(minimumDuration: 0.5)
-                        .onEnded { _ in
-                            // Mark that long press occurred to prevent tap action
-                            isLongPressing = true
-                            
-                            // Convert exact touch location to global screen coordinates
-                            let globalFrame = geometry.frame(in: .global)
-                            let globalX = globalFrame.minX + exactTouchLocation.x
-                            let globalY = globalFrame.minY + exactTouchLocation.y
-                            print("🔵 Long press at exact location - Local: \(exactTouchLocation), Global: (\(globalX), \(globalY))")
-                            onLongPress(chat, CGPoint(x: globalX, y: globalY))
-                        }
-                )
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .padding(.leading, 10) // marginStart="10dp" for LinearLayout
+            .padding(.top, 16) // marginTop="16dp" for LinearLayout
+            .padding(.bottom, 16) // marginTop="16dp" for divider View (effective bottom spacing)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: 82) // Fixed height for consistent layout
+            .contentShape(Rectangle())
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { rowFrame = geo.frame(in: .global) }
+                        .onChange(of: geo.frame(in: .global)) { newFrame in
+                            rowFrame = newFrame
+                        }
+                }
+            )
+            .onTapGesture {
+                if !profileImageTapped {
+                    print("Tapped: \(chat.fullName)")
+                    ChatCacheManager.shared.upsertContact(chat)
+                    print("[NOTIF_RECEIVER_DEVICE] selected receiver_uid=\(chat.uid) full_name=\(chat.fullName) device_type=\(chat.deviceType)")
+                    DispatchQueue.main.async {
+                        selectedChatForNavigation = chat
+                    }
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    profileImageTapped = false
+                }
+            }
+            .onLongPressGesture(minimumDuration: 0.5) {
+                let globalX = rowFrame.midX
+                let globalY = rowFrame.midY
+                print("🔵 Long press - Global: (\(globalX), \(globalY))")
+                onLongPress(chat, CGPoint(x: globalX, y: globalY))
+            }
         }
     }
 
     struct CardView: View {
         var image: String?
+        var themeColor: String = ""
+
+        private var borderColor: Color {
+            let color = themeColor.isEmpty ? Constant.themeColor : themeColor
+            return Color(hex: color)
+        }
 
         var body: some View {
             // FrameLayout with border - matching Android card_border
@@ -318,7 +303,7 @@ struct chatView: View {
                 // Border background (card_border equivalent)
                 // The border is 2dp wide, so outer circle is 54dp (50 + 2*2)
                 Circle()
-                    .stroke(Color("blue"), lineWidth: 2) // 2dp border stroke
+                    .stroke(borderColor, lineWidth: 2) // 2dp border stroke
                     .frame(width: 54, height: 54)
                 
                 CachedAsyncImage(url: URL(string: image ?? "")) { image in
@@ -741,7 +726,7 @@ struct chatView: View {
                             HStack(alignment: .center, spacing: 0) {
                                 // FrameLayout id="themeBorder" - profile image with border
                                 // marginStart="1dp" marginEnd="16dp" padding="2dp"
-                                CardView(image: chat.photo)
+                                CardView(image: chat.photo, themeColor: chat.themeColor)
                                     .padding(.leading, 1) // marginStart="1dp"
                                     .padding(.trailing, 16) // marginEnd="16dp"
                                 
@@ -751,7 +736,8 @@ struct chatView: View {
                                     HStack(spacing: 0) {
                                         // TextView id="contact1text" - Name
                                         // fontFamily="@font/inter_bold" textSize="16sp" textColor="@color/TextColor"
-                                        Text(chat.fullName.count > 20 ? String(chat.fullName.prefix(20)) + "..." : chat.fullName)
+                                        let displayName = Constant.formatNameWithYou(uid: chat.uid, fullName: chat.fullName)
+                                        Text(displayName.count > 20 ? String(displayName.prefix(20)) + "..." : displayName)
                                             .font(.custom("Inter18pt-SemiBold", size: 16))
                                             .foregroundColor(Color("TextColor"))
                                             .lineLimit(1)

@@ -1,3 +1,4 @@
+#if !targetEnvironment(simulator)
 import SwiftUI
 
 // MARK: - NativeVoiceCallScreen
@@ -358,3 +359,4 @@ private struct VoiceCallRoundedCorner: Shape {
         return Path(path.cgPath)
     }
 }
+#endif

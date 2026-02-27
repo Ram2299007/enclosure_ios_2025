@@ -88,7 +88,7 @@ struct ThemeView: View {
                 bottomView
             }
         }
-        .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
         .background(NavigationGestureEnabler())
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK") { }

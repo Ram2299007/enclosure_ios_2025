@@ -5,6 +5,7 @@
 // video thumbnail when user presses back during a call.
 // Tap to return to full screen, X button to end the call.
 
+#if !targetEnvironment(simulator)
 import SwiftUI
 import WebRTC
 
@@ -115,3 +116,4 @@ struct VideoCallPiPView: View {
         position.y = min(max(position.y, minY), maxY)
     }
 }
+#endif

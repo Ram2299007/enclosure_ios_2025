@@ -9,11 +9,25 @@ import Foundation
 import CallKit
 import AVFoundation
 import UIKit
+#if !targetEnvironment(simulator)
 import WebRTC
+#endif
 import os.log
 
 class CallKitManager: NSObject {
     static let shared = CallKitManager()
+    
+    /// CallKit is disabled in China per MIIT regulation (Apple Guideline 5.0).
+    /// Returns false when the device region is CN (China).
+    static var isCallKitAvailable: Bool {
+        if #available(iOS 16, *) {
+            let regionCode = Locale.current.region?.identifier ?? ""
+            return regionCode.uppercased() != "CN"
+        } else {
+            let regionCode = Locale.current.regionCode ?? ""
+            return regionCode.uppercased() != "CN"
+        }
+    }
     
     private let callController = CXCallController()
     private let provider: CXProvider
@@ -83,6 +97,14 @@ class CallKitManager: NSObject {
         isVideoCall: Bool = false,
         completion: @escaping (Error?, UUID?) -> Void
     ) {
+        // MIIT China regulation (Guideline 5.0): Skip CallKit in China
+        guard CallKitManager.isCallKitAvailable else {
+            NSLog("📞 [CallKit] CallKit DISABLED in China region — skipping reportIncomingCall")
+            let chinaError = NSError(domain: "CallKitManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "CallKit is not available in China"])
+            completion(chinaError, nil)
+            return
+        }
+        
         let uuid = UUID()
         let handleId = callerUid.isEmpty ? receiverId : callerUid
         // Use phone number for CXHandle when available — native Phone app matches
@@ -514,11 +536,13 @@ extension CallKitManager: CXProviderDelegate {
             // 1. RTCAudioSession.useManualAudio = true (set in NativeWebRTCManager.init)
             // 2. In didActivate: audioSessionDidActivate + isAudioEnabled = true
             // 3. In didDeactivate: audioSessionDidDeactivate + isAudioEnabled = false
+            #if !targetEnvironment(simulator)
             let rtcAudioSession = RTCAudioSession.sharedInstance()
             rtcAudioSession.audioSessionDidActivate(audioSession)
             rtcAudioSession.isAudioEnabled = true
             CallLogger.success("RTCAudioSession.audioSessionDidActivate + isAudioEnabled=true", category: .audio)
             NSLog("✅ [CallKit] RTCAudioSession.audioSessionDidActivate + isAudioEnabled=true")
+            #endif
             
             let route = audioSession.currentRoute
             CallLogger.log("Route: in=\(route.inputs.map{$0.portType.rawValue}), out=\(route.outputs.map{$0.portType.rawValue})", category: .audio)
@@ -561,6 +585,7 @@ extension CallKitManager: CXProviderDelegate {
         CallLogger.log("didDeactivate — audio session deactivated", category: .audio)
         NSLog("📞 [CallKit] didDeactivate — audio session deactivated")
         
+        #if !targetEnvironment(simulator)
         // Tell RTCAudioSession the system deactivated audio
         let rtcAudioSession = RTCAudioSession.sharedInstance()
         rtcAudioSession.audioSessionDidDeactivate(audioSession)
@@ -584,6 +609,15 @@ extension CallKitManager: CXProviderDelegate {
         } else {
             isAudioSessionReady = false
         }
+        #else
+        if dismissedForVideoCall {
+            dismissedForVideoCall = false
+        } else if dismissedForVoiceCall {
+            dismissedForVoiceCall = false
+        } else if !ActiveCallManager.shared.hasActiveCall {
+            isAudioSessionReady = false
+        }
+        #endif
     }
     
     // MARK: - Audio Session Configuration

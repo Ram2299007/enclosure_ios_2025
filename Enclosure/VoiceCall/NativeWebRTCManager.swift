@@ -1,3 +1,4 @@
+#if !targetEnvironment(simulator)
 import Foundation
 import WebRTC
 import AVFoundation
@@ -528,3 +529,4 @@ private final class PeerConnectionDelegateWrapper: NSObject, RTCPeerConnectionDe
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}
 }
+#endif

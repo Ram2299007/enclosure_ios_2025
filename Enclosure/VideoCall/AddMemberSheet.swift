@@ -108,7 +108,7 @@ struct AddMemberSheet: View {
 
             // Name + number
             VStack(alignment: .leading, spacing: 2) {
-                Text(contact.fullName)
+                Text(Constant.formatNameWithYou(uid: contact.uid, fullName: contact.fullName))
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.primary)
                     .lineLimit(1)
