@@ -34,7 +34,7 @@ struct NativeVoiceCallScreen: View {
             // Caller info — matches .participants-container + .caller-info
             // Positioned in upper-center area (top: 40px + margin-top: 40px in CSS)
             VStack(spacing: 0) {
-                Spacer().frame(height: 80 + safeAreaTop) // ~top: 40px + safe area + caller-info margin-top: 40px
+                Spacer().frame(height: 180) // matches Android: layout_marginTop="180dp"
                 callerInfoView
                 Spacer()
             }
@@ -185,30 +185,30 @@ struct NativeVoiceCallScreen: View {
                     firstLetterAvatar(name: session.callerName)
                 }
             }
-            .frame(width: 100, height: 100)
+            .frame(width: 120, height: 120)
             .clipShape(Circle())
 
-            // Caller name — .caller-name { margin-top: 17px; font-size: 14px; font-weight: 700; }
+            // Caller name — matches Android: 28sp, inter_bold, white
             Text(session.callerName.isEmpty ? "Unknown" : session.callerName)
-                .font(.system(size: 14, weight: .bold))
+                .font(.system(size: 28, weight: .bold))
                 .foregroundColor(.white)
                 .lineLimit(1)
-                .padding(.top, 17)
+                .padding(.top, 24)
 
-            // Call timer — .call-timer { margin-top: 10px; font-size: 14px; font-weight: 500; color: #808080; }
+            // Call timer — matches Android: 16sp, inter, #80FFFFFF
             if session.isCallConnected {
                 Text(formattedDuration(session.callDuration))
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Color(hex: "#808080"))
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundColor(.white.opacity(0.5))
                     .monospacedDigit()
-                    .padding(.top, 10)
+                    .padding(.top, 8)
             }
 
-            // Call status — .call-status { margin-top: 17px; font-size: 12px; font-weight: 700; color: #9EA6B9; }
+            // Call status — matches Android: 16sp, inter, #80FFFFFF
             Text(session.isCallConnected ? "Connected" : "Connecting...")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(Color(hex: "#9EA6B9"))
-                .padding(.top, 17)
+                .font(.system(size: 16, weight: .regular))
+                .foregroundColor(.white.opacity(0.5))
+                .padding(.top, 8)
         }
     }
 
@@ -222,15 +222,9 @@ struct NativeVoiceCallScreen: View {
     // .control-btn img { width: 28px; height: 28px; }
 
     private var controlsContainer: some View {
-        ZStack(alignment: .top) {
-            // Bottom container background — .controls-container
-            VoiceCallRoundedCorner(radius: 50, corners: [.topLeft, .topRight])
-                .fill(Color.black.opacity(0.5))
-                .frame(height: 80 + safeAreaBottom)
-
-            // Floating controls — .controls { top: -28px; }
-            HStack(spacing: 50) {
-                // Mute mic
+        HStack(spacing: 0) {
+            // Mute button with label
+            VStack(spacing: 12) {
                 controlButton(
                     imageName: session.isMuted ? "mic_muted" : "mic",
                     systemFallback: session.isMuted ? "mic.slash.fill" : "mic.fill",
@@ -238,13 +232,20 @@ struct NativeVoiceCallScreen: View {
                 ) {
                     session.setMuted(!session.isMuted)
                 }
+                Text("Mute")
+                    .font(.system(size: 13))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+            .frame(maxWidth: .infinity)
 
-                // End call — .control-btn.end-call { background-color: rgba(211,47,47,0.7); }
+            // End call button with label — solid red #F44336 matching Android
+            VStack(spacing: 12) {
                 Button(action: { session.endCall() }) {
                     ZStack {
                         Circle()
-                            .fill(Color(red: 211/255, green: 47/255, blue: 47/255).opacity(0.7))
-                            .frame(width: 64, height: 64)
+                            .fill(Color(red: 244/255, green: 67/255, blue: 54/255))
+                            .frame(width: 65, height: 65)
+                            .shadow(color: .black.opacity(0.3), radius: 6, y: 3)
                         if let img = UIImage(named: "end_call") {
                             Image(uiImage: img)
                                 .resizable()
@@ -258,8 +259,14 @@ struct NativeVoiceCallScreen: View {
                         }
                     }
                 }
+                Text("End Call")
+                    .font(.system(size: 13))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+            .frame(maxWidth: .infinity)
 
-                // Audio output — single tap toggle (like Android)
+            // Speaker button with label
+            VStack(spacing: 12) {
                 controlButton(
                     imageName: "speaker",
                     systemFallback: "speaker.wave.3.fill",
@@ -267,9 +274,14 @@ struct NativeVoiceCallScreen: View {
                 ) {
                     session.setAudioOutput(speaker: !session.isSpeakerOn)
                 }
+                Text("Speaker")
+                    .font(.system(size: 13))
+                    .foregroundColor(.white.opacity(0.5))
             }
-            .offset(y: -28) // .controls { top: -28px; }
+            .frame(maxWidth: .infinity)
         }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 80)
     }
 
     // Android-matched button style (from stylesVoice.css):
@@ -287,7 +299,7 @@ struct NativeVoiceCallScreen: View {
             ZStack {
                 Circle()
                     .fill(isActive ? themeColor.opacity(0.7) : Color.white.opacity(0.1))
-                    .frame(width: 64, height: 64)
+                    .frame(width: 65, height: 65)
                 if let img = UIImage(named: imageName) {
                     Image(uiImage: img)
                         .resizable()
