@@ -5,6 +5,7 @@ import SwiftUI
 struct AddMemberSheet: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: AddMemberViewModel
+    @State private var showCallingToast = false
 
     init(roomId: String, isVideoCall: Bool, currentReceiverId: String) {
         _viewModel = StateObject(wrappedValue: AddMemberViewModel(
@@ -54,6 +55,21 @@ struct AddMemberSheet: View {
                 }
             }
         }
+        .overlay(
+            Group {
+                if showCallingToast {
+                    Text("Calling...")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 12)
+                        .background(Color.black.opacity(0.75))
+                        .cornerRadius(10)
+                        .transition(.opacity)
+                        .animation(.easeInOut, value: showCallingToast)
+                }
+            }
+        )
         .onAppear {
             viewModel.fetchContacts()
         }
@@ -124,7 +140,8 @@ struct AddMemberSheet: View {
             Button {
                 viewModel.inviteContact(contact) { success in
                     if success {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        showCallingToast = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                             dismiss()
                         }
                     }
