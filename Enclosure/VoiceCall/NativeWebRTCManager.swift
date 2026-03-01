@@ -228,7 +228,7 @@ final class NativeWebRTCManager: NSObject {
 
         let config = RTCConfiguration()
         config.iceServers = iceServers
-        config.sdpSemantics = .unifiedPlan  // Must match Android (UNIFIED_PLAN)
+        // Note: GoogleWebRTC 1.0.136171 defaults to Plan B; Android M137 uses Unified Plan
         config.iceTransportPolicy = .all  // Use STUN/host first; TURN relay only as fallback
         config.continualGatheringPolicy = .gatherContinually
         config.iceCandidatePoolSize = 10

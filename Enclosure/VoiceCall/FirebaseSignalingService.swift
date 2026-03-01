@@ -161,11 +161,19 @@ final class FirebaseSignalingService {
         guard let ref = databaseRef else { return }
         signalingHandle = ref.child("rooms").child(roomId).child("signaling")
             .observe(.childAdded) { [weak self] snapshot in
-                guard let self = self,
-                      let value = snapshot.value as? String,
-                      let data = value.data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-                else { return }
+                guard let self = self else { return }
+
+                // Support both Dict (new) and JSON string (old) formats
+                let json: [String: Any]
+                if let dict = snapshot.value as? [String: Any] {
+                    json = dict
+                } else if let value = snapshot.value as? String,
+                          let data = value.data(using: .utf8),
+                          let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    json = parsed
+                } else {
+                    return
+                }
 
                 let receiver = json["receiver"] as? String ?? ""
                 guard receiver == self.myPeerId || receiver == "all" else { return }
@@ -277,15 +285,13 @@ final class FirebaseSignalingService {
     // MARK: - Private Send Helper
 
     private func sendMessage(_ message: [String: Any]) {
-        guard let ref = databaseRef,
-              let data = try? JSONSerialization.data(withJSONObject: message),
-              let jsonString = String(data: data, encoding: .utf8)
-        else {
-            NSLog("❌ [Signaling] Failed to serialize message: \(message["type"] ?? "?")")
+        guard let ref = databaseRef else {
+            NSLog("❌ [Signaling] databaseRef is nil — cannot send message")
             return
         }
+        // Store as Firebase Dict (not JSON string) to preserve SDP encoding
         let key = ref.child("rooms").child(roomId).child("signaling").childByAutoId().key ?? UUID().uuidString
-        ref.child("rooms").child(roomId).child("signaling").child(key).setValue(jsonString)
+        ref.child("rooms").child(roomId).child("signaling").child(key).setValue(message)
         NSLog("📤 [Signaling] Sent \(message["type"] ?? "?") to \(message["receiver"] ?? "?")")
     }
 }
