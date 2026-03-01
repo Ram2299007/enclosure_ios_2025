@@ -428,6 +428,10 @@ final class NativeWebRTCManager: NSObject {
         }
     }
 
+    func hasPeerConnection(forPeer peerId: String) -> Bool {
+        return peerConnections[peerId] != nil
+    }
+
     // MARK: - Cleanup
 
     func removePeer(_ peerId: String) {

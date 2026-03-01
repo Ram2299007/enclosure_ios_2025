@@ -451,14 +451,23 @@ extension NativeVideoCallSession: FirebaseSignalingDelegate {
         DispatchQueue.main.async { [weak self] in
             self?.callerName = name
         }
-        // Only sender creates the offer; receiver waits for it via didReceiveOffer.
-        // This avoids SDP glare (both sides sending offers simultaneously) which
-        // causes intermittent connection failures — same fix as Android.
+        // Sender creates the offer immediately; receiver waits for it via didReceiveOffer.
+        // Fallback: if receiver doesn't get an offer within 3s, create one ourselves.
+        // This handles the case where the remote side's offer is lost due to Firebase timing.
         if payload.isSender {
             NSLog("📹 [VideoSession] Sender — creating offer for peer: \(peerId)")
             webRTCManager?.createOffer(forPeer: peerId)
         } else {
             NSLog("📹 [VideoSession] Receiver — waiting for offer from: \(peerId)")
+            // Fallback: if no offer received within 3 seconds, create our own offer
+            let fallbackPeerId = peerId
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                guard let self = self, !self.isCallConnected, !self.isCallEnded else { return }
+                // Only create fallback offer if no peer connection exists yet (no offer was processed)
+                guard !(self.webRTCManager?.hasPeerConnection(forPeer: fallbackPeerId) ?? true) else { return }
+                NSLog("⚠️ [VideoSession] No offer received in 3s — creating fallback offer for: \(fallbackPeerId)")
+                self.webRTCManager?.createOffer(forPeer: fallbackPeerId)
+            }
         }
     }
 
