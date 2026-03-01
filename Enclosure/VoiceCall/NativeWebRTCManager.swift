@@ -228,6 +228,7 @@ final class NativeWebRTCManager: NSObject {
 
         let config = RTCConfiguration()
         config.iceServers = iceServers
+        config.sdpSemantics = .unifiedPlan  // Must match Android (UNIFIED_PLAN)
         config.iceTransportPolicy = .all  // Use STUN/host first; TURN relay only as fallback
         config.continualGatheringPolicy = .gatherContinually
         config.iceCandidatePoolSize = 10
@@ -246,7 +247,7 @@ final class NativeWebRTCManager: NSObject {
 
         let pc = factory.peerConnection(with: config, constraints: constraints, delegate: wrapper)
 
-        // Add local stream (GoogleWebRTC 1.0 Plan B — addStream not addTrack)
+        // Add local stream (addStream works as compatibility layer in Unified Plan)
         if let stream = localStream {
             pc.add(stream)
             NSLog("✅ [NativeWebRTC] Added local stream to peer: \(peerId)")
@@ -290,6 +291,7 @@ final class NativeWebRTCManager: NSObject {
 
     /// Receiver side: set remote offer SDP, create answer
     func handleRemoteOffer(_ sdpString: String, fromPeer peerId: String) {
+        NSLog("📨 [NativeWebRTC] handleRemoteOffer from \(peerId), SDP length=\(sdpString.count)")
         let sdp = RTCSessionDescription(type: .offer, sdp: sdpString)
         guard let pc = createPeerConnection(forPeer: peerId) else { return }
 
