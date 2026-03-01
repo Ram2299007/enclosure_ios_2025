@@ -289,10 +289,27 @@ final class NativeWebRTCManager: NSObject {
         }
     }
 
+    /// Sanitize SDP from newer WebRTC versions for compatibility with GoogleWebRTC 1.0
+    private func sanitizeSDP(_ sdp: String) -> String {
+        let lines = sdp.components(separatedBy: "\r\n")
+        let filtered = lines.filter { line in
+            // Remove attributes not supported by GoogleWebRTC 1.0.136171
+            if line.hasPrefix("a=extmap-allow-mixed") { return false }
+            return true
+        }
+        let result = filtered.joined(separator: "\r\n")
+        NSLog("📝 [NativeWebRTC] SDP sanitized: \(sdp.count) → \(result.count) chars, removed \(lines.count - filtered.count) lines")
+        return result
+    }
+
     /// Receiver side: set remote offer SDP, create answer
     func handleRemoteOffer(_ sdpString: String, fromPeer peerId: String) {
         NSLog("📨 [NativeWebRTC] handleRemoteOffer from \(peerId), SDP length=\(sdpString.count)")
-        let sdp = RTCSessionDescription(type: .offer, sdp: sdpString)
+        // Log first 300 chars for debugging SDP format
+        let preview = String(sdpString.prefix(300))
+        NSLog("📝 [NativeWebRTC] SDP preview: \(preview)")
+        let sanitized = sanitizeSDP(sdpString)
+        let sdp = RTCSessionDescription(type: .offer, sdp: sanitized)
         guard let pc = createPeerConnection(forPeer: peerId) else { return }
 
         pc.setRemoteDescription(sdp) { [weak self] error in
@@ -338,7 +355,8 @@ final class NativeWebRTCManager: NSObject {
             return
         }
         answerSetForPeer.insert(peerId)
-        let sdp = RTCSessionDescription(type: .answer, sdp: sdpString)
+        let sanitized = sanitizeSDP(sdpString)
+        let sdp = RTCSessionDescription(type: .answer, sdp: sanitized)
         pc.setRemoteDescription(sdp) { [weak self] error in
             if let error = error {
                 self?.answerSetForPeer.remove(peerId)
