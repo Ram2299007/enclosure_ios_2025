@@ -595,12 +595,25 @@ extension NativeVoiceCallSession: FirebaseSignalingDelegate {
             }
         }
 
-        // Both sides create offer — needed for cross-platform compatibility.
-        // If both are native iOS, the first answer received wins (idempotent).
-        // If caller is Android/old-iOS (PeerJS), they won't send Firebase SDP,
-        // so the native receiver must initiate the offer instead.
-        NSLog("📞 [NativeSession] Peer joined — creating offer for: \(peerId) (isSender=\(payload.isSender))")
-        webRTCManager?.createOffer(forPeer: peerId)
+        // Only sender creates the offer; receiver waits for it via didReceiveOffer.
+        // This avoids SDP glare (both sides sending offers simultaneously) which
+        // causes failures on iOS GoogleWebRTC 1.0 that doesn't support rollback.
+        if payload.isSender {
+            NSLog("📞 [NativeSession] Sender — creating offer for: \(peerId)")
+            webRTCManager?.createOffer(forPeer: peerId)
+        } else {
+            NSLog("📹 [NativeSession] Receiver — waiting for offer from: \(peerId)")
+            // Fallback: if no offer received within 3 seconds, create our own offer
+            let fallbackPeerId = peerId
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                guard let self = self,
+                      !self.isCallConnected,
+                      !self.isCallEnded,
+                      self.webRTCManager?.hasPeerConnection(forPeer: fallbackPeerId) == false else { return }
+                NSLog("📞 [NativeSession] No offer received in 3s — creating fallback offer for: \(fallbackPeerId)")
+                self.webRTCManager?.createOffer(forPeer: fallbackPeerId)
+            }
+        }
     }
 
     func signalingService(_ service: FirebaseSignalingService, didReceiveOffer sdp: String, fromPeer peerId: String) {
