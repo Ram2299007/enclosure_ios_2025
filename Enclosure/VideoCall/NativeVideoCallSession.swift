@@ -451,9 +451,15 @@ extension NativeVideoCallSession: FirebaseSignalingDelegate {
         DispatchQueue.main.async { [weak self] in
             self?.callerName = name
         }
-        // Create offer (same as voice call — both sides offer, first answer wins)
-        NSLog("📹 [VideoSession] Creating offer for peer: \(peerId)")
-        webRTCManager?.createOffer(forPeer: peerId)
+        // Only sender creates the offer; receiver waits for it via didReceiveOffer.
+        // This avoids SDP glare (both sides sending offers simultaneously) which
+        // causes intermittent connection failures — same fix as Android.
+        if payload.isSender {
+            NSLog("📹 [VideoSession] Sender — creating offer for peer: \(peerId)")
+            webRTCManager?.createOffer(forPeer: peerId)
+        } else {
+            NSLog("📹 [VideoSession] Receiver — waiting for offer from: \(peerId)")
+        }
     }
 
     func signalingService(_ service: FirebaseSignalingService, didReceiveOffer sdp: String, fromPeer peerId: String) {

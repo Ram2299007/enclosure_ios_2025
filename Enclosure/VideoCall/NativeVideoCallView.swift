@@ -33,14 +33,10 @@ struct NativeVideoCallView: View {
     @State private var showAddMemberSheet = false
     @State private var secondaryVideoAppeared = false
     @State private var isDragging = false
-    @State private var hiddenSide: HiddenSide = .visible
     /// Absolute snapped position of secondary video center. nil = use default.
     @State private var secondaryPosition: CGPoint? = nil
     /// Live drag offset from current position (reset to .zero on drag end)
     @State private var dragOffset: CGSize = .zero
-
-    /// WhatsApp-style: secondary video can be hidden off-screen left or right
-    enum HiddenSide { case visible, left, right }
 
     /// Theme color derived from Constant.themeColor (a hex String)
     private var themeColor: Color { Color(hex: Constant.themeColor) }
@@ -79,9 +75,6 @@ struct NativeVideoCallView: View {
 
                 // ── Secondary video (local PiP when connected) ──
                 secondaryVideo(geometry: geometry)
-
-                // ── WhatsApp-style arrow tab when secondary video is hidden ──
-                hiddenArrowTab(geometry: geometry)
             }
         }
         .statusBar(hidden: true)
@@ -276,40 +269,15 @@ struct NativeVideoCallView: View {
                             let rawY = pos.y + value.translation.height
                             let clampedX = min(max(rawX, bounds.minX), bounds.maxX)
                             let clampedY = min(max(rawY, bounds.minY), bounds.maxY)
-                            let screenW = geometry.size.width
 
-                            // WhatsApp-style hide: only if dragged firmly to the very edge
-                            if clampedX <= bounds.minX && value.translation.width < -size.width {
-                                // Hide off left edge
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                    hiddenSide = .left
-                                    secondaryPosition = CGPoint(
-                                        x: -(size.width / 2 + 20),
-                                        y: clampedY
-                                    )
-                                    dragOffset = .zero
-                                }
-                            } else if clampedX >= bounds.maxX && value.translation.width > size.width {
-                                // Hide off right edge
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                    hiddenSide = .right
-                                    secondaryPosition = CGPoint(
-                                        x: screenW + size.width / 2 + 20,
-                                        y: clampedY
-                                    )
-                                    dragOffset = .zero
-                                }
-                            } else {
-                                // Snap to nearest edge within bounds
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                    hiddenSide = .visible
-                                    secondaryPosition = snapToEdge(
-                                        currentX: clampedX,
-                                        currentY: clampedY,
-                                        geometry: geometry
-                                    )
-                                    dragOffset = .zero
-                                }
+                            // Snap to nearest horizontal edge, clamp Y (same as Android)
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                secondaryPosition = snapToEdge(
+                                    currentX: clampedX,
+                                    currentY: clampedY,
+                                    geometry: geometry
+                                )
+                                dragOffset = .zero
                             }
                         }
                 )
@@ -326,38 +294,7 @@ struct NativeVideoCallView: View {
         }
     }
 
-    /// WhatsApp-style arrow indicator on the edge when secondary video is hidden off-screen
-    @ViewBuilder
-    private func hiddenArrowTab(geometry: GeometryProxy) -> some View {
-        if session.isCallConnected && hiddenSide != .visible && !session.isCameraOff {
-            let isLeft = hiddenSide == .left
-            let arrowY = secondaryPosition?.y ?? geometry.size.height * 0.5
-
-            Button {
-                // Bring secondary video back to the nearest edge it was hidden from
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                    hiddenSide = .visible
-                    secondaryPosition = defaultPosition(geometry: geometry)
-                }
-            } label: {
-                ZStack {
-                    Capsule()
-                        .fill(Color.white.opacity(0.25))
-                        .frame(width: 28, height: 56)
-
-                    Image(systemName: isLeft ? "chevron.right" : "chevron.left")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.white)
-                }
-            }
-            .position(
-                x: isLeft ? 14 : geometry.size.width - 14,
-                y: arrowY
-            )
-            .transition(.opacity.combined(with: .scale(scale: 0.6)))
-            .zIndex(23)
-        }
-    }
+    // (Arrow tabs removed — matching Android: no hide-to-side feature)
 
     // MARK: - Helpers
 
@@ -413,43 +350,43 @@ struct NativeVideoCallView: View {
         return (minX, maxX, minY, maxY)
     }
 
-    /// Returns the snapped absolute position for the secondary video
+    /// Snap to nearest corner (same as Android: determines nearest corner based on current position)
     private func snapToEdge(currentX: CGFloat, currentY: CGFloat, geometry: GeometryProxy) -> CGPoint {
         let size = secondaryVideoSize
         let hw = size.width / 2
+        let hh = size.height / 2
         let bounds = safeBounds(for: size, geometry: geometry)
 
-        // Snap X to nearest horizontal edge
-        var snapX: CGFloat
-        if currentX < geometry.size.width / 2 {
-            snapX = hw + edgeMargin
-        } else {
-            snapX = geometry.size.width - hw - edgeMargin
-        }
+        // Determine nearest corner
+        let isLeft = currentX < geometry.size.width / 2
+        let isTop = currentY < geometry.size.height / 2
 
-        // Clamp Y within safe bounds
-        let snapY = min(max(currentY, bounds.minY), bounds.maxY)
+        let snapX: CGFloat = isLeft ? (hw + edgeMargin) : (geometry.size.width - hw - edgeMargin)
+        let snapY: CGFloat = isTop ? bounds.minY : bounds.maxY
 
         return CGPoint(x: snapX, y: snapY)
     }
 
-    /// Re-clamp secondaryPosition for current size/controls state (called after controls toggle)
+    /// When controls toggle, snap PiP to nearest corner with smooth animation (same as Android)
     private func reclampPosition() {
-        guard hiddenSide == .visible, let pos = secondaryPosition else { return }
-        // Use a GeometryReader-free approach: schedule on next layout
-        // We can use UIScreen bounds as fallback
+        guard let pos = secondaryPosition else { return }
         let screen = UIScreen.main.bounds
         let size = secondaryVideoSize
         let hw = size.width / 2
         let hh = size.height / 2
-        let minX = hw + edgeMargin
-        let maxX = screen.width - hw - edgeMargin
+
         let minY = hh + 80
         let maxY = screen.height - hh - (showControls ? 120 : 20) - edgeMargin
-        let newX = min(max(pos.x, minX), maxX)
-        let newY = min(max(pos.y, minY), maxY)
+
+        // Determine nearest corner based on current position
+        let isLeft = pos.x < screen.width / 2
+        let isTop = pos.y < screen.height / 2
+
+        let snapX: CGFloat = isLeft ? (hw + edgeMargin) : (screen.width - hw - edgeMargin)
+        let snapY: CGFloat = isTop ? minY : maxY
+
         withAnimation(.easeInOut(duration: 0.3)) {
-            secondaryPosition = CGPoint(x: newX, y: newY)
+            secondaryPosition = CGPoint(x: snapX, y: snapY)
         }
     }
 }
