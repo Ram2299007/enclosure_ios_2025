@@ -12,9 +12,7 @@ struct SettingsView: View {
     @State private var navigateToPrivacyPolicy = false
     @State private var navigateToContactUs = false
     @State private var navigateToAccount = false
-    @State private var isLoading = false
-    @State private var navigateToOTPVerifyDelete = false
-    @State private var otpVerificationDeleteData: (uid: String, phoneNumber: String, countryCode: String)?
+    @State private var navigateToManageAccount = false
     
     // Helper function to hide keyboard
     private func hideKeyboard() {
@@ -64,18 +62,9 @@ struct SettingsView: View {
         .navigationDestination(isPresented: $navigateToAccount) {
             AccountView()
         }
-        .navigationDestination(isPresented: $navigateToOTPVerifyDelete) {
-            if let data = otpVerificationDeleteData {
-                OTPVerifyDeleteView(
-                    uid: data.uid,
-                    phoneNumber: data.phoneNumber,
-                    countryCode: data.countryCode
-                )
-            }
+        .navigationDestination(isPresented: $navigateToManageAccount) {
+            ManageAccountView(newPhoneNumber: "")
         }
-        .overlay(
-            isLoading ? LoadingOverlay() : nil
-        )
     }
     
     // MARK: - Android-style Toolbar
@@ -148,15 +137,6 @@ struct SettingsView: View {
                 navigateToAccount = true
             }
 
-            // Delete Account — always visible top-level row (Guideline 5.1.1(v))
-            AndroidSettingsItem(
-                icon: "trash",
-                title: "Delete my account",
-                subtitle: "Permanently delete your account and data"
-            ) {
-                handleDeleteAccount()
-            }
-
             // Contact us
             AndroidSettingsItem(
                 icon: "globe",
@@ -165,7 +145,7 @@ struct SettingsView: View {
             ) {
                 handleContactSupport()
             }
-            
+
             // Privacy Policy
             AndroidSettingsItem(
                 icon: "info.circle",
@@ -173,6 +153,16 @@ struct SettingsView: View {
                 subtitle: "Privacy policy"
             ) {
                 handlePrivacyPolicy()
+            }
+
+            // Delete Account — always visible top-level row (Guideline 5.1.1(v))
+            AndroidSettingsItem(
+                icon: "trash",
+                title: "Delete my account",
+                subtitle: "Permanently delete your account and data",
+                isDestructive: true
+            ) {
+                handleDeleteAccount()
             }
             
             // Bottom spacing
@@ -204,49 +194,9 @@ struct SettingsView: View {
     }
     
     private func handleDeleteAccount() {
-        guard let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY),
-              let oldPhoneNumber = UserDefaults.standard.string(forKey: Constant.PHONE_NUMBERKEY) else {
-            showAlert(title: "Error", message: "User data not found. Please login again.")
-            return
-        }
-
-        isLoading = true
-
-        ApiService.shared.sendOtpForDelete(mobileNo: oldPhoneNumber) { result in
-            DispatchQueue.main.async {
-                self.isLoading = false
-                switch result {
-                case .success(let response):
-                    if response.errorCode == "200" {
-                        let components = self.splitCountryCodeAndNationalNumber(phoneNumber: oldPhoneNumber)
-                        self.otpVerificationDeleteData = (
-                            uid: uid,
-                            phoneNumber: oldPhoneNumber,
-                            countryCode: components.0
-                        )
-                        self.navigateToOTPVerifyDelete = true
-                    } else {
-                        self.showAlert(title: "Error", message: response.message ?? "Failed to send OTP")
-                    }
-                case .failure(let error):
-                    self.showAlert(title: "Error", message: error.localizedDescription)
-                }
-            }
-        }
+        navigateToManageAccount = true
     }
 
-    private func splitCountryCodeAndNationalNumber(phoneNumber: String) -> (String, String) {
-        if phoneNumber.hasPrefix("+") {
-            let withoutPlus = String(phoneNumber.dropFirst())
-            if withoutPlus.count >= 2 {
-                let countryCode = String(withoutPlus.prefix(2))
-                let nationalNumber = String(withoutPlus.dropFirst(2))
-                return (countryCode, nationalNumber)
-            }
-        }
-        return ("91", phoneNumber)
-    }
-    
     private func handleContactSupport() {
         navigateToContactUs = true
     }
@@ -295,9 +245,9 @@ struct AndroidSettingsItem: View {
                 // Icon with circular background (Android style)
                 ZStack {
                     Circle()
-                        .fill(Color("TextColor").opacity(0.1))
+                        .fill(isDestructive ? Color.red.opacity(0.12) : Color("TextColor").opacity(0.1))
                         .frame(width: 40, height: 40)
-                    
+
                     // Check if it's a custom image or system icon
                     if icon.contains("svg") || icon.contains("png") || icon == "accountsvg" {
                         Image(icon)
@@ -305,11 +255,11 @@ struct AndroidSettingsItem: View {
                             .renderingMode(.template)
                             .scaledToFit()
                             .frame(width: 18, height: 18)
-                            .foregroundColor(Color("TextColor").opacity(0.6))
+                            .foregroundColor(isDestructive ? Color.red : Color("TextColor").opacity(0.6))
                     } else {
                         Image(systemName: icon)
                             .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(Color("TextColor").opacity(0.6))
+                            .foregroundColor(isDestructive ? Color.red : Color("TextColor").opacity(0.6))
                     }
                 }
                 
