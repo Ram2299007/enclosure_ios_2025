@@ -268,34 +268,28 @@ struct videoCallView: View {
                                 .padding(.top, 4)
                             }
                             .scrollDisabled(!isScrollEnabled)
-                            .overlay(
-                                Group {
-                                    if !isScrollEnabled {
-                                        Color.clear
-                                            .contentShape(Rectangle())
-                                            .gesture(
-                                                DragGesture()
-                                                    .onChanged { value in
-                                                        dragOffset = value.translation
-                                                    }
-                                                    .onEnded { value in
-                                                        withAnimation(.easeInOut(duration: 0.30)) {
-                                                            if value.translation.height < -50 {
-                                                                isStretchedUp = true
-                                                                isMainContentVisible = false
-                                                                isBackLayoutVisible = true
-                                                                isButtonVisible = true
-                                                                isScrollEnabled = true
-                                                                isTopHeaderVisible = true
-                                                            } else if value.translation.height > 50 {
-                                                                handleSwipeDown()
-                                                            }
-                                                            dragOffset = .zero
-                                                        }
-                                                    }
-                                            )
+                            .simultaneousGesture(
+                                DragGesture()
+                                    .onChanged { value in
+                                        if !isScrollEnabled { dragOffset = value.translation }
                                     }
-                                }
+                                    .onEnded { value in
+                                        if !isScrollEnabled {
+                                            withAnimation(.easeInOut(duration: 0.30)) {
+                                                if value.translation.height < -50 {
+                                                    isStretchedUp = true
+                                                    isMainContentVisible = false
+                                                    isBackLayoutVisible = true
+                                                    isButtonVisible = true
+                                                    isScrollEnabled = true
+                                                    isTopHeaderVisible = true
+                                                } else if value.translation.height > 50 {
+                                                    handleSwipeDown()
+                                                }
+                                                dragOffset = .zero
+                                            }
+                                        }
+                                    }
                             )
                             .animation(.spring(), value: dragOffset)
                             .transition(.opacity)
@@ -332,34 +326,28 @@ struct videoCallView: View {
                                     )
                                 }
                                 .scrollDisabled(!isScrollEnabled)
-                                .overlay(
-                                    Group {
-                                        if !isScrollEnabled {
-                                            Color.clear
-                                                .contentShape(Rectangle())
-                                                .gesture(
-                                                    DragGesture()
-                                                        .onChanged { value in
-                                                            dragOffset = value.translation
-                                                        }
-                                                        .onEnded { value in
-                                                            withAnimation(.easeInOut(duration: 0.30)) {
-                                                                if value.translation.height < -50 {
-                                                                    isStretchedUp = true
-                                                                    isMainContentVisible = false
-                                                                    isBackLayoutVisible = true
-                                                                    isButtonVisible = true
-                                                                    isScrollEnabled = true
-                                                                    isTopHeaderVisible = true
-                                                                } else if value.translation.height > 50 {
-                                                                    handleSwipeDown()
-                                                                }
-                                                                dragOffset = .zero
-                                                            }
-                                                        }
-                                                )
+                                .simultaneousGesture(
+                                    DragGesture()
+                                        .onChanged { value in
+                                            if !isScrollEnabled { dragOffset = value.translation }
                                         }
-                                    }
+                                        .onEnded { value in
+                                            if !isScrollEnabled {
+                                                withAnimation(.easeInOut(duration: 0.30)) {
+                                                    if value.translation.height < -50 {
+                                                        isStretchedUp = true
+                                                        isMainContentVisible = false
+                                                        isBackLayoutVisible = true
+                                                        isButtonVisible = true
+                                                        isScrollEnabled = true
+                                                        isTopHeaderVisible = true
+                                                    } else if value.translation.height > 50 {
+                                                        handleSwipeDown()
+                                                    }
+                                                    dragOffset = .zero
+                                                }
+                                            }
+                                        }
                                 )
                                 .animation(.spring(), value: dragOffset)
                                 .transition(.opacity)
@@ -420,34 +408,28 @@ struct videoCallView: View {
                                     }
                                 }
                                 .scrollDisabled(!isScrollEnabled)
-                                .overlay(
-                                    Group {
-                                        if !isScrollEnabled {
-                                            Color.clear
-                                                .contentShape(Rectangle())
-                                                .gesture(
-                                                    DragGesture()
-                                                        .onChanged { value in
-                                                            dragOffset = value.translation
-                                                        }
-                                                        .onEnded { value in
-                                                            withAnimation(.easeInOut(duration: 0.30)) {
-                                                                if value.translation.height < -50 {
-                                                                    isStretchedUp = true
-                                                                    isMainContentVisible = false
-                                                                    isBackLayoutVisible = true
-                                                                    isButtonVisible = true
-                                                                    isScrollEnabled = true
-                                                                    isTopHeaderVisible = true
-                                                                } else if value.translation.height > 50 {
-                                                                    handleSwipeDown()
-                                                                }
-                                                                dragOffset = .zero
-                                                            }
-                                                        }
-                                                )
+                                .simultaneousGesture(
+                                    DragGesture()
+                                        .onChanged { value in
+                                            if !isScrollEnabled { dragOffset = value.translation }
                                         }
-                                    }
+                                        .onEnded { value in
+                                            if !isScrollEnabled {
+                                                withAnimation(.easeInOut(duration: 0.30)) {
+                                                    if value.translation.height < -50 {
+                                                        isStretchedUp = true
+                                                        isMainContentVisible = false
+                                                        isBackLayoutVisible = true
+                                                        isButtonVisible = true
+                                                        isScrollEnabled = true
+                                                        isTopHeaderVisible = true
+                                                    } else if value.translation.height > 50 {
+                                                        handleSwipeDown()
+                                                    }
+                                                    dragOffset = .zero
+                                                }
+                                            }
+                                        }
                                 )
                                 .animation(.spring(), value: dragOffset)
                                 .transition(.opacity)
