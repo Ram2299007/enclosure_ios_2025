@@ -1,12 +1,9 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @Environment(\.dismiss) private var dismiss
     @State private var showAlert = false
     @State private var alertMessage = ""
     @State private var alertTitle = ""
-    @State private var isPressed = false
-    
     // Profile states
     @State private var userProfile: GetProfileModel?
     @State private var navigateToPrivacyPolicy = false
@@ -30,20 +27,17 @@ struct SettingsView: View {
                 }
             
             VStack(spacing: 0) {
-                // Custom Android-style toolbar
-                androidToolbar
-                
-                // Settings List - Android RecyclerView style
+                // Settings List
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        // Settings Items List
                         settingsItemsList
                     }
                     .padding(.top, 20)
                 }
             }
         }
-        .navigationBarBackButtonHidden(true)
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
         .background(NavigationGestureEnabler())
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK") { }
@@ -67,56 +61,7 @@ struct SettingsView: View {
         }
     }
     
-    // MARK: - Android-style Toolbar
-    private var androidToolbar: some View {
-        HStack {
-            // Back button - exact same as editmyProfile.swift
-            Button(action: handleBackTap) {
-                ZStack {
-                    if isPressed {
-                        Circle()
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(width: 40, height: 40)
-                            .scaleEffect(isPressed ? 1.2 : 1.0)
-                            .animation(.easeOut(duration: 0.3), value: isPressed)
-                    }
-
-                    Image("leftvector")
-                        .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 25, height: 18)
-                        .foregroundColor(Color("icontintGlobal"))
-                }
-            }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onEnded { _ in
-                        withAnimation {
-                            isPressed = false
-                        }
-                    }
-            )
-            .buttonStyle(.plain)
-            
-            // Title - same font style as editmyProfile.swift
-            Text("Settings")
-                .font(.custom("Inter18pt-Medium", size: 16))
-                .foregroundColor(Color("TextColor"))
-                .fontWeight(.medium)
-                .lineSpacing(24) // Equivalent to lineHeight
-                .padding(.leading, 6)
-            
-            Spacer()
-        }
-        .padding(.top, 0)
-        .padding(.horizontal, 20)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color("background_color"))
-    }
-    
-    
-    // MARK: - Settings Items List (Android RecyclerView style)
+    // MARK: - Settings Items List
     private var settingsItemsList: some View {
         VStack(spacing: 0) {
             // Blocked contacts
@@ -211,15 +156,6 @@ struct SettingsView: View {
         showAlert = true
     }
     
-    private func handleBackTap() {
-        withAnimation {
-            isPressed = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            dismiss()
-            isPressed = false
-        }
-    }
 }
 
 // MARK: - Android-style Components
