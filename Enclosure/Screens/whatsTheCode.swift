@@ -38,9 +38,7 @@ struct whatsTheCode: View {
 
     @State private var otp: [String] = Array(repeating: "", count: 6)
     @FocusState private var focusedField: Int?
-    @State private var isPressed = false
     @StateObject private var viewModel = SendOTPViewModel()
-    @Environment(\.dismiss) var dismiss
     @State private var resendTimer = 0
     @State private var isResendDisabled = false
     @State private var showInvalidOTP = false
@@ -70,29 +68,6 @@ struct whatsTheCode: View {
                     ScrollViewReader { proxy in
                         ScrollView {
                             VStack(alignment: .leading, spacing: 16) {
-                            // Back Button
-                            Button(action: handleBackTap) {
-                                ZStack {
-                                    if isPressed {
-                                        Circle()
-                                            .fill(Color.gray.opacity(0.3))
-                                            .frame(width: 40, height: 40)
-                                            .scaleEffect(isPressed ? 1.2 : 1.0)
-                                            .animation(.easeOut(duration: 0.3), value: isPressed)
-                                    }
-
-                                    Image("leftvector")
-                                        .renderingMode(.template)
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(width: 25, height: 18)
-                                        .foregroundColor(Color("icontintGlobal"))
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.top, 20)
-                            .padding(.leading, 20)
-
                             // Title
                             Text("What's the\ncode?")
                                 .font(.custom("Inter18pt-SemiBold", size: 40)) // inter_bold, 40dp, fontWeight 600
@@ -261,13 +236,9 @@ struct whatsTheCode: View {
                     .background(Color.clear.ignoresSafeArea()) // Ensures full-screen coverage
                 }
             }
-            .navigationBarHidden(true)
-            // .statusBarHidden(true) - REMOVED to show status bar with time and data
-            // PopGestureRecognizerSwiftUI: Gesture is enabled by default (like ForthView)
-            // We don't call .swipeBackGestureDisabled(), so the native interactive pop gesture works
-            .background(
-                NavigationGestureEnabler()
-            )
+            .navigationTitle("Verify")
+            .navigationBarTitleDisplayMode(.inline)
+            .background(NavigationGestureEnabler())
             .onAppear {
                 checkClipboardForOTP()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -311,16 +282,6 @@ struct whatsTheCode: View {
             }
     }
 
-    private func handleBackTap() {
-        withAnimation {
-            isPressed = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            dismiss()
-            isPressed = false
-        }
-    }
-    
     private func startResendTimer() {
         resendTimer = 60
         isResendDisabled = true
