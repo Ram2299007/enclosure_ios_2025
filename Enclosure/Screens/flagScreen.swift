@@ -11,7 +11,6 @@ import SwiftUI
 
 struct flagScreen: View {
     @StateObject private var viewModel = FlagViewModel()
-    @State private var isPressed = false
     @Environment(\.dismiss) var dismiss
     @FocusState private var isSearchFocused: Bool
 
@@ -28,40 +27,6 @@ struct flagScreen: View {
     
     var body: some View {
         VStack(spacing: 0) {
-                // Back Arrow Above Title
-                HStack(alignment: .center) {
-                    Button(action: handleBackTap) {
-                        ZStack {
-                            if isPressed {
-                                Circle()
-                                    .fill(Color.gray.opacity(0.3))
-                                    .frame(width: 40, height: 40)
-                                    .scaleEffect(isPressed ? 1.2 : 1.0)
-                                    .animation(.easeOut(duration: 0.3), value: isPressed)
-                            }
-
-                            Image("leftvector")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 25, height: 18)
-                                .foregroundColor(Color("icontintGlobal"))
-                        }
-                    }
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 0)
-                            .onEnded { _ in
-                                withAnimation {
-                                    isPressed = false
-                                }
-                            }
-                    )
-                    .buttonStyle(.plain)
-
-                    Spacer()
-                }
-                .padding(.leading, 10)
-
                 // Search Bar Section - matching Android layout
                 VStack(spacing: 0) {
                     HStack(alignment: .center, spacing: 0) {
@@ -154,22 +119,11 @@ struct flagScreen: View {
                     isSearchFocused = true
                 }
             }
-            .navigationBarHidden(true)
+            .navigationTitle("Select Country")
+            .navigationBarTitleDisplayMode(.inline)
             .background(NavigationGestureEnabler())
     }
     
-    private func handleBackTap() {
-        // Dismiss keyboard first (like Android does on back press)
-        isSearchFocused = false
-        
-        withAnimation {
-            isPressed = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            dismiss()
-            isPressed = false
-        }
-    }
 }
 
 #Preview {
