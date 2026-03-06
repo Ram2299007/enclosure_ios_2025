@@ -12,7 +12,6 @@ struct SettingsView: View {
     @State private var navigateToPrivacyPolicy = false
     @State private var navigateToContactUs = false
     @State private var navigateToAccount = false
-    @State private var showAccountSubOptions = false
     @State private var isLoading = false
     @State private var navigateToOTPVerifyDelete = false
     @State private var otpVerificationDeleteData: (uid: String, phoneNumber: String, countryCode: String)?
@@ -140,81 +139,24 @@ struct SettingsView: View {
                 handleBlockedContacts()
             }
             
-            // Account
+            // Account — navigates directly to change number screen
             AndroidSettingsItem(
                 icon: "accountsvg",
                 title: "Account",
-                subtitle: "Change number, Delete my account"
+                subtitle: "Change your phone number"
             ) {
-                handleAccount()
+                navigateToAccount = true
             }
 
-            if showAccountSubOptions {
-                VStack(spacing: 0) {
-                    // Change number sub-option
-                    Button(action: { navigateToAccount = true }) {
-                        HStack(spacing: 16) {
-                            Spacer().frame(width: 20)
-                            ZStack {
-                                Circle()
-                                    .fill(Color("TextColor").opacity(0.07))
-                                    .frame(width: 34, height: 34)
-                                Image(systemName: "phone.arrow.right")
-                                    .font(.system(size: 15, weight: .medium))
-                                    .foregroundColor(Color("TextColor").opacity(0.6))
-                            }
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Change number")
-                                    .font(.custom("Inter18pt-Medium", size: 15))
-                                    .foregroundColor(Color("TextColor"))
-                                    .fontWeight(.medium)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                Text("Transfer your data to a new number")
-                                    .font(.custom("Inter18pt-Regular", size: 13))
-                                    .foregroundColor(Color("TextColor").opacity(0.6))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            Spacer()
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 13)
-                    }
-                    .buttonStyle(.plain)
-
-                    // Delete account sub-option
-                    Button(action: { handleDeleteAccount() }) {
-                        HStack(spacing: 16) {
-                            Spacer().frame(width: 20)
-                            ZStack {
-                                Circle()
-                                    .fill(Color.red.opacity(0.1))
-                                    .frame(width: 34, height: 34)
-                                Image(systemName: "trash")
-                                    .font(.system(size: 15, weight: .medium))
-                                    .foregroundColor(Color.red.opacity(0.8))
-                            }
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Delete my account")
-                                    .font(.custom("Inter18pt-Medium", size: 15))
-                                    .foregroundColor(Color.red)
-                                    .fontWeight(.medium)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                Text("Permanently delete your account")
-                                    .font(.custom("Inter18pt-Regular", size: 13))
-                                    .foregroundColor(Color("TextColor").opacity(0.6))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            Spacer()
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 13)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .background(Color("TextColor").opacity(0.03))
-                .transition(.opacity.combined(with: .move(edge: .top)))
+            // Delete Account — always visible top-level row (Guideline 5.1.1(v))
+            AndroidSettingsItem(
+                icon: "trash",
+                title: "Delete my account",
+                subtitle: "Permanently delete your account and data"
+            ) {
+                handleDeleteAccount()
             }
-            
+
             // Contact us
             AndroidSettingsItem(
                 icon: "globe",
@@ -261,12 +203,6 @@ struct SettingsView: View {
         showAlert(title: "Blocked contacts", message: "No blocked contacts found.")
     }
     
-    private func handleAccount() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            showAccountSubOptions.toggle()
-        }
-    }
-
     private func handleDeleteAccount() {
         guard let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY),
               let oldPhoneNumber = UserDefaults.standard.string(forKey: Constant.PHONE_NUMBERKEY) else {

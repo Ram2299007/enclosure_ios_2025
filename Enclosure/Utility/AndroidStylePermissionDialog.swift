@@ -207,8 +207,20 @@ class AndroidStylePermissionDialog: UIViewController {
         stack.translatesAutoresizingMaskIntoConstraints = false
         return stack
     }()
-    
-        
+
+    // Secondary "Not Now" button — lets users skip optional permissions
+    private lazy var secondaryButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Not Now", for: .normal)
+        button.setTitleColor(UIColor(named: "TextColor") ?? UIColor.label, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 15)
+        button.backgroundColor = .clear
+        button.layer.cornerRadius = 8
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(secondaryTapped), for: .touchUpInside)
+        return button
+    }()
+
     // Primary action button (36dp height) - "Allow" or "Settings"; background matches Android button_hover4 / btn_color
     private lazy var primaryButton: UIButton = {
         let button = UIButton(type: .system)
@@ -277,7 +289,8 @@ class AndroidStylePermissionDialog: UIViewController {
         
         cardStackView.addArrangedSubview(buttonsStackView)
         
-        // Add only primary button to buttons stack
+        // Add "Not Now" then primary button so Cancel is on the left, Continue on the right
+        buttonsStackView.addArrangedSubview(secondaryButton)
         buttonsStackView.addArrangedSubview(primaryButton)
     }
     
@@ -315,8 +328,10 @@ class AndroidStylePermissionDialog: UIViewController {
             iconImageView.heightAnchor.constraint(equalToConstant: 60)
         ])
         
-        // Primary button 36dp height (Android)
+        // Buttons 36dp height (Android)
         NSLayoutConstraint.activate([
+            secondaryButton.heightAnchor.constraint(equalToConstant: 36),
+            secondaryButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
             primaryButton.heightAnchor.constraint(equalToConstant: 36),
             primaryButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 80)
         ])
@@ -334,6 +349,13 @@ class AndroidStylePermissionDialog: UIViewController {
     @objc private func primaryTapped() {
         dismiss(animated: true) { [onPrimaryTapped] in
             onPrimaryTapped()
+        }
+    }
+
+    /// "Not Now" button: dismiss without granting permission and call completion(false).
+    @objc private func secondaryTapped() {
+        dismiss(animated: true) { [completion] in
+            completion(false)
         }
     }
 }

@@ -269,26 +269,22 @@ struct whatsTheCode: View {
                 NavigationGestureEnabler()
             )
             .onAppear {
-                // Removed excessive logging to prevent log spam
-                // print("UID: \(uid), Country Code: \(country_Code), Mobile No: \(mobile_no)")
                 checkClipboardForOTP()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     focusedField = 0
                 }
-                // Request notification permission (Android-style dialog first) so FCM token is ready for verify API (avoids 406 Required Parameter Missing)
-                AndroidStylePermissionManager.shared.requestPermissionWithDialogFromTopVC(for: .notifications) { granted in
-                    if granted {
-                        DispatchQueue.main.async {
-                            UIApplication.shared.registerForRemoteNotifications()
-                            FirebaseManager.shared.requestNotificationPermissions()
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                            FirebaseManager.shared.getFCMToken { token in
-                                DispatchQueue.main.async {
-                                    if let token = token, !token.isEmpty {
-                                        self.fcmToken = token
-                                        UserDefaults.standard.set(token, forKey: Constant.FCM_TOKEN)
-                                    }
+                // Pre-fetch FCM token if notification permission was already granted previously.
+                // Notification permission is NOT requested here — it is optional and prompted
+                // separately after login so the app functions without it (Guideline 4.5.4).
+                UNUserNotificationCenter.current().getNotificationSettings { settings in
+                    guard settings.authorizationStatus == .authorized else { return }
+                    DispatchQueue.main.async {
+                        UIApplication.shared.registerForRemoteNotifications()
+                        FirebaseManager.shared.getFCMToken { token in
+                            DispatchQueue.main.async {
+                                if let token = token, !token.isEmpty {
+                                    self.fcmToken = token
+                                    UserDefaults.standard.set(token, forKey: Constant.FCM_TOKEN)
                                 }
                             }
                         }
@@ -574,7 +570,7 @@ struct whatsTheCode: View {
         // Get VoIP token from VoIPPushManager
         let voipToken = VoIPPushManager.shared.getVoIPToken() ?? ""
 
-        // Build contact list file (sets verifyViewModel.fileURL, fileName, countryCodeKey) then verify — required for Sync Contacts API after verify (avoids 406).
+        // Build contact list file (sets verifyViewModel.fileURL, fileName, countryCodeKey) then verify.
         let doVerifyOTP: () -> Void = {
             self.getContactList(uidKey: self.uid, countryCodeKey: self.country_Code, phoneKey: self.mobile_no) { _, _ in
                 DispatchQueue.main.async {
@@ -590,13 +586,41 @@ struct whatsTheCode: View {
             }
         }
 
+        // Verify OTP without uploading contacts (user declined consent).
+        let doVerifyOTPSkipContacts: () -> Void = {
+            verifyViewModel.verifyOTP(
+                uid: uid,
+                otp: otp.joined(),
+                cCode: country_Code,
+                token: fcmToken,
+                deviceId: deviceId,
+                voipToken: voipToken
+            )
+        }
+
+        // Show consent dialog before uploading contacts to server (Guideline 5.1.2).
+        let showContactUploadConsent: (@escaping () -> Void) -> Void = { onConsent in
+            guard let topVC = UIApplication.shared.topViewController() else {
+                onConsent()
+                return
+            }
+            let alert = UIAlertController(
+                title: "Sync Your Contacts",
+                message: "Enclosure will upload your contacts to our secure server to help you find friends who are already using Enclosure. Your contacts will only be used to match you with other users and will never be shared with third parties.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Continue", style: .default) { _ in onConsent() })
+            alert.addAction(UIAlertAction(title: "Skip", style: .cancel) { _ in doVerifyOTPSkipContacts() })
+            topVC.present(alert, animated: true)
+        }
+
         switch authorizationStatus {
         case .notDetermined:
-            // Show Android-style custom dialog first, then system permission; then build contacts and verify
+            // Show Android-style custom dialog first, then system permission; then show consent before upload.
             AndroidStylePermissionManager.shared.requestPermissionWithDialogFromTopVC(for: .contacts) { granted in
                 DispatchQueue.main.async {
                     if granted {
-                        doVerifyOTP()
+                        showContactUploadConsent(doVerifyOTP)
                     } else {
                         showPermissionAlert()
                     }
@@ -604,8 +628,8 @@ struct whatsTheCode: View {
             }
 
         case .authorized:
-            // Permission already granted: build contact list then verify (so Sync Contacts API has fileURL, fileName, countryCodeKey)
-            doVerifyOTP()
+            // Permission already granted: show consent dialog before uploading.
+            showContactUploadConsent(doVerifyOTP)
 
         case .denied, .restricted:
             // Permission denied, show alert to open settings

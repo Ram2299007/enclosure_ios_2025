@@ -217,7 +217,18 @@ class VerifyMobileOTPViewModel: ObservableObject {
                                 }
                             }
                             
-                            // ✅ Call upload_user_contact_list immediately (matching Android)
+                            // If user skipped contacts consent (fileURL and fileName are nil),
+                            // skip the contact upload and navigate directly (Guideline 5.1.2).
+                            if self.fileURL == nil && self.fileName == nil {
+                                print("ℹ️ [CONTACTS] User skipped contact sync consent — skipping upload")
+                                self.isLoading = false
+                                UserDefaults.standard.set(Constant.loggedInKey, forKey: Constant.loggedInKey)
+                                UserDefaults.standard.set(cCode, forKey: Constant.country_Code)
+                                self.isNavigating = true
+                                return
+                            }
+
+                            // ✅ Call upload_user_contact_list
                             print("📂 Current fileURL: \(self.fileURL?.absoluteString ?? "nil")")
                             print("📂File name \(self.fileName ?? "nil")")
                             print("📂countryCodeKey name \(self.countryCodeKey ?? "nil")")
@@ -241,7 +252,7 @@ class VerifyMobileOTPViewModel: ObservableObject {
                                                 DispatchQueue.main.async {
                                                     // Dismiss loader (matching Android progressBar.dismiss())
                                                     self.isLoading = false
-                                                    
+
                                                     if success {
                                                         print("✅ Success2: \(message)")
                                                         // Store data and navigate (matching Android)
