@@ -2,7 +2,6 @@ import SwiftUI
 
 struct ChangeNumberView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var isPressed = false
     @State private var showAlert = false
     @State private var alertMessage = ""
     @State private var alertTitle = ""
@@ -39,9 +38,6 @@ struct ChangeNumberView: View {
                 }
             
             VStack(spacing: 0) {
-                // Toolbar
-                androidToolbar
-                
                 // Content - matching Android XML layout
                 ScrollView {
                     VStack(spacing: 0) {
@@ -196,7 +192,8 @@ struct ChangeNumberView: View {
                 }
             }
         }
-        .navigationBarHidden(true)
+        .navigationTitle("Change Number")
+        .navigationBarTitleDisplayMode(.inline)
         .background(NavigationGestureEnabler())
         .onAppear {
             loadThemeColor()
@@ -216,61 +213,7 @@ struct ChangeNumberView: View {
         }
     }
     
-    // MARK: - Toolbar
-    private var androidToolbar: some View {
-        HStack {
-            Button(action: handleBackTap) {
-                ZStack {
-                    if isPressed {
-                        Circle()
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(width: 40, height: 40)
-                            .scaleEffect(isPressed ? 1.2 : 1.0)
-                            .animation(.easeOut(duration: 0.3), value: isPressed)
-                    }
-
-                    Image("leftvector")
-                        .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 25, height: 18)
-                        .foregroundColor(Color("icontintGlobal"))
-                }
-            }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onEnded { _ in
-                        withAnimation {
-                            isPressed = false
-                        }
-                    }
-            )
-            .buttonStyle(.plain)
-
-            Text("Change Number")
-                .font(.custom("Inter18pt-Medium", size: 16))
-                .foregroundColor(Color("TextColor"))
-                .fontWeight(.medium)
-                .lineSpacing(24)
-                .padding(.leading, 15)
-            Spacer()
-        }
-        .padding(.top, 0)
-        .padding(.horizontal, 20)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-    
     // MARK: - Functions
-    private func handleBackTap() {
-        withAnimation {
-            isPressed = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            dismiss()
-            isPressed = false
-        }
-    }
-    
     private func handleNext() {
         // Validate form - matching Android validation
         guard !oldNumber.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {

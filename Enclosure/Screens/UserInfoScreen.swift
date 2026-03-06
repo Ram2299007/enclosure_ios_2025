@@ -14,7 +14,6 @@ struct UserInfoScreen: View {
     let recUserId: String
     let recUserName: String
     
-    @State private var isPressed: Bool = false
     @State private var profile: GetProfileModel?
     @State private var profileImages: [GetUserProfileImagesModel] = []
     @State private var themeColorHex: String = Constant.themeColor
@@ -51,9 +50,6 @@ struct UserInfoScreen: View {
                 }
             
             VStack(spacing: 0) {
-                // Header
-                headerView
-                
                 // Content
                 ScrollView {
                     VStack(spacing: 0) {
@@ -88,7 +84,8 @@ struct UserInfoScreen: View {
             }
             .hidden()
         )
-        .navigationBarHidden(true)
+        .navigationTitle(recUserName)
+        .navigationBarTitleDisplayMode(.inline)
         .background(NavigationGestureEnabler())
         .onAppear {
             print("UserInfoScreen: onAppear - recUserId: \(recUserId), recUserName: \(recUserName)")
@@ -105,57 +102,6 @@ struct UserInfoScreen: View {
             print("UserInfoScreen: viewModel.listImages changed, count: \(newImages.count)")
             profileImages = newImages
         }
-    }
-    
-    // MARK: - Header View
-    private var headerView: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                // Back button
-                Button(action: handleBackTap) {
-                    ZStack {
-                        if isPressed {
-                            Circle()
-                                .fill(Color.gray.opacity(0.3))
-                                .frame(width: 40, height: 40)
-                                .scaleEffect(isPressed ? 1.2 : 1.0)
-                                .animation(.easeOut(duration: 0.3), value: isPressed)
-                        }
-                        
-                        Image("leftvector")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 25, height: 18)
-                            .foregroundColor(Color("icontintGlobal"))
-                    }
-                }
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 0)
-                        .onEnded { _ in
-                            withAnimation {
-                                isPressed = false
-                            }
-                        }
-                )
-                .buttonStyle(.plain)
-                .padding(.leading, 20)
-                .padding(.trailing, 5)
-                
-                // Name text
-                Text(recUserName)
-                    .font(.custom("Inter18pt-Medium", size: 16))
-                    .foregroundColor(Color("TextColor"))
-                    .fontWeight(.medium)
-                    .lineSpacing(24)
-                    .padding(.leading, 15)
-                
-                Spacer()
-            }
-            .padding(.top, 10)
-            .frame(height: 50)
-        }
-        .background(Color("edittextBg"))
     }
     
     // MARK: - Profile Section
@@ -261,16 +207,6 @@ struct UserInfoScreen: View {
     }
     
     // MARK: - Helper Functions
-    private func handleBackTap() {
-        withAnimation {
-            isPressed = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            dismiss()
-            isPressed = false
-        }
-    }
-    
     private func loadProfileData() {
         // Load profile
         viewModel.fetch_profile_EditProfile(uid: recUserId)

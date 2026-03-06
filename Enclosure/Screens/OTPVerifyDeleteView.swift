@@ -7,7 +7,6 @@ struct OTPVerifyDeleteView: View {
     
     @State private var otp: [String] = Array(repeating: "", count: 6)
     @FocusState private var focusedField: Int?
-    @State private var isPressed = false
     @Environment(\.dismiss) var dismiss
     @State private var resendTimer = 0
     @State private var isResendDisabled = false
@@ -27,99 +26,65 @@ struct OTPVerifyDeleteView: View {
     }
     
     var body: some View {
-        NavigationStack {
-            ZStack(alignment: .bottom) {
-                Color("background_color")
-                    .ignoresSafeArea()
+        ZStack(alignment: .bottom) {
+            Color("background_color")
+                .ignoresSafeArea()
 
-                VStack {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
-                            backButton
-                            headerSection
-                            otpInputSection
-                            invalidOTPMessage
-                            resendSection
-                        }
-                    }
-                    .simultaneousGesture(
-                        TapGesture().onEnded { _ in hideKeyboard() }
-                    )
-
-                    Spacer()
-
-                    verifyButton
-                }
-                .ignoresSafeArea(.keyboard, edges: .bottom)
-            }
-            .navigationBarHidden(true)
-            .background(NavigationGestureEnabler())
-            .onAppear {
-                startResendTimer()
-                checkClipboardForOTP()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    focusedField = 0
-                }
-            }
-            .onChange(of: focusedField) { newValue in
-                if newValue == 0 {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        checkClipboardForOTP()
+            VStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        headerSection
+                        otpInputSection
+                        invalidOTPMessage
+                        resendSection
                     }
                 }
+                .simultaneousGesture(
+                    TapGesture().onEnded { _ in hideKeyboard() }
+                )
+
+                Spacer()
+
+                verifyButton
             }
-            .alert(alertTitle, isPresented: $showAlert) {
-                Button("OK") { }
-            } message: {
-                Text(alertMessage)
-            }
-            .confirmationDialog("Delete Account", isPresented: $showConfirmDeleteDialog, titleVisibility: .visible) {
-                Button("Cancel", role: .cancel) { }
-                Button("Delete", role: .destructive) {
-                    deleteAccount()
-                }
-            } message: {
-                Text("Are you sure you want to delete your account? This action cannot be undone.")
-            }
-            .overlay(
-                isLoading ? DeleteAccountLoadingOverlay() : nil
-            )
+            .ignoresSafeArea(.keyboard, edges: .bottom)
         }
+        .navigationTitle("Verify OTP")
+        .navigationBarTitleDisplayMode(.inline)
+        .background(NavigationGestureEnabler())
+        .onAppear {
+            startResendTimer()
+            checkClipboardForOTP()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                focusedField = 0
+            }
+        }
+        .onChange(of: focusedField) { newValue in
+            if newValue == 0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    checkClipboardForOTP()
+                }
+            }
+        }
+        .alert(alertTitle, isPresented: $showAlert) {
+            Button("OK") { }
+        } message: {
+            Text(alertMessage)
+        }
+        .confirmationDialog("Delete Account", isPresented: $showConfirmDeleteDialog, titleVisibility: .visible) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                deleteAccount()
+            }
+        } message: {
+            Text("Are you sure you want to delete your account? This action cannot be undone.")
+        }
+        .overlay(
+            isLoading ? DeleteAccountLoadingOverlay() : nil
+        )
     }
     
     // MARK: - View Components
-    private var backButton: some View {
-        Button(action: handleBackTap) {
-            ZStack {
-                if isPressed {
-                    Circle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: 40, height: 40)
-                        .scaleEffect(isPressed ? 1.2 : 1.0)
-                        .animation(.easeOut(duration: 0.3), value: isPressed)
-                }
-                
-                Image("leftvector")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 25, height: 18)
-                    .foregroundColor(Color("icontintGlobal"))
-            }
-        }
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onEnded { _ in
-                    withAnimation {
-                        isPressed = false
-                    }
-                }
-        )
-        .buttonStyle(.plain)
-        .padding(.top, 20)
-        .padding(.leading, 20)
-    }
-    
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("What's the\ncode?")
@@ -356,16 +321,6 @@ struct OTPVerifyDeleteView: View {
     
     
     // MARK: - Functions
-    private func handleBackTap() {
-        withAnimation {
-            isPressed = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            dismiss()
-            isPressed = false
-        }
-    }
-    
     private func verifyOTP() {
         let otpString = otp.joined()
         

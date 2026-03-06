@@ -43,9 +43,6 @@ struct ForGroupVisibleScreen: View {
                 }
             
             VStack(spacing: 0) {
-                // Header
-                headerView
-                
                 // Network loader
                 if showNetworkLoader {
                     HorizontalProgressBar()
@@ -78,7 +75,8 @@ struct ForGroupVisibleScreen: View {
                 }
             }
         }
-        .navigationBarHidden(true)
+        .navigationTitle("For visible")
+        .navigationBarTitleDisplayMode(.inline)
         .background(NavigationGestureEnabler())
         .onAppear {
             loadGroupDetails()
@@ -122,45 +120,6 @@ struct ForGroupVisibleScreen: View {
             }
             .hidden()
         )
-    }
-    
-    // MARK: - Header View
-    private var headerView: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                // Back button
-                Button(action: {
-                    dismiss()
-                }) {
-                    ZStack {
-                        Circle()
-                            .fill(Color("circlebtnhover"))
-                            .frame(width: 40, height: 40)
-                        
-                        Image("leftvector")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 25, height: 18)
-                            .foregroundColor(Color("TextColor"))
-                    }
-                }
-                .padding(.leading, 20)
-                .padding(.trailing, 5)
-                
-                // Title
-                Text("For visible")
-                    .font(.custom("Inter18pt-Medium", size: 16))
-                    .fontWeight(.medium)
-                    .foregroundColor(Color("TextColor"))
-                    .padding(.leading, 15)
-                
-                Spacer()
-            }
-            .padding(.top, 10)
-            .frame(height: 50)
-        }
-        .background(Color("edittextBg"))
     }
     
     // MARK: - Profile Image View

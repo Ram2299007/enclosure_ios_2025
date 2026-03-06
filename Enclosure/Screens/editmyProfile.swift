@@ -5,7 +5,6 @@ import PopGestureRecognizerSwiftUI
 struct EditmyProfile: View {
 
     @Environment(\.dismiss) var dismiss
-    @State private var isPressed = false
     @State private var profile: GetProfileModel?
     @State private var name: String = ""
     @State private var caption: String = ""
@@ -47,48 +46,6 @@ struct EditmyProfile: View {
                 
                 ScrollView {
                     VStack(spacing: 0) {
-                        HStack {
-                            Button(action: handleBackTap) {
-                                ZStack {
-                                    if isPressed {
-                                        Circle()
-                                            .fill(Color.gray.opacity(0.3))
-                                            .frame(width: 40, height: 40)
-                                            .scaleEffect(isPressed ? 1.2 : 1.0)
-                                            .animation(.easeOut(duration: 0.3), value: isPressed)
-                                    }
-
-                                    Image("leftvector")
-                                        .renderingMode(.template)
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(width: 25, height: 18)
-                                        .foregroundColor(Color("icontintGlobal"))
-                                }
-                            }
-                            .simultaneousGesture(
-                                DragGesture(minimumDistance: 0)
-                                    .onEnded { _ in
-                                        withAnimation {
-                                            isPressed = false
-                                        }
-                                    }
-                            )
-                            .buttonStyle(.plain)
-
-                            Text("for visible")
-                                .font(.custom("Inter18pt-Medium", size: 16))
-                                .foregroundColor(Color("TextColor"))
-                                .fontWeight(.medium)
-                                .lineSpacing(24) // Equivalent to lineHeight
-                                .padding(.leading, 6)
-                            Spacer()
-                        }
-                        .padding(.top, 0)
-                        .padding(.horizontal, 20)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-
-
                         HStack{
                             Spacer()
                             ThemedProfileImageView(
@@ -404,17 +361,9 @@ struct EditmyProfile: View {
                     )
                 }
             }
-        .navigationBarHidden(true)
+        .navigationTitle("Edit Profile")
+        .navigationBarTitleDisplayMode(.inline)
         .background(NavigationGestureEnabler())
-    }
-    private func handleBackTap() {
-        withAnimation {
-            isPressed = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            dismiss()
-            isPressed = false
-        }
     }
 }
 struct MultiDemoView: View {

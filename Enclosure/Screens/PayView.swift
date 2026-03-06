@@ -3,7 +3,6 @@ import SwiftUI
 struct PayView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.colorScheme) var colorScheme
-    @State private var isPressed = false
     @State private var isChecked = true
     @State private var themeColorHex: String = Constant.themeColor
     @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic background tint color (darker theme color)
@@ -35,46 +34,6 @@ struct PayView: View {
                     .onTapGesture {
                         hideKeyboard()
                     }
-                
-                // Back arrow positioned at top-left
-                VStack {
-                    HStack {
-                        Button(action: handleBackTap) {
-                            ZStack {
-                                if isPressed {
-                                    Circle()
-                                        .fill(Color.gray.opacity(0.3))
-                                        .frame(width: 40, height: 40)
-                                        .scaleEffect(isPressed ? 1.2 : 1.0)
-                                        .animation(.easeOut(duration: 0.3), value: isPressed)
-                                }
-
-                                Image("leftvector")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 25, height: 18)
-                                    .foregroundColor(Color("icontintGlobal"))
-                            }
-                        }
-                        .simultaneousGesture(
-                            DragGesture(minimumDistance: 0)
-                                .onEnded { _ in
-                                    withAnimation {
-                                        isPressed = false
-                                    }
-                                }
-                        )
-                        .buttonStyle(.plain)
-                        
-                        Spacer()
-                    }
-                    .padding(.top, 10)
-                    .padding(.horizontal, 20)
-                    
-                    Spacer()
-                }
-                .zIndex(1)
                 
                 VStack(spacing: 0) {
                     // Main content
@@ -186,7 +145,8 @@ struct PayView: View {
                         }
                 }
             }
-        .navigationBarBackButtonHidden(true)
+        .navigationTitle("Pay")
+        .navigationBarTitleDisplayMode(.inline)
         .background(NavigationGestureEnabler())
         .onAppear {
             themeColorHex = Constant.themeColor // Initialize theme color
@@ -195,16 +155,6 @@ struct PayView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ThemeColorUpdated"))) { _ in
             themeColorHex = Constant.themeColor // Update theme color when it changes
             mainvectorTintColor = getMainvectorTintColor(for: Constant.themeColor) // Update tint color when theme changes
-        }
-    }
-    
-    private func handleBackTap() {
-        withAnimation {
-            isPressed = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            dismiss()
-            isPressed = false
         }
     }
     

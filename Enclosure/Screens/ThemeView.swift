@@ -5,7 +5,6 @@ struct ThemeView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) var colorScheme
     @State private var selectedThemeColor: String = Constant.themeColor
-    @State private var isPressed = false
     @State private var showAlert = false
     @State private var alertMessage = ""
     @State private var alertTitle = ""
@@ -73,9 +72,6 @@ struct ThemeView: View {
                 }
             
             VStack(spacing: 0) {
-                // Header
-                headerView
-                
                 // Main content with preview
                 ScrollView {
                     previewCardView
@@ -88,7 +84,8 @@ struct ThemeView: View {
                 bottomView
             }
         }
-        .navigationBarBackButtonHidden(true)
+        .navigationTitle("Themes")
+        .navigationBarTitleDisplayMode(.inline)
         .background(NavigationGestureEnabler())
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK") { }
@@ -97,61 +94,6 @@ struct ThemeView: View {
         }
         .onAppear {
             selectedThemeColor = Constant.themeColor
-        }
-    }
-    
-    // MARK: - Header View
-    private var headerView: some View {
-        HStack {
-            Button(action: handleBackTap) {
-                ZStack {
-                    if isPressed {
-                        Circle()
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(width: 40, height: 40)
-                            .scaleEffect(isPressed ? 1.2 : 1.0)
-                            .animation(.easeOut(duration: 0.3), value: isPressed)
-                    }
-                    
-                    Image("leftvector")
-                        .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 25, height: 18)
-                        .foregroundColor(Color("icontintGlobal"))
-                }
-            }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onEnded { _ in
-                        withAnimation {
-                            isPressed = false
-                        }
-                    }
-            )
-            .buttonStyle(.plain)
-            
-            Text("Themes")
-                .font(.custom("Inter18pt-Medium", size: 16))
-                .foregroundColor(Color("TextColor"))
-                .fontWeight(.medium)
-                .lineSpacing(24) // Equivalent to lineHeight
-                .padding(.leading, 6)
-            
-            Spacer()
-        }
-        .padding(.top, 0)
-        .padding(.horizontal, 20)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-    
-    private func handleBackTap() {
-        withAnimation {
-            isPressed = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            dismiss()
-            isPressed = false
         }
     }
     

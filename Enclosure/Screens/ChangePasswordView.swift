@@ -2,7 +2,6 @@ import SwiftUI
 
 struct ChangePasswordView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var isPressed = false
     @State private var currentPassword: String = ""
     @State private var newPassword: String = ""
     @State private var confirmPassword: String = ""
@@ -36,9 +35,6 @@ struct ChangePasswordView: View {
                 }
             
             VStack(spacing: 0) {
-                // Toolbar
-                androidToolbar
-                
                 // Content
                 ScrollView {
                     VStack(spacing: 24) {
@@ -197,7 +193,8 @@ struct ChangePasswordView: View {
                 }
             }
         }
-        .navigationBarHidden(true)
+        .navigationTitle("Change password")
+        .navigationBarTitleDisplayMode(.inline)
         .background(NavigationGestureEnabler())
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK") {
@@ -223,61 +220,7 @@ struct ChangePasswordView: View {
         isPasswordStrong(newPassword)
     }
     
-    // MARK: - Toolbar
-    private var androidToolbar: some View {
-        HStack {
-            Button(action: handleBackTap) {
-                ZStack {
-                    if isPressed {
-                        Circle()
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(width: 40, height: 40)
-                            .scaleEffect(isPressed ? 1.2 : 1.0)
-                            .animation(.easeOut(duration: 0.3), value: isPressed)
-                    }
-
-                    Image("leftvector")
-                        .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 25, height: 18)
-                        .foregroundColor(Color("icontintGlobal"))
-                }
-            }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onEnded { _ in
-                        withAnimation {
-                            isPressed = false
-                        }
-                    }
-            )
-            .buttonStyle(.plain)
-
-            Text("Change password")
-                .font(.custom("Inter18pt-Medium", size: 16))
-                .foregroundColor(Color("TextColor"))
-                .fontWeight(.medium)
-                .lineSpacing(24)
-                .padding(.leading, 6)
-            Spacer()
-        }
-        .padding(.top, 0)
-        .padding(.horizontal, 20)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-    
     // MARK: - Functions
-    private func handleBackTap() {
-        withAnimation {
-            isPressed = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            dismiss()
-            isPressed = false
-        }
-    }
-    
     private func handleChangePassword() {
         guard isFormValid else {
             showAlert(title: "Error", message: "Please check all fields and ensure passwords match")

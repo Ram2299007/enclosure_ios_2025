@@ -19,7 +19,6 @@ struct NewGroupView: View {
     @State private var showError = false
     @State private var errorMessage = ""
     @State private var isCreatingGroup = false
-    @State private var isBackPressed = false
     @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic background tint color (darker theme color)
     
     // Computed property for background tint: appThemeColor in light mode, darker tint in dark mode
@@ -55,49 +54,6 @@ struct NewGroupView: View {
             
             ScrollView {
                 VStack(spacing: 0) {
-                    // Back arrow and title - matching youView design
-                    HStack(spacing: 0) {
-                        Button(action: handleBackTap) {
-                            ZStack {
-                                if isBackPressed {
-                                    Circle()
-                                        .fill(Color.gray.opacity(0.3))
-                                        .frame(width: 40, height: 40)
-                                        .scaleEffect(isBackPressed ? 1.2 : 1.0)
-                                        .animation(.easeOut(duration: 0.3), value: isBackPressed)
-                                }
-                                
-                                Image("leftvector")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 25, height: 18)
-                                    .foregroundColor(Color("icontintGlobal"))
-                            }
-                        }
-                        .simultaneousGesture(
-                            DragGesture(minimumDistance: 0)
-                                .onEnded { _ in
-                                    withAnimation {
-                                        isBackPressed = false
-                                    }
-                                }
-                        )
-                        .buttonStyle(.plain)
-                        
-                        // "Create new group" text
-                        Text("Create new group")
-                            .font(.custom("Inter18pt-SemiBold", size: 16))
-                            .foregroundColor(Color("TextColor"))
-                            .padding(.leading, 15)
-
-                        Spacer()
-                    }
-                    .padding(.leading, 20)
-                    .padding(.trailing, 20)
-                    .padding(.top, 10)
-                    .padding(.bottom, 30)
-                    
                     if !networkMonitor.isConnected {
                         ProgressView()
                             .progressViewStyle(.linear)
@@ -120,7 +76,8 @@ struct NewGroupView: View {
             
             submitButton
         }
-        .navigationBarHidden(true)
+        .navigationTitle("Create new group")
+        .navigationBarTitleDisplayMode(.inline)
         .background(NavigationGestureEnabler())
         .sheet(isPresented: $isImagePickerPresented) {
             ImagePicker(sourceType: .photoLibrary, selectedImage: Binding(
@@ -361,16 +318,6 @@ struct NewGroupView: View {
             }
             .padding(.top, 55)
             .padding(.bottom, 50)
-        }
-    }
-    
-    private func handleBackTap() {
-        withAnimation {
-            isBackPressed = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            isPresented = false
-            isBackPressed = false
         }
     }
     

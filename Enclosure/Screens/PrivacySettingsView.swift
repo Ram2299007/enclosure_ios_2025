@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct PrivacySettingsView: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var isPressed = false
     @State private var showAlert = false
     @State private var alertMessage = ""
     @State private var alertTitle = ""
@@ -31,9 +29,6 @@ struct PrivacySettingsView: View {
                 }
             
             VStack(spacing: 0) {
-                // Toolbar
-                androidToolbar
-                
                 // Content
                 ScrollView {
                     LazyVStack(spacing: 0) {
@@ -58,57 +53,14 @@ struct PrivacySettingsView: View {
                 }
             }
         }
-        .navigationBarHidden(true)
+        .navigationTitle("Privacy settings")
+        .navigationBarTitleDisplayMode(.inline)
         .background(NavigationGestureEnabler())
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK") { }
         } message: {
             Text(alertMessage)
         }
-    }
-    
-    // MARK: - Toolbar
-    private var androidToolbar: some View {
-        HStack {
-            Button(action: handleBackTap) {
-                ZStack {
-                    if isPressed {
-                        Circle()
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(width: 40, height: 40)
-                            .scaleEffect(isPressed ? 1.2 : 1.0)
-                            .animation(.easeOut(duration: 0.3), value: isPressed)
-                    }
-
-                    Image("leftvector")
-                        .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 25, height: 18)
-                        .foregroundColor(Color("icontintGlobal"))
-                }
-            }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onEnded { _ in
-                        withAnimation {
-                            isPressed = false
-                        }
-                    }
-            )
-            .buttonStyle(.plain)
-
-            Text("Privacy settings")
-                .font(.custom("Inter18pt-Medium", size: 16))
-                .foregroundColor(Color("TextColor"))
-                .fontWeight(.medium)
-                .lineSpacing(24)
-                .padding(.leading, 6)
-            Spacer()
-        }
-        .padding(.top, 0)
-        .padding(.horizontal, 20)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
     
     // MARK: - Profile Privacy Section
@@ -239,16 +191,6 @@ struct PrivacySettingsView: View {
     }
     
     // MARK: - Functions
-    private func handleBackTap() {
-        withAnimation {
-            isPressed = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            dismiss()
-            isPressed = false
-        }
-    }
-    
     private func showAlert(title: String, message: String) {
         alertTitle = title
         alertMessage = message
