@@ -178,20 +178,7 @@ struct MainActivityOld: View {
 
                 if(isMainContentVisible){
                     HStack(spacing: 0) {
-                        if isSearchActive {
-                            Button(action: {
-                                isSearchActive = false
-                                searchText = ""
-                                isSearchFieldFocused = false
-                                hideKeyboard()
-                            }) {
-                                Image(systemName: "arrow.left")
-                                    .font(.system(size: 16, weight: .medium))
-                                    .foregroundColor(Color("TextColor"))
-                            }
-                            .frame(width: 44, height: 44)
-                            .padding(.leading, 10)
-                        } else {
+                        if !isSearchActive {
                             Button(action: {
                                 withAnimation {
                                     showInviteScreen = true
@@ -205,88 +192,7 @@ struct MainActivityOld: View {
                             .frame(width: 70, height: activeCallManager.hasActiveCall ? 58 : 70)
                             .padding(.leading, 10)
                         }
-
-                        if isSearchActive {
-                            TextField("Search Name", text: $searchText)
-                                .font(.custom("Inter18pt-Regular", size: 15))
-                                .foregroundColor(Color("TextColor"))
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .focused($isSearchFieldFocused)
-                                .padding(.leading, 8)
-                        } else {
-                            Spacer()
-                        }
-
-                        HStack(spacing: 0) {
-                            if viewValue == Constant.chatView && !isSearchActive {
-                                Button(action: {
-                                    isSearchActive = true
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                                        isSearchFieldFocused = true
-                                    }
-                                }) {
-                                    Image("search")
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(width: 20, height: 20)
-                                }
-                                .frame(width: 40, height: 40)
-                                .buttonStyle(CircularRippleStyle())
-                                .opacity(isVStackVisible ? 0 : 1)
-                                .animation(.easeInOut(duration: 0.35), value: isVStackVisible)
-                                .allowsHitTesting(!isVStackVisible)
-                            }
-
-                            // Menu button - ripple effect + haptics
-                            Button(action: {
-                                // Add haptic feedback for better UX
-                                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                                impactFeedback.impactOccurred()
-                                
-                                // Visual feedback
-                                withAnimation(.easeInOut(duration: 0.1)) {
-                                    isMenuButtonPressed = true
-                                }
-                                
-                                // Smooth animation when opening menu
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    showMenu = true
-                                }
-                                
-                                // Reset pressed state
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                    withAnimation(.easeInOut(duration: 0.1)) {
-                                        isMenuButtonPressed = false
-                                    }
-                                }
-                            }) {
-                                ZStack {
-                                    // Background circle for visual feedback
-                                    if isMenuButtonPressed {
-                                        Circle()
-                                            .fill(Color("circlebtnhover").opacity(0.3))
-                                            .frame(width: 44, height: 44)
-                                            .transition(.opacity)
-                                    }
-                                    
-                                    VStack(spacing: 3) {
-                                        Circle()
-                                            .fill(Color("menuPointColor"))
-                                            .frame(width: 4, height: 4)
-                                        Circle()
-                                            .fill(Color(hex: Constant.themeColor))
-                                            .frame(width: 4, height: 4)
-                                        Circle()
-                                            .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
-                                            .frame(width: 4, height: 4)
-                                    }
-                                }
-                                .frame(width: 44, height: 44) // Standard iOS touch target size
-                                .contentShape(Rectangle()) // Ensure entire area is tappable
-                            }
-                            .buttonStyle(CircularRippleStyle())
-                            .padding(.trailing,8)
-                        }
+                        Spacer()
                     }
 
 
@@ -989,7 +895,71 @@ struct MainActivityOld: View {
                 }
             }
             .opacity(initialFadeInOpacity)
-            .navigationBarHidden(true)
+            .navigationBarBackButtonHidden(true)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                if isSearchActive {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button {
+                            isSearchActive = false
+                            searchText = ""
+                            isSearchFieldFocused = false
+                            hideKeyboard()
+                        } label: {
+                            Image(systemName: "arrow.left")
+                                .font(.system(size: 16, weight: .medium))
+                        }
+                    }
+                    ToolbarItem(placement: .principal) {
+                        TextField("Search Name", text: $searchText)
+                            .font(.custom("Inter18pt-Regular", size: 15))
+                            .foregroundColor(Color("TextColor"))
+                            .focused($isSearchFieldFocused)
+                            .textInputAutocapitalization(.never)
+                            .disableAutocorrection(true)
+                    }
+                } else if viewValue == Constant.chatView && !isVStackVisible {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            isSearchActive = true
+                        } label: {
+                            Image("search")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20)
+                        }
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showMenu = true
+                        }
+                    }) {
+                        VStack(spacing: 3) {
+                            Circle()
+                                .fill(Color("menuPointColor"))
+                                .frame(width: 4, height: 4)
+                            Circle()
+                                .fill(Color(hex: Constant.themeColor))
+                                .frame(width: 4, height: 4)
+                            Circle()
+                                .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                                .frame(width: 4, height: 4)
+                        }
+                        .frame(width: 24, height: 24)
+                    }
+                }
+            }
+            .onChange(of: isSearchActive) { active in
+                if active {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        isSearchFieldFocused = true
+                    }
+                }
+            }
             .background(NavigationGestureEnabler())
             .navigationDestination(isPresented: $showInviteScreen) {
                 InviteScreen()
