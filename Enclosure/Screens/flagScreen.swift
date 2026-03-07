@@ -26,6 +26,10 @@ struct flagScreen: View {
     }
     
     var body: some View {
+        ZStack(alignment: .top) {
+            Color("background_color")
+                .ignoresSafeArea()
+
         VStack(spacing: 0) {
                 // Search Bar Section - matching Android layout
                 VStack(spacing: 0) {
@@ -66,7 +70,7 @@ struct flagScreen: View {
                 // Content Section
                 if viewModel.isLoading {
                     ZStack {
-                        Color("BackgroundColor")
+                        Color("background_color")
                         HorizontalProgressBar()
                             .frame(width: 40, height: 2) // Custom size: width 40, height 3
                             .frame(maxWidth: .infinity, maxHeight: .infinity) // Center in parent
@@ -108,7 +112,6 @@ struct flagScreen: View {
                     }
                 }
             }
-            .background(Color("BackgroundColor"))
             .contentShape(Rectangle())
             .onTapGesture {
                 hideKeyboard()
@@ -126,11 +129,13 @@ struct flagScreen: View {
                     Text("Select Country")
                         .font(.custom("Inter18pt-SemiBold", size: 16))
                         .foregroundColor(Color("TextColor"))
+                        .fixedSize()
                 }
             }
             .background(NavigationGestureEnabler())
+        }
     }
-    
+
 }
 
 #Preview {
