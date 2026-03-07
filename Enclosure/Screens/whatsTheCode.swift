@@ -236,8 +236,15 @@ struct whatsTheCode: View {
                     .background(Color.clear.ignoresSafeArea()) // Ensures full-screen coverage
                 }
             }
-            .navigationTitle("Verify")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Text("Verify")
+                        .font(.custom("Inter18pt-SemiBold", size: 16))
+                        .foregroundColor(Color("TextColor"))
+                }
+            }
             .background(NavigationGestureEnabler())
             .onAppear {
                 checkClipboardForOTP()

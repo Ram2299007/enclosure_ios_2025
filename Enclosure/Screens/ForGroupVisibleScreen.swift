@@ -75,8 +75,15 @@ struct ForGroupVisibleScreen: View {
                 }
             }
         }
-        .navigationTitle("For visible")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Text("For visible")
+                    .font(.custom("Inter18pt-SemiBold", size: 16))
+                    .foregroundColor(Color("TextColor"))
+            }
+        }
         .background(NavigationGestureEnabler())
         .onAppear {
             loadGroupDetails()

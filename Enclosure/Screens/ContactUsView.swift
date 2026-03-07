@@ -127,8 +127,15 @@ struct ContactUsView: View {
                 }
             }
         }
-        .navigationTitle("Contact us")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Text("Contact us")
+                    .font(.custom("Inter18pt-SemiBold", size: 16))
+                    .foregroundColor(Color("TextColor"))
+            }
+        }
         .background(NavigationGestureEnabler())
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK") { }

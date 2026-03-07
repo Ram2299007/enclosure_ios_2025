@@ -51,8 +51,15 @@ struct ManageAccountView: View {
                 }
             }
         }
-        .navigationTitle("Manage my account")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Text("Manage my account")
+                    .font(.custom("Inter18pt-SemiBold", size: 16))
+                    .foregroundColor(Color("TextColor"))
+            }
+        }
         .background(NavigationGestureEnabler())
         .onAppear {
             loadThemeColor()

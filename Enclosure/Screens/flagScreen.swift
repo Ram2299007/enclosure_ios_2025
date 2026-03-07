@@ -119,8 +119,15 @@ struct flagScreen: View {
                     isSearchFocused = true
                 }
             }
-            .navigationTitle("Select Country")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Text("Select Country")
+                        .font(.custom("Inter18pt-SemiBold", size: 16))
+                        .foregroundColor(Color("TextColor"))
+                }
+            }
             .background(NavigationGestureEnabler())
     }
     

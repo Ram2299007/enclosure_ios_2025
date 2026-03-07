@@ -145,8 +145,15 @@ struct PayView: View {
                         }
                 }
             }
-        .navigationTitle("Pay")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Text("Pay")
+                    .font(.custom("Inter18pt-SemiBold", size: 16))
+                    .foregroundColor(Color("TextColor"))
+            }
+        }
         .background(NavigationGestureEnabler())
         .onAppear {
             themeColorHex = Constant.themeColor // Initialize theme color

@@ -1,17 +1,15 @@
 import SwiftUI
 
 struct InviteScreen: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) var colorScheme
     @StateObject private var viewModel = InviteContactsViewModel()
     @ObservedObject private var networkMonitor = NetworkMonitor.shared
-    
+
     @State private var searchText = ""
     @State private var isSearchVisible = false
     @State private var showMenu = false
     @State private var searchWorkItem: DispatchWorkItem?
     @FocusState private var isSearchFieldFocused: Bool
-    @State private var isBackPressed = false
     @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic background tint color (darker theme color)
     @State private var isMenuButtonPressed = false // Track menu button press state
     @State private var selectedChatContact: UserActiveContactModel?
@@ -78,7 +76,15 @@ struct InviteScreen: View {
                 Spacer()
             }
         }
-        .navigationBarHidden(true)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Text("Contacts")
+                    .font(.custom("Inter18pt-SemiBold", size: 16))
+                    .foregroundColor(Color("TextColor"))
+            }
+        }
         .background(NavigationGestureEnabler())
         .overlay(alignment: .topTrailing) {
             if showMenu {
@@ -147,44 +153,6 @@ struct InviteScreen: View {
     
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-        HStack(spacing: 12) {
-            Button(action: handleBackTap) {
-                ZStack {
-                    if isBackPressed {
-                        Circle()
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(width: 40, height: 40)
-                            .scaleEffect(isBackPressed ? 1.2 : 1.0)
-                            .animation(.easeOut(duration: 0.3), value: isBackPressed)
-                    }
-                    
-                    Image("leftvector")
-                        .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 25, height: 18)
-                        .foregroundColor(Color("icontintGlobal"))
-                }
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-            }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onEnded { _ in
-                        withAnimation {
-                            isBackPressed = false
-                        }
-                    }
-            )
-                .buttonStyle(.plain)
-            
-                Text("Contacts")
-                    .font(.custom("Inter18pt-SemiBold", size: 16))
-                .foregroundColor(Color("TextColor"))
-            
-            Spacer()
-        }
-            
             HStack(spacing: 12) {
                 Spacer()
                 
@@ -353,17 +321,6 @@ struct InviteScreen: View {
         }
         searchWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: workItem)
-    }
-    
-    private func handleBackTap() {
-        isSearchFieldFocused = false
-        withAnimation {
-            isBackPressed = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            dismiss()
-            isBackPressed = false
-        }
     }
     
     private func openChat(contact: InviteContactModel) {
