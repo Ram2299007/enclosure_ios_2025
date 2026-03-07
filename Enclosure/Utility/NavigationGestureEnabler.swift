@@ -72,6 +72,13 @@ struct NavigationGestureEnabler: UIViewControllerRepresentable {
         // Safety check: Ensure navigation controller is still valid
         guard navController.view.window != nil else { return }
         
+        // Remove Liquid Glass / frosted background from navigation bar
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithTransparentBackground()
+        navController.navigationBar.standardAppearance = appearance
+        navController.navigationBar.scrollEdgeAppearance = appearance
+        navController.navigationBar.compactAppearance = appearance
+
         // Enable interactive pop gesture
         guard let popGesture = navController.interactivePopGestureRecognizer else { return }
         popGesture.isEnabled = true
