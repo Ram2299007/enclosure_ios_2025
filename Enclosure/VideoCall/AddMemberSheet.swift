@@ -44,6 +44,7 @@ struct AddMemberSheet: View {
             }
             .navigationTitle("Add Member")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
