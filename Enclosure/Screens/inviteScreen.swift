@@ -6,12 +6,10 @@ struct InviteScreen: View {
     @ObservedObject private var networkMonitor = NetworkMonitor.shared
 
     @State private var searchText = ""
-    @State private var isSearchVisible = false
-    @State private var showMenu = false
+    @State private var isSearchActive = false
     @State private var searchWorkItem: DispatchWorkItem?
     @FocusState private var isSearchFieldFocused: Bool
     @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic background tint color (darker theme color)
-    @State private var isMenuButtonPressed = false // Track menu button press state
     @State private var selectedChatContact: UserActiveContactModel?
     @State private var navigateToChattingScreen = false
     
@@ -44,7 +42,6 @@ struct InviteScreen: View {
     
     // Helper function to hide keyboard
     private func hideKeyboard() {
-        isSearchFieldFocused = false
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
     
@@ -56,52 +53,85 @@ struct InviteScreen: View {
                 .onTapGesture {
                     hideKeyboard()
                 }
-            
+
             VStack(spacing: 0) {
-                header
-                    .padding(.horizontal, 20)
-                    .padding(.top, 15)
-                    .padding(.bottom, 12)
-                
                 if !networkMonitor.isConnected {
                     ProgressView()
                         .progressViewStyle(.linear)
                         .tint(Color("appThemeColor"))
                     .padding(.horizontal, 20)
                 }
-                
+
                 content
-                    .padding(.top, 0)
-                
-                Spacer()
             }
         }
-        .navigationTitle("")
+        .navigationTitle(isSearchActive ? "" : "Contacts")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(isSearchActive)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Text("Contacts")
-                    .font(.custom("Inter18pt-SemiBold", size: 16))
-                    .foregroundColor(Color("TextColor"))
+            if isSearchActive {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isSearchActive = false
+                            searchText = ""
+                            viewModel.resetSearch()
+                            isSearchFieldFocused = false
+                        }
+                    } label: {
+                        Image(systemName: "arrow.left")
+                            .font(.system(size: 16, weight: .medium))
+                    }
+                }
+                ToolbarItem(placement: .principal) {
+                    TextField("Search Name", text: $searchText)
+                        .font(.custom("Inter18pt-Medium", size: 16))
+                        .foregroundColor(Color("TextColor"))
+                        .focused($isSearchFieldFocused)
+                        .textInputAutocapitalization(.never)
+                        .disableAutocorrection(true)
+                }
+            } else {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        isSearchActive = true
+                    } label: {
+                        Image("search")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 20, height: 20)
+                    }
+                }
             }
-        }
-        .background(NavigationGestureEnabler())
-        .overlay(alignment: .topTrailing) {
-            if showMenu {
-                RefreshContactsDialog(
-                    isPresented: $showMenu,
-                    onRefresh: {
-                        // Request contacts permission (custom dialog first) only when user taps Refresh
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button {
                         AndroidStylePermissionManager.shared.requestPermissionWithDialogFromTopVC(for: .contacts) { granted in
                             if granted {
                                 viewModel.syncContacts()
                             }
                         }
+                    } label: {
+                        Label("Refresh", systemImage: "arrow.clockwise")
                     }
-                )
+                } label: {
+                    VStack(spacing: 3) {
+                        Circle()
+                            .fill(Color("menuPointColor"))
+                            .frame(width: 4, height: 4)
+                        Circle()
+                            .fill(Color(hex: Constant.themeColor))
+                            .frame(width: 4, height: 4)
+                        Circle()
+                            .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                            .frame(width: 4, height: 4)
+                    }
+                    .frame(width: 24, height: 24)
+                }
             }
         }
+        .background(NavigationGestureEnabler())
         .navigationDestination(isPresented: $navigateToChattingScreen) {
             if let contact = selectedChatContact {
                 ChattingScreen(contact: contact)
@@ -124,19 +154,15 @@ struct InviteScreen: View {
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ThemeColorUpdated"))) { _ in
             mainvectorTintColor = getMainvectorTintColor(for: Constant.themeColor) // Update tint color when theme changes
         }
-        .onChange(of: searchText) { newValue in
-            handleSearchChange(newValue)
-        }
-        .onChange(of: isSearchVisible) { isVisible in
-            if isVisible {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        .onChange(of: isSearchActive) { active in
+            if active {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     isSearchFieldFocused = true
                 }
-            } else {
-                isSearchFieldFocused = false
-                searchText = ""
-                viewModel.resetSearch()
             }
+        }
+        .onChange(of: searchText) { newValue in
+            handleSearchChange(newValue)
         }
         .onChange(of: viewModel.toastMessage) { message in
             guard let message = message else { return }
@@ -149,96 +175,6 @@ struct InviteScreen: View {
             if viewModel.isSyncingContacts {
                 SyncOverlay(message: "Your contacts are synchronizing...")
             }
-        }
-    }
-    
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                Spacer()
-                
-                if isSearchVisible {
-                    HStack {
-                        Rectangle()
-                            .fill(Color(hex: Constant.themeColor)) // Use original theme color in both light and dark mode
-                            .frame(width: 1, height: 19.24)
-                            .padding(.leading, 13)
-            
-                        TextField("Search Name", text: $searchText)
-                            .font(.custom("Inter18pt-Regular", size: 15))
-                            .foregroundColor(Color("TextColor"))
-                            .disableAutocorrection(true)
-                            .textInputAutocapitalization(.never)
-                            .padding(.leading, 13)
-                            .textFieldStyle(PlainTextFieldStyle())
-                            .focused($isSearchFieldFocused)
-                    }
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                }
-                
-                HeaderIconButton {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isSearchVisible.toggle()
-                    }
-                } label: {
-                    if let searchImage = UIImage(named: "search") {
-                        Image(uiImage: searchImage)
-                            .resizable()
-                            .renderingMode(.template)
-                    } else {
-                        Image(systemName: "magnifyingglass")
-                            .resizable()
-                    }
-                }
-                
-                // Menu button - matching MainActivityOld.swift design
-                ZStack {
-                    // Background circle for visual feedback
-                    if isMenuButtonPressed {
-                        Circle()
-                            .fill(Color("circlebtnhover").opacity(0.3))
-                            .frame(width: 44, height: 44)
-                            .transition(.opacity)
-                    }
-                    
-                    VStack(spacing: 3) {
-                        Circle()
-                            .fill(Color("menuPointColor"))
-                            .frame(width: 4, height: 4)
-                        Circle()
-                            .fill(Color(hex: Constant.themeColor))
-                            .frame(width: 4, height: 4)
-                        Circle()
-                            .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
-                            .frame(width: 4, height: 4)
-                    }
-                }
-                .frame(width: 44, height: 44) // Standard iOS touch target size
-                .contentShape(Rectangle()) // Ensure entire area is tappable
-                .onTapGesture {
-                    // Add haptic feedback for better UX
-                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                    impactFeedback.impactOccurred()
-                    
-                    // Visual feedback
-                    withAnimation(.easeInOut(duration: 0.1)) {
-                        isMenuButtonPressed = true
-                    }
-                    
-                    // Smooth animation when opening menu
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                    showMenu = true
-                    }
-                    
-                    // Reset pressed state
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        withAnimation(.easeInOut(duration: 0.1)) {
-                            isMenuButtonPressed = false
-                        }
-                    }
-                }
-            }
-            .animation(.easeInOut(duration: 0.3), value: isSearchVisible)
         }
     }
     
@@ -401,43 +337,6 @@ struct InviteScreen: View {
         default:
             return Color(hex: "#01253B")
         }
-    }
-}
-
-private struct HeaderIconButton<Content: View>: View {
-    var action: () -> Void
-    @ViewBuilder var label: Content
-    
-    var body: some View {
-        Button(action: action) {
-            label
-                .scaledToFit()
-                .frame(width: 20, height: 20)
-                .foregroundColor(Color("TextColor"))
-                .padding(10)
-                .background(
-                    Circle()
-                        .fill(Color("cardBackgroundColornew"))
-                )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct MenuDotsIcon: View {
-    var body: some View {
-        VStack(spacing: 3) {
-            Circle()
-                .fill(Color(hex: "#011224"))
-                .frame(width: 4, height: 4)
-            Circle()
-                .fill(Color(hex: Constant.themeColor))
-                .frame(width: 4, height: 4)
-            Circle()
-                .fill(Color(hex: "#9EA6B9"))
-                .frame(width: 4, height: 4)
-        }
-        .frame(width: 20, height: 20)
     }
 }
 
@@ -609,85 +508,3 @@ private struct InviteShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
-private struct RefreshContactsDialog: View {
-    @Binding var isPresented: Bool
-    var onRefresh: () -> Void
-    @Environment(\.colorScheme) var colorScheme
-    
-    var body: some View {
-        ZStack {
-            // Semi-transparent background with ultra thin material blur to dismiss on tap outside
-            Color.black.opacity(0.01)
-                .background(.ultraThinMaterial)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isPresented = false
-                    }
-                }
-            
-            // Refresh button positioned at top-right, matching Android design
-            // Android: RelativeLayout padding="10dp", button margin="10dp", layout_alignParentEnd="true"
-            // Button dimensions: 130dp width, 50dp height, 10dp corner radius
-            // Android uses @drawable/menurect which uses @color/menuRect
-            VStack {
-                HStack {
-                    Spacer()
-                    
-                    ZStack {
-                        // Enhanced shadow layer for CardView effect (elevation 5dp equivalent)
-                        // More visible shadow in light mode to match Android CardView
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(
-                                colorScheme == .light 
-                                    ? Color.black.opacity(0.25) 
-                                    : Color.black.opacity(0.15)
-                            )
-                            .frame(width: 130, height: 50)
-                            .offset(x: 0, y: 4)
-                            .blur(radius: colorScheme == .light ? 10 : 8)
-                            .allowsHitTesting(false)
-                        
-                        // Additional subtle shadow for depth in light mode
-                        if colorScheme == .light {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color.black.opacity(0.1))
-                                .frame(width: 130, height: 50)
-                                .offset(x: 0, y: 2)
-                                .blur(radius: 6)
-                                .allowsHitTesting(false)
-                        }
-                        
-                        // Button card - matches Android: 130dp width, 50dp height, 10dp corner radius
-                        // Using menuRect color to match Android @drawable/menurect
-                        Button(action: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                isPresented = false
-                            }
-                            // Small delay to allow dismiss animation
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                onRefresh()
-                            }
-                        }) {
-                            Text("Refresh")
-                                .font(.custom("Inter18pt-SemiBold", size: 16))
-                                .foregroundColor(Color("TextColor"))
-                                .frame(width: 130, height: 50)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .fill(Color("menuRect"))
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.trailing, 10) // Android margin 10dp from right edge
-                    .padding(.top, 65) // Position below header area
-                }
-                
-                Spacer()
-            }
-        }
-        .transition(.opacity.combined(with: .scale(scale: 0.95)))
-        .animation(.easeInOut(duration: 0.2), value: isPresented)
-    }
-}

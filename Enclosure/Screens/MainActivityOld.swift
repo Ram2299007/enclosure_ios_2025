@@ -177,69 +177,61 @@ struct MainActivityOld: View {
                 #endif
 
                 if(isMainContentVisible){
-                    HStack{
-                        Button(action: {
-                            withAnimation {
-                                showInviteScreen = true
+                    HStack(spacing: 0) {
+                        if isSearchActive {
+                            Button(action: {
+                                isSearchActive = false
+                                searchText = ""
+                                isSearchFieldFocused = false
+                                hideKeyboard()
+                            }) {
+                                Image(systemName: "arrow.left")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(Color("TextColor"))
                             }
-                        }) {
-                            Image(logoImageName)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 55, height: 55)
-                        }
-                        .frame(width: 70, height: activeCallManager.hasActiveCall ? 58 : 70)
-                        .padding(.leading, 25)
-
-                        Spacer()
-
-                        HStack {
-                            if viewValue == Constant.chatView {
-                                Group {
-                                    if isSearchActive {
-                                        HStack {
-                                            Rectangle()
-                                                .fill(bgRectTintColor) // Dynamic theme color instead of hardcoded blue
-                                                .frame(width: 1, height: 19.24)
-                                                .padding(.leading, 13)
-
-                                            TextField("Search Name", text: $searchText)
-                                                .font(.custom("Inter18pt-Regular", size: 15))
-                                                .foregroundColor(Color("TextColor"))
-                                                .padding(.leading, 13)
-                                                .textFieldStyle(PlainTextFieldStyle())
-                                                .focused($isSearchFieldFocused)
-                                        }
-                                        .transition(
-                                            .move(edge: .trailing).combined(with: .opacity)
-                                        )
-                                    }
-
-                                    Button(action: {
-                                        withAnimation {
-                                            if isSearchActive {
-                                                if isSearchFieldFocused {
-                                                    isSearchActive = false
-                                                    searchText = ""
-                                                    isSearchFieldFocused = false
-                                                    hideKeyboard()
-                                                } else {
-                                                    isSearchFieldFocused = true
-                                                }
-                                            } else {
-                                                isSearchActive = true
-                                                isSearchFieldFocused = true
-                                            }
-                                        }
-                                    }) {
-                                        Image("search")
-                                            .resizable()
-                                            .scaledToFit()
-                                            .frame(width: 20, height: 20)
-                                    }
-                                    .frame(width: 40, height: 40)
-                                    .buttonStyle(CircularRippleStyle())
+                            .frame(width: 44, height: 44)
+                            .padding(.leading, 10)
+                        } else {
+                            Button(action: {
+                                withAnimation {
+                                    showInviteScreen = true
                                 }
+                            }) {
+                                Image(logoImageName)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 55, height: 55)
+                            }
+                            .frame(width: 70, height: activeCallManager.hasActiveCall ? 58 : 70)
+                            .padding(.leading, 10)
+                        }
+
+                        if isSearchActive {
+                            TextField("Search Name", text: $searchText)
+                                .font(.custom("Inter18pt-Regular", size: 15))
+                                .foregroundColor(Color("TextColor"))
+                                .textFieldStyle(PlainTextFieldStyle())
+                                .focused($isSearchFieldFocused)
+                                .padding(.leading, 8)
+                        } else {
+                            Spacer()
+                        }
+
+                        HStack(spacing: 0) {
+                            if viewValue == Constant.chatView && !isSearchActive {
+                                Button(action: {
+                                    isSearchActive = true
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                        isSearchFieldFocused = true
+                                    }
+                                }) {
+                                    Image("search")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 20, height: 20)
+                                }
+                                .frame(width: 40, height: 40)
+                                .buttonStyle(CircularRippleStyle())
                                 .opacity(isVStackVisible ? 0 : 1)
                                 .animation(.easeInOut(duration: 0.35), value: isVStackVisible)
                                 .allowsHitTesting(!isVStackVisible)
