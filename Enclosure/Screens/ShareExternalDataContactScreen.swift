@@ -23,6 +23,7 @@ struct ShareExternalDataContactScreen: View {
     @State private var searchText: String = ""
     @State private var isSharing: Bool = false
     @State private var isPressed: Bool = false
+    @State private var isSearchActive: Bool = false
     @FocusState private var isSearchFocused: Bool
     
     // Preview dialog states (matching ChattingScreen)
@@ -60,6 +61,7 @@ struct ShareExternalDataContactScreen: View {
     }
     
     var body: some View {
+        NavigationStack {
         ZStack {
             // Background matching Android BackgroundColor style
             Color("background_color")
@@ -70,72 +72,12 @@ struct ShareExternalDataContactScreen: View {
                 }
             
             VStack(spacing: 0) {
-                // Header section (matching Android searchlyt)
-                VStack(spacing: 0) {
-                    // Top bar with cancel button and "Contacts" text (matching Android)
-                    HStack(spacing: 0) {
-                        // Cancel button (matching Android backarrow LinearLayout)
-                        Button(action: {
-                            handleCancel()
-                        }) {
-                            ZStack {
-                                Circle()
-                                    .fill(Color("circlebtnhover").opacity(0.1))
-                                    .frame(width: 26, height: 26)
-                                
-                                Image("leftvector")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 25, height: 18)
-                                    .foregroundColor(Color("TextColor"))
-                                    .padding(2)
-                            }
-                        }
-                        .padding(.leading, 20) // layout_marginStart="20dp"
-                        
-                        // "Contacts" text (matching Android theme TextView)
-                        Text("Contacts")
-                            .font(.custom("Inter18pt-Medium", size: 16))
-                            .fontWeight(.medium)
-                            .foregroundColor(Color("TextColor"))
-                            .padding(.leading, 21) // layout_marginStart="21dp"
-                        
-                        Spacer()
-        }
-                    .padding(.top, 20) // layout_marginTop="20dp"
-                    .padding(.trailing, 17) // layout_marginEnd="17dp"
-                    
-                    // Network loader (matching Android networkLoader)
-                    if isLoading {
-                        ProgressView()
-                            .progressViewStyle(LinearProgressViewStyle(tint: Color("TextColor")))
-                            .frame(height: 4)
-                            .padding(.top, 10) // layout_marginTop="10dp"
-                    }
-                    
-                    // Search bar (matching Android searchLytNew LinearLayout)
-                    // layout_marginTop="20dp" padding="8dp" layout_weight="1" layout_marginEnd="10dp"
-                    HStack {
-                        // Blue indicator line (matching Android viewnewnn)
-                        Rectangle()
-                            .fill(Color("blue"))
-                            .frame(width: 1, height: 19.24) // layout_height="19.24dp"
-                            .padding(.leading, 13)
-                    
-                        // Search field (matching Android searchview AutoCompleteTextView)
-                        TextField("Search Name", text: $searchText)
-                            .font(.custom("Inter18pt-Regular", size: 15)) // textSize="15sp"
-                            .foregroundColor(Color("TextColor"))
-                            .focused($isSearchFocused)
-                            .lineSpacing(0) // lineHeight="22.5dp"
-                            .padding(.leading, 13)
-            }
-                    .padding(.top, 20) // layout_marginTop="20dp"
-                    .padding(.leading, 8) // padding="8dp" (left only)
-                    .padding(.trailing, 20) // Same right spacing as checkbox (20dp)
-        }
-                .padding(.horizontal, 0)
+                // Network loader
+                if isLoading {
+                    ProgressView()
+                        .progressViewStyle(LinearProgressViewStyle(tint: Color("TextColor")))
+                        .frame(height: 4)
+                }
     
                 // Contact List (matching Android recyclerview in FrameLayout)
                 // FrameLayout: layout_below="@+id/searchlyt" layout_above="@id/dx" layout_marginTop="15dp"
@@ -249,8 +191,60 @@ struct ShareExternalDataContactScreen: View {
                 }
             }
         }
-        .navigationBarHidden(true)
+        .navigationTitle(isSearchActive ? "" : "Contacts")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            if isSearchActive {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        isSearchActive = false
+                        searchText = ""
+                        isSearchFocused = false
+                        hideKeyboard()
+                    } label: {
+                        Image(systemName: "arrow.left")
+                            .font(.system(size: 16, weight: .medium))
+                    }
+                }
+                ToolbarItem(placement: .principal) {
+                    TextField("Search Name", text: $searchText)
+                        .font(.custom("Inter18pt-Regular", size: 15))
+                        .foregroundColor(Color("TextColor"))
+                        .focused($isSearchFocused)
+                        .textInputAutocapitalization(.never)
+                        .disableAutocorrection(true)
+                }
+            } else {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "arrow.left")
+                            .font(.system(size: 16, weight: .medium))
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        isSearchActive = true
+                    } label: {
+                        Image("search")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 20, height: 20)
+                    }
+                }
+            }
+        }
         .background(NavigationGestureEnabler())
+        .onChange(of: isSearchActive) { active in
+            if active {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    isSearchFocused = true
+                }
+            }
+        }
         .fullScreenCover(isPresented: $showImagePreview) {
             ShareImagePreviewDialog(
                 imageUrls: sharedContent.imageUrls,
@@ -312,8 +306,9 @@ struct ShareExternalDataContactScreen: View {
                 isLoading = false
             }
         }
+        } // NavigationStack
     }
-    
+
     // Display selected contact name (matching Android forwardnameAdapter logic)
     // Android format: "Name1 , Name2 , Name3" (with spaces around comma, last name without comma)
     private func displaySelectedContactName(contact: UserActiveContactModel, index: Int, total: Int) -> String {

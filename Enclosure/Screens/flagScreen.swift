@@ -13,6 +13,7 @@ struct flagScreen: View {
     @StateObject private var viewModel = FlagViewModel()
     @Environment(\.dismiss) var dismiss
     @FocusState private var isSearchFocused: Bool
+    @State private var isSearchActive = false
 
     // Bindings to update the selected country details
     @Binding var selectedCountryCode: String
@@ -24,84 +25,42 @@ struct flagScreen: View {
         isSearchFocused = false
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
-    
+
     var body: some View {
         ZStack(alignment: .top) {
             Color("background_color")
                 .ignoresSafeArea()
 
-        VStack(spacing: 0) {
-                // Search Bar Section - matching Android layout
-                VStack(spacing: 0) {
-                    HStack(alignment: .center, spacing: 0) {
-                        // Vertical line - use original theme color in both light and dark mode
-                        Rectangle()
-                            .frame(width: 1, height: 20)
-                            .foregroundColor(Color(hex: Constant.themeColor))
-                            .padding(.leading, 5)
-                        
-                        // Search TextField - wrap_content height
-                        VStack(spacing: 0) {
-                            TextField("Search Country", text: $viewModel.searchText)
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .font(.custom("Inter18pt-Medium", size: 16))
-                                .foregroundColor(Color("TextColor"))
-                                .padding(.leading, 5)
-                                .background(Color.clear)
-                                .focused($isSearchFocused)
-                                .frame(minHeight: 22) // Natural height for 16pt font
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.trailing, 10)
-                        
-                        // Search Icon - match_parent height (matches TextField container height)
-                        Image("search")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 20)
-                            .frame(minHeight: 22) // Matches TextField height
-                            .padding(.trailing, 10)
-                    }
-                    .padding(10)
-                }
-                .padding(.top, 0)
-                .padding(.bottom, 10)
-
+            VStack(spacing: 0) {
                 // Content Section
                 if viewModel.isLoading {
                     ZStack {
                         Color("background_color")
                         HorizontalProgressBar()
-                            .frame(width: 40, height: 2) // Custom size: width 40, height 3
-                            .frame(maxWidth: .infinity, maxHeight: .infinity) // Center in parent
+                            .frame(width: 40, height: 2)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 } else {
                     ScrollView {
                         VStack(spacing: 0) {
-                            // Debug: Print count of flags
                             let _ = print("📊 Total flags to display: \(viewModel.filteredFlags.count)")
-                            
+
                             ForEach(viewModel.filteredFlags) { flag in
                                 FlagRowView(model: flag)
                                     .contentShape(Rectangle())
                                     .onTapGesture {
                                         print("🔵 Row tapped for country: \(flag.country_name)")
-                                        
-                                        // Dismiss keyboard first (like Android does when activity finishes)
+
                                         isSearchFocused = false
-                                        
-                                        // Update selected country details (matching Android: countrycode, flagFinal, c_id)
+
                                         selectedCountryCode = "+\(flag.country_c_code)"
-                                        selectedCountryShortCode = flag.country_code  // Short code like "IN", "US"
+                                        selectedCountryShortCode = flag.country_code
                                         selectedCountryID = flag.c_id
-                                        
-                                        // Print for debugging
+
                                         print("✅ Selected country: \(flag.country_code), Code: +\(flag.country_c_code), ID: \(flag.c_id)")
-                                        
-                                        // Dismiss keyboard and wait before navigating back
-                                        // This ensures keyboard is fully dismissed before returning to whatsYourNumber
+
                                         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                                        
+
                                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                                             dismiss()
                                         }
@@ -116,24 +75,52 @@ struct flagScreen: View {
             .onTapGesture {
                 hideKeyboard()
             }
-            .onAppear {
-                // Auto-focus search field and show keyboard (matching Android behavior)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        }
+        .navigationTitle(isSearchActive ? "" : "Select Country")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(isSearchActive)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            if isSearchActive {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        isSearchActive = false
+                        viewModel.searchText = ""
+                        isSearchFocused = false
+                        hideKeyboard()
+                    } label: {
+                        Image(systemName: "arrow.left")
+                            .font(.system(size: 16, weight: .medium))
+                    }
+                }
+                ToolbarItem(placement: .principal) {
+                    TextField("Search Country", text: $viewModel.searchText)
+                        .font(.custom("Inter18pt-Medium", size: 16))
+                        .foregroundColor(Color("TextColor"))
+                        .focused($isSearchFocused)
+                        .textInputAutocapitalization(.never)
+                        .disableAutocorrection(true)
+                }
+            } else {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        isSearchActive = true
+                    } label: {
+                        Image("search")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 20, height: 20)
+                    }
+                }
+            }
+        }
+        .background(NavigationGestureEnabler())
+        .onChange(of: isSearchActive) { active in
+            if active {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     isSearchFocused = true
                 }
             }
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Text("Select Country")
-                        .font(.custom("Inter18pt-SemiBold", size: 16))
-                        .foregroundColor(Color("TextColor"))
-                        .fixedSize()
-                }
-            }
-            .background(NavigationGestureEnabler())
         }
     }
 
