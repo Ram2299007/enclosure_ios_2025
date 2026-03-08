@@ -76,16 +76,9 @@ struct NewGroupView: View {
             
             submitButton
         }
-        .navigationTitle("")
+        .navigationTitle("Create new group")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Text("Create new group")
-                    .font(.custom("Inter18pt-SemiBold", size: 16))
-                    .foregroundColor(Color("TextColor"))
-            }
-        }
         .background(NavigationGestureEnabler())
         .sheet(isPresented: $isImagePickerPresented) {
             ImagePicker(sourceType: .photoLibrary, selectedImage: Binding(

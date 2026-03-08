@@ -53,16 +53,9 @@ struct PrivacySettingsView: View {
                 }
             }
         }
-        .navigationTitle("")
+        .navigationTitle("Privacy settings")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Text("Privacy settings")
-                    .font(.custom("Inter18pt-SemiBold", size: 16))
-                    .foregroundColor(Color("TextColor"))
-            }
-        }
         .background(NavigationGestureEnabler())
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK") { }

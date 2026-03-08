@@ -75,6 +75,21 @@ struct NavigationGestureEnabler: UIViewControllerRepresentable {
         // Remove Liquid Glass / frosted background from navigation bar
         let appearance = UINavigationBarAppearance()
         appearance.configureWithTransparentBackground()
+
+        // Style inline title with Inter font and theme text color
+        let textColor = UIColor(named: "TextColor") ?? .label
+        if let interFont = UIFont(name: "Inter18pt-SemiBold", size: 16) {
+            appearance.titleTextAttributes = [
+                .foregroundColor: textColor,
+                .font: interFont
+            ]
+        } else {
+            appearance.titleTextAttributes = [
+                .foregroundColor: textColor,
+                .font: UIFont.systemFont(ofSize: 16, weight: .semibold)
+            ]
+        }
+
         navController.navigationBar.standardAppearance = appearance
         navController.navigationBar.scrollEdgeAppearance = appearance
         navController.navigationBar.compactAppearance = appearance

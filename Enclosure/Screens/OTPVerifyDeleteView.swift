@@ -49,16 +49,9 @@ struct OTPVerifyDeleteView: View {
             }
             .ignoresSafeArea(.keyboard, edges: .bottom)
         }
-        .navigationTitle("")
+        .navigationTitle("Verify OTP")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Text("Verify OTP")
-                    .font(.custom("Inter18pt-SemiBold", size: 16))
-                    .foregroundColor(Color("TextColor"))
-            }
-        }
         .background(NavigationGestureEnabler())
         .onAppear {
             startResendTimer()

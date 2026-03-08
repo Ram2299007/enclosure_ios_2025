@@ -173,7 +173,7 @@ struct ShowImageScreen: View {
                                         .frame(width: 4, height: 4)
                                     
                                     Circle()
-                                        .fill(Color(red: 0x00/255.0, green: 0xA3/255.0, blue: 0xE9/255.0)) // Theme color #00A3E9
+                                        .fill(Color(hex: Constant.themeColor))
                                         .frame(width: 4, height: 4)
                                     
                                     Circle()

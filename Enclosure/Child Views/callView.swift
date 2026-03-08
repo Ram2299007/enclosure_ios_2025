@@ -84,7 +84,7 @@ struct callView: View {
                         
                         Spacer()
                         
-                        // Menu button (3 dots)
+                        // Menu button (3 dots) — with material background for liquid glass look
                         Button(action: {
                             withAnimation(.easeOut(duration: 0.2)) {
                                 showClearLogDialog = true
@@ -101,7 +101,8 @@ struct callView: View {
                                     .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
                                     .frame(width: 4, height: 4)
                             }
-                            .frame(width: 40, height: 40)
+                            .frame(width: 36, height: 36)
+                            .background(.ultraThinMaterial, in: Circle())
                         }
                         .frame(width: 40, height: 40)
                         .padding(.trailing, 10)
@@ -225,7 +226,7 @@ struct callView: View {
                         
                         Spacer()
                         
-                        // Menu button (3 dots) - visible when on log tab
+                        // Menu button (3 dots) - visible when on log tab — with material background for liquid glass look
                         if selectedTab == .log && !isBackLayoutVisible {
                             Button(action: {
                                 withAnimation(.easeOut(duration: 0.2)) {
@@ -243,7 +244,8 @@ struct callView: View {
                                         .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
                                         .frame(width: 4, height: 4)
                                 }
-                                .frame(width: 40, height: 40)
+                                .frame(width: 36, height: 36)
+                                .background(.ultraThinMaterial, in: Circle())
                             }
                             .frame(width: 40, height: 40)
                             .padding(.trailing, 15) // marginEnd="15dp" from Android

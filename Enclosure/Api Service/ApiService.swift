@@ -10,8 +10,6 @@ class ApiService {
     static let shared = ApiService()
     @State private var isActive = false
 
-
-
     private init() {}
 
     func uploadUserContactList(uid: String, fileURL: URL?, fileName: String?, countryCodeKey: String?, completion: @escaping (Bool, String) -> Void) {

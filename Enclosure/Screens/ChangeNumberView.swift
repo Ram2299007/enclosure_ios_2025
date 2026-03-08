@@ -192,16 +192,9 @@ struct ChangeNumberView: View {
                 }
             }
         }
-        .navigationTitle("")
+        .navigationTitle("Change Number")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Text("Change Number")
-                    .font(.custom("Inter18pt-SemiBold", size: 16))
-                    .foregroundColor(Color("TextColor"))
-            }
-        }
         .background(NavigationGestureEnabler())
         .onAppear {
             loadThemeColor()

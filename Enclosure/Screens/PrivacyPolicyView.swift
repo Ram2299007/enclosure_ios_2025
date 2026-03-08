@@ -42,16 +42,9 @@ struct PrivacyPolicyView: View {
                 }
             }
         }
-        .navigationTitle("")
+        .navigationTitle("Privacy Policy")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Text("Privacy Policy")
-                    .font(.custom("Inter18pt-SemiBold", size: 16))
-                    .foregroundColor(Color("TextColor"))
-            }
-        }
         .background(NavigationGestureEnabler())
         .onAppear {
             // WebView will handle loading automatically

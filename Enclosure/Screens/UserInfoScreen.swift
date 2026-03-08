@@ -84,16 +84,9 @@ struct UserInfoScreen: View {
             }
             .hidden()
         )
-        .navigationTitle("")
+        .navigationTitle(recUserName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Text(recUserName)
-                    .font(.custom("Inter18pt-SemiBold", size: 16))
-                    .foregroundColor(Color("TextColor"))
-            }
-        }
         .background(NavigationGestureEnabler())
         .onAppear {
             print("UserInfoScreen: onAppear - recUserId: \(recUserId), recUserName: \(recUserName)")

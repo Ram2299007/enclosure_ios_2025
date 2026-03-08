@@ -193,16 +193,9 @@ struct ChangePasswordView: View {
                 }
             }
         }
-        .navigationTitle("")
+        .navigationTitle("Change password")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Text("Change password")
-                    .font(.custom("Inter18pt-SemiBold", size: 16))
-                    .foregroundColor(Color("TextColor"))
-            }
-        }
         .background(NavigationGestureEnabler())
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK") {

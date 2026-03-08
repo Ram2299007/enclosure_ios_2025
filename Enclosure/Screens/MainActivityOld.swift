@@ -141,7 +141,112 @@ struct MainActivityOld: View {
     private func hideKeyboard() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
-    
+
+    /// True when any dialog/overlay is showing that should hide the logo and toolbar
+    private var isAnyDialogShowing: Bool {
+        showNameDialog || showChatLongPressDialog || showCallLogDialog || showVideoCallLogDialog || showGroupDialog || showClearLogDialog || showClearVideoCallLogDialog
+    }
+
+    /// Toolbar item opacity — smoothly fades in/out based on isMainContentVisible
+    private var toolbarItemOpacity: Double {
+        isMainContentVisible ? 1 : 0
+    }
+
+    @ToolbarContentBuilder
+    private var mainToolbarContent: some ToolbarContent {
+        if !isAnyDialogShowing {
+            if isSearchActive {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        isSearchActive = false
+                        searchText = ""
+                        isSearchFieldFocused = false
+                        hideKeyboard()
+                    } label: {
+                        Image(systemName: "arrow.left")
+                            .font(.system(size: 16, weight: .medium))
+                    }
+                    .opacity(toolbarItemOpacity)
+                    .animation(.easeInOut(duration: 0.30), value: isMainContentVisible)
+                }
+                ToolbarItem(placement: .principal) {
+                    TextField("Search Name", text: $searchText)
+                        .font(.custom("Inter18pt-Regular", size: 15))
+                        .foregroundColor(Color("TextColor"))
+                        .focused($isSearchFieldFocused)
+                        .textInputAutocapitalization(.never)
+                        .disableAutocorrection(true)
+                        .opacity(toolbarItemOpacity)
+                        .animation(.easeInOut(duration: 0.30), value: isMainContentVisible)
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showMenu = true
+                        }
+                    }) {
+                        VStack(spacing: 3) {
+                            Circle()
+                                .fill(Color("menuPointColor"))
+                                .frame(width: 4, height: 4)
+                            Circle()
+                                .fill(Color(hex: Constant.themeColor))
+                                .frame(width: 4, height: 4)
+                            Circle()
+                                .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                                .frame(width: 4, height: 4)
+                        }
+                        .frame(width: 24, height: 24)
+                    }
+                    .opacity(toolbarItemOpacity)
+                    .animation(.easeInOut(duration: 0.30), value: isMainContentVisible)
+                }
+            } else {
+                if viewValue == Constant.chatView && !isVStackVisible {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            isSearchActive = true
+                        } label: {
+                            Image("search")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20)
+                        }
+                        .opacity(toolbarItemOpacity)
+                        .animation(.easeInOut(duration: 0.30), value: isMainContentVisible)
+                    }
+                }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showMenu = true
+                        }
+                    }) {
+                        VStack(spacing: 3) {
+                            Circle()
+                                .fill(Color("menuPointColor"))
+                                .frame(width: 4, height: 4)
+                            Circle()
+                                .fill(Color(hex: Constant.themeColor))
+                                .frame(width: 4, height: 4)
+                            Circle()
+                                .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                                .frame(width: 4, height: 4)
+                        }
+                        .frame(width: 24, height: 24)
+                    }
+                    .opacity(toolbarItemOpacity)
+                    .animation(.easeInOut(duration: 0.30), value: isMainContentVisible)
+                }
+            }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -177,6 +282,25 @@ struct MainActivityOld: View {
                 #endif
 
                 if(isMainContentVisible){
+                    HStack(spacing: 0) {
+                        if !isSearchActive {
+                            Button(action: {
+                                withAnimation {
+                                    showInviteScreen = true
+                                }
+                            }) {
+                                Image(logoImageName)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 55, height: 55)
+                            }
+                            .frame(width: 70, height: activeCallManager.hasActiveCall ? 58 : 70)
+                            .padding(.leading, 20)
+                            .padding(.top, 20)
+                        }
+                        Spacer()
+                    }
+                    
                     // main container — ZStack so background and content share same clip (inner stays inside bg/mainvector)
                     ZStack(alignment: .top) {
                         // 1) Background fills entire header so content never spills outside
@@ -695,6 +819,8 @@ struct MainActivityOld: View {
                     }
                 }
                 
+                // Logo is now a ToolbarItem — no overlay needed
+
                 // Custom Alert
                 if showNameDialog {
                     WhatsYourNameDialog(isPresented: $showNameDialog)
@@ -877,87 +1003,9 @@ struct MainActivityOld: View {
             .navigationBarBackButtonHidden(true)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbar {
-                if isSearchActive {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button {
-                            isSearchActive = false
-                            searchText = ""
-                            isSearchFieldFocused = false
-                            hideKeyboard()
-                        } label: {
-                            Image(systemName: "arrow.left")
-                                .font(.system(size: 16, weight: .medium))
-                        }
-                    }
-                    ToolbarItem(placement: .principal) {
-                        TextField("Search Name", text: $searchText)
-                            .font(.custom("Inter18pt-Regular", size: 15))
-                            .foregroundColor(Color("TextColor"))
-                            .focused($isSearchFieldFocused)
-                            .textInputAutocapitalization(.never)
-                            .disableAutocorrection(true)
-                    }
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button(action: {
-                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                            impactFeedback.impactOccurred()
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showMenu = true
-                            }
-                        }) {
-                            VStack(spacing: 3) {
-                                Circle()
-                                    .fill(Color("menuPointColor"))
-                                    .frame(width: 4, height: 4)
-                                Circle()
-                                    .fill(Color(hex: Constant.themeColor))
-                                    .frame(width: 4, height: 4)
-                                Circle()
-                                    .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
-                                    .frame(width: 4, height: 4)
-                            }
-                            .frame(width: 24, height: 24)
-                        }
-                    }
-                } else {
-                    if viewValue == Constant.chatView && !isVStackVisible {
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button {
-                                isSearchActive = true
-                            } label: {
-                                Image("search")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 20, height: 20)
-                            }
-                        }
-                    }
-
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button(action: {
-                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                            impactFeedback.impactOccurred()
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showMenu = true
-                            }
-                        }) {
-                            VStack(spacing: 3) {
-                                Circle()
-                                    .fill(Color("menuPointColor"))
-                                    .frame(width: 4, height: 4)
-                                Circle()
-                                    .fill(Color(hex: Constant.themeColor))
-                                    .frame(width: 4, height: 4)
-                                Circle()
-                                    .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
-                                    .frame(width: 4, height: 4)
-                            }
-                            .frame(width: 24, height: 24)
-                        }
-                    }
-                }
-            }
+            .toolbar(isMainContentVisible ? .visible : .hidden, for: .navigationBar)
+            .animation(.easeInOut(duration: 0.30), value: isMainContentVisible)
+            .toolbar { mainToolbarContent }
             .onChange(of: isSearchActive) { active in
                 if active {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -1168,18 +1216,6 @@ struct MainActivityOld: View {
                     sharedDefaults?.set(false, forKey: Constant.videoRadioKey)
                     showIncomingOnOffToastMessage("Incoming Video Calls : OFF")
                 }
-            }
-        }
-        .overlay(alignment: .topLeading) {
-            if !isSearchActive && isMainContentVisible && !showInviteScreen && !navigateToLockScreen && !navigateToPayView && !navigateToSettings && !navigateToThemeView && !navigateToChattingScreen {
-                Button(action: { showInviteScreen = true }) {
-                    Image(logoImageName)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 55, height: 55)
-                }
-                .padding(.leading, 16)
-                .offset(y: -5.5)
             }
         }
         .onAppear {

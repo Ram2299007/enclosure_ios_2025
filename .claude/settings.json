@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(for file in \"Screens/whatsTheCode.swift\" \"Child Views/videoCallView.swift\" \"Child Views/callView.swift\" \"Screens/MultipleImageScreen.swift\" \"Screens/OTPVerifyDeleteView.swift\" \"Child Views/groupMessageView.swift\" \"Child Views/messageLmtView.swift\" \"Child Views/youView.swift\" \"Screens/CameraGalleryView.swift\")",
+      "Bash(do if ! grep -q \"private var androidToolbar\" \"$file\")",
+      "Bash(then echo \"FILE: $file\")",
+      "Read(//Users/ramlohar/XCODE_PROJECT/enclosure_ios_2026-main_MARCH/**)",
+      "Bash(fi)",
+      "Bash(grep -l \"navigationBarHidden\" Screens/*.swift)",
+      "Bash(while read file)",
+      "Bash(do if grep -q \"leftvector\\\\|androidToolbar\" \"$file\")",
+      "Bash(then echo \"$file\")",
+      "Bash(for file in \"Screens/GroupChattingScreen.swift\" \"Screens/ChattingScreen.swift\" \"Screens/GroupWhatsAppLikeVideoPicker.swift\" \"Child Views/DummyChattingScreen.swift\" \"Screens/NewGroupView.swift\")",
+      "Bash(git add Enclosure/Screens/AccountView.swift Enclosure/Screens/ChangeNumberView.swift Enclosure/Screens/ChangePasswordView.swift Enclosure/Screens/ContactUsView.swift Enclosure/Screens/ForGroupVisibleScreen.swift Enclosure/Screens/NewGroupView.swift Enclosure/Screens/OTPVerifyDeleteView.swift Enclosure/Screens/PayView.swift Enclosure/Screens/PrivacyPolicyView.swift Enclosure/Screens/PrivacySettingsView.swift Enclosure/Screens/ThemeView.swift Enclosure/Screens/UserInfoScreen.swift Enclosure/Screens/editmyProfile.swift)",
+      "Bash(git push)",
+      "Bash(xcodebuild -scheme Enclosure -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build)",
+      "Bash(xcodebuild -scheme Enclosure -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build)",
+      "Bash(git status -u)",
+      "Bash(git add Enclosure/Screens/ForwardContactPicker.swift Enclosure/Screens/ShareExternalDataContactScreen.swift Enclosure/Screens/flagScreen.swift Enclosure/Screens/MainActivityOld.swift)",
+      "Bash(grep -v \"^[[:space:]]*$\")",
+      "Bash(grep -n \"^struct youView\\\\|^struct groupMessageView\\\\|^struct chatView\\\\|^struct callView\\\\|^struct videoCallView\\\\|^struct messageLmtView\" \"/Users/ramlohar/XCODE_PROJECT/enclosure_ios_2026-main_MARCH/Enclosure/Child Views\"/*.swift)",
+      "Bash(grep -n \"^struct EditmyProfile\\\\|^struct GroupChattingScreen\\\\|^struct ChattingScreen\\\\|^struct MainActivityOld\" \"/Users/ramlohar/XCODE_PROJECT/enclosure_ios_2026-main_MARCH/Enclosure/Screens\"/*.swift)",
+      "Bash(xcodebuild -scheme Enclosure -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=26.1' build)",
+      "Bash(xcodebuild -project Enclosure.xcodeproj -scheme Enclosure -destination 'platform=iOS Simulator,id=A9B040E4-6220-4C89-99EB-63E7B8151B4D' build)",
+      "Bash(ls *.xcodeproj *.xcworkspace)",
+      "Bash(xcodebuild -workspace Enclosure.xcworkspace -scheme Enclosure -destination 'platform=iOS Simulator,id=A9B040E4-6220-4C89-99EB-63E7B8151B4D' build)",
+      "Bash(xcodebuild -scheme Enclosure -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build)",
+      "Bash(xcodebuild -scheme Enclosure -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build)"
+    ]
+  }
+}

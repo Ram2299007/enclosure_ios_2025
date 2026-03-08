@@ -1062,7 +1062,7 @@ struct ChattingScreen: View {
                                 .fill(Color(hex: Constant.themeColor))
                                 .frame(width: 4, height: 4)
                             Circle()
-                                .fill(Color("gray3"))
+                                .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
                                 .frame(width: 4, height: 4)
                         }
                         .frame(width: 40, height: 40)
