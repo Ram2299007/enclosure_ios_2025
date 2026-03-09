@@ -294,12 +294,14 @@ struct MainActivityOld: View {
                                     .scaledToFit()
                                     .frame(width: 55, height: 55)
                             }
-                            .frame(width: 70, height: activeCallManager.hasActiveCall ? 58 : 70)
-                            .padding(.leading, 20)
-                            .padding(.top, 20)
+                            .frame(width: 80, height: activeCallManager.hasActiveCall ? 50 : 55)
+                            .padding(.leading, 16)
                         }
+                        
                         Spacer()
                     }
+                  
+             
                     
                     // main container — ZStack so background and content share same clip (inner stays inside bg/mainvector)
                     ZStack(alignment: .top) {
@@ -322,58 +324,10 @@ struct MainActivityOld: View {
 
                         // 2) Content on top — top padding so upper area isn’t cut when expanded
                         VStack (spacing:0){
-                        /// 1
-
-                        // HStack {
-                        //     Spacer()
-                        //     Button(action: {
-                        //         let wasExpanded = isVStackVisible
-                        //         let duration: TimeInterval = 0.55 // Slightly faster
-                        //         let expandedHeight: CGFloat = 400
-                        //         let collapsedHeight: CGFloat = 128
-
-                        //         if !wasExpanded {
-                        //             currentBackgroundImage = "mainvector"
-                        //             isVStackVisible = true
-                        //             isTopHeaderVisible = true
-                        //             selected = .call
-                        //             viewValue = Constant.callView
-                        //             heightAnimFrom = currentBackgroundSizeHeight
-                        //             heightAnimTo = expandedHeight
-                        //             heightAnimFromOpacity = opacity
-                        //             heightAnimToOpacity = 1
-                        //             heightAnimIsCollapse = false
-                        //             heightAnimStartTime = Date()
-                        //         } else {
-                        //             // Collapse: hide inner content immediately — only animate header height (smooth shutter, no mixing)
-                        //             currentBackgroundImage = "bg"
-                        //             isVStackVisible = false
-                        //             viewValue = Constant.chatView
-                        //             isTopHeaderVisible = false
-                        //             opacity = 0
-                        //             heightAnimFrom = currentBackgroundSizeHeight
-                        //             heightAnimTo = collapsedHeight
-                        //             heightAnimFromOpacity = 0
-                        //             heightAnimToOpacity = 0
-                        //             heightAnimIsCollapse = true
-                        //             heightAnimStartTime = Date()
-                        //         }
-                        //     }) {
-                        //         VStack{
-                        //             Image("downarrowslide")
-                        //                 .resizable()
-                        //                 .frame(width: 24, height: 24)
-                        //         }
-                        //         .frame(width: 40, height: 40)
-
-                        //     }
-                        //     .padding(.trailing , 16)
-                        //     .buttonStyle(CircularRippleStyle())
-                        // }
-                        // .padding(.top, 0)
+                
 
                         VStack {
-    Spacer()   // 👈 Top space
+    Spacer()   // 👈 Reduced top space
 
     HStack {
         Spacer()
@@ -418,10 +372,11 @@ struct MainActivityOld: View {
         }
         .buttonStyle(CircularRippleStyle())
         .padding(.trailing, 16)
+        .padding(.top,40)
     }
 
     Spacer()   // 👈 Bottom space
-}.padding(.top, 30)
+}.padding(.top, 0)
 
 
 
@@ -714,7 +669,7 @@ struct MainActivityOld: View {
                     }
                     .frame(maxWidth: .infinity)
                     .frame(maxHeight: .infinity)
-                    .padding(.top, 10)
+                    .padding(.top, 2)
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: effectiveHeaderHeight)
