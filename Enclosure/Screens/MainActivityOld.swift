@@ -61,6 +61,9 @@ struct MainActivityOld: View {
     // Clear video call log dialog state
     @State private var showClearVideoCallLogDialog = false
     
+    // Story bottom sheet state
+    @State private var showStorySheet = false
+
     // Menu dialog state
     @State private var showMenu = false
     @State private var navigateToLockScreen = false
@@ -152,99 +155,380 @@ struct MainActivityOld: View {
         isMainContentVisible ? 1 : 0
     }
 
+    @ViewBuilder
+    private var collapseButton: some View {
+        VStack {
+            Spacer()
+
+            HStack {
+                Spacer()
+                Button(action: {
+                    let wasExpanded = isVStackVisible
+                    let expandedHeight: CGFloat = 400
+                    let collapsedHeight: CGFloat = 128
+
+                    if !wasExpanded {
+                        currentBackgroundImage = "mainvector"
+                        isVStackVisible = true
+                        isTopHeaderVisible = true
+                        selected = .call
+                        viewValue = Constant.callView
+                        heightAnimFrom = currentBackgroundSizeHeight
+                        heightAnimTo = expandedHeight
+                        heightAnimFromOpacity = opacity
+                        heightAnimToOpacity = 1
+                        heightAnimIsCollapse = false
+                        heightAnimStartTime = Date()
+                    } else {
+                        currentBackgroundImage = "bg"
+                        isVStackVisible = false
+                        viewValue = Constant.chatView
+                        isTopHeaderVisible = false
+                        opacity = 0
+                        heightAnimFrom = currentBackgroundSizeHeight
+                        heightAnimTo = collapsedHeight
+                        heightAnimFromOpacity = 0
+                        heightAnimToOpacity = 0
+                        heightAnimIsCollapse = true
+                        heightAnimStartTime = Date()
+                    }
+                }) {
+                    VStack {
+                        Image("downarrowslide")
+                            .resizable()
+                            .frame(width: 24, height: 24)
+                    }
+                    .frame(width: 40, height: 40)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(CircularRippleStyle())
+                .padding(.trailing, 16)
+                .padding(.top, 40)
+            }
+
+            Spacer()
+        }.padding(.top, 0)
+    }
+
+    @ViewBuilder
+    private var expandedHeaderContent: some View {
+        if isVStackVisible {
+            VStack {
+                // #1
+                HStack(alignment: .center) {
+                    HStack(spacing: 8) {
+                        Text("Audio call")
+                            .font(.custom("Inter18pt-Medium", size: 15))
+                            .fontWeight(.heavy)
+                            .foregroundColor(isCallEnabled ? .white : Color(hex: "#9EA6B9"))
+                            .lineLimit(1)
+
+                        CustomImageToggle(
+                            isOn: $isCallEnabled,
+                            trackEnabledImage: switchTrackImage,
+                            trackDisabledImage: "offradiograynew",
+                            thumbEnabledImage: "phone.fill",
+                            thumbDisabledImage: "xmark"
+                        )
+                        .id(switchTrackImage)
+                    }
+                    .padding(.leading, 16)
+
+                    Spacer()
+
+                    VStack {
+                        HStack(spacing: 12) {
+                            Spacer()
+                            Text("Call")
+                                .font(.custom("Inter18pt-Medium", size: 15).weight(.bold))
+                                .foregroundColor(selected == .call ? .white : Color("maincontenttextcolor"))
+                                .fontWeight(.heavy)
+
+                            Image("call")
+                                .resizable()
+                                .frame(width: 24, height: 24)
+                        }
+                        .padding(.trailing, 22)
+                    }
+                    .frame(width: 200, height: 40)
+                    .background(
+                        selected == .call ? AnyView(
+                            Image("bg_rect")
+                                .renderingMode(.template)
+                                .resizable()
+                                .foregroundColor(bgRectTintColor)
+                        ) : AnyView(Color.clear)
+                    )
+                    .onTapGesture {
+                        selected = .call
+                        viewValue = Constant.callView
+                    }
+                }
+                .padding(.top, 5)
+
+                // #2
+                HStack(alignment: .center) {
+                    HStack(spacing: 8) {
+                        Text("Video call")
+                            .font(.custom("Inter18pt-Medium", size: 15))
+                            .fontWeight(.heavy)
+                            .foregroundColor(isVideoCallEnabled ? .white : Color(hex: "#9EA6B9"))
+                            .lineLimit(1)
+
+                        CustomImageToggle(
+                            isOn: $isVideoCallEnabled,
+                            trackEnabledImage: switchTrackImage,
+                            trackDisabledImage: "offradiograynew",
+                            thumbEnabledImage: "phone.fill",
+                            thumbDisabledImage: "xmark"
+                        )
+                        .id(switchTrackImage)
+                    }
+                    .padding(.leading, 16)
+
+                    Spacer()
+
+                    VStack {
+                        HStack(spacing: 12) {
+                            Spacer()
+                            Text("Video Call")
+                                .font(.custom("Inter18pt-Medium", size: 15).weight(.bold))
+                                .foregroundColor(selected == .videoCall ? .white : Color("maincontenttextcolor"))
+                                .fontWeight(.heavy)
+
+                            ZStack {
+                                Image("videosvgnew2")
+                                    .resizable()
+                                    .renderingMode(.template)
+                                    .foregroundColor(.white)
+                                    .scaledToFit()
+                                    .frame(width: 24, height: 16)
+
+                                Image("polysvg")
+                                    .resizable()
+                                    .renderingMode(.template)
+                                    .foregroundColor(bgRectTintColor)
+                                    .scaledToFit()
+                                    .frame(width: 5, height: 5)
+                                    .offset(x: 2, y: -0.5)
+                            }
+                        }
+                        .padding(.trailing, 22)
+                    }
+                    .frame(width: 200, height: 40)
+                    .background(
+                        selected == .videoCall ? AnyView(
+                            Image("bg_rect")
+                                .renderingMode(.template)
+                                .resizable()
+                                .foregroundColor(bgRectTintColor)
+                        ) : AnyView(Color.clear)
+                    )
+                    .onTapGesture {
+                        selected = .videoCall
+                        viewValue = Constant.videoCallView
+                    }
+                }
+                .padding(.top, 5)
+
+                // #3
+                HStack(alignment: .center) {
+                    Spacer()
+
+                    VStack {
+                        HStack(spacing: 12) {
+                            Spacer()
+                            Text("Group message")
+                                .font(.custom("Inter18pt-Medium", size: 15).weight(.bold))
+                                .foregroundColor(selected == .groupMessage ? .white : Color("maincontenttextcolor"))
+                                .fontWeight(.heavy)
+
+                            Image("group_new_svg")
+                                .resizable()
+                                .frame(width: 24, height: 24)
+                        }
+                        .padding(.trailing, 22)
+                    }
+                    .frame(width: 200, height: 40)
+                    .background(
+                        selected == .groupMessage ? AnyView(
+                            Image("bg_rect")
+                                .renderingMode(.template)
+                                .resizable()
+                                .foregroundColor(bgRectTintColor)
+                        ) : AnyView(Color.clear)
+                    )
+                    .onTapGesture {
+                        selected = .groupMessage
+                        viewValue = Constant.groupMsgView
+                    }
+                }
+                .padding(.top, 5)
+
+                // #4
+                HStack(alignment: .center) {
+                    Spacer()
+
+                    VStack {
+                        HStack(spacing: 12) {
+                            Spacer()
+                            Text("Message Limit")
+                                .font(.custom("Inter18pt-Medium", size: 15).weight(.bold))
+                                .foregroundColor(selected == .messageLimit ? .white : Color("maincontenttextcolor"))
+                                .fontWeight(.heavy)
+
+                            Image("limit")
+                                .resizable()
+                                .frame(width: 24, height: 24)
+                        }
+                        .padding(.trailing, 22)
+                    }
+                    .frame(width: 200, height: 40)
+                    .background(
+                        selected == .messageLimit ? AnyView(
+                            Image("bg_rect")
+                                .renderingMode(.template)
+                                .resizable()
+                                .foregroundColor(bgRectTintColor)
+                        ) : AnyView(Color.clear)
+                    )
+                    .onTapGesture {
+                        selected = .messageLimit
+                        viewValue = Constant.messageLmtView
+                    }
+                }
+                .padding(.top, 5)
+
+                // #5
+                HStack(alignment: .center) {
+                    Spacer()
+
+                    VStack {
+                        HStack(spacing: 12) {
+                            Spacer()
+                            Text("You")
+                                .font(.custom("Inter18pt-Medium", size: 15).weight(.bold))
+                                .foregroundColor(selected == .you ? .white : Color("maincontenttextcolor"))
+                                .fontWeight(.heavy)
+
+                            Image("you")
+                                .resizable()
+                                .frame(width: 18, height: 24)
+                        }
+                        .padding(.trailing, 24)
+                    }
+                    .frame(width: 200, height: 40)
+                    .background(
+                        selected == .you ? AnyView(
+                            Image("bg_rect")
+                                .renderingMode(.template)
+                                .resizable()
+                                .foregroundColor(bgRectTintColor)
+                        ) : AnyView(Color.clear)
+                    )
+                    .onTapGesture {
+                        selected = .you
+                        viewValue = Constant.youView
+                    }
+                }
+                .padding(.top, 5)
+            }
+            .padding(.top, 13)
+            .opacity(isVStackVisible ? effectiveHeaderOpacity : effectiveHeaderOpacity)
+            .transition(.identity)
+        }
+    }
+
     @ToolbarContentBuilder
     private var mainToolbarContent: some ToolbarContent {
-        if !isAnyDialogShowing {
-            if isSearchActive {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        isSearchActive = false
-                        searchText = ""
-                        isSearchFieldFocused = false
-                        hideKeyboard()
-                    } label: {
-                        Image(systemName: "arrow.left")
-                            .font(.system(size: 16, weight: .medium))
-                    }
-                    .opacity(toolbarItemOpacity)
-                    .animation(.easeInOut(duration: 0.30), value: isMainContentVisible)
-                }
-                ToolbarItem(placement: .principal) {
-                    TextField("Search Name", text: $searchText)
-                        .font(.custom("Inter18pt-Regular", size: 15))
-                        .foregroundColor(Color("TextColor"))
-                        .focused($isSearchFieldFocused)
-                        .textInputAutocapitalization(.never)
-                        .disableAutocorrection(true)
-                        .opacity(toolbarItemOpacity)
-                        .animation(.easeInOut(duration: 0.30), value: isMainContentVisible)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                        impactFeedback.impactOccurred()
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            showMenu = true
-                        }
-                    }) {
-                        VStack(spacing: 3) {
-                            Circle()
-                                .fill(Color("menuPointColor"))
-                                .frame(width: 4, height: 4)
-                            Circle()
-                                .fill(Color(hex: Constant.themeColor))
-                                .frame(width: 4, height: 4)
-                            Circle()
-                                .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
-                                .frame(width: 4, height: 4)
-                        }
-                        .frame(width: 24, height: 24)
-                    }
-                    .opacity(toolbarItemOpacity)
-                    .animation(.easeInOut(duration: 0.30), value: isMainContentVisible)
-                }
-            } else {
-                if viewValue == Constant.chatView && !isVStackVisible {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button {
-                            isSearchActive = true
-                        } label: {
-                            Image("search")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 20, height: 20)
-                        }
-                        .opacity(toolbarItemOpacity)
-                        .animation(.easeInOut(duration: 0.30), value: isMainContentVisible)
-                    }
-                }
-
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                        impactFeedback.impactOccurred()
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            showMenu = true
-                        }
-                    }) {
-                        VStack(spacing: 3) {
-                            Circle()
-                                .fill(Color("menuPointColor"))
-                                .frame(width: 4, height: 4)
-                            Circle()
-                                .fill(Color(hex: Constant.themeColor))
-                                .frame(width: 4, height: 4)
-                            Circle()
-                                .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
-                                .frame(width: 4, height: 4)
-                        }
-                        .frame(width: 24, height: 24)
-                    }
-                    .opacity(toolbarItemOpacity)
-                    .animation(.easeInOut(duration: 0.30), value: isMainContentVisible)
-                }
+        ToolbarItem(placement: .navigationBarLeading) {
+            Button {
+                isSearchActive = false
+                searchText = ""
+                isSearchFieldFocused = false
+                hideKeyboard()
+            } label: {
+                Image(systemName: "arrow.left")
+                    .font(.system(size: 16, weight: .medium))
             }
         }
+        ToolbarItem(placement: .principal) {
+            TextField("Search Name", text: $searchText)
+                .font(.custom("Inter18pt-Regular", size: 15))
+                .foregroundColor(Color("TextColor"))
+                .focused($isSearchFieldFocused)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+        }
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Button(action: {
+                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                impactFeedback.impactOccurred()
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showMenu = true
+                }
+            }) {
+                VStack(spacing: 3) {
+                    Circle()
+                        .fill(Color("menuPointColor"))
+                        .frame(width: 4, height: 4)
+                    Circle()
+                        .fill(Color(hex: Constant.themeColor))
+                        .frame(width: 4, height: 4)
+                    Circle()
+                        .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                        .frame(width: 4, height: 4)
+                }
+                .frame(width: 24, height: 24)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var headerTrailingIcons: some View {
+        HStack(spacing: 24) {
+            if viewValue == Constant.chatView && !isVStackVisible {
+                Button {
+                    showStorySheet = true
+                } label: {
+                    Image("story")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 20, height: 20)
+                }
+
+                Button {
+                    isSearchActive = true
+                } label: {
+                    Image("search")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 18, height: 18)
+                }
+            }
+
+            Button(action: {
+                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                impactFeedback.impactOccurred()
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showMenu = true
+                }
+            }) {
+                VStack(spacing: 3) {
+                    Circle()
+                        .fill(Color("menuPointColor"))
+                        .frame(width: 4, height: 4)
+                    Circle()
+                        .fill(Color(hex: Constant.themeColor))
+                        .frame(width: 4, height: 4)
+                    Circle()
+                        .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                        .frame(width: 4, height: 4)
+                }
+                .frame(width: 24, height: 24)
+            }
+        }
+        .padding(.trailing, 16)
     }
 
     var body: some View {
@@ -299,10 +583,12 @@ struct MainActivityOld: View {
                         }
                         
                         Spacer()
+
+                        if !isSearchActive {
+                            headerTrailingIcons
+                        }
                     }
-                  
-             
-                    
+
                     // main container — ZStack so background and content share same clip (inner stays inside bg/mainvector)
                     ZStack(alignment: .top) {
                         // 1) Background fills entire header so content never spills outside
@@ -323,346 +609,11 @@ struct MainActivityOld: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                         // 2) Content on top — top padding so upper area isn’t cut when expanded
-                        VStack (spacing:0){
-                
+                        VStack(spacing: 0) {
 
-                        VStack {
-    Spacer()   // 👈 Reduced top space
+                        collapseButton
 
-    HStack {
-        Spacer()
-        Button(action: {
-            let wasExpanded = isVStackVisible
-            let expandedHeight: CGFloat = 400
-            let collapsedHeight: CGFloat = 128
-
-            if !wasExpanded {
-                currentBackgroundImage = "mainvector"
-                isVStackVisible = true
-                isTopHeaderVisible = true
-                selected = .call
-                viewValue = Constant.callView
-                heightAnimFrom = currentBackgroundSizeHeight
-                heightAnimTo = expandedHeight
-                heightAnimFromOpacity = opacity
-                heightAnimToOpacity = 1
-                heightAnimIsCollapse = false
-                heightAnimStartTime = Date()
-            } else {
-                currentBackgroundImage = "bg"
-                isVStackVisible = false
-                viewValue = Constant.chatView
-                isTopHeaderVisible = false
-                opacity = 0
-                heightAnimFrom = currentBackgroundSizeHeight
-                heightAnimTo = collapsedHeight
-                heightAnimFromOpacity = 0
-                heightAnimToOpacity = 0
-                heightAnimIsCollapse = true
-                heightAnimStartTime = Date()
-            }
-        }) {
-            VStack{
-                Image("downarrowslide")
-                    .resizable()
-                    .frame(width: 24, height: 24)
-            }
-            .frame(width: 40, height: 40)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(CircularRippleStyle())
-        .padding(.trailing, 16)
-        .padding(.top,40)
-    }
-
-    Spacer()   // 👈 Bottom space
-}.padding(.top, 0)
-
-
-
-
-                        if isVStackVisible{
-                            /// 2 — identity so inner content is present from frame 1; only height + opacity animate (smooth expand)
-                            VStack{
-
-
-                                // #1
-                                HStack(alignment: .center) {
-                                    // Left side: Audio call switch
-
-
-                                    HStack(spacing: 8) {
-                                        Text("Audio call")
-                                            .font(.custom("Inter18pt-Medium", size: 15))
-                                            .fontWeight(.heavy)
-                                            .foregroundColor(isCallEnabled ? .white : Color(hex: "#9EA6B9"))
-                                            .lineLimit(1)
-
-                                        CustomImageToggle(
-                                            isOn: $isCallEnabled,
-                                            trackEnabledImage: switchTrackImage,      // Dynamic theme-based track image
-                                            trackDisabledImage: "offradiograynew",    // Image from Assets
-                                            thumbEnabledImage: "phone.fill",    // SF Symbol or nil
-                                            thumbDisabledImage: "xmark"         // SF Symbol or nil
-                                        )
-                                        .id(switchTrackImage) // Force refresh when track image changes
-                                    }
-                                    .padding(.leading, 16)
-
-                                    Spacer()
-
-                                    VStack{
-
-                                        HStack(spacing: 12) {
-                                            Spacer()
-                                            Text("Call")
-                                                .font(.custom("Inter18pt-Medium", size: 15).weight(.bold))
-                                                .foregroundColor(selected == .call ? .white : Color("maincontenttextcolor"))
-                                                .fontWeight(.heavy)
-
-
-                                            Image("call") // Make sure this is in your Assets
-                                                .resizable()
-                                                .frame(width: 24, height: 24)
-
-
-                                        }
-                                        .padding(.trailing,22)
-
-                                    }
-                                    .frame(width: 200,height:40)
-                                    .background(
-                                        selected == .call ? AnyView(
-                                            Image("bg_rect")
-                                                .renderingMode(.template)
-                                                .resizable()
-                                                .foregroundColor(bgRectTintColor)
-                                        ) : AnyView(Color.clear)
-                                    )
-                                    .onTapGesture {
-                                        selected = .call
-                                        viewValue = Constant.callView
-
-                                    }
-
-                                }
-                                .padding(.top, 5)
-
-
-                                // #2
-                                HStack(alignment: .center) {
-                                    // Left side: Audio call switch
-
-
-                                    HStack(spacing: 8) {
-                                        Text("Video call")
-                                            .font(.custom("Inter18pt-Medium", size: 15))
-                                            .fontWeight(.heavy)
-                                            .foregroundColor(isVideoCallEnabled ? .white : Color(hex: "#9EA6B9"))
-                                            .lineLimit(1)
-
-                                        CustomImageToggle(
-                                            isOn: $isVideoCallEnabled,
-                                            trackEnabledImage: switchTrackImage,      // Dynamic theme-based track image
-                                            trackDisabledImage: "offradiograynew",    // Image from Assets
-                                            thumbEnabledImage: "phone.fill",    // SF Symbol or nil
-                                            thumbDisabledImage: "xmark"         // SF Symbol or nil
-                                        )
-                                        .id(switchTrackImage) // Force refresh when track image changes
-                                    }
-                                    .padding(.leading, 16)
-
-                                    Spacer()
-
-                                    VStack{
-
-                                        HStack(spacing: 12) {
-                                            Spacer()
-                                            Text("Video Call")
-                                                .font(.custom("Inter18pt-Medium", size: 15).weight(.bold))
-                                                .foregroundColor(selected == .videoCall ? .white : Color("maincontenttextcolor"))
-                                                .fontWeight(.heavy)
-
-
-                                            ZStack {
-                                                Image("videosvgnew2")
-                                                .resizable()
-                                                    .renderingMode(.template)
-                                                    .foregroundColor(.white) // Camera body stays white
-                                                    .scaledToFit()
-                                                .frame(width: 24, height: 16)
-                                                
-                                                Image("polysvg")
-                                                    .resizable()
-                                                    .renderingMode(.template)
-                                                    .foregroundColor(bgRectTintColor) // Play button always uses theme color for visibility
-                                                    .scaledToFit()
-                                                    .frame(width: 5, height: 5)
-                                                    .offset(x: 2, y: -0.5) // Position the play button overlay
-                                            }
-
-
-                                        }
-                                        .padding(.trailing,22)
-
-                                    }
-                                    .frame(width: 200,height:40)
-                                    .background(
-                                        selected == .videoCall ? AnyView(
-                                            Image("bg_rect")
-                                                .renderingMode(.template)
-                                                .resizable()
-                                                .foregroundColor(bgRectTintColor)
-                                        ) : AnyView(Color.clear)
-                                    )
-                                    .onTapGesture {
-                                        selected = .videoCall
-                                        viewValue = Constant.videoCallView
-
-                                    }
-
-                                }
-                                .padding(.top, 5)
-
-                                // #3
-                                HStack(alignment: .center) {
-                                    // Left side: Audio call switch
-
-
-
-                                    Spacer()
-
-                                    VStack{
-
-                                        HStack(spacing: 12) {
-                                            Spacer()
-                                            Text("Group message")
-                                                .font(.custom("Inter18pt-Medium", size: 15).weight(.bold))
-                                                .foregroundColor(selected == .groupMessage ? .white : Color("maincontenttextcolor"))
-                                                .fontWeight(.heavy)
-
-
-                                            Image("group_new_svg") // Make sure this is in your Assets
-                                                .resizable()
-                                                .frame(width: 24, height: 24)
-
-
-                                        }
-                                        .padding(.trailing,22)
-
-                                    }
-                                    .frame(width: 200,height:40)
-                                    .background(
-                                        selected == .groupMessage ? AnyView(
-                                            Image("bg_rect")
-                                                .renderingMode(.template)
-                                                .resizable()
-                                                .foregroundColor(bgRectTintColor)
-                                        ) : AnyView(Color.clear)
-                                    )
-                                    .onTapGesture {
-                                        selected = .groupMessage
-                                        viewValue = Constant.groupMsgView
-                                    }
-
-                                }
-                                .padding(.top, 5)
-
-                                // #4
-                                HStack(alignment: .center) {
-                                    // Left side: Audio call switch
-
-
-
-                                    Spacer()
-
-                                    VStack{
-
-                                        HStack(spacing: 12) {
-                                            Spacer()
-                                            Text("Message Limit")
-                                                .font(.custom("Inter18pt-Medium", size: 15).weight(.bold))
-                                                .foregroundColor(selected == .messageLimit ? .white : Color("maincontenttextcolor"))
-                                                .fontWeight(.heavy)
-
-
-                                            Image("limit") // Make sure this is in your Assets
-                                                .resizable()
-                                                .frame(width: 24, height: 24)
-
-
-                                        }
-                                        .padding(.trailing,22)
-
-                                    }
-                                    .frame(width: 200,height:40)
-                                    .background(
-                                        selected == .messageLimit ? AnyView(
-                                            Image("bg_rect")
-                                                .renderingMode(.template)
-                                                .resizable()
-                                                .foregroundColor(bgRectTintColor)
-                                        ) : AnyView(Color.clear)
-                                    )
-                                    .onTapGesture {
-                                        selected = .messageLimit
-                                        viewValue = Constant.messageLmtView
-                                    }
-
-                                }
-                                .padding(.top, 5)
-
-
-                                // #5
-                                HStack(alignment: .center) {
-                                    // Left side: Audio call switch
-
-                                    Spacer()
-
-                                    VStack{
-
-                                        HStack(spacing: 12) {
-                                            Spacer()
-                                            Text("You")
-                                                .font(.custom("Inter18pt-Medium", size: 15).weight(.bold))
-                                                .foregroundColor(selected == .you ? .white : Color("maincontenttextcolor"))
-                                                .fontWeight(.heavy)
-
-
-                                            Image("you") // Make sure this is in your Assets
-                                                .resizable()
-                                                .frame(width: 18, height: 24)
-
-
-                                        }
-                                        .padding(.trailing,24)
-
-                                    }
-                                    .frame(width: 200,height:40)
-                                    .background(
-                                        selected == .you ? AnyView(
-                                            Image("bg_rect")
-                                                .renderingMode(.template)
-                                                .resizable()
-                                                .foregroundColor(bgRectTintColor)
-                                        ) : AnyView(Color.clear)
-                                    )
-                                    .onTapGesture {
-                                        selected = .you
-                                        viewValue = Constant.youView
-
-                                    }
-                                }
-                                .padding(.top, 5)
-                            }
-                            .padding(.top,13)
-                            .opacity(isVStackVisible ? effectiveHeaderOpacity : effectiveHeaderOpacity)
-                            .transition(.identity) // No insertion transition — content present from frame 1; height + opacity drive smooth expand
-
-
-                        }
-
-
+                        expandedHeaderContent
 
                         Spacer()
 
@@ -958,7 +909,7 @@ struct MainActivityOld: View {
             .navigationBarBackButtonHidden(true)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbar(isMainContentVisible ? .visible : .hidden, for: .navigationBar)
+            .toolbar(isSearchActive ? .visible : .hidden, for: .navigationBar)
             .animation(.easeInOut(duration: 0.30), value: isMainContentVisible)
             .toolbar { mainToolbarContent }
             .onChange(of: isSearchActive) { active in
@@ -983,6 +934,11 @@ struct MainActivityOld: View {
             }
             .navigationDestination(isPresented: $navigateToThemeView) {
                 ThemeView()
+            }
+            .sheet(isPresented: $showStorySheet) {
+                StoryBottomSheetView()
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
             }
             .navigationDestination(isPresented: $navigateToChattingScreen) {
                 if let chat = selectedChatForNavigation {
@@ -3020,3 +2976,4 @@ struct NetworkLoaderBar: View {
         )
     }
 }
+
