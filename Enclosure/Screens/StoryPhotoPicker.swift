@@ -11,7 +11,7 @@ struct StoryPhotoPicker: View {
     // Albums
     @State private var allAlbums: [PHAssetCollection] = []
     @State private var selectedAlbum: PHAssetCollection? = nil
-    @State private var selectedAlbumTitle: String = "Recents"
+    @State private var selectedAlbumTitle: String = "All Photos"
     @State private var showAlbumSheet = false          // replaces Menu to avoid _UIReparentingView
 
     // Assets
@@ -72,39 +72,47 @@ struct StoryPhotoPicker: View {
 
                 Divider()
 
-                // ── Text + Camera row (above grid) ──
+                // ── Text + Camera cards (above grid) ──
                 if !permissionDenied {
-                    HStack {
-                        Text("Add to Your Story")
-                            .font(.custom("Inter18pt-SemiBold", size: 15))
-                            .foregroundColor(Color("TextColor"))
-
-                        Spacer()
-
-                        Button {
-                            handleCameraButtonClick()
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "camera.fill")
-                                    .font(.system(size: 14, weight: .medium))
-                                Text("Camera")
-                                    .font(.custom("Inter18pt-Medium", size: 14))
+                    HStack(spacing: 12) {
+                        // Text card
+                        Button { /* future: text story */ } label: {
+                            VStack(spacing: 8) {
+                                Image(systemName: "textformat")
+                                    .font(.system(size: 24, weight: .regular))
+                                    .foregroundColor(Color("TextColor"))
+                                Text("Text")
+                                    .font(.custom("Inter18pt-Regular", size: 14))
+                                    .foregroundColor(Color("TextColor"))
                             }
-                            .foregroundColor(Color(hex: Constant.themeColor))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
                             .background(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .fill(Color(hex: Constant.themeColor).opacity(0.12))
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(Color(UIColor.secondarySystemBackground))
+                            )
+                        }
+
+                        // Camera card
+                        Button { handleCameraButtonClick() } label: {
+                            VStack(spacing: 8) {
+                                Image(systemName: "camera")
+                                    .font(.system(size: 24, weight: .regular))
+                                    .foregroundColor(Color("TextColor"))
+                                Text("Camera")
+                                    .font(.custom("Inter18pt-Regular", size: 14))
+                                    .foregroundColor(Color("TextColor"))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(Color(UIColor.secondarySystemBackground))
                             )
                         }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 0)
-                            .fill(Color(UIColor.secondarySystemBackground))
-                    )
+                    .padding(.vertical, 12)
                 }
 
                 // ── Content ──
@@ -263,10 +271,10 @@ struct StoryPhotoPicker: View {
 
             DispatchQueue.main.async {
                 allAlbums = albums
-                let recents = albums.first(where: { $0.assetCollectionSubtype == .smartAlbumRecentlyAdded })
-                    ?? albums.first(where: { $0.assetCollectionSubtype == .smartAlbumUserLibrary })
+                // Default to the full Camera Roll / All Photos library (not "Recently Added")
+                let defaultAlbum = albums.first(where: { $0.assetCollectionSubtype == .smartAlbumUserLibrary })
                     ?? albums.first
-                if let r = recents { selectAlbum(r) } else { isLoading = false }
+                if let a = defaultAlbum { selectAlbum(a) } else { isLoading = false }
             }
         }
     }
