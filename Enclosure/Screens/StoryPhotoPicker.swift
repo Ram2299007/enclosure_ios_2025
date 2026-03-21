@@ -2,6 +2,27 @@ import SwiftUI
 import Photos
 import PhotosUI
 
+// MARK: - Liquid Glass helper
+private extension View {
+    @ViewBuilder
+    func liquidGlass<S: Shape>(in shape: S) -> some View {
+        if #available(iOS 26.0, *) {
+            self.glassEffect(in: shape)
+        } else {
+            self.background(.thinMaterial, in: shape)
+        }
+    }
+}
+
+// MARK: - Album model (name + count + cover thumbnail)
+private struct AlbumItem: Identifiable {
+    let id: String
+    let collection: PHAssetCollection
+    let title: String
+    let count: Int
+    var thumbnail: UIImage? = nil
+}
+
 // MARK: - Story Photo Picker (iOS native Photos-style)
 struct StoryPhotoPicker: View {
     @Environment(\.dismiss) private var dismiss
@@ -9,10 +30,9 @@ struct StoryPhotoPicker: View {
     var onAssetSelected: ((PHAsset) -> Void)? = nil
 
     // Albums
-    @State private var allAlbums: [PHAssetCollection] = []
-    @State private var selectedAlbum: PHAssetCollection? = nil
+    @State private var allAlbums: [AlbumItem] = []
     @State private var selectedAlbumTitle: String = "All Photos"
-    @State private var showAlbumSheet = false          // replaces Menu to avoid _UIReparentingView
+    @State private var showAlbumDropdown = false
 
     // Assets
     @State private var assets: [PHAsset] = []
@@ -22,7 +42,11 @@ struct StoryPhotoPicker: View {
     // Camera
     @State private var showCameraView: Bool = false
 
+    // Header height for dropdown positioning
+    @State private var headerHeight: CGFloat = 0
+
     private let imageManager = PHCachingImageManager()
+    private let albumImageManager = PHCachingImageManager()
     private let columns = [
         GridItem(.flexible(), spacing: 2),
         GridItem(.flexible(), spacing: 2),
@@ -37,21 +61,24 @@ struct StoryPhotoPicker: View {
             VStack(spacing: 0) {
                 // ── Header ──
                 ZStack {
-                    // Center: Album picker button (no Menu — uses confirmationDialog instead)
+                    // Center: Album picker button — arrow flips when open
                     Button {
-                        showAlbumSheet = true
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showAlbumDropdown.toggle()
+                        }
                     } label: {
                         HStack(spacing: 4) {
                             Text(selectedAlbumTitle)
                                 .font(.system(size: 17, weight: .semibold))
                                 .foregroundColor(.primary)
-                            Image(systemName: "chevron.down")
+                            Image(systemName: showAlbumDropdown ? "chevron.up" : "chevron.down")
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(.primary)
+                                .animation(.easeInOut(duration: 0.2), value: showAlbumDropdown)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
-                        .background(.thinMaterial, in: Capsule())
+                        .liquidGlass(in: Capsule())
                     }
 
                     // Left: Cancel
@@ -61,7 +88,7 @@ struct StoryPhotoPicker: View {
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundColor(.primary)
                                 .frame(width: 36, height: 36)
-                                .background(.thinMaterial, in: Circle())
+                                .liquidGlass(in: Circle())
                         }
                         Spacer()
                     }
@@ -69,10 +96,17 @@ struct StoryPhotoPicker: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 16)
                 .padding(.bottom, 12)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.onAppear {
+                            headerHeight = geo.size.height
+                        }
+                    }
+                )
 
                 Divider()
 
-                // ── Text + Camera cards (above grid) ──
+                // ── Text + Camera cards ──
                 if !permissionDenied {
                     HStack(spacing: 12) {
                         // Text card
@@ -87,10 +121,7 @@ struct StoryPhotoPicker: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .fill(Color(UIColor.secondarySystemBackground))
-                            )
+                            .liquidGlass(in: RoundedRectangle(cornerRadius: 16))
                         }
 
                         // Camera card
@@ -105,10 +136,7 @@ struct StoryPhotoPicker: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .fill(Color(UIColor.secondarySystemBackground))
-                            )
+                            .liquidGlass(in: RoundedRectangle(cornerRadius: 16))
                         }
                     }
                     .padding(.horizontal, 16)
@@ -126,26 +154,45 @@ struct StoryPhotoPicker: View {
                     gridView
                 }
             }
-        }
-        // Album picker as confirmationDialog — avoids _UIReparentingView
-        .confirmationDialog(
-            "Select Album",
-            isPresented: $showAlbumSheet,
-            titleVisibility: .visible
-        ) {
-            ForEach(allAlbums, id: \.localIdentifier) { album in
-                Button(album.localizedTitle ?? "Album") {
-                    selectAlbum(album)
+
+            // ── Album Dropdown Overlay ──
+            if showAlbumDropdown {
+                // Dim background tap to dismiss
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) { showAlbumDropdown = false }
+                    }
+
+                // Dropdown list positioned below header
+                VStack(spacing: 0) {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 0) {
+                            ForEach(allAlbums) { item in
+                                AlbumRow(item: item, isSelected: item.title == selectedAlbumTitle) {
+                                    withAnimation(.easeInOut(duration: 0.2)) { showAlbumDropdown = false }
+                                    selectAlbum(item.collection)
+                                }
+                                Divider().padding(.leading, 16)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 420)
                 }
+                .liquidGlass(in: RoundedRectangle(cornerRadius: 14))
+                .shadow(color: .black.opacity(0.18), radius: 12, x: 0, y: 4)
+                .padding(.horizontal, 16)
+                .padding(.top, headerHeight + 16)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .move(edge: .top)),
+                    removal: .opacity.combined(with: .move(edge: .top))
+                ))
             }
-            Button("Cancel", role: .cancel) {}
         }
         // Camera
         .fullScreenCover(isPresented: $showCameraView) {
             StoryCameraGalleryView { assets, caption in
-                if let first = assets.first {
-                    onAssetSelected?(first)
-                }
+                if let first = assets.first { onAssetSelected?(first) }
                 dismiss()
             }
         }
@@ -208,7 +255,7 @@ struct StoryPhotoPicker: View {
         }
     }
 
-    // MARK: - Camera Handler (same pattern as ChattingScreen)
+    // MARK: - Camera Handler
     private func handleCameraButtonClick() {
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.impactOccurred()
@@ -219,22 +266,17 @@ struct StoryPhotoPicker: View {
         }
     }
 
-    // MARK: - Photo Library Logic
+    // MARK: - Photo Library
 
     private func requestPhotoAccess() {
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         switch status {
-        case .authorized, .limited:
-            loadAlbums()
+        case .authorized, .limited: loadAlbums()
         case .notDetermined:
-            PHPhotoLibrary.requestAuthorization(for: .readWrite) { newStatus in
+            PHPhotoLibrary.requestAuthorization(for: .readWrite) { s in
                 DispatchQueue.main.async {
-                    if newStatus == .authorized || newStatus == .limited {
-                        loadAlbums()
-                    } else {
-                        isLoading = false
-                        permissionDenied = true
-                    }
+                    if s == .authorized || s == .limited { loadAlbums() }
+                    else { isLoading = false; permissionDenied = true }
                 }
             }
         default:
@@ -245,43 +287,55 @@ struct StoryPhotoPicker: View {
 
     private func loadAlbums() {
         DispatchQueue.global(qos: .userInitiated).async {
-            var albums: [PHAssetCollection] = []
+            var items: [AlbumItem] = []
+
+            func addCollection(_ col: PHAssetCollection) {
+                let assets = PHAsset.fetchAssets(in: col, options: nil)
+                guard assets.count > 0 else { return }
+                let title = col.localizedTitle ?? "Album"
+                var item = AlbumItem(id: col.localIdentifier, collection: col,
+                                     title: "\(title) (\(assets.count))", count: assets.count)
+                // Grab cover thumbnail
+                if let first = assets.firstObject {
+                    let opts = PHImageRequestOptions()
+                    opts.isSynchronous = true
+                    opts.deliveryMode = .fastFormat
+                    PHImageManager.default().requestImage(
+                        for: first, targetSize: CGSize(width: 80, height: 80),
+                        contentMode: .aspectFill, options: opts
+                    ) { img, _ in item.thumbnail = img }
+                }
+                items.append(item)
+            }
 
             let smartSubtypes: [PHAssetCollectionSubtype] = [
-                .smartAlbumRecentlyAdded, .smartAlbumUserLibrary, .smartAlbumFavorites,
+                .smartAlbumUserLibrary, .smartAlbumRecentlyAdded, .smartAlbumFavorites,
                 .smartAlbumVideos, .smartAlbumSlomoVideos, .smartAlbumTimelapses,
                 .smartAlbumPanoramas, .smartAlbumScreenshots, .smartAlbumBursts,
                 .smartAlbumSelfPortraits, .smartAlbumLivePhotos, .smartAlbumDepthEffect,
                 .smartAlbumLongExposures
             ]
             for subtype in smartSubtypes {
-                let r = PHAssetCollection.fetchAssetCollections(with: .smartAlbum, subtype: subtype, options: nil)
-                r.enumerateObjects { col, _, _ in
-                    if PHAsset.fetchAssets(in: col, options: nil).count > 0 { albums.append(col) }
-                }
+                PHAssetCollection.fetchAssetCollections(with: .smartAlbum, subtype: subtype, options: nil)
+                    .enumerateObjects { col, _, _ in addCollection(col) }
             }
             PHAssetCollection.fetchAssetCollections(with: .album, subtype: .albumRegular, options: nil)
-                .enumerateObjects { col, _, _ in
-                    if PHAsset.fetchAssets(in: col, options: nil).count > 0 { albums.append(col) }
-                }
+                .enumerateObjects { col, _, _ in addCollection(col) }
             PHAssetCollection.fetchAssetCollections(with: .album, subtype: .albumSyncedAlbum, options: nil)
-                .enumerateObjects { col, _, _ in
-                    if PHAsset.fetchAssets(in: col, options: nil).count > 0 { albums.append(col) }
-                }
+                .enumerateObjects { col, _, _ in addCollection(col) }
 
             DispatchQueue.main.async {
-                allAlbums = albums
-                // Default to the full Camera Roll / All Photos library (not "Recently Added")
-                let defaultAlbum = albums.first(where: { $0.assetCollectionSubtype == .smartAlbumUserLibrary })
-                    ?? albums.first
-                if let a = defaultAlbum { selectAlbum(a) } else { isLoading = false }
+                allAlbums = items
+                let defaultAlbum = items.first(where: { $0.collection.assetCollectionSubtype == .smartAlbumUserLibrary })
+                    ?? items.first
+                if let a = defaultAlbum { selectAlbum(a.collection) } else { isLoading = false }
             }
         }
     }
 
     private func selectAlbum(_ album: PHAssetCollection) {
-        selectedAlbum = album
-        selectedAlbumTitle = album.localizedTitle ?? "Recents"
+        let rawTitle = album.localizedTitle ?? "All Photos"
+        selectedAlbumTitle = rawTitle
         isLoading = true
         DispatchQueue.global(qos: .userInitiated).async {
             let opts = PHFetchOptions()
@@ -297,6 +351,40 @@ struct StoryPhotoPicker: View {
                 isLoading = false
             }
         }
+    }
+}
+
+// MARK: - Album Row
+private struct AlbumRow: View {
+    let item: AlbumItem
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 14) {
+                Text(item.title)
+                    .font(.system(size: 17, weight: isSelected ? .semibold : .regular))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                Spacer()
+                if let thumb = item.thumbnail {
+                    Image(uiImage: thumb)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                } else {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color(UIColor.tertiarySystemFill))
+                        .frame(width: 44, height: 44)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
