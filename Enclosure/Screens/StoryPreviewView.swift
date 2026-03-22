@@ -99,17 +99,21 @@ struct StoryPreviewView: View {
                 // 5 pt gap
                 Spacer().frame(height: 5)
 
-                // "Stories ↑" label
+                // "My stories ↑" glass pill — left aligned
                 HStack {
-                    Spacer()
-                    HStack(spacing: 4) {
-                        Text("Stories")
+                    HStack(spacing: 5) {
+                        Text("My stories")
                             .font(.custom("Inter18pt-Medium", size: 13))
-                            .foregroundColor(.white.opacity(0.75))
+                            .foregroundColor(.white)
                         Image(systemName: "arrow.up")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.75))
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.white)
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.leading, 12)
+
                     Spacer()
                 }
                 .padding(.bottom, 6)
