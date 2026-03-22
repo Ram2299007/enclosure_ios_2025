@@ -111,36 +111,36 @@ struct StoryPhotoPicker: View {
                     HStack(spacing: 12) {
                         // Text card
                         Button { /* future: text story */ } label: {
-                            VStack(spacing: 8) {
+                            VStack(spacing: 5) {
                                 Image(systemName: "textformat")
-                                    .font(.system(size: 24, weight: .regular))
+                                    .font(.system(size: 20, weight: .regular))
                                     .foregroundColor(Color("TextColor"))
                                 Text("Text")
-                                    .font(.custom("Inter18pt-Regular", size: 14))
+                                    .font(.custom("Inter18pt-Regular", size: 12))
                                     .foregroundColor(Color("TextColor"))
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .liquidGlass(in: RoundedRectangle(cornerRadius: 16))
+                            .padding(.vertical, 6)
+                            .liquidGlass(in: RoundedRectangle(cornerRadius: 14))
                         }
 
                         // Camera card
                         Button { handleCameraButtonClick() } label: {
-                            VStack(spacing: 8) {
+                            VStack(spacing: 5) {
                                 Image(systemName: "camera")
-                                    .font(.system(size: 24, weight: .regular))
+                                    .font(.system(size: 20, weight: .regular))
                                     .foregroundColor(Color("TextColor"))
                                 Text("Camera")
-                                    .font(.custom("Inter18pt-Regular", size: 14))
+                                    .font(.custom("Inter18pt-Regular", size: 12))
                                     .foregroundColor(Color("TextColor"))
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .liquidGlass(in: RoundedRectangle(cornerRadius: 16))
+                            .padding(.vertical, 6)
+                            .liquidGlass(in: RoundedRectangle(cornerRadius: 14))
                         }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, 6)
                 }
 
                 // ── Content ──
@@ -191,7 +191,7 @@ struct StoryPhotoPicker: View {
         }
         // Camera
         .fullScreenCover(isPresented: $showCameraView) {
-            StoryCameraGalleryView { assets, caption in
+            StoryCameraOnlyView { assets, _ in
                 if let first = assets.first { onAssetSelected?(first) }
                 dismiss()
             }
