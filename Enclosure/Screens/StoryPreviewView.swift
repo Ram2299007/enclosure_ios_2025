@@ -99,6 +99,22 @@ struct StoryPreviewView: View {
                 // 5 pt gap
                 Spacer().frame(height: 5)
 
+                // "Stories ↑" label
+                HStack {
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Text("Stories")
+                            .font(.custom("Inter18pt-Medium", size: 13))
+                            .foregroundColor(.white.opacity(0.75))
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.75))
+                    }
+                    Spacer()
+                }
+                .padding(.bottom, 6)
+                .background(Color.black)
+
                 // ── Caption bar ──
                 HStack(spacing: 0) {
                     // Caption input
