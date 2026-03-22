@@ -115,6 +115,140 @@ private struct RoyalFont {
         }
         return Font.system(size: previewSize, weight: previewWeight, design: previewDesign)
     }
+
+    func typingUIFont(scale: CGFloat = 1.0, bold: Bool = false, forcedItalic: Bool = false) -> UIFont {
+        let size = max(12, baseTypingSize * scale)
+        if let name = customFontName {
+            return UIFont(name: name, size: size) ?? UIFont.systemFont(ofSize: size)
+        }
+        let uiWeight: UIFont.Weight = bold ? .bold : {
+            switch weight {
+            case .ultraLight: return .ultraLight
+            case .thin:       return .thin
+            case .light:      return .light
+            case .medium:     return .medium
+            case .semibold:   return .semibold
+            case .bold:       return .bold
+            case .heavy:      return .heavy
+            case .black:      return .black
+            default:          return .regular
+            }
+        }()
+        let systemDesign: UIFontDescriptor.SystemDesign = {
+            switch design {
+            case .serif:      return .serif
+            case .rounded:    return .rounded
+            case .monospaced: return .monospaced
+            default:          return .default
+            }
+        }()
+        let base = UIFont.systemFont(ofSize: size, weight: uiWeight)
+        var descriptor = base.fontDescriptor
+        if let designed = descriptor.withDesign(systemDesign) { descriptor = designed }
+        if italic || forcedItalic {
+            descriptor = descriptor.withSymbolicTraits(.traitItalic) ?? descriptor
+        }
+        return UIFont(descriptor: descriptor, size: size)
+    }
+}
+
+// MARK: - Link-Detecting Story Text View
+private struct StoryTextView: UIViewRepresentable {
+    @Binding var text: String
+    var uiFont: UIFont
+    var isEditing: Bool
+    var onEditingChanged: (Bool) -> Void
+
+    private static let linkDetector = try? NSDataDetector(
+        types: NSTextCheckingResult.CheckingType.link.rawValue
+    )
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    func makeUIView(context: Context) -> UITextView {
+        let tv = UITextView()
+        tv.backgroundColor = .clear
+        tv.textColor = .white
+        tv.textAlignment = .center
+        tv.isScrollEnabled = false
+        tv.delegate = context.coordinator
+        tv.autocorrectionType = .no
+        tv.autocapitalizationType = .none
+        tv.tintColor = UIColor(red: 1.0, green: 0.89, blue: 0.36, alpha: 1.0)
+        tv.textContainerInset = UIEdgeInsets(top: 16, left: 24, bottom: 16, right: 24)
+        return tv
+    }
+
+    func updateUIView(_ uiView: UITextView, context: Context) {
+        if !context.coordinator.isUpdating && uiView.text != text {
+            context.coordinator.isUpdating = true
+            uiView.text = text
+            context.coordinator.applyLinkStyling(to: uiView)
+            context.coordinator.isUpdating = false
+        }
+        context.coordinator.updateFont(in: uiView, to: uiFont)
+        if isEditing && !uiView.isFirstResponder {
+            uiView.becomeFirstResponder()
+        } else if !isEditing && uiView.isFirstResponder {
+            uiView.resignFirstResponder()
+        }
+    }
+
+    class Coordinator: NSObject, UITextViewDelegate {
+        var parent: StoryTextView
+        var isUpdating = false
+        private var lastFont: UIFont?
+
+        init(parent: StoryTextView) { self.parent = parent }
+
+        func updateFont(in textView: UITextView, to newFont: UIFont) {
+            guard lastFont != newFont else { return }
+            lastFont = newFont
+            UIView.transition(with: textView, duration: 0.22,
+                              options: [.transitionCrossDissolve, .allowUserInteraction]) {
+                textView.font = newFont
+                self.applyLinkStyling(to: textView)
+            }
+        }
+
+        func textViewDidChange(_ textView: UITextView) {
+            guard !isUpdating else { return }
+            isUpdating = true
+            parent.text = textView.text
+            applyLinkStyling(to: textView)
+            isUpdating = false
+        }
+
+        func textViewDidBeginEditing(_ textView: UITextView) { parent.onEditingChanged(true) }
+        func textViewDidEndEditing(_ textView: UITextView)   { parent.onEditingChanged(false) }
+
+        func applyLinkStyling(to textView: UITextView) {
+            let fullText = textView.text ?? ""
+            let savedRange = textView.selectedRange
+            let currentFont = textView.font ?? UIFont.systemFont(ofSize: 17)
+            let baseAttrs: [NSAttributedString.Key: Any] = [
+                .font: currentFont,
+                .foregroundColor: UIColor.white
+            ]
+            let attrStr = NSMutableAttributedString(string: fullText, attributes: baseAttrs)
+            let nsRange = NSRange(fullText.startIndex..., in: fullText)
+            StoryTextView.linkDetector?
+                .matches(in: fullText, options: [], range: nsRange)
+                .forEach { match in
+                    attrStr.addAttributes([
+                        .underlineStyle: NSUnderlineStyle.single.rawValue,
+                        .underlineColor: UIColor(red: 0.65, green: 0.88, blue: 1.0, alpha: 1.0),
+                        .foregroundColor: UIColor(red: 0.65, green: 0.88, blue: 1.0, alpha: 1.0)
+                    ], range: match.range)
+                }
+            textView.attributedText = attrStr
+            textView.selectedRange = savedRange
+            textView.typingAttributes = [
+                .font: currentFont,
+                .foregroundColor: UIColor.white
+            ]
+        }
+    }
 }
 
 // MARK: - Story Text Editor
@@ -126,7 +260,7 @@ struct StoryTextEditorView: View {
     @State private var selectedGradient = 0
     @State private var selectedFont = 0
     @State private var textStyle: StoryTextStyle = .normal
-    @FocusState private var isTextFocused: Bool
+    @State private var isTextEditing: Bool = false
     @State private var showPreview = false
     @State private var capturedAssets: [PHAsset] = []
     @State private var glowPulse = false
@@ -208,6 +342,14 @@ struct StoryTextEditorView: View {
         }
     }
 
+    private var activeTypingUIFont: UIFont {
+        royalFonts[selectedFont].typingUIFont(
+            scale: fontSizeMultiplier,
+            bold: textStyle == .bold,
+            forcedItalic: textStyle == .italic
+        )
+    }
+
     private var activeGradient: LinearGradient {
         LinearGradient(colors: gradients[selectedGradient].colors,
                        startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -225,7 +367,7 @@ struct StoryTextEditorView: View {
                 .ignoresSafeArea()
                 .animation(.easeInOut(duration: 0.5), value: selectedGradient)
                 .contentShape(Rectangle())
-                .onTapGesture { isTextFocused = false }
+                .onTapGesture { isTextEditing = false }
 
             // Night wind particle shimmer
             NightWindParticlesView()
@@ -240,7 +382,7 @@ struct StoryTextEditorView: View {
             }
         }
         .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { isTextFocused = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { isTextEditing = true }
             withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) { glowPulse = true }
         }
         .fullScreenCover(isPresented: $showPreview) {
@@ -324,7 +466,7 @@ struct StoryTextEditorView: View {
     private var textInputArea: some View {
         ZStack {
             // Pulsing glow halo when focused
-            if isTextFocused {
+            if isTextEditing {
                 Ellipse()
                     .fill(
                         RadialGradient(
@@ -347,25 +489,17 @@ struct StoryTextEditorView: View {
                     .allowsHitTesting(false)
             }
 
-            // TextField — white text, cursor snaps to tap position naturally
-            TextField("", text: $text, axis: .vertical)
-                .font(activeTypingFont)
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
-                .lineLimit(1...20)
-                .padding(.horizontal, 28)
-                .padding(.vertical, 16)
-                .tint(Color(hex: "#FFE35C"))
-                .focused($isTextFocused)
-                .autocorrectionDisabled(true)
-                .textInputAutocapitalization(.never)
-                .animation(.spring(response: 0.35, dampingFraction: 0.72), value: fontSizeMultiplier)
-                .animation(.spring(response: 0.3,  dampingFraction: 0.7),  value: selectedFont)
-                .animation(.spring(response: 0.25, dampingFraction: 0.65), value: textStyle)
+            // UITextView — smooth font transitions + auto URL underline
+            StoryTextView(
+                text: $text,
+                uiFont: activeTypingUIFont,
+                isEditing: isTextEditing,
+                onEditingChanged: { isTextEditing = $0 }
+            )
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
-        .onTapGesture { isTextFocused = true }
+        .onTapGesture { isTextEditing = true }
     }
 
     // MARK: - Bottom Controls
@@ -452,7 +586,7 @@ struct StoryTextEditorView: View {
 
     // MARK: - Post: Render → Save → Preview
     private func handlePost() {
-        isTextFocused = false
+        isTextEditing = false
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { renderAndSave() }
     }
 
