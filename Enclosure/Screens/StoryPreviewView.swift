@@ -3,9 +3,10 @@ import Photos
 import AVKit
 
 // MARK: - Story Preview
-// Swipeable pager showing selected assets, caption field, and "Add to Story" button.
+// Matches MultiImagePreviewDialog design: black bg, top bar, swipeable pager,
+// caption bar, remove current asset, video play-on-tap.
 struct StoryPreviewView: View {
-    let assets: [PHAsset]
+    @State var assets: [PHAsset]
     var onPost: (([PHAsset], String) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
@@ -13,105 +14,166 @@ struct StoryPreviewView: View {
     @State private var captionText = ""
     @State private var loadedImages: [String: UIImage] = [:]
     @State private var players: [String: AVPlayer] = [:]
+    @State private var playingVideoId: String? = nil
+    @FocusState private var isCaptionFocused: Bool
 
     private let imageManager = PHCachingImageManager()
 
+    private func hideKeyboard() {
+        isCaptionFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
     var body: some View {
-        ZStack(alignment: .top) {
-            Color.black.ignoresSafeArea()
+        ZStack {
+            Color.black
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { hideKeyboard() }
 
             VStack(spacing: 0) {
-                // ── Swipeable pager ──
-                TabView(selection: $currentIndex) {
-                    ForEach(Array(assets.enumerated()), id: \.element.localIdentifier) { index, asset in
-                        assetPage(asset)
-                            .tag(index)
+
+                // ── Top bar ──
+                HStack {
+                    // Back
+                    Button(action: { dismiss() }) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.white.opacity(0.2))
+                                .frame(width: 40, height: 40)
+                            Image("leftvector")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 25, height: 18)
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.leading, 16)
+
+                    Spacer()
+
+                    // Counter — centered
+                    if assets.count > 1 {
+                        Text("\(currentIndex + 1) / \(assets.count)")
+                            .font(.custom("Inter18pt-Medium", size: 16))
+                            .foregroundColor(.white)
+                    }
+
+                    Spacer()
+
+                    // Remove current asset
+                    Button(action: removeCurrentAsset) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.white.opacity(0.2))
+                                .frame(width: 40, height: 40)
+                            Image(systemName: "trash")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 16)
+                }
+                .frame(height: 60)
+                .background(Color.black.opacity(0.3))
+
+                // ── Pager ──
+                GeometryReader { _ in
+                    TabView(selection: $currentIndex) {
+                        ForEach(Array(assets.enumerated()), id: \.element.localIdentifier) { index, asset in
+                            assetPage(asset)
+                                .tag(index)
+                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .onChange(of: currentIndex) { _ in
+                        // Pause any playing video when swiping away
+                        playingVideoId = nil
+                        players.values.forEach { $0.pause() }
                     }
                 }
-                .tabViewStyle(.page(indexDisplayMode: assets.count > 1 ? .always : .never))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .ignoresSafeArea(edges: .top)
 
-                // ── Bottom: caption + button ──
-                VStack(spacing: 12) {
-                    // Caption field
-                    HStack(spacing: 10) {
-                        Image(systemName: "text.bubble")
-                            .font(.system(size: 18))
-                            .foregroundColor(.white.opacity(0.7))
-                        TextField("Add a caption...", text: $captionText)
-                            .font(.custom("Inter18pt-Regular", size: 15))
-                            .foregroundColor(.white)
-                            .tint(.white)
+                // 5 pt gap
+                Spacer().frame(height: 5)
+
+                // ── Caption bar ──
+                HStack(spacing: 0) {
+                    // Caption input
+                    HStack(spacing: 0) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ZStack(alignment: .leading) {
+                                // Hint
+                                if captionText.isEmpty {
+                                    Text("Add stories")
+                                        .font(.custom("Inter18pt-Medium", size: 17))
+                                        .foregroundColor(Color(hex: "#9EA6B9"))
+                                        .padding(.leading, 15)
+                                        .padding(.trailing, 20)
+                                        .padding(.vertical, 5)
+                                }
+                                TextField("", text: $captionText, axis: .vertical)
+                                    .font(.custom("Inter18pt-Medium", size: 17))
+                                    .foregroundColor(.white)
+                                    .lineLimit(4)
+                                    .lineSpacing(4)
+                                    .frame(maxWidth: 220, alignment: .leading)
+                                    .padding(.leading, 15)
+                                    .padding(.trailing, 20)
+                                    .padding(.vertical, 5)
+                                    .background(Color.clear)
+                                    .focused($isCaptionFocused)
+                                    .tint(Color.white)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    .frame(height: 50)
                     .background(
-                        RoundedRectangle(cornerRadius: 24)
-                            .fill(Color.white.opacity(0.15))
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(Color(hex: "#1B1C1C"))
                     )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(isCaptionFocused ? Color.white : Color.gray, lineWidth: isCaptionFocused ? 1.5 : 1.0)
+                    )
+                    .animation(.easeInOut(duration: 0.2), value: isCaptionFocused)
+                    .padding(.leading, 10)
+                    .padding(.trailing, 5)
 
                     // Add to Story button
                     Button(action: handlePost) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 18, weight: .semibold))
-                            Text("Add to Story")
-                                .font(.custom("Inter18pt-SemiBold", size: 16))
-                        }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(
-                            RoundedRectangle(cornerRadius: 28)
+                        ZStack {
+                            Circle()
                                 .fill(Color(hex: Constant.themeColor))
-                        )
+                                .frame(width: 50, height: 50)
+                            Image(systemName: "plus")
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundColor(.white)
+                        }
                     }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 5)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-                .padding(.bottom, 44)
-                .background(
-                    LinearGradient(
-                        colors: [Color.black.opacity(0.0), Color.black.opacity(0.85)],
-                        startPoint: .top, endPoint: .bottom
-                    )
-                )
+                .padding(.bottom, 10)
+                .background(Color.black)
             }
-
-            // ── Top overlay: back + counter ──
-            HStack {
-                Button(action: { dismiss() }) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.black.opacity(0.45))
-                            .frame(width: 40, height: 40)
-                        Image("leftvector")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 25, height: 18)
-                            .foregroundColor(.white)
-                    }
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-
-                if assets.count > 1 {
-                    Text("\(currentIndex + 1) / \(assets.count)")
-                        .font(.custom("Inter18pt-SemiBold", size: 14))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Capsule().fill(Color.black.opacity(0.45)))
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
         }
+        .ignoresSafeArea(.keyboard)
+        .simultaneousGesture(
+            TapGesture().onEnded { _ in hideKeyboard() }
+        )
+        .gesture(
+            DragGesture(minimumDistance: 20).onEnded { value in
+                if value.translation.height > 100 { dismiss() }
+            }
+        )
         .onAppear { preloadAssets() }
-        .onDisappear { players.values.forEach { $0.pause() } }
+        .onDisappear {
+            players.values.forEach { $0.pause() }
+        }
     }
 
     // MARK: - Asset Page
@@ -119,25 +181,88 @@ struct StoryPreviewView: View {
     @ViewBuilder
     private func assetPage(_ asset: PHAsset) -> some View {
         if asset.mediaType == .video {
-            if let player = players[asset.localIdentifier] {
-                VideoPlayer(player: player)
-                    .ignoresSafeArea()
-                    .onAppear { player.seek(to: .zero); player.play() }
-                    .onDisappear { player.pause() }
-            } else {
+            ZStack {
                 Color.black
-                    .overlay(ProgressView().tint(.white))
+                if let player = players[asset.localIdentifier], playingVideoId == asset.localIdentifier {
+                    VideoPlayer(player: player)
+                        .ignoresSafeArea()
+                } else {
+                    // Show video thumbnail + play button
+                    if let thumb = loadedImages[asset.localIdentifier] {
+                        Image(uiImage: thumb)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    // Play button overlay
+                    Button(action: { playVideo(asset) }) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.black.opacity(0.5))
+                                .frame(width: 72, height: 72)
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 30))
+                                .foregroundColor(.white)
+                                .offset(x: 3)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         } else {
-            if let image = loadedImages[asset.localIdentifier] {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
+            ZStack {
                 Color.black
-                    .overlay(ProgressView().tint(.white))
+                if let image = loadedImages[asset.localIdentifier] {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ProgressView().tint(.white)
+                }
             }
+        }
+    }
+
+    // MARK: - Video Play
+
+    private func playVideo(_ asset: PHAsset) {
+        if let player = players[asset.localIdentifier] {
+            player.seek(to: .zero)
+            player.play()
+            playingVideoId = asset.localIdentifier
+        } else {
+            let opts = PHVideoRequestOptions()
+            opts.deliveryMode = .automatic
+            opts.isNetworkAccessAllowed = true
+            PHImageManager.default().requestAVAsset(forVideo: asset, options: opts) { avAsset, _, _ in
+                guard let avAsset else { return }
+                DispatchQueue.main.async {
+                    let player = AVPlayer(playerItem: AVPlayerItem(asset: avAsset))
+                    players[asset.localIdentifier] = player
+                    player.play()
+                    playingVideoId = asset.localIdentifier
+                }
+            }
+        }
+    }
+
+    // MARK: - Remove current asset
+
+    private func removeCurrentAsset() {
+        guard !assets.isEmpty else { return }
+        let id = assets[currentIndex].localIdentifier
+        players[id]?.pause()
+        players.removeValue(forKey: id)
+        loadedImages.removeValue(forKey: id)
+        if playingVideoId == id { playingVideoId = nil }
+
+        assets.remove(at: currentIndex)
+
+        if assets.isEmpty {
+            dismiss()
+        } else {
+            currentIndex = min(currentIndex, assets.count - 1)
         }
     }
 
@@ -151,25 +276,25 @@ struct StoryPreviewView: View {
                 opts.isNetworkAccessAllowed = true
                 imageManager.requestImage(
                     for: asset,
-                    targetSize: PHImageManagerMaximumSize,
+                    targetSize: CGSize(width: UIScreen.main.bounds.width * 2,
+                                      height: UIScreen.main.bounds.height * 2),
                     contentMode: .aspectFit,
                     options: opts
                 ) { img, _ in
-                    if let img {
-                        DispatchQueue.main.async { loadedImages[asset.localIdentifier] = img }
-                    }
+                    if let img { DispatchQueue.main.async { loadedImages[asset.localIdentifier] = img } }
                 }
             } else if asset.mediaType == .video {
-                let opts = PHVideoRequestOptions()
-                opts.deliveryMode = .automatic
+                // Load thumbnail for video poster frame
+                let opts = PHImageRequestOptions()
+                opts.deliveryMode = .fastFormat
                 opts.isNetworkAccessAllowed = true
-                PHImageManager.default().requestAVAsset(forVideo: asset, options: opts) { avAsset, _, _ in
-                    if let avAsset {
-                        DispatchQueue.main.async {
-                            let player = AVPlayer(playerItem: AVPlayerItem(asset: avAsset))
-                            players[asset.localIdentifier] = player
-                        }
-                    }
+                imageManager.requestImage(
+                    for: asset,
+                    targetSize: CGSize(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height),
+                    contentMode: .aspectFit,
+                    options: opts
+                ) { img, _ in
+                    if let img { DispatchQueue.main.async { loadedImages[asset.localIdentifier] = img } }
                 }
             }
         }
@@ -178,6 +303,8 @@ struct StoryPreviewView: View {
     // MARK: - Post
 
     private func handlePost() {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
         let caption = captionText.trimmingCharacters(in: .whitespacesAndNewlines)
         onPost?(assets, caption)
         dismiss()
