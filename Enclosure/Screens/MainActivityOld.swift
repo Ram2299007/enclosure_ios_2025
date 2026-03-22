@@ -211,6 +211,7 @@ struct MainActivityOld: View {
     }
 
     @ViewBuilder
+    @ViewBuilder
     private var expandedHeaderContent: some View {
         if isVStackVisible {
             VStack {
