@@ -1,103 +1,96 @@
 import SwiftUI
 import Photos
 
-// MARK: - Font style model
-private struct StoryFontStyle {
+// MARK: - Text Style (B / Normal / I)
+private enum StoryTextStyle: CaseIterable {
+    case normal, bold, italic
+    var label: String {
+        switch self { case .normal: return "N"; case .bold: return "B"; case .italic: return "I" }
+    }
+}
+
+// MARK: - Royal Font Model
+private struct RoyalFont {
     let name: String
-    let font: Font        // used while typing (large)
-    let previewFont: Font // shown in picker cell
+    let typingFont: Font   // large, used while typing
+    let previewFont: Font  // smaller, shown inside tile
 }
 
 // MARK: - Story Text Editor
-// Full-screen text story creator — gradient backgrounds + font picker + smooth typing.
 struct StoryTextEditorView: View {
     var onPost: (([PHAsset], String) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
-    @State private var selectedGradientIndex = 0
-    @State private var selectedFontIndex = 0
-    @State private var textAlignment: TextAlignment = .center
+    @State private var selectedGradient = 0
+    @State private var selectedFont = 0
+    @State private var textStyle: StoryTextStyle = .normal
     @FocusState private var isTextFocused: Bool
     @State private var showPreview = false
     @State private var capturedAssets: [PHAsset] = []
-    @State private var cursorPulse = false
+    @State private var glowPulse = false
 
-    // MARK: - 10 Gradient Backgrounds
-    // Each tuple: (display name, gradient colors)
-    private let gradients: [(String, [Color])] = [
-        ("Sunset",   [Color(hex: "#FF6B6B"), Color(hex: "#FEE140")]),
-        ("Ocean",    [Color(hex: "#005C97"), Color(hex: "#363795")]),
-        ("Purple",   [Color(hex: "#7B2FBE"), Color(hex: "#E040FB")]),
-        ("Forest",   [Color(hex: "#134E5E"), Color(hex: "#71B280")]),
-        ("Gold",     [Color(hex: "#F7971E"), Color(hex: "#FFD200")]),
-        ("Flamingo", [Color(hex: "#f857a6"), Color(hex: "#ff5858")]),
-        ("Night",    [Color(hex: "#0F0C29"), Color(hex: "#302B63")]),
-        ("Rose",     [Color(hex: "#FF9A9E"), Color(hex: "#A18CD1")]),
-        ("Mint",     [Color(hex: "#00B09B"), Color(hex: "#96C93D")]),
-        ("Cosmic",   [Color(hex: "#4776E6"), Color(hex: "#8E54E9")])
+    // MARK: - 10 Rich Royal Gradients
+    private let gradients: [(name: String, colors: [Color])] = [
+        ("Royal",    [Color(hex: "#0D1B40"), Color(hex: "#1A3A6E"), Color(hex: "#C9972A")]),
+        ("Emerald",  [Color(hex: "#062215"), Color(hex: "#0B6E38"), Color(hex: "#1FCA6A")]),
+        ("Burgundy", [Color(hex: "#3B0020"), Color(hex: "#8B1A4A"), Color(hex: "#E8A0A0")]),
+        ("Sapphire", [Color(hex: "#020524"), Color(hex: "#0A2472"), Color(hex: "#1565C0")]),
+        ("Amethyst", [Color(hex: "#1A0533"), Color(hex: "#7B1FA2"), Color(hex: "#E040FB")]),
+        ("Obsidian", [Color(hex: "#1C1C2E"), Color(hex: "#16213E"), Color(hex: "#0F3460")]),
+        ("Crimson",  [Color(hex: "#1A0000"), Color(hex: "#8B0000"), Color(hex: "#C62828")]),
+        ("Jade",     [Color(hex: "#002828"), Color(hex: "#00695C"), Color(hex: "#00BFA5")]),
+        ("Gilded",   [Color(hex: "#1C1008"), Color(hex: "#7D5A00"), Color(hex: "#F5C518")]),
+        ("Slate",    [Color(hex: "#0F172A"), Color(hex: "#1E3A5F"), Color(hex: "#2196F3")])
     ]
 
-    // MARK: - 10 Font Styles
-    // All use system fonts → automatically support Devanagari (Marathi/Hindi) and all scripts.
-    private let fontStyles: [StoryFontStyle] = [
-        StoryFontStyle(
-            name: "Classic",
-            font: .system(size: 32, weight: .regular),
-            previewFont: .system(size: 19, weight: .regular)
-        ),
-        StoryFontStyle(
-            name: "Bold",
-            font: .system(size: 32, weight: .bold),
-            previewFont: .system(size: 19, weight: .bold)
-        ),
-        StoryFontStyle(
-            name: "Rounded",
-            font: .system(size: 32, weight: .semibold, design: .rounded),
-            previewFont: .system(size: 19, weight: .semibold, design: .rounded)
-        ),
-        StoryFontStyle(
-            name: "Serif",
-            font: .system(size: 32, weight: .regular, design: .serif),
-            previewFont: .system(size: 19, weight: .regular, design: .serif)
-        ),
-        StoryFontStyle(
-            name: "Mono",
-            font: .system(size: 28, weight: .regular, design: .monospaced),
-            previewFont: .system(size: 17, weight: .regular, design: .monospaced)
-        ),
-        StoryFontStyle(
-            name: "Light",
-            font: .system(size: 36, weight: .light),
-            previewFont: .system(size: 21, weight: .light)
-        ),
-        StoryFontStyle(
-            name: "Heavy",
-            font: .system(size: 30, weight: .heavy),
-            previewFont: .system(size: 18, weight: .heavy)
-        ),
-        StoryFontStyle(
-            name: "Thin",
-            font: .system(size: 38, weight: .thin),
-            previewFont: .system(size: 22, weight: .thin)
-        ),
-        StoryFontStyle(
-            name: "Black",
-            font: .system(size: 28, weight: .black),
-            previewFont: .system(size: 17, weight: .black)
-        ),
-        StoryFontStyle(
-            name: "Italic",
-            font: Font.system(size: 32, weight: .medium).italic(),
-            previewFont: Font.system(size: 19, weight: .medium).italic()
-        ),
+    // MARK: - 10 Royal Fonts (all system → support Devanagari / Marathi / Hindi / all scripts)
+    private let royalFonts: [RoyalFont] = [
+        RoyalFont(name: "Classique",
+                  typingFont: .system(size: 32, weight: .regular, design: .serif),
+                  previewFont: .system(size: 20, weight: .regular, design: .serif)),
+        RoyalFont(name: "Prestige",
+                  typingFont: .system(size: 30, weight: .bold, design: .serif),
+                  previewFont: .system(size: 19, weight: .bold, design: .serif)),
+        RoyalFont(name: "Noble",
+                  typingFont: .system(size: 36, weight: .light, design: .serif),
+                  previewFont: .system(size: 22, weight: .light, design: .serif)),
+        RoyalFont(name: "Imperial",
+                  typingFont: .system(size: 30, weight: .heavy),
+                  previewFont: .system(size: 18, weight: .heavy)),
+        RoyalFont(name: "Velvet",
+                  typingFont: .system(size: 32, weight: .semibold, design: .rounded),
+                  previewFont: .system(size: 20, weight: .semibold, design: .rounded)),
+        RoyalFont(name: "Luxe",
+                  typingFont: Font.system(size: 32, weight: .medium, design: .serif).italic(),
+                  previewFont: Font.system(size: 20, weight: .medium, design: .serif).italic()),
+        RoyalFont(name: "Grand",
+                  typingFont: .system(size: 28, weight: .black),
+                  previewFont: .system(size: 17, weight: .black)),
+        RoyalFont(name: "Regal",
+                  typingFont: .system(size: 31, weight: .semibold, design: .serif),
+                  previewFont: .system(size: 19, weight: .semibold, design: .serif)),
+        RoyalFont(name: "Crown",
+                  typingFont: .system(size: 31, weight: .bold, design: .rounded),
+                  previewFont: .system(size: 19, weight: .bold, design: .rounded)),
+        RoyalFont(name: "Elite",
+                  typingFont: .system(size: 38, weight: .ultraLight, design: .serif),
+                  previewFont: .system(size: 23, weight: .ultraLight, design: .serif))
     ]
 
-    // MARK: - Computed
+    // MARK: - Computed active font (base + B/I modifier)
+    private var activeTypingFont: Font {
+        let base = royalFonts[selectedFont].typingFont
+        switch textStyle {
+        case .normal: return base
+        case .bold:   return base.bold()
+        case .italic: return base.italic()
+        }
+    }
 
     private var activeGradient: LinearGradient {
         LinearGradient(
-            colors: gradients[selectedGradientIndex].1,
+            colors: gradients[selectedGradient].colors,
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
@@ -111,31 +104,24 @@ struct StoryTextEditorView: View {
 
     var body: some View {
         ZStack {
-            // Gradient background (animates when changed)
             activeGradient
                 .ignoresSafeArea()
-                .animation(.easeInOut(duration: 0.45), value: selectedGradientIndex)
+                .animation(.easeInOut(duration: 0.5), value: selectedGradient)
 
             VStack(spacing: 0) {
                 topBar
-
                 Spacer()
-
                 textInputArea
-
                 Spacer()
-
                 bottomControls
             }
         }
         .onAppear {
-            // Auto-focus after slight delay so keyboard animates in nicely
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                 isTextFocused = true
             }
-            // Start cursor pulse animation
-            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
-                cursorPulse = true
+            withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) {
+                glowPulse = true
             }
         }
         .fullScreenCover(isPresented: $showPreview) {
@@ -149,12 +135,12 @@ struct StoryTextEditorView: View {
     // MARK: - Top Bar
 
     private var topBar: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             // Close
             Button(action: { dismiss() }) {
                 ZStack {
                     Circle()
-                        .fill(Color.black.opacity(0.32))
+                        .fill(Color.black.opacity(0.35))
                         .frame(width: 42, height: 42)
                     Image(systemName: "xmark")
                         .font(.system(size: 15, weight: .bold))
@@ -165,85 +151,128 @@ struct StoryTextEditorView: View {
 
             Spacer()
 
-            // Alignment cycle
-            Button(action: cycleAlignment) {
+            // B / N / I style toggle (pill segmented control)
+            styleToggle
+
+            Spacer()
+
+            // Send button — same as StoryPreviewView
+            Button(action: handlePost) {
                 ZStack {
                     Circle()
-                        .fill(Color.black.opacity(0.32))
-                        .frame(width: 42, height: 42)
-                    Image(systemName: alignmentIcon)
-                        .font(.system(size: 15, weight: .medium))
+                        .fill(Color(hex: Constant.themeColor))
+                        .frame(width: 46, height: 46)
+                    Image("baseline_keyboard_double_arrow_right_24")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 24, height: 24)
                         .foregroundColor(.white)
+                        .padding(.top, 3)
+                        .padding(.bottom, 6)
                 }
-            }
-            .buttonStyle(.plain)
-            .animation(.easeInOut(duration: 0.2), value: textAlignment)
-
-            // Post button
-            Button(action: handlePost) {
-                HStack(spacing: 5) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 17))
-                    Text("Post")
-                        .font(.system(size: 15, weight: .bold))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 10)
-                .background(
-                    Capsule()
-                        .fill(Color.black.opacity(0.32))
-                )
             }
             .buttonStyle(.plain)
             .disabled(!isPostEnabled)
-            .opacity(isPostEnabled ? 1 : 0.4)
+            .opacity(isPostEnabled ? 1.0 : 0.35)
             .animation(.easeInOut(duration: 0.2), value: isPostEnabled)
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)
     }
 
+    // B / Normal / I segmented pill
+    private var styleToggle: some View {
+        HStack(spacing: 0) {
+            ForEach(StoryTextStyle.allCases, id: \.self) { style in
+                let isActive = textStyle == style
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.62)) {
+                        textStyle = style
+                    }
+                } label: {
+                    Text(style.label)
+                        .font(styleButtonFont(style))
+                        .foregroundColor(isActive ? Color.black : Color.white.opacity(0.85))
+                        .frame(width: 40, height: 36)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(isActive ? Color.white : Color.clear)
+                                .animation(.spring(response: 0.28, dampingFraction: 0.62), value: isActive)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: 13)
+                .fill(Color.black.opacity(0.35))
+        )
+    }
+
+    private func styleButtonFont(_ style: StoryTextStyle) -> Font {
+        switch style {
+        case .normal: return .system(size: 15, weight: .medium)
+        case .bold:   return .system(size: 15, weight: .black)
+        case .italic: return Font.system(size: 16, weight: .medium).italic()
+        }
+    }
+
     // MARK: - Text Input Area
 
     private var textInputArea: some View {
         ZStack {
-            // Pulsing glow ring when typing
+            // Pulsing glow halo when focused
             if isTextFocused {
-                RoundedRectangle(cornerRadius: 22)
-                    .stroke(
-                        Color.white.opacity(cursorPulse ? 0.5 : 0.0),
-                        lineWidth: 1.5
+                Ellipse()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color.white.opacity(glowPulse ? 0.18 : 0.0),
+                                Color.clear
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 180
+                        )
                     )
-                    .blur(radius: cursorPulse ? 5 : 0)
-                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 200)
+                    .blur(radius: 18)
                     .animation(
-                        .easeInOut(duration: 1.2).repeatForever(autoreverses: true),
-                        value: cursorPulse
+                        .easeInOut(duration: 1.3).repeatForever(autoreverses: true),
+                        value: glowPulse
                     )
             }
 
-            // Placeholder text
+            // Placeholder
             if text.isEmpty {
-                Text("Tap to type…")
-                    .font(fontStyles[selectedFontIndex].font)
-                    .foregroundColor(.white.opacity(0.45))
-                    .multilineTextAlignment(textAlignment)
+                Text("Start typing…")
+                    .font(activeTypingFont)
+                    .foregroundColor(.white.opacity(0.38))
+                    .multilineTextAlignment(.center)
                     .allowsHitTesting(false)
             }
 
-            // Actual TextField
+            // Text field — bright yellow cursor for visibility (highlight symbol)
             TextField("", text: $text, axis: .vertical)
-                .font(fontStyles[selectedFontIndex].font)
+                .font(activeTypingFont)
                 .foregroundColor(.white)
-                .multilineTextAlignment(textAlignment)
-                .lineLimit(1...10)
+                .multilineTextAlignment(.center)
+                .lineLimit(1...9)
                 .padding(.horizontal, 28)
                 .padding(.vertical, 16)
-                // Bright yellow cursor — stands out as a highlight symbol on any gradient
                 .tint(Color(hex: "#FFE35C"))
                 .focused($isTextFocused)
-                .animation(.easeInOut(duration: 0.25), value: selectedFontIndex)
+                .animation(
+                    .spring(response: 0.3, dampingFraction: 0.7),
+                    value: selectedFont
+                )
+                .animation(
+                    .spring(response: 0.25, dampingFraction: 0.65),
+                    value: textStyle
+                )
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
@@ -254,136 +283,142 @@ struct StoryTextEditorView: View {
 
     private var bottomControls: some View {
         VStack(spacing: 0) {
-            // Thin separator line
-            Divider()
-                .background(Color.white.opacity(0.25))
+            // Glass separator
+            Rectangle()
+                .fill(Color.white.opacity(0.12))
+                .frame(height: 0.5)
 
-            VStack(spacing: 14) {
-                // Active font name label
-                Text(fontStyles[selectedFontIndex].name)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.75))
-                    .kerning(1.2)
-                    .textCase(.uppercase)
-                    .animation(.easeInOut(duration: 0.2), value: selectedFontIndex)
-                    .padding(.top, 12)
+            VStack(spacing: 12) {
+                // Active font name
+                Text(royalFonts[selectedFont].name.uppercased())
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.65))
+                    .kerning(2.0)
+                    .padding(.top, 14)
+                    .animation(.easeInOut(duration: 0.2), value: selectedFont)
 
-                // ── Font Picker ──
+                // ── Royal Font Picker ──
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
-                        ForEach(fontStyles.indices, id: \.self) { i in
-                            let isActive = selectedFontIndex == i
-                            Button {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.65)) {
-                                    selectedFontIndex = i
-                                }
-                            } label: {
-                                Text("Aa")
-                                    .font(fontStyles[i].previewFont)
-                                    .foregroundColor(isActive ? .white : .white.opacity(0.5))
-                                    .frame(width: 58, height: 58)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 14)
-                                            .fill(
-                                                isActive
-                                                    ? Color.white.opacity(0.28)
-                                                    : Color.black.opacity(0.22)
-                                            )
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 14)
-                                                    .stroke(
-                                                        isActive ? Color.white.opacity(0.9) : Color.clear,
-                                                        lineWidth: 2
-                                                    )
-                                            )
-                                    )
-                                    .scaleEffect(isActive ? 1.1 : 1.0)
-                                    .shadow(
-                                        color: isActive ? Color.white.opacity(0.3) : .clear,
-                                        radius: 8, x: 0, y: 0
-                                    )
-                            }
-                            .buttonStyle(.plain)
+                        ForEach(royalFonts.indices, id: \.self) { i in
+                            fontTile(i)
                         }
                     }
                     .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
                 }
 
                 // ── Gradient Picker ──
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 11) {
                         ForEach(gradients.indices, id: \.self) { i in
-                            let isActive = selectedGradientIndex == i
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.35)) {
-                                    selectedGradientIndex = i
-                                }
-                            } label: {
-                                ZStack {
-                                    // Gradient circle
-                                    Circle()
-                                        .fill(
-                                            LinearGradient(
-                                                colors: gradients[i].1,
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
-                                        .frame(width: 38, height: 38)
-
-                                    // Active ring
-                                    if isActive {
-                                        Circle()
-                                            .stroke(Color.white, lineWidth: 3)
-                                            .frame(width: 46, height: 46)
-                                    }
-                                }
-                                .frame(width: 46, height: 46)
-                                .shadow(
-                                    color: isActive ? Color.white.opacity(0.4) : .clear,
-                                    radius: 6, x: 0, y: 0
-                                )
-                                .scaleEffect(isActive ? 1.08 : 1.0)
-                                .animation(.spring(response: 0.3, dampingFraction: 0.65), value: selectedGradientIndex)
-                            }
-                            .buttonStyle(.plain)
+                            gradientCircle(i)
                         }
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 6)
                 }
 
-                // Bottom safe area spacer
-                Spacer().frame(height: 8)
+                Spacer().frame(height: 10)
             }
         }
         .background(.ultraThinMaterial)
     }
 
-    // MARK: - Alignment Helpers
+    // Individual royal font tile
+    @ViewBuilder
+    private func fontTile(_ i: Int) -> some View {
+        let isActive = selectedFont == i
+        Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.62)) {
+                selectedFont = i
+            }
+        } label: {
+            VStack(spacing: 5) {
+                Text("Aa")
+                    .font(royalFonts[i].previewFont)
+                    .foregroundColor(isActive ? Color.black : Color.white.opacity(0.82))
+                    .frame(height: 38)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
 
-    private var alignmentIcon: String {
-        switch textAlignment {
-        case .leading:  return "text.alignleft"
-        case .center:   return "text.aligncenter"
-        case .trailing: return "text.alignright"
-        @unknown default: return "text.aligncenter"
+                Text(royalFonts[i].name)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(isActive ? Color.black.opacity(0.7) : Color.white.opacity(0.5))
+                    .kerning(0.5)
+                    .lineLimit(1)
+            }
+            .frame(width: 66, height: 66)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(isActive ? Color.white : Color.black.opacity(0.28))
+                    .shadow(
+                        color: isActive ? Color.white.opacity(0.55) : .clear,
+                        radius: 10, x: 0, y: 0
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(
+                        isActive ? Color.white : Color.white.opacity(0.12),
+                        lineWidth: isActive ? 0 : 1
+                    )
+            )
+            .scaleEffect(isActive ? 1.08 : 1.0)
         }
+        .buttonStyle(.plain)
+        .animation(.spring(response: 0.28, dampingFraction: 0.62), value: isActive)
     }
 
-    private func cycleAlignment() {
-        switch textAlignment {
-        case .leading:  textAlignment = .center
-        case .center:   textAlignment = .trailing
-        case .trailing: textAlignment = .leading
-        @unknown default: textAlignment = .center
+    // Individual gradient circle
+    @ViewBuilder
+    private func gradientCircle(_ i: Int) -> some View {
+        let isActive = selectedGradient == i
+        Button {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) {
+                selectedGradient = i
+            }
+        } label: {
+            ZStack {
+                // Inner gradient disc
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: gradients[i].colors,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 36, height: 36)
+                    .shadow(
+                        color: isActive ? Color.white.opacity(0.5) : .clear,
+                        radius: 8, x: 0, y: 0
+                    )
+
+                // Active ring
+                if isActive {
+                    Circle()
+                        .stroke(Color.white, lineWidth: 2.5)
+                        .frame(width: 44, height: 44)
+                }
+
+                // Active center dot
+                if isActive {
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 6, height: 6)
+                }
+            }
+            .frame(width: 44, height: 44)
+            .scaleEffect(isActive ? 1.1 : 1.0)
         }
+        .buttonStyle(.plain)
+        .animation(.spring(response: 0.28, dampingFraction: 0.62), value: isActive)
     }
 
     // MARK: - Post: Render → Save → Preview
 
     private func handlePost() {
-        // Dismiss keyboard first
         isTextFocused = false
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             renderAndSave()
@@ -391,37 +426,30 @@ struct StoryTextEditorView: View {
     }
 
     private func renderAndSave() {
-        // Build canvas that matches screen dimensions
-        let canvas = renderCanvas
-        let renderer = ImageRenderer(content: canvas)
+        let renderer = ImageRenderer(content: renderCanvas)
         renderer.scale = UIScreen.main.scale
         guard let image = renderer.uiImage else { return }
         saveToPhotoLibrary(image: image)
     }
 
-    // The rendered canvas (no UI chrome — just gradient + text)
     @ViewBuilder
     private var renderCanvas: some View {
         ZStack {
             LinearGradient(
-                colors: gradients[selectedGradientIndex].1,
+                colors: gradients[selectedGradient].colors,
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             Text(text)
-                .font(fontStyles[selectedFontIndex].font)
+                .font(activeTypingFont)
                 .foregroundColor(.white)
-                .multilineTextAlignment(textAlignment)
+                .multilineTextAlignment(.center)
                 .padding(40)
         }
-        .frame(
-            width: UIScreen.main.bounds.width,
-            height: UIScreen.main.bounds.height
-        )
+        .frame(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)
     }
 
     private func saveToPhotoLibrary(image: UIImage) {
-        let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
         let doSave = {
             var placeholder: PHObjectPlaceholder?
             PHPhotoLibrary.shared().performChanges({
@@ -439,15 +467,14 @@ struct StoryTextEditorView: View {
             }
         }
 
+        let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
         switch status {
-        case .authorized, .limited:
-            doSave()
+        case .authorized, .limited: doSave()
         case .notDetermined:
             PHPhotoLibrary.requestAuthorization(for: .addOnly) { s in
                 if s == .authorized || s == .limited { doSave() }
             }
-        default:
-            doSave()
+        default: doSave()
         }
     }
 }
