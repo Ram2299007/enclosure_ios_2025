@@ -54,9 +54,9 @@ struct StoryPhotoPicker: View {
     private let imageManager = PHCachingImageManager()
     private let albumImageManager = PHCachingImageManager()
     private let columns = [
-        GridItem(.flexible(), spacing: 2),
-        GridItem(.flexible(), spacing: 2),
-        GridItem(.flexible(), spacing: 2)
+        GridItem(.flexible(), spacing: 1),
+        GridItem(.flexible(), spacing: 1),
+        GridItem(.flexible(), spacing: 1)
     ]
     private let thumbnailSize = CGSize(width: 200, height: 200)
 
@@ -75,10 +75,10 @@ struct StoryPhotoPicker: View {
                     } label: {
                         HStack(spacing: 4) {
                             Text(selectedAlbumTitle)
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.custom("Inter18pt-SemiBold", size: 16))
                                 .foregroundColor(.primary)
                             Image(systemName: showAlbumDropdown ? "chevron.up" : "chevron.down")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(.primary)
                                 .animation(.easeInOut(duration: 0.2), value: showAlbumDropdown)
                         }
@@ -131,8 +131,6 @@ struct StoryPhotoPicker: View {
                         Color.clear.onAppear { headerHeight = geo.size.height }
                     }
                 )
-
-                Divider()
 
                 // ── Content ──
                 if permissionDenied {
@@ -250,37 +248,37 @@ struct StoryPhotoPicker: View {
                 // ── Text + Camera cards (scroll with grid) ──
                 HStack(spacing: 12) {
                     Button { showTextEditor = true } label: {
-                        VStack(spacing: 5) {
+                        VStack(spacing: 6) {
                             Image(systemName: "textformat")
-                                .font(.system(size: 20, weight: .regular))
+                                .font(.system(size: 22, weight: .medium))
                                 .foregroundColor(Color("TextColor"))
                             Text("Text")
-                                .font(.custom("Inter18pt-Regular", size: 12))
+                                .font(.custom("Inter18pt-Medium", size: 12))
                                 .foregroundColor(Color("TextColor"))
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
-                        .liquidGlass(in: RoundedRectangle(cornerRadius: 14))
+                        .padding(.vertical, 10)
+                        .liquidGlass(in: RoundedRectangle(cornerRadius: 16))
                     }
                     Button { handleCameraButtonClick() } label: {
-                        VStack(spacing: 5) {
-                            Image(systemName: "camera")
-                                .font(.system(size: 20, weight: .regular))
+                        VStack(spacing: 6) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 22, weight: .medium))
                                 .foregroundColor(Color("TextColor"))
                             Text("Camera")
-                                .font(.custom("Inter18pt-Regular", size: 12))
+                                .font(.custom("Inter18pt-Medium", size: 12))
                                 .foregroundColor(Color("TextColor"))
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
-                        .liquidGlass(in: RoundedRectangle(cornerRadius: 14))
+                        .padding(.vertical, 10)
+                        .liquidGlass(in: RoundedRectangle(cornerRadius: 16))
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 6)
 
                 // ── Photo/video grid ──
-                LazyVGrid(columns: columns, spacing: 2) {
+                LazyVGrid(columns: columns, spacing: 1) {
                     ForEach(assets, id: \.localIdentifier) { asset in
                         let selectionIndex = selectedAssets.firstIndex(where: { $0.localIdentifier == asset.localIdentifier })
                         let isSelected = selectionIndex != nil
@@ -422,7 +420,7 @@ private struct AlbumRow: View {
         Button(action: onTap) {
             HStack(spacing: 14) {
                 Text(item.title)
-                    .font(.system(size: 17, weight: isSelected ? .semibold : .regular))
+                    .font(.custom(isSelected ? "Inter18pt-SemiBold" : "Inter18pt-Regular", size: 16))
                     .foregroundColor(.primary)
                     .lineLimit(1)
                 Spacer()
@@ -465,7 +463,8 @@ private struct AssetThumbnailCell: View {
                 if let img = thumbnail {
                     Image(uiImage: img)
                         .resizable().scaledToFill()
-                        .frame(width: geo.size.width, height: geo.size.width).clipped()
+                        .frame(width: geo.size.width, height: geo.size.width)
+                        .clipped()
                 } else {
                     Rectangle()
                         .fill(Color(UIColor.secondarySystemBackground))
@@ -496,17 +495,18 @@ private struct AssetThumbnailCell: View {
                             .fill(Color(hex: Constant.themeColor))
                             .frame(width: 26, height: 26)
                         Text("\(num)")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.custom("Inter18pt-Bold", size: 13))
                             .foregroundColor(.white)
                     } else {
                         Circle()
                             .stroke(Color.white, lineWidth: 2)
                             .frame(width: 26, height: 26)
-                            .background(Circle().fill(Color.black.opacity(0.2)))
+                            .background(Circle().fill(Color.black.opacity(0.18)))
                     }
                 }
                 .padding(6)
             }
+            .clipShape(RoundedRectangle(cornerRadius: 3))
             .contentShape(Rectangle())
             .onTapGesture { onTap() }
             .onAppear { loadThumbnail(size: thumbnailSize) }

@@ -160,11 +160,6 @@ struct StoryPreviewView: View {
                         RoundedRectangle(cornerRadius: 20)
                             .fill(Color(hex: "#1B1C1C"))
                     )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20)
-                            .stroke(isCaptionFocused ? Color.white : Color.gray, lineWidth: isCaptionFocused ? 1.5 : 1.0)
-                    )
-                    .animation(.easeInOut(duration: 0.2), value: isCaptionFocused)
                     .padding(.leading, 10)
                     .padding(.trailing, 5)
 

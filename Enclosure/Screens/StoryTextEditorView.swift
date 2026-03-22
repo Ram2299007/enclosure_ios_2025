@@ -9,6 +9,66 @@ private enum StoryTextStyle: CaseIterable {
     }
 }
 
+// MARK: - Steam / Fog Overlay (slow wispy smoke rising through gradient)
+private struct DustOverlayView: View {
+    var body: some View {
+        ZStack {
+            // Layer 1 — large slow fog blobs (primary smoke)
+            TimelineView(.animation(minimumInterval: 1.0 / 12.0)) { timeline in
+                Canvas { context, size in
+                    let t = timeline.date.timeIntervalSinceReferenceDate
+                    for i in 0..<12 {
+                        let fi = Double(i)
+                        let speed = 0.005 + sin(fi * 2.9) * 0.002
+                        let phase = (t * speed + fi * 0.13).truncatingRemainder(dividingBy: 1.6)
+                        let rawY = 1.0 - (phase / 1.6)
+                        let y = rawY * size.height
+                        let x = (0.15 + sin(t * 0.018 + fi * 1.3) * 0.7) * size.width
+                        let fade = min(1.0, phase / 0.2) * max(0.0, 1.0 - (phase - 1.2) / 0.4)
+                        let opacity = fade * (0.08 + sin(fi * 2.1) * 0.03)
+                        let w = 90.0 + sin(fi * 3.7) * 40.0
+                        let h = 45.0 + sin(fi * 1.9) * 20.0
+                        context.opacity = max(0, opacity)
+                        context.fill(
+                            Path(ellipseIn: CGRect(x: x - w / 2, y: y - h / 2, width: w, height: h)),
+                            with: .color(.white)
+                        )
+                    }
+                }
+            }
+            .blur(radius: 30)
+            .blendMode(.screen)
+
+            // Layer 2 — smaller mid-speed wisps (detail)
+            TimelineView(.animation(minimumInterval: 1.0 / 15.0)) { timeline in
+                Canvas { context, size in
+                    let t = timeline.date.timeIntervalSinceReferenceDate
+                    for i in 0..<18 {
+                        let fi = Double(i)
+                        let speed = 0.008 + sin(fi * 4.1) * 0.003
+                        let phase = (t * speed + fi * 0.08).truncatingRemainder(dividingBy: 1.3)
+                        let rawY = 1.0 - (phase / 1.3)
+                        let y = rawY * size.height
+                        let x = (0.5 + sin(t * 0.025 + fi * 1.7) * 0.42) * size.width
+                        let fade = min(1.0, phase / 0.15) * max(0.0, 1.0 - (phase - 1.0) / 0.3)
+                        let opacity = fade * (0.06 + abs(sin(fi * 3.3)) * 0.03)
+                        let w = 40.0 + sin(fi * 5.1) * 18.0
+                        let h = 20.0 + sin(fi * 2.3) * 10.0
+                        context.opacity = max(0, opacity)
+                        context.fill(
+                            Path(ellipseIn: CGRect(x: x - w / 2, y: y - h / 2, width: w, height: h)),
+                            with: .color(.white)
+                        )
+                    }
+                }
+            }
+            .blur(radius: 14)
+            .blendMode(.softLight)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
 // MARK: - Royal Font Model
 private struct RoyalFont {
     let baseTypingSize: CGFloat
@@ -18,13 +78,20 @@ private struct RoyalFont {
     let previewSize: CGFloat
     let previewWeight: Font.Weight
     let previewDesign: Font.Design
+    var customFontName: String? = nil
 
     func typingFont(scale: CGFloat = 1.0) -> Font {
+        if let name = customFontName {
+            return Font.custom(name, size: max(12, baseTypingSize * scale))
+        }
         let f = Font.system(size: max(12, baseTypingSize * scale), weight: weight, design: design)
         return italic ? f.italic() : f
     }
     var previewFont: Font {
-        Font.system(size: previewSize, weight: previewWeight, design: previewDesign)
+        if let name = customFontName {
+            return Font.custom(name, size: previewSize)
+        }
+        return Font.system(size: previewSize, weight: previewWeight, design: previewDesign)
     }
 }
 
@@ -89,8 +156,9 @@ struct StoryTextEditorView: View {
                   previewSize: 16, previewWeight: .black,     previewDesign: .serif),
         RoyalFont(baseTypingSize: 36, weight: .ultraLight,design: .rounded,    italic: false,
                   previewSize: 22, previewWeight: .ultraLight,previewDesign: .rounded),
-        RoyalFont(baseTypingSize: 28, weight: .semibold,  design: .monospaced, italic: false,
-                  previewSize: 16, previewWeight: .semibold,  previewDesign: .monospaced),
+        RoyalFont(baseTypingSize: 32, weight: .regular,    design: .serif,      italic: false,
+                  previewSize: 20, previewWeight: .regular,   previewDesign: .serif,
+                  customFontName: "KohinoorDevanagari-Regular"),
         RoyalFont(baseTypingSize: 38, weight: .thin,      design: .default,    italic: false,
                   previewSize: 24, previewWeight: .thin,      previewDesign: .default)
     ]
@@ -126,28 +194,19 @@ struct StoryTextEditorView: View {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    // MARK: - URL detection (returns AttributedString with underlines on links)
-    private var attributedDisplay: AttributedString {
-        let nsStr = NSMutableAttributedString(string: text)
-        if let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) {
-            let nsRange = NSRange(location: 0, length: (text as NSString).length)
-            detector.enumerateMatches(in: text, options: [], range: nsRange) { match, _, _ in
-                guard let range = match?.range else { return }
-                nsStr.addAttributes([
-                    .underlineStyle: NSUnderlineStyle.single.rawValue,
-                    .underlineColor: UIColor.white
-                ], range: range)
-            }
-        }
-        return (try? AttributedString(nsStr, including: \.uiKit)) ?? AttributedString(text)
-    }
-
     // MARK: - Body
     var body: some View {
         ZStack {
+            // Background gradient — tap anywhere outside text area to dismiss keyboard
             activeGradient
                 .ignoresSafeArea()
                 .animation(.easeInOut(duration: 0.5), value: selectedGradient)
+                .contentShape(Rectangle())
+                .onTapGesture { isTextFocused = false }
+
+            // Floating dust-wind particle shimmer
+            DustOverlayView()
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 topBar
@@ -157,10 +216,6 @@ struct StoryTextEditorView: View {
                 bottomControls
             }
         }
-        // Tap anywhere to dismiss keyboard (fires alongside child gestures)
-        .simultaneousGesture(
-            TapGesture().onEnded { _ in isTextFocused = false }
-        )
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { isTextFocused = true }
             withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) { glowPulse = true }
@@ -269,30 +324,21 @@ struct StoryTextEditorView: View {
                     .allowsHitTesting(false)
             }
 
-            // TextField — transparent text; cursor visible via tint
+            // TextField — white text, cursor snaps to tap position naturally
             TextField("", text: $text, axis: .vertical)
                 .font(activeTypingFont)
-                .foregroundColor(.clear)
+                .foregroundColor(.white)
                 .multilineTextAlignment(.center)
                 .lineLimit(1...20)
                 .padding(.horizontal, 28)
                 .padding(.vertical, 16)
                 .tint(Color(hex: "#FFE35C"))
                 .focused($isTextFocused)
+                .autocorrectionDisabled(true)
+                .textInputAutocapitalization(.never)
                 .animation(.spring(response: 0.35, dampingFraction: 0.72), value: fontSizeMultiplier)
                 .animation(.spring(response: 0.3,  dampingFraction: 0.7),  value: selectedFont)
                 .animation(.spring(response: 0.25, dampingFraction: 0.65), value: textStyle)
-
-            // Attributed text overlay — white text + URL underlines
-            if !text.isEmpty {
-                Text(attributedDisplay)
-                    .font(activeTypingFont)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 28)
-                    .padding(.vertical, 16)
-                    .allowsHitTesting(false)
-            }
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
@@ -349,10 +395,6 @@ struct StoryTextEditorView: View {
                         // Shadow is drawn outside the tile bounds — parent padding keeps it visible
                         .shadow(color: isActive ? Color.white.opacity(0.70) : .clear,
                                 radius: 10, x: 0, y: 0)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(isActive ? Color.clear : Color.white.opacity(0.12), lineWidth: 1)
                 )
                 .scaleEffect(isActive ? 1.08 : 1.0)
         }
