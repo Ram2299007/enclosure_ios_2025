@@ -143,15 +143,20 @@ struct StoryPreviewView: View {
                     .padding(.leading, 10)
                     .padding(.trailing, 5)
 
-                    // Add to Story button
+                    // Send / Add to Story button
                     Button(action: handlePost) {
                         ZStack {
                             Circle()
                                 .fill(Color(hex: Constant.themeColor))
                                 .frame(width: 50, height: 50)
-                            Image(systemName: "plus")
-                                .font(.system(size: 22, weight: .semibold))
+                            Image("baseline_keyboard_double_arrow_right_24")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 26, height: 26)
                                 .foregroundColor(.white)
+                                .padding(.top, 4)
+                                .padding(.bottom, 8)
                         }
                     }
                     .buttonStyle(.plain)
@@ -161,7 +166,6 @@ struct StoryPreviewView: View {
                 .background(Color.black)
             }
         }
-        .ignoresSafeArea(.keyboard)
         .simultaneousGesture(
             TapGesture().onEnded { _ in hideKeyboard() }
         )
