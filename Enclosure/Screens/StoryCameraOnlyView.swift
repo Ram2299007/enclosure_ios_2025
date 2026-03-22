@@ -173,6 +173,15 @@ struct StoryCameraOnlyView: View {
             cameraManager.stopSession()
             timer?.invalidate()
         }
+        .onChange(of: showPreview) { isShowing in
+            if isShowing {
+                // Stop camera when preview opens to free resources
+                cameraManager.stopSession()
+            } else {
+                // Restart camera when returning from preview
+                cameraManager.setupCamera(isBackCamera: isBackCamera)
+            }
+        }
         .fullScreenCover(isPresented: $showPreview) {
             StoryPreviewView(assets: capturedAssets) { assets, caption in
                 onPost?(assets, caption)
@@ -191,13 +200,19 @@ struct StoryCameraOnlyView: View {
     }
 
     private func savePhotoToLibrary(image: UIImage) {
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        if status == .authorized || status == .limited {
+        let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+        switch status {
+        case .authorized, .limited:
             performSavePhoto(image: image)
-        } else if status == .notDetermined {
-            PHPhotoLibrary.requestAuthorization(for: .readWrite) { s in
-                if s == .authorized || s == .limited { self.performSavePhoto(image: image) }
+        case .notDetermined:
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { s in
+                if s == .authorized || s == .limited {
+                    self.performSavePhoto(image: image)
+                }
             }
+        default:
+            // Try anyway — PHPhotoLibrary will request if needed at system level
+            performSavePhoto(image: image)
         }
     }
 
@@ -208,7 +223,7 @@ struct StoryCameraOnlyView: View {
             placeholder = req.placeholderForCreatedAsset
         }) { success, _ in
             guard success, let id = placeholder?.localIdentifier else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 let result = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil)
                 if let asset = result.firstObject {
                     self.capturedAssets = [asset]
@@ -243,13 +258,18 @@ struct StoryCameraOnlyView: View {
     }
 
     private func saveVideoToLibrary(url: URL) {
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        if status == .authorized || status == .limited {
+        let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+        switch status {
+        case .authorized, .limited:
             performSaveVideo(url: url)
-        } else if status == .notDetermined {
-            PHPhotoLibrary.requestAuthorization(for: .readWrite) { s in
-                if s == .authorized || s == .limited { self.performSaveVideo(url: url) }
+        case .notDetermined:
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { s in
+                if s == .authorized || s == .limited {
+                    self.performSaveVideo(url: url)
+                }
             }
+        default:
+            performSaveVideo(url: url)
         }
     }
 
@@ -260,7 +280,7 @@ struct StoryCameraOnlyView: View {
             placeholder = req?.placeholderForCreatedAsset
         }) { success, _ in
             guard success, let id = placeholder?.localIdentifier else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 let result = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil)
                 if let asset = result.firstObject {
                     self.capturedAssets = [asset]
