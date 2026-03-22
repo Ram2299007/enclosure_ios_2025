@@ -9,26 +9,74 @@ private enum StoryTextStyle: CaseIterable {
     }
 }
 
-// MARK: - Steam / Fog Overlay (slow wispy smoke rising through gradient)
-private struct DustOverlayView: View {
+// MARK: - Night Wind Particle Effect
+private struct NightWindParticlesView: View {
     var body: some View {
         ZStack {
-            // Layer 1 — large slow fog blobs (primary smoke)
+            // Layer 1 — small sharp particles drifting with the wind (main effect)
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                Canvas { context, size in
+                    let t = timeline.date.timeIntervalSinceReferenceDate
+                    for i in 0..<60 {
+                        let fi = Double(i)
+
+                        // Speed varies per particle: fast foreground, slow background
+                        let speed = 0.048 + (fi * 0.0171).truncatingRemainder(dividingBy: 0.072)
+
+                        // Phase 0→1 = particle sweeps left to right
+                        let phase = (t * speed + fi * 0.16667).truncatingRemainder(dividingBy: 1.0)
+
+                        // X: crosses full width + slight sine wobble (turbulence)
+                        let x = phase * (size.width + 60) - 30 + sin(t * 0.28 + fi * 0.73) * 14
+
+                        // Y: evenly distributed rows, gentle up-down drift
+                        let yBase = (fi * 0.16667).truncatingRemainder(dividingBy: 1.0) * size.height
+                        let y = yBase + sin(t * 0.14 + fi * 1.41) * 20
+
+                        // Fade in/out at horizontal edges
+                        let edgeFade = min(phase / 0.07, 1.0) * min((1.0 - phase) / 0.07, 1.0)
+
+                        // Radius: 0.8 – 2.4 pt (small sharp dots)
+                        let radius = 0.8 + (fi * 0.52).truncatingRemainder(dividingBy: 1.6)
+
+                        // Twinkle: each particle shimmers at its own frequency
+                        let twinkleFreq = 1.0 + (fi * 0.29).truncatingRemainder(dividingBy: 1.6)
+                        let twinkle = 0.5 + 0.5 * sin(t * twinkleFreq + fi * 2.71)
+
+                        // Base opacity — kept subtle so content stays in focus
+                        let baseOpacity = 0.10 + (fi * 0.06).truncatingRemainder(dividingBy: 0.14)
+                        let opacity = edgeFade * baseOpacity * (0.5 + twinkle * 0.5)
+
+                        // Most white, occasional ice-blue for cool night feel
+                        let color: Color = (i % 7 == 0)
+                            ? Color(red: 0.6, green: 0.85, blue: 1.0)
+                            : Color.white
+
+                        context.opacity = max(0, min(1, opacity))
+                        context.fill(
+                            Path(ellipseIn: CGRect(x: x - radius, y: y - radius,
+                                                   width: radius * 2, height: radius * 2)),
+                            with: .color(color)
+                        )
+                    }
+                }
+            }
+
+            // Layer 2 — faint soft glow orbs for atmospheric depth
             TimelineView(.animation(minimumInterval: 1.0 / 12.0)) { timeline in
                 Canvas { context, size in
                     let t = timeline.date.timeIntervalSinceReferenceDate
-                    for i in 0..<12 {
+                    for i in 0..<10 {
                         let fi = Double(i)
-                        let speed = 0.005 + sin(fi * 2.9) * 0.002
-                        let phase = (t * speed + fi * 0.13).truncatingRemainder(dividingBy: 1.6)
-                        let rawY = 1.0 - (phase / 1.6)
-                        let y = rawY * size.height
-                        let x = (0.15 + sin(t * 0.018 + fi * 1.3) * 0.7) * size.width
-                        let fade = min(1.0, phase / 0.2) * max(0.0, 1.0 - (phase - 1.2) / 0.4)
-                        let opacity = fade * (0.08 + sin(fi * 2.1) * 0.03)
-                        let w = 90.0 + sin(fi * 3.7) * 40.0
-                        let h = 45.0 + sin(fi * 1.9) * 20.0
-                        context.opacity = max(0, opacity)
+                        let speed = 0.011 + (fi * 0.008).truncatingRemainder(dividingBy: 0.016)
+                        let phase = (t * speed + fi * 0.1).truncatingRemainder(dividingBy: 1.0)
+                        let x = phase * size.width + sin(t * 0.07 + fi * 1.2) * 35
+                        let y = (0.08 + (fi * 0.085).truncatingRemainder(dividingBy: 0.84)) * size.height
+                                + sin(t * 0.055 + fi * 0.94) * 45
+                        let edgeFade = min(phase / 0.12, 1.0) * min((1.0 - phase) / 0.12, 1.0)
+                        let w = 55.0 + sin(fi * 3.1) * 28
+                        let h = 28.0 + sin(fi * 2.2) * 13
+                        context.opacity = max(0, edgeFade * 0.030)
                         context.fill(
                             Path(ellipseIn: CGRect(x: x - w / 2, y: y - h / 2, width: w, height: h)),
                             with: .color(.white)
@@ -36,34 +84,8 @@ private struct DustOverlayView: View {
                     }
                 }
             }
-            .blur(radius: 30)
+            .blur(radius: 22)
             .blendMode(.screen)
-
-            // Layer 2 — smaller mid-speed wisps (detail)
-            TimelineView(.animation(minimumInterval: 1.0 / 15.0)) { timeline in
-                Canvas { context, size in
-                    let t = timeline.date.timeIntervalSinceReferenceDate
-                    for i in 0..<18 {
-                        let fi = Double(i)
-                        let speed = 0.008 + sin(fi * 4.1) * 0.003
-                        let phase = (t * speed + fi * 0.08).truncatingRemainder(dividingBy: 1.3)
-                        let rawY = 1.0 - (phase / 1.3)
-                        let y = rawY * size.height
-                        let x = (0.5 + sin(t * 0.025 + fi * 1.7) * 0.42) * size.width
-                        let fade = min(1.0, phase / 0.15) * max(0.0, 1.0 - (phase - 1.0) / 0.3)
-                        let opacity = fade * (0.06 + abs(sin(fi * 3.3)) * 0.03)
-                        let w = 40.0 + sin(fi * 5.1) * 18.0
-                        let h = 20.0 + sin(fi * 2.3) * 10.0
-                        context.opacity = max(0, opacity)
-                        context.fill(
-                            Path(ellipseIn: CGRect(x: x - w / 2, y: y - h / 2, width: w, height: h)),
-                            with: .color(.white)
-                        )
-                    }
-                }
-            }
-            .blur(radius: 14)
-            .blendMode(.softLight)
         }
         .allowsHitTesting(false)
     }
@@ -132,8 +154,9 @@ struct StoryTextEditorView: View {
     private let royalFonts: [RoyalFont] = [
         RoyalFont(baseTypingSize: 32, weight: .regular,   design: .serif,      italic: false,
                   previewSize: 19, previewWeight: .regular,   previewDesign: .serif),
-        RoyalFont(baseTypingSize: 30, weight: .bold,      design: .serif,      italic: false,
-                  previewSize: 18, previewWeight: .bold,      previewDesign: .serif),
+        RoyalFont(baseTypingSize: 30, weight: .regular,   design: .serif,      italic: false,
+                  previewSize: 18, previewWeight: .regular,   previewDesign: .serif,
+                  customFontName: "Gotu-Regular"),
         RoyalFont(baseTypingSize: 36, weight: .light,     design: .serif,      italic: false,
                   previewSize: 22, previewWeight: .light,     previewDesign: .serif),
         RoyalFont(baseTypingSize: 30, weight: .heavy,     design: .default,    italic: false,
@@ -204,8 +227,8 @@ struct StoryTextEditorView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { isTextFocused = false }
 
-            // Floating dust-wind particle shimmer
-            DustOverlayView()
+            // Night wind particle shimmer
+            NightWindParticlesView()
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
