@@ -46,6 +46,7 @@ struct StoryPhotoPicker: View {
     // Navigation
     @State private var showCameraView: Bool = false
     @State private var showPreview: Bool = false
+    @State private var showTextEditor: Bool = false
 
     // Header height for dropdown positioning
     @State private var headerHeight: CGFloat = 0
@@ -177,6 +178,13 @@ struct StoryPhotoPicker: View {
                 ))
             }
         }
+        // Text editor
+        .fullScreenCover(isPresented: $showTextEditor) {
+            StoryTextEditorView { assets, caption in
+                onPost?(assets, caption)
+                dismiss()
+            }
+        }
         // Camera
         .fullScreenCover(isPresented: $showCameraView) {
             StoryCameraOnlyView { assets, caption in
@@ -241,7 +249,7 @@ struct StoryPhotoPicker: View {
             VStack(spacing: 0) {
                 // ── Text + Camera cards (scroll with grid) ──
                 HStack(spacing: 12) {
-                    Button { /* future: text story */ } label: {
+                    Button { showTextEditor = true } label: {
                         VStack(spacing: 5) {
                             Image(systemName: "textformat")
                                 .font(.system(size: 20, weight: .regular))
