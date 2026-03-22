@@ -99,18 +99,23 @@ struct StoryPreviewView: View {
                 // 5 pt gap
                 Spacer().frame(height: 5)
 
-                // "My stories ↑" glass pill — left aligned
+                // "My stories ↑" glass pill — left aligned, gradient text
                 HStack {
                     HStack(spacing: 5) {
                         Text("My stories")
-                            .font(.custom("Inter18pt-Medium", size: 13))
-                            .foregroundColor(.white)
+                            .font(.custom("Inter18pt-SemiBold", size: 13))
                         Image(systemName: "arrow.up")
                             .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.white)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color(hex: Constant.themeColor), Color.purple, Color.pink],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
                     .background(.ultraThinMaterial, in: Capsule())
                     .padding(.leading, 12)
 

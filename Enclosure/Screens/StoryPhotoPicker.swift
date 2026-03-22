@@ -133,43 +133,6 @@ struct StoryPhotoPicker: View {
 
                 Divider()
 
-                // ── Text + Camera cards ──
-                if !permissionDenied {
-                    HStack(spacing: 12) {
-                        // Text card
-                        Button { /* future: text story */ } label: {
-                            VStack(spacing: 5) {
-                                Image(systemName: "textformat")
-                                    .font(.system(size: 20, weight: .regular))
-                                    .foregroundColor(Color("TextColor"))
-                                Text("Text")
-                                    .font(.custom("Inter18pt-Regular", size: 12))
-                                    .foregroundColor(Color("TextColor"))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 6)
-                            .liquidGlass(in: RoundedRectangle(cornerRadius: 14))
-                        }
-
-                        // Camera card
-                        Button { handleCameraButtonClick() } label: {
-                            VStack(spacing: 5) {
-                                Image(systemName: "camera")
-                                    .font(.system(size: 20, weight: .regular))
-                                    .foregroundColor(Color("TextColor"))
-                                Text("Camera")
-                                    .font(.custom("Inter18pt-Regular", size: 12))
-                                    .foregroundColor(Color("TextColor"))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 6)
-                            .liquidGlass(in: RoundedRectangle(cornerRadius: 14))
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
-                }
-
                 // ── Content ──
                 if permissionDenied {
                     permissionView
@@ -275,23 +238,58 @@ struct StoryPhotoPicker: View {
 
     private var gridView: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 2) {
-                ForEach(assets, id: \.localIdentifier) { asset in
-                    let selectionIndex = selectedAssets.firstIndex(where: { $0.localIdentifier == asset.localIdentifier })
-                    let isSelected = selectionIndex != nil
-
-                    AssetThumbnailCell(
-                        asset: asset,
-                        imageManager: imageManager,
-                        thumbnailSize: thumbnailSize,
-                        isSelected: isSelected,
-                        selectionNumber: isSelected ? (selectionIndex! + 1) : nil
-                    ) {
-                        toggleSelection(asset)
+            VStack(spacing: 0) {
+                // ── Text + Camera cards (scroll with grid) ──
+                HStack(spacing: 12) {
+                    Button { /* future: text story */ } label: {
+                        VStack(spacing: 5) {
+                            Image(systemName: "textformat")
+                                .font(.system(size: 20, weight: .regular))
+                                .foregroundColor(Color("TextColor"))
+                            Text("Text")
+                                .font(.custom("Inter18pt-Regular", size: 12))
+                                .foregroundColor(Color("TextColor"))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .liquidGlass(in: RoundedRectangle(cornerRadius: 14))
+                    }
+                    Button { handleCameraButtonClick() } label: {
+                        VStack(spacing: 5) {
+                            Image(systemName: "camera")
+                                .font(.system(size: 20, weight: .regular))
+                                .foregroundColor(Color("TextColor"))
+                            Text("Camera")
+                                .font(.custom("Inter18pt-Regular", size: 12))
+                                .foregroundColor(Color("TextColor"))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .liquidGlass(in: RoundedRectangle(cornerRadius: 14))
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+
+                // ── Photo/video grid ──
+                LazyVGrid(columns: columns, spacing: 2) {
+                    ForEach(assets, id: \.localIdentifier) { asset in
+                        let selectionIndex = selectedAssets.firstIndex(where: { $0.localIdentifier == asset.localIdentifier })
+                        let isSelected = selectionIndex != nil
+
+                        AssetThumbnailCell(
+                            asset: asset,
+                            imageManager: imageManager,
+                            thumbnailSize: thumbnailSize,
+                            isSelected: isSelected,
+                            selectionNumber: isSelected ? (selectionIndex! + 1) : nil
+                        ) {
+                            toggleSelection(asset)
+                        }
+                    }
+                }
+                .padding(.top, 2)
             }
-            .padding(.top, 2)
         }
     }
 
