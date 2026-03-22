@@ -23,11 +23,12 @@ private struct AlbumItem: Identifiable {
     var thumbnail: UIImage? = nil
 }
 
-// MARK: - Story Photo Picker (iOS native Photos-style)
+// MARK: - Story Photo Picker (iOS native Photos-style, multi-select)
 struct StoryPhotoPicker: View {
     @Environment(\.dismiss) private var dismiss
 
-    var onAssetSelected: ((PHAsset) -> Void)? = nil
+    /// Called with the final assets + caption after the user taps "Add to Story" in preview.
+    var onPost: (([PHAsset], String) -> Void)? = nil
 
     // Albums
     @State private var allAlbums: [AlbumItem] = []
@@ -39,8 +40,12 @@ struct StoryPhotoPicker: View {
     @State private var isLoading: Bool = true
     @State private var permissionDenied: Bool = false
 
-    // Camera
+    // Multi-select
+    @State private var selectedAssets: [PHAsset] = []
+
+    // Navigation
     @State private var showCameraView: Bool = false
+    @State private var showPreview: Bool = false
 
     // Header height for dropdown positioning
     @State private var headerHeight: CGFloat = 0
@@ -61,7 +66,7 @@ struct StoryPhotoPicker: View {
             VStack(spacing: 0) {
                 // ── Header ──
                 ZStack {
-                    // Center: Album picker button — arrow flips when open
+                    // Center: Album picker button
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             showAlbumDropdown.toggle()
@@ -81,8 +86,8 @@ struct StoryPhotoPicker: View {
                         .liquidGlass(in: Capsule())
                     }
 
-                    // Left: Cancel
                     HStack {
+                        // Left: Cancel
                         Button { dismiss() } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: 16, weight: .semibold))
@@ -90,17 +95,39 @@ struct StoryPhotoPicker: View {
                                 .frame(width: 36, height: 36)
                                 .liquidGlass(in: Circle())
                         }
+
                         Spacer()
+
+                        // Right: Next button (visible when assets are selected)
+                        if !selectedAssets.isEmpty {
+                            Button {
+                                showPreview = true
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text("Next")
+                                        .font(.system(size: 15, weight: .semibold))
+                                    Text("\(selectedAssets.count)")
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .frame(width: 20, height: 20)
+                                        .background(Circle().fill(Color(hex: Constant.themeColor)))
+                                }
+                                .foregroundColor(Color(hex: Constant.themeColor))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .liquidGlass(in: Capsule())
+                            }
+                            .transition(.opacity.combined(with: .scale))
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 16)
                 .padding(.bottom, 12)
+                .animation(.easeInOut(duration: 0.2), value: selectedAssets.isEmpty)
                 .background(
                     GeometryReader { geo in
-                        Color.clear.onAppear {
-                            headerHeight = geo.size.height
-                        }
+                        Color.clear.onAppear { headerHeight = geo.size.height }
                     }
                 )
 
@@ -157,14 +184,12 @@ struct StoryPhotoPicker: View {
 
             // ── Album Dropdown Overlay ──
             if showAlbumDropdown {
-                // Dim background tap to dismiss
                 Color.black.opacity(0.3)
                     .ignoresSafeArea()
                     .onTapGesture {
                         withAnimation(.easeInOut(duration: 0.2)) { showAlbumDropdown = false }
                     }
 
-                // Dropdown list positioned below header
                 VStack(spacing: 0) {
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(spacing: 0) {
@@ -191,8 +216,15 @@ struct StoryPhotoPicker: View {
         }
         // Camera
         .fullScreenCover(isPresented: $showCameraView) {
-            StoryCameraOnlyView { assets, _ in
-                if let first = assets.first { onAssetSelected?(first) }
+            StoryCameraOnlyView { assets, caption in
+                onPost?(assets, caption)
+                dismiss()
+            }
+        }
+        // Preview
+        .fullScreenCover(isPresented: $showPreview) {
+            StoryPreviewView(assets: selectedAssets) { assets, caption in
+                onPost?(assets, caption)
                 dismiss()
             }
         }
@@ -245,9 +277,17 @@ struct StoryPhotoPicker: View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 2) {
                 ForEach(assets, id: \.localIdentifier) { asset in
-                    AssetThumbnailCell(asset: asset, imageManager: imageManager, thumbnailSize: thumbnailSize) {
-                        onAssetSelected?(asset)
-                        dismiss()
+                    let selectionIndex = selectedAssets.firstIndex(where: { $0.localIdentifier == asset.localIdentifier })
+                    let isSelected = selectionIndex != nil
+
+                    AssetThumbnailCell(
+                        asset: asset,
+                        imageManager: imageManager,
+                        thumbnailSize: thumbnailSize,
+                        isSelected: isSelected,
+                        selectionNumber: isSelected ? (selectionIndex! + 1) : nil
+                    ) {
+                        toggleSelection(asset)
                     }
                 }
             }
@@ -255,7 +295,20 @@ struct StoryPhotoPicker: View {
         }
     }
 
+    // MARK: - Selection
+
+    private func toggleSelection(_ asset: PHAsset) {
+        withAnimation(.easeInOut(duration: 0.15)) {
+            if let idx = selectedAssets.firstIndex(where: { $0.localIdentifier == asset.localIdentifier }) {
+                selectedAssets.remove(at: idx)
+            } else {
+                selectedAssets.append(asset)
+            }
+        }
+    }
+
     // MARK: - Camera Handler
+
     private func handleCameraButtonClick() {
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.impactOccurred()
@@ -295,7 +348,6 @@ struct StoryPhotoPicker: View {
                 let title = col.localizedTitle ?? "Album"
                 var item = AlbumItem(id: col.localIdentifier, collection: col,
                                      title: "\(title) (\(assets.count))", count: assets.count)
-                // Grab cover thumbnail
                 if let first = assets.firstObject {
                     let opts = PHImageRequestOptions()
                     opts.isSynchronous = true
@@ -388,11 +440,13 @@ private struct AlbumRow: View {
     }
 }
 
-// MARK: - Asset Thumbnail Cell
+// MARK: - Asset Thumbnail Cell (with multi-select overlay)
 private struct AssetThumbnailCell: View {
     let asset: PHAsset
     let imageManager: PHCachingImageManager
     let thumbnailSize: CGSize
+    let isSelected: Bool
+    let selectionNumber: Int?
     let onTap: () -> Void
 
     @State private var thumbnail: UIImage? = nil
@@ -401,6 +455,7 @@ private struct AssetThumbnailCell: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .bottomLeading) {
+                // Thumbnail
                 if let img = thumbnail {
                     Image(uiImage: img)
                         .resizable().scaledToFill()
@@ -411,6 +466,8 @@ private struct AssetThumbnailCell: View {
                         .frame(width: geo.size.width, height: geo.size.width)
                         .overlay(ProgressView().scaleEffect(0.7))
                 }
+
+                // Video badge
                 if isVideo {
                     HStack(spacing: 4) {
                         Image(systemName: "video.fill").font(.system(size: 10, weight: .semibold))
@@ -418,6 +475,31 @@ private struct AssetThumbnailCell: View {
                     }
                     .foregroundColor(.white).padding(.horizontal, 6).padding(.vertical, 4).shadow(radius: 2)
                 }
+
+                // Selection dim overlay
+                if isSelected {
+                    Color.black.opacity(0.25)
+                        .frame(width: geo.size.width, height: geo.size.width)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                // Selection number badge
+                ZStack {
+                    if isSelected, let num = selectionNumber {
+                        Circle()
+                            .fill(Color(hex: Constant.themeColor))
+                            .frame(width: 26, height: 26)
+                        Text("\(num)")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.white)
+                    } else {
+                        Circle()
+                            .stroke(Color.white, lineWidth: 2)
+                            .frame(width: 26, height: 26)
+                            .background(Circle().fill(Color.black.opacity(0.2)))
+                    }
+                }
+                .padding(6)
             }
             .contentShape(Rectangle())
             .onTapGesture { onTap() }

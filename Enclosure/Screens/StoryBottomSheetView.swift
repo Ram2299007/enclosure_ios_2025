@@ -108,9 +108,9 @@ struct StoryBottomSheetView: View {
         }
         .background(Color("BackgroundColor"))
         .fullScreenCover(isPresented: $showPhotoPicker) {
-            StoryPhotoPicker { asset in
-                // Handle selected PHAsset (image or video) here
-                print("Selected asset: \(asset.localIdentifier), type: \(asset.mediaType.rawValue)")
+            StoryPhotoPicker { assets, caption in
+                // TODO: upload assets + caption to story backend
+                print("Post story: \(assets.count) asset(s), caption: \(caption)")
             }
         }
     }

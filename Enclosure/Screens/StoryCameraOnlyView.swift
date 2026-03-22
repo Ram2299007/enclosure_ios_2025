@@ -6,7 +6,7 @@ import AVFoundation
 // Full-screen camera for story creation — photo capture + video recording only.
 // No gallery, no caption, no send button, no bottom sheet.
 struct StoryCameraOnlyView: View {
-    var onMediaSelected: (([PHAsset], String) -> Void)? = nil
+    var onPost: (([PHAsset], String) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var cameraManager = CameraManager()
@@ -18,6 +18,10 @@ struct StoryCameraOnlyView: View {
     @State private var recordingTime: TimeInterval = 0
     @State private var timer: Timer?
     @State private var isPressed = false
+
+    // Preview navigation
+    @State private var capturedAssets: [PHAsset] = []
+    @State private var showPreview = false
 
     var body: some View {
         ZStack {
@@ -169,6 +173,12 @@ struct StoryCameraOnlyView: View {
             cameraManager.stopSession()
             timer?.invalidate()
         }
+        .fullScreenCover(isPresented: $showPreview) {
+            StoryPreviewView(assets: capturedAssets) { assets, caption in
+                onPost?(assets, caption)
+                dismiss()
+            }
+        }
     }
 
     // MARK: - Capture Photo
@@ -201,8 +211,8 @@ struct StoryCameraOnlyView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 let result = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil)
                 if let asset = result.firstObject {
-                    self.onMediaSelected?([asset], "")
-                    self.dismiss()
+                    self.capturedAssets = [asset]
+                    self.showPreview = true
                 }
             }
         }
@@ -253,8 +263,8 @@ struct StoryCameraOnlyView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 let result = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil)
                 if let asset = result.firstObject {
-                    self.onMediaSelected?([asset], "")
-                    self.dismiss()
+                    self.capturedAssets = [asset]
+                    self.showPreview = true
                 }
             }
         }
