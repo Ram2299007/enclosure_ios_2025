@@ -45,6 +45,7 @@ struct StoryPhotoPicker: View {
     private let columns = [
         GridItem(.flexible(), spacing: 2),
         GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2),
         GridItem(.flexible(), spacing: 2)
     ]
     private let thumbnailSize = CGSize(width: 300, height: 300)
@@ -560,12 +561,8 @@ private struct AssetThumbnailCell: View {
                     .foregroundColor(.white)
             }
             .transition(.scale.combined(with: .opacity))
-        } else {
-            Circle()
-                .stroke(Color.white.opacity(0.8), lineWidth: 1.5)
-                .frame(width: 24, height: 24)
-                .background(Circle().fill(Color.black.opacity(0.25)))
         }
+        // Empty stroke hidden when nothing is selected
     }
 
     private func loadThumbnail(size: CGSize) {

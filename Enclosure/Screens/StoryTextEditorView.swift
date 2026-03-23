@@ -1,57 +1,29 @@
 import SwiftUI
 import Photos
 
-// MARK: - Text Style (B / Normal / I)
-private enum StoryTextStyle: CaseIterable {
-    case normal, bold, italic
-    var label: String {
-        switch self { case .normal: return "N"; case .bold: return "B"; case .italic: return "I" }
-    }
-}
-
 // MARK: - Night Wind Particle Effect
 private struct NightWindParticlesView: View {
     var body: some View {
         ZStack {
-            // Layer 1 — small sharp particles drifting with the wind (main effect)
             TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
                 Canvas { context, size in
                     let t = timeline.date.timeIntervalSinceReferenceDate
                     for i in 0..<60 {
                         let fi = Double(i)
-
-                        // Speed varies per particle: fast foreground, slow background
                         let speed = 0.048 + (fi * 0.0171).truncatingRemainder(dividingBy: 0.072)
-
-                        // Phase 0→1 = particle sweeps left to right
                         let phase = (t * speed + fi * 0.16667).truncatingRemainder(dividingBy: 1.0)
-
-                        // X: crosses full width + slight sine wobble (turbulence)
                         let x = phase * (size.width + 60) - 30 + sin(t * 0.28 + fi * 0.73) * 14
-
-                        // Y: evenly distributed rows, gentle up-down drift
                         let yBase = (fi * 0.16667).truncatingRemainder(dividingBy: 1.0) * size.height
                         let y = yBase + sin(t * 0.14 + fi * 1.41) * 20
-
-                        // Fade in/out at horizontal edges
                         let edgeFade = min(phase / 0.07, 1.0) * min((1.0 - phase) / 0.07, 1.0)
-
-                        // Radius: 0.8 – 2.4 pt (small sharp dots)
                         let radius = 0.8 + (fi * 0.52).truncatingRemainder(dividingBy: 1.6)
-
-                        // Twinkle: each particle shimmers at its own frequency
                         let twinkleFreq = 1.0 + (fi * 0.29).truncatingRemainder(dividingBy: 1.6)
                         let twinkle = 0.5 + 0.5 * sin(t * twinkleFreq + fi * 2.71)
-
-                        // Base opacity — kept subtle so content stays in focus
                         let baseOpacity = 0.10 + (fi * 0.06).truncatingRemainder(dividingBy: 0.14)
                         let opacity = edgeFade * baseOpacity * (0.5 + twinkle * 0.5)
-
-                        // Most white, occasional ice-blue for cool night feel
                         let color: Color = (i % 7 == 0)
                             ? Color(red: 0.6, green: 0.85, blue: 1.0)
                             : Color.white
-
                         context.opacity = max(0, min(1, opacity))
                         context.fill(
                             Path(ellipseIn: CGRect(x: x - radius, y: y - radius,
@@ -61,8 +33,6 @@ private struct NightWindParticlesView: View {
                     }
                 }
             }
-
-            // Layer 2 — faint soft glow orbs for atmospheric depth
             TimelineView(.animation(minimumInterval: 1.0 / 12.0)) { timeline in
                 Canvas { context, size in
                     let t = timeline.date.timeIntervalSinceReferenceDate
@@ -116,12 +86,12 @@ private struct RoyalFont {
         return Font.system(size: previewSize, weight: previewWeight, design: previewDesign)
     }
 
-    func typingUIFont(scale: CGFloat = 1.0, bold: Bool = false, forcedItalic: Bool = false) -> UIFont {
+    func typingUIFont(scale: CGFloat = 1.0) -> UIFont {
         let size = max(12, baseTypingSize * scale)
         if let name = customFontName {
             return UIFont(name: name, size: size) ?? UIFont.systemFont(ofSize: size)
         }
-        let uiWeight: UIFont.Weight = bold ? .bold : {
+        let uiWeight: UIFont.Weight = {
             switch weight {
             case .ultraLight: return .ultraLight
             case .thin:       return .thin
@@ -145,10 +115,22 @@ private struct RoyalFont {
         let base = UIFont.systemFont(ofSize: size, weight: uiWeight)
         var descriptor = base.fontDescriptor
         if let designed = descriptor.withDesign(systemDesign) { descriptor = designed }
-        if italic || forcedItalic {
+        if italic {
             descriptor = descriptor.withSymbolicTraits(.traitItalic) ?? descriptor
         }
         return UIFont(descriptor: descriptor, size: size)
+    }
+}
+
+// MARK: - Centered-Caret UITextView
+private class CenteredCaretTextView: UITextView {
+    override func caretRect(for position: UITextPosition) -> CGRect {
+        var rect = super.caretRect(for: position)
+        if (text ?? "").isEmpty {
+            let insetWidth = bounds.width - textContainerInset.left - textContainerInset.right
+            rect.origin.x = textContainerInset.left + (insetWidth - rect.width) / 2
+        }
+        return rect
     }
 }
 
@@ -156,6 +138,7 @@ private struct RoyalFont {
 private struct StoryTextView: UIViewRepresentable {
     @Binding var text: String
     var uiFont: UIFont
+    var textColor: UIColor
     var isEditing: Bool
     var onEditingChanged: (Bool) -> Void
 
@@ -166,32 +149,63 @@ private struct StoryTextView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
     func makeUIView(context: Context) -> UITextView {
-        let tv = UITextView()
+        let tv = CenteredCaretTextView()
         tv.backgroundColor = .clear
-        tv.textColor = .white
+        tv.textColor = textColor
         tv.textAlignment = .center
         tv.isScrollEnabled = false
         tv.delegate = context.coordinator
         tv.autocorrectionType = .no
         tv.autocapitalizationType = .none
-        tv.tintColor = UIColor(red: 1.0, green: 0.89, blue: 0.36, alpha: 1.0)
-        tv.textContainerInset = UIEdgeInsets(top: 16, left: 24, bottom: 16, right: 24)
+        tv.tintColor = cursorTint(for: textColor)
+        // Horizontal padding lives here so the view always fills full width
+        // and center alignment reliably places the cursor at screen center
+        tv.textContainerInset = UIEdgeInsets(top: 4, left: 28, bottom: 4, right: 28)
+        tv.textContainer.lineFragmentPadding = 0
+        tv.font = uiFont
         return tv
     }
 
     func updateUIView(_ uiView: UITextView, context: Context) {
+        context.coordinator.parent = self
+
+        // Sync text
         if !context.coordinator.isUpdating && uiView.text != text {
             context.coordinator.isUpdating = true
             uiView.text = text
             context.coordinator.applyLinkStyling(to: uiView)
             context.coordinator.isUpdating = false
         }
+
+        // Update text color + cursor tint
+        if uiView.textColor != textColor {
+            uiView.textColor = textColor
+            uiView.tintColor = cursorTint(for: textColor)
+            context.coordinator.applyLinkStyling(to: uiView)
+        }
+
+        // Smooth font cross-dissolve
         context.coordinator.updateFont(in: uiView, to: uiFont)
+
+        // Focus
         if isEditing && !uiView.isFirstResponder {
             uiView.becomeFirstResponder()
         } else if !isEditing && uiView.isFirstResponder {
             uiView.resignFirstResponder()
         }
+    }
+
+    // Wrap-content sizing: always fill full proposed width, wrap height
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        let w = proposal.width ?? UIScreen.main.bounds.width
+        let fitting = uiView.sizeThatFits(CGSize(width: w, height: .greatestFiniteMagnitude))
+        return CGSize(width: w, height: max(fitting.height, 44))
+    }
+
+    private func cursorTint(for color: UIColor) -> UIColor {
+        color == .black
+            ? UIColor.darkGray
+            : UIColor(red: 1.0, green: 0.89, blue: 0.36, alpha: 1.0)
     }
 
     class Coordinator: NSObject, UITextViewDelegate {
@@ -219,6 +233,23 @@ private struct StoryTextView: UIViewRepresentable {
             isUpdating = false
         }
 
+        func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            let current = textView.text ?? ""
+            let newText = (current as NSString).replacingCharacters(in: range, with: text)
+            if newText.components(separatedBy: "\n").count > 11 {
+                if !current.hasSuffix("...") {
+                    isUpdating = true
+                    let withDots = current + "..."
+                    textView.text = withDots
+                    parent.text = withDots
+                    applyLinkStyling(to: textView)
+                    isUpdating = false
+                }
+                return false
+            }
+            return true
+        }
+
         func textViewDidBeginEditing(_ textView: UITextView) { parent.onEditingChanged(true) }
         func textViewDidEndEditing(_ textView: UITextView)   { parent.onEditingChanged(false) }
 
@@ -226,27 +257,58 @@ private struct StoryTextView: UIViewRepresentable {
             let fullText = textView.text ?? ""
             let savedRange = textView.selectedRange
             let currentFont = textView.font ?? UIFont.systemFont(ofSize: 17)
+            let baseColor = textView.textColor ?? .white
+            let isLight = (baseColor == .black)
+            let linkColor: UIColor = isLight
+                ? .systemBlue
+                : UIColor(red: 0.65, green: 0.88, blue: 1.0, alpha: 1.0)
+
+            let paragraphStyle = NSMutableParagraphStyle()
+            paragraphStyle.alignment = .center
+
             let baseAttrs: [NSAttributedString.Key: Any] = [
                 .font: currentFont,
-                .foregroundColor: UIColor.white
+                .foregroundColor: baseColor,
+                .paragraphStyle: paragraphStyle
             ]
             let attrStr = NSMutableAttributedString(string: fullText, attributes: baseAttrs)
-            let nsRange = NSRange(fullText.startIndex..., in: fullText)
-            StoryTextView.linkDetector?
-                .matches(in: fullText, options: [], range: nsRange)
-                .forEach { match in
-                    attrStr.addAttributes([
-                        .underlineStyle: NSUnderlineStyle.single.rawValue,
-                        .underlineColor: UIColor(red: 0.65, green: 0.88, blue: 1.0, alpha: 1.0),
-                        .foregroundColor: UIColor(red: 0.65, green: 0.88, blue: 1.0, alpha: 1.0)
-                    ], range: match.range)
-                }
+            if !fullText.isEmpty {
+                let nsRange = NSRange(fullText.startIndex..., in: fullText)
+                StoryTextView.linkDetector?
+                    .matches(in: fullText, options: [], range: nsRange)
+                    .forEach { match in
+                        attrStr.addAttributes([
+                            .underlineStyle: NSUnderlineStyle.single.rawValue,
+                            .underlineColor: linkColor,
+                            .foregroundColor: linkColor
+                        ], range: match.range)
+                    }
+            }
             textView.attributedText = attrStr
             textView.selectedRange = savedRange
             textView.typingAttributes = [
                 .font: currentFont,
-                .foregroundColor: UIColor.white
+                .foregroundColor: baseColor,
+                .paragraphStyle: paragraphStyle
             ]
+        }
+    }
+}
+
+// MARK: - Background Selection
+private enum BgSelection: Equatable {
+    case gradient(Int)
+    case solid(Int)
+    var isSolid: Bool { if case .solid = self { return true }; return false }
+}
+
+// MARK: - Bottom Picker Tab
+private enum BottomPickerTab: CaseIterable {
+    case color, font
+    var icon: String {
+        switch self {
+        case .color: return "paintpalette.fill"
+        case .font:  return "textformat.size"
         }
     }
 }
@@ -257,15 +319,15 @@ struct StoryTextEditorView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
-    @State private var selectedGradient = 0
+    @State private var bgSelection: BgSelection = .gradient(0)
     @State private var selectedFont = 0
-    @State private var textStyle: StoryTextStyle = .normal
+    @State private var bottomTab: BottomPickerTab = .color
     @State private var isTextEditing: Bool = false
     @State private var showPreview = false
     @State private var capturedAssets: [PHAsset] = []
     @State private var glowPulse = false
 
-    // MARK: - 15 Rich Royal Gradients (3-stop deep colors)
+    // MARK: - 15 Rich Gradients
     private let gradients: [(name: String, colors: [Color])] = [
         ("Royal",    [Color(hex: "#0D1B40"), Color(hex: "#1A3A6E"), Color(hex: "#C9972A")]),
         ("Emerald",  [Color(hex: "#062215"), Color(hex: "#0B6E38"), Color(hex: "#1FCA6A")]),
@@ -284,7 +346,24 @@ struct StoryTextEditorView: View {
         ("Rose",     [Color(hex: "#2D0A1F"), Color(hex: "#8B2252"), Color(hex: "#FFB6C1")])
     ]
 
-    // MARK: - 15 Royal Fonts (system → supports Devanagari/Marathi/Hindi/all scripts)
+    // MARK: - Solid Colors
+    private let solidColors: [(name: String, color: Color)] = [
+        ("Black",   .black),
+        ("Red",     Color(hex: "#D32F2F")),
+        ("Orange",  Color(hex: "#F57C00")),
+        ("Amber",   Color(hex: "#FFC107")),
+        ("Green",   Color(hex: "#388E3C")),
+        ("Teal",    Color(hex: "#00796B")),
+        ("Blue",    Color(hex: "#1976D2")),
+        ("Indigo",  Color(hex: "#303F9F")),
+        ("Purple",  Color(hex: "#7B1FA2")),
+        ("Pink",    Color(hex: "#C2185B")),
+        ("Brown",   Color(hex: "#5D4037")),
+        ("Grey",    Color(hex: "#455A64")),
+        ("Navy",    Color(hex: "#0A1929"))
+    ]
+
+    // MARK: - 15 Royal Fonts
     private let royalFonts: [RoyalFont] = [
         RoyalFont(baseTypingSize: 32, weight: .regular,   design: .serif,      italic: false,
                   previewSize: 19, previewWeight: .regular,   previewDesign: .serif),
@@ -320,7 +399,7 @@ struct StoryTextEditorView: View {
                   previewSize: 24, previewWeight: .thin,      previewDesign: .default)
     ]
 
-    // MARK: - Dynamic font scale (shrinks as text grows)
+    // MARK: - Computed Properties
     private var fontSizeMultiplier: CGFloat {
         let newlineLines = text.components(separatedBy: "\n").count
         let wrapEstimate = max(0, text.count / 24)
@@ -334,25 +413,38 @@ struct StoryTextEditorView: View {
     }
 
     private var activeTypingFont: Font {
-        let base = royalFonts[selectedFont].typingFont(scale: fontSizeMultiplier)
-        switch textStyle {
-        case .normal: return base
-        case .bold:   return base.bold()
-        case .italic: return base.italic()
-        }
+        royalFonts[selectedFont].typingFont(scale: fontSizeMultiplier)
     }
 
     private var activeTypingUIFont: UIFont {
-        royalFonts[selectedFont].typingUIFont(
-            scale: fontSizeMultiplier,
-            bold: textStyle == .bold,
-            forcedItalic: textStyle == .italic
-        )
+        royalFonts[selectedFont].typingUIFont(scale: fontSizeMultiplier)
     }
 
-    private var activeGradient: LinearGradient {
-        LinearGradient(colors: gradients[selectedGradient].colors,
-                       startPoint: .topLeading, endPoint: .bottomTrailing)
+    // Light backgrounds need dark text + cursor
+    private var isLightBackground: Bool {
+        if case .solid(let i) = bgSelection {
+            return i == 3 // Amber
+        }
+        return false
+    }
+
+    private var contentColor: Color {
+        isLightBackground ? .black : .white
+    }
+
+    private var contentUIColor: UIColor {
+        isLightBackground ? .black : .white
+    }
+
+    @ViewBuilder
+    private var activeBackgroundView: some View {
+        switch bgSelection {
+        case .gradient(let i):
+            LinearGradient(colors: gradients[i].colors,
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .solid(let i):
+            solidColors[i].color
+        }
     }
 
     private var isPostEnabled: Bool {
@@ -362,25 +454,29 @@ struct StoryTextEditorView: View {
     // MARK: - Body
     var body: some View {
         ZStack {
-            // Background gradient — tap anywhere outside text area to dismiss keyboard
-            activeGradient
+            // Background — tapping anywhere outside text dismisses keyboard
+            activeBackgroundView
                 .ignoresSafeArea()
-                .animation(.easeInOut(duration: 0.5), value: selectedGradient)
                 .contentShape(Rectangle())
                 .onTapGesture { isTextEditing = false }
+                .animation(.easeInOut(duration: 0.45), value: bgSelection)
 
-            // Night wind particle shimmer
-            NightWindParticlesView()
-                .ignoresSafeArea()
+            // Night wind particles — only for gradient backgrounds
+            if !bgSelection.isSolid {
+                NightWindParticlesView()
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+            }
 
             VStack(spacing: 0) {
                 topBar
-                Spacer()
+                Spacer(minLength: 20)
                 textInputArea
-                Spacer()
+                Spacer(minLength: 20)
                 bottomControls
             }
         }
+        .animation(.easeInOut(duration: 0.3), value: bgSelection.isSolid)
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { isTextEditing = true }
             withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) { glowPulse = true }
@@ -395,31 +491,31 @@ struct StoryTextEditorView: View {
 
     // MARK: - Top Bar
     private var topBar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Button(action: { dismiss() }) {
-                ZStack {
-                    Circle().fill(Color.black.opacity(0.35)).frame(width: 42, height: 42)
-                    Image(systemName: "xmark").font(.system(size: 15, weight: .bold)).foregroundColor(.white)
-                }
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 0.5))
             }
             .buttonStyle(.plain)
 
             Spacer()
-            styleToggle
+            pickerToggle
             Spacer()
 
             Button(action: handlePost) {
-                ZStack {
-                    Circle().fill(Color(hex: Constant.themeColor)).frame(width: 46, height: 46)
-                    Image("baseline_keyboard_double_arrow_right_24")
-                        .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 24, height: 24)
-                        .foregroundColor(.white)
-                        .padding(.top, 3)
-                        .padding(.bottom, 6)
-                }
+                Image("baseline_keyboard_double_arrow_right_24")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 22, height: 22)
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+                    .background(Color(hex: Constant.themeColor), in: Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 0.5))
             }
             .buttonStyle(.plain)
             .disabled(!isPostEnabled)
@@ -430,41 +526,46 @@ struct StoryTextEditorView: View {
         .padding(.top, 16)
     }
 
-    private var styleToggle: some View {
-        HStack(spacing: 0) {
-            ForEach(StoryTextStyle.allCases, id: \.self) { style in
-                let isActive = textStyle == style
+    // MARK: - Color / Font Toggle (glass capsule)
+    private var pickerToggle: some View {
+        HStack(spacing: 4) {
+            ForEach(BottomPickerTab.allCases, id: \.self) { tab in
+                let isActive = bottomTab == tab
                 Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.62)) { textStyle = style }
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.62)) { bottomTab = tab }
                 } label: {
-                    Text(style.label)
-                        .font(styleButtonFont(style))
-                        .foregroundColor(isActive ? Color.black : Color.white.opacity(0.85))
-                        .frame(width: 40, height: 36)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(isActive ? Color.white : Color.clear)
-                                .animation(.spring(response: 0.28, dampingFraction: 0.62), value: isActive)
-                        )
+                    Group {
+                        if tab == .color {
+                            Image(systemName: tab.icon)
+                                .symbolRenderingMode(.multicolor)
+                        } else {
+                            Image(systemName: tab.icon)
+                                .foregroundColor(.cyan)
+                        }
+                    }
+                    .font(.system(size: 20, weight: .medium))
+                    .frame(width: 48, height: 40)
+                    .background(
+                        isActive
+                            ? AnyShapeStyle(Color.white.opacity(0.15))
+                            : AnyShapeStyle(Color.clear)
+                    )
+                    .clipShape(Capsule())
+                    .opacity(isActive ? 1.0 : 0.4)
+                    .scaleEffect(isActive ? 1.05 : 1.0)
                 }
                 .buttonStyle(.plain)
+                .animation(.spring(response: 0.28, dampingFraction: 0.62), value: isActive)
             }
         }
-        .padding(3)
-        .background(RoundedRectangle(cornerRadius: 13).fill(Color.black.opacity(0.35)))
-    }
-
-    private func styleButtonFont(_ style: StoryTextStyle) -> Font {
-        switch style {
-        case .normal: return .system(size: 15, weight: .medium)
-        case .bold:   return .system(size: 15, weight: .black)
-        case .italic: return Font.system(size: 16, weight: .medium).italic()
-        }
+        .padding(4)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 0.5))
     }
 
     // MARK: - Text Input Area
     private var textInputArea: some View {
-        ZStack {
+        ZStack(alignment: .center) {
             // Pulsing glow halo when focused
             if isTextEditing {
                 Ellipse()
@@ -480,111 +581,168 @@ struct StoryTextEditorView: View {
                     .allowsHitTesting(false)
             }
 
-            // Placeholder
+            // Placeholder — centered, matches text view position
             if text.isEmpty {
-                Text("Start typing…")
+                Text("Start typing\u{2026}")
                     .font(activeTypingFont)
-                    .foregroundColor(.white.opacity(0.38))
+                    .foregroundColor(contentColor.opacity(0.38))
                     .multilineTextAlignment(.center)
                     .allowsHitTesting(false)
             }
 
-            // UITextView — smooth font transitions + auto URL underline
+            // UITextView — fills full width; horizontal insets set inside UITextView
             StoryTextView(
                 text: $text,
                 uiFont: activeTypingUIFont,
+                textColor: contentUIColor,
                 isEditing: isTextEditing,
                 onEditingChanged: { isTextEditing = $0 }
             )
+            .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity)
-        .contentShape(Rectangle())
-        .onTapGesture { isTextEditing = true }
     }
 
-    // MARK: - Bottom Controls
+    // MARK: - Bottom Controls (glass background)
     private var bottomControls: some View {
         VStack(spacing: 0) {
-            Rectangle().fill(Color.white.opacity(0.12)).frame(height: 0.5)
-
-            // Font tiles (no name, just "Aa") — extra vertical padding fixes shadow clipping
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(royalFonts.indices, id: \.self) { i in fontTile(i) }
+            Group {
+                if bottomTab == .color {
+                    colorPicker
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .leading).combined(with: .opacity),
+                            removal: .move(edge: .trailing).combined(with: .opacity)
+                        ))
+                } else {
+                    fontPicker
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .leading).combined(with: .opacity)
+                        ))
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 14)   // 14pt breathing room above & below for shadow + scale
             }
-            .frame(height: 80)
-
-            // Subtle separator between rows
-            Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5).padding(.horizontal, 20)
-
-            // Gradient circles
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(gradients.indices, id: \.self) { i in gradientCircle(i) }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-            }
-            .frame(height: 56)
-
-            Spacer().frame(height: 10)
+            .animation(.easeInOut(duration: 0.25), value: bottomTab)
         }
-        .background(.ultraThinMaterial)
+        .padding(.vertical, 6)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+        )
+        .padding(.horizontal, 10)
+        .padding(.bottom, 8)
     }
 
-    // Font tile — no name label, 50×50, shadow has room to breathe
-    @ViewBuilder
-    private func fontTile(_ i: Int) -> some View {
-        let isActive = selectedFont == i
-        Button {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.62)) { selectedFont = i }
-        } label: {
-            Text("Aa")
-                .font(royalFonts[i].previewFont)
-                .foregroundColor(isActive ? Color.black : Color.white.opacity(0.82))
-                .frame(width: 50, height: 50)
-                .background(
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(isActive ? Color.white : Color.black.opacity(0.28))
-                        // Shadow is drawn outside the tile bounds — parent padding keeps it visible
-                        .shadow(color: isActive ? Color.white.opacity(0.70) : .clear,
-                                radius: 10, x: 0, y: 0)
-                )
-                .scaleEffect(isActive ? 1.08 : 1.0)
+    // MARK: - Color Picker (gradients + solids)
+    private var colorPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(gradients.indices, id: \.self) { i in gradientCircle(i) }
+
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(Color.white.opacity(0.25))
+                    .frame(width: 1.5, height: 26)
+
+                ForEach(solidColors.indices, id: \.self) { i in solidCircle(i) }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
         }
-        .buttonStyle(.plain)
-        .animation(.spring(response: 0.28, dampingFraction: 0.62), value: isActive)
+        .frame(height: 60)
     }
 
-    // Gradient circle
+    // MARK: - Font Picker (transparent)
+    private var fontPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 14) {
+                ForEach(royalFonts.indices, id: \.self) { i in fontTile(i) }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+        }
+        .frame(height: 60)
+    }
+
+    // MARK: - Gradient Circle
     @ViewBuilder
     private func gradientCircle(_ i: Int) -> some View {
-        let isActive = selectedGradient == i
+        let isActive = bgSelection == .gradient(i)
         Button {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) { selectedGradient = i }
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) { bgSelection = .gradient(i) }
         } label: {
             ZStack {
                 Circle()
                     .fill(LinearGradient(colors: gradients[i].colors,
                                         startPoint: .topLeading, endPoint: .bottomTrailing))
                     .frame(width: 32, height: 32)
-                    .shadow(color: isActive ? Color.white.opacity(0.5) : .clear, radius: 8, x: 0, y: 0)
+                    .shadow(color: isActive ? Color.white.opacity(0.5) : .clear, radius: 8)
                 if isActive {
                     Circle().stroke(Color.white, lineWidth: 2.5).frame(width: 40, height: 40)
                     Circle().fill(Color.white).frame(width: 5, height: 5)
                 }
             }
-            .frame(width: 40, height: 40)
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
             .scaleEffect(isActive ? 1.1 : 1.0)
         }
         .buttonStyle(.plain)
         .animation(.spring(response: 0.28, dampingFraction: 0.62), value: isActive)
     }
 
-    // MARK: - Post: Render → Save → Preview
+    // MARK: - Solid Color Circle
+    @ViewBuilder
+    private func solidCircle(_ i: Int) -> some View {
+        let isActive = bgSelection == .solid(i)
+        let color = solidColors[i].color
+        Button {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.68)) { bgSelection = .solid(i) }
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(color)
+                    .frame(width: 32, height: 32)
+                    .overlay(
+                        Circle().stroke(Color.white.opacity(0.25), lineWidth: 0.5)
+                            .frame(width: 32, height: 32)
+                    )
+                    .shadow(color: isActive ? Color.white.opacity(0.5) : .clear, radius: 8)
+                if isActive {
+                    Circle().stroke(Color.white, lineWidth: 2.5).frame(width: 40, height: 40)
+                    Circle().fill(Color.white).frame(width: 5, height: 5)
+                }
+            }
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
+            .scaleEffect(isActive ? 1.1 : 1.0)
+        }
+        .buttonStyle(.plain)
+        .animation(.spring(response: 0.28, dampingFraction: 0.62), value: isActive)
+    }
+
+    // MARK: - Font Tile
+    @ViewBuilder
+    private func fontTile(_ i: Int) -> some View {
+        let isActive = selectedFont == i
+        Button {
+            withAnimation(.easeInOut(duration: 0.22)) { selectedFont = i }
+        } label: {
+            VStack(spacing: 4) {
+                Text("Aa")
+                    .font(royalFonts[i].previewFont)
+                    .foregroundColor(isActive ? .white : .white.opacity(0.4))
+                Circle()
+                    .fill(isActive ? Color.white : Color.clear)
+                    .frame(width: 4, height: 4)
+            }
+            .frame(width: 48, height: 50)
+            .contentShape(Rectangle())
+            .scaleEffect(isActive ? 1.12 : 1.0)
+        }
+        .buttonStyle(.plain)
+        .animation(.spring(response: 0.28, dampingFraction: 0.62), value: isActive)
+    }
+
+    // MARK: - Post: Render -> Save -> Preview
     private func handlePost() {
         isTextEditing = false
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { renderAndSave() }
@@ -600,11 +758,10 @@ struct StoryTextEditorView: View {
     @ViewBuilder
     private var renderCanvas: some View {
         ZStack {
-            LinearGradient(colors: gradients[selectedGradient].colors,
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            activeBackgroundView
             Text(text)
                 .font(activeTypingFont)
-                .foregroundColor(.white)
+                .foregroundColor(contentColor)
                 .multilineTextAlignment(.center)
                 .padding(40)
         }

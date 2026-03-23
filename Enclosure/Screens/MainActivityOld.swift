@@ -210,7 +210,7 @@ struct MainActivityOld: View {
         }.padding(.top, 0)
     }
 
-    @ViewBuilder
+   
     @ViewBuilder
     private var expandedHeaderContent: some View {
         if isVStackVisible {
