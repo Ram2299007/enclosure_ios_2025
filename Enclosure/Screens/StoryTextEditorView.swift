@@ -1,5 +1,4 @@
 import SwiftUI
-import Photos
 
 // MARK: - Night Wind Particle Effect
 private struct NightWindParticlesView: View {
@@ -315,7 +314,8 @@ private enum BottomPickerTab: CaseIterable {
 
 // MARK: - Story Text Editor
 struct StoryTextEditorView: View {
-    var onPost: (([PHAsset], String) -> Void)? = nil
+    // Called with (textContent, bgType, bgColor, gradStart, gradEnd) when user taps post
+    var onPost: ((String, String, String, String, String) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
@@ -323,8 +323,6 @@ struct StoryTextEditorView: View {
     @State private var selectedFont = 0
     @State private var bottomTab: BottomPickerTab = .color
     @State private var isTextEditing: Bool = false
-    @State private var showPreview = false
-    @State private var capturedAssets: [PHAsset] = []
     @State private var glowPulse = false
 
     // MARK: - 15 Rich Gradients
@@ -451,6 +449,27 @@ struct StoryTextEditorView: View {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    // Hex strings matching the gradients/solidColors arrays above (by index)
+    private let gradientStartHex = [
+        "#0D1B40","#062215","#3B0020","#020524","#1A0533","#1C1C2E","#1A0000",
+        "#002828","#1C1008","#0F172A","#2C1204","#001020","#1A0A00","#050505","#2D0A1F"
+    ]
+    private let gradientEndHex = [
+        "#C9972A","#1FCA6A","#E8A0A0","#1565C0","#E040FB","#0F3460","#C62828",
+        "#00BFA5","#F5C518","#2196F3","#D2691E","#00E5CC","#F39C12","#1A1A2E","#FFB6C1"
+    ]
+    private let solidHex = [
+        "#000000","#D32F2F","#F57C00","#FFC107","#388E3C","#00796B",
+        "#1976D2","#303F9F","#7B1FA2","#C2185B","#5D4037","#455A64","#0A1929"
+    ]
+
+    private var bgAPIParams: (bgType: String, bgColor: String, gradStart: String, gradEnd: String) {
+        switch bgSelection {
+        case .gradient(let i): return ("gradient", "", gradientStartHex[i], gradientEndHex[i])
+        case .solid(let i):    return ("solid", solidHex[i], "", "")
+        }
+    }
+
     // MARK: - Body
     var body: some View {
         ZStack {
@@ -481,12 +500,6 @@ struct StoryTextEditorView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { isTextEditing = true }
             withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) { glowPulse = true }
         }
-        .fullScreenCover(isPresented: $showPreview) {
-            StoryPreviewView(assets: capturedAssets) { assets, caption in
-                onPost?(assets, caption)
-                dismiss()
-            }
-        }
     }
 
     // MARK: - Top Bar
@@ -507,15 +520,18 @@ struct StoryTextEditorView: View {
             Spacer()
 
             Button(action: handlePost) {
-                Image("baseline_keyboard_double_arrow_right_24")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 22, height: 22)
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Color(hex: Constant.themeColor), in: Circle())
-                    .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 0.5))
+                ZStack {
+                    Circle()
+                        .fill(Color(hex: Constant.themeColor))
+                        .frame(width: 44, height: 44)
+                        .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 0.5))
+                    Image("baseline_keyboard_double_arrow_right_24")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 22, height: 22)
+                        .foregroundColor(.white)
+                }
             }
             .buttonStyle(.plain)
             .disabled(!isPostEnabled)
@@ -742,57 +758,18 @@ struct StoryTextEditorView: View {
         .animation(.spring(response: 0.28, dampingFraction: 0.62), value: isActive)
     }
 
-    // MARK: - Post: Render -> Save -> Preview
+    // MARK: - Post: hand off params to parent, dismiss immediately
     private func handlePost() {
+        guard isPostEnabled else { return }
         isTextEditing = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { renderAndSave() }
-    }
-
-    private func renderAndSave() {
-        let renderer = ImageRenderer(content: renderCanvas)
-        renderer.scale = UIScreen.main.scale
-        guard let image = renderer.uiImage else { return }
-        saveToPhotoLibrary(image: image)
-    }
-
-    @ViewBuilder
-    private var renderCanvas: some View {
-        ZStack {
-            activeBackgroundView
-            Text(text)
-                .font(activeTypingFont)
-                .foregroundColor(contentColor)
-                .multilineTextAlignment(.center)
-                .padding(40)
-        }
-        .frame(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)
-    }
-
-    private func saveToPhotoLibrary(image: UIImage) {
-        let doSave = {
-            var placeholder: PHObjectPlaceholder?
-            PHPhotoLibrary.shared().performChanges({
-                let req = PHAssetChangeRequest.creationRequestForAsset(from: image)
-                placeholder = req.placeholderForCreatedAsset
-            }) { success, _ in
-                guard success, let id = placeholder?.localIdentifier else { return }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    let result = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil)
-                    if let asset = result.firstObject {
-                        capturedAssets = [asset]
-                        showPreview = true
-                    }
-                }
-            }
-        }
-        let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
-        switch status {
-        case .authorized, .limited: doSave()
-        case .notDetermined:
-            PHPhotoLibrary.requestAuthorization(for: .addOnly) { s in
-                if s == .authorized || s == .limited { doSave() }
-            }
-        default: doSave()
-        }
+        let params = bgAPIParams
+        onPost?(
+            text.trimmingCharacters(in: .whitespacesAndNewlines),
+            params.bgType,
+            params.bgColor,
+            params.gradStart,
+            params.gradEnd
+        )
+        dismiss()
     }
 }

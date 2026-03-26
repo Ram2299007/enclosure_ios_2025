@@ -2461,6 +2461,186 @@ class ApiService {
             }
         }
     }
+
+    // MARK: - Upload Text Story
+    func uploadTextStory(
+        textContent: String,
+        bgType: String,
+        bgColor: String = "",
+        gradientStart: String = "",
+        gradientEnd: String = "",
+        completion: @escaping (Bool, String) -> Void
+    ) {
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !uid.isEmpty else { completion(false, "User not logged in"); return }
+
+        var params: [String: String] = [
+            "uid": uid,
+            "story_type": "text",
+            "text_content": textContent,
+            "bg_type": bgType
+        ]
+        if bgType == "solid" {
+            params["bg_color"] = bgColor
+        } else {
+            params["gradient_start"] = gradientStart
+            params["gradient_end"] = gradientEnd
+        }
+
+        let endpoint = Constant.baseURL + "index.php/Api_Controller/create_story"
+        print("📡 [uploadTextStory] Posting text story, bg_type=\(bgType)")
+
+        AF.request(endpoint, method: .post, parameters: params, encoding: URLEncoding.default)
+            .responseData { response in
+                let raw = response.data.flatMap({ String(data: $0, encoding: .utf8) }) ?? ""
+                print("📥 [uploadTextStory] HTTP \(response.response?.statusCode ?? 0): \(raw.prefix(200))")
+                guard !raw.isEmpty,
+                      let start = raw.range(of: "{"),
+                      let jsonData = String(raw[start.lowerBound...]).data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+                else { completion(false, "Server error"); return }
+                let ok = (json["success"] as? String) == "1"
+                let msg = json["message"] as? String ?? (ok ? "Story posted!" : "Upload failed")
+                print(ok ? "✅ [uploadTextStory] \(msg)" : "🔴 [uploadTextStory] \(msg)")
+                completion(ok, msg)
+            }
+    }
+
+    // MARK: - Upload Media Story
+    func uploadMediaStory(assets: [PHAsset], caption: String, progressHandler: ((Double) -> Void)? = nil, completion: @escaping (Bool, String) -> Void) {
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !uid.isEmpty else { completion(false, "User not logged in"); return }
+
+        let group = DispatchGroup()
+        var mediaItems: [(data: Data, mime: String, name: String)?] = Array(repeating: nil, count: assets.count)
+
+        for (i, asset) in assets.enumerated() {
+            group.enter()
+            if asset.mediaType == .image {
+                let opts = PHImageRequestOptions()
+                opts.deliveryMode = .highQualityFormat
+                opts.isNetworkAccessAllowed = true
+                PHImageManager.default().requestImage(
+                    for: asset,
+                    targetSize: PHImageManagerMaximumSize,
+                    contentMode: .default,
+                    options: opts
+                ) { image, _ in
+                    if let image = image, let data = image.jpegData(compressionQuality: 0.85) {
+                        mediaItems[i] = (data, "image/jpeg", "story_\(i).jpg")
+                    }
+                    group.leave()
+                }
+            } else if asset.mediaType == .video {
+                let opts = PHVideoRequestOptions()
+                opts.deliveryMode = .highQualityFormat
+                opts.isNetworkAccessAllowed = true
+                PHImageManager.default().requestAVAsset(forVideo: asset, options: opts) { avAsset, _, _ in
+                    let ts = Int(Date().timeIntervalSince1970)
+                    let exportURL = URL(fileURLWithPath: NSTemporaryDirectory())
+                        .appendingPathComponent("story_video_\(i)_\(ts).mp4")
+                    try? FileManager.default.removeItem(at: exportURL)
+                    guard let avAsset = avAsset,
+                          let exporter = AVAssetExportSession(asset: avAsset, presetName: AVAssetExportPresetMediumQuality)
+                    else { group.leave(); return }
+                    exporter.outputURL = exportURL
+                    exporter.outputFileType = .mp4
+                    exporter.exportAsynchronously {
+                        if exporter.status == .completed, let data = try? Data(contentsOf: exportURL) {
+                            mediaItems[i] = (data, "video/mp4", "story_video_\(i).mp4")
+                        }
+                        group.leave()
+                    }
+                }
+            } else {
+                group.leave()
+            }
+        }
+
+        group.notify(queue: .main) {
+            let valid = mediaItems.compactMap { $0 }
+            guard !valid.isEmpty else {
+                completion(false, "Failed to process media files")
+                return
+            }
+
+            let endpoint = Constant.baseURL + "index.php/Api_Controller/create_story"
+            print("📡 [uploadMediaStory] Uploading \(valid.count) file(s) to \(endpoint)")
+
+            AF.upload(multipartFormData: { form in
+                form.append(Data(uid.utf8), withName: "uid")
+                form.append(Data("media".utf8), withName: "story_type")
+                if !caption.isEmpty {
+                    form.append(Data(caption.utf8), withName: "caption")
+                }
+                for item in valid {
+                    form.append(item.data, withName: "media[]", fileName: item.name, mimeType: item.mime)
+                }
+            }, to: endpoint, method: .post)
+            .uploadProgress { progress in
+                progressHandler?(progress.fractionCompleted)
+            }
+            .responseData { response in
+                let raw = response.data.flatMap({ String(data: $0, encoding: .utf8) }) ?? ""
+                print("📥 [uploadMediaStory] HTTP \(response.response?.statusCode ?? 0)")
+                print("📥 [uploadMediaStory] Raw response: \(raw.prefix(500))")
+
+                guard !raw.isEmpty,
+                      let start = raw.range(of: "{"),
+                      let jsonData = String(raw[start.lowerBound...]).data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+                else {
+                    print("🔴 [uploadMediaStory] Could not parse JSON from response")
+                    completion(false, "Server error")
+                    return
+                }
+                let ok = (json["success"] as? String) == "1"
+                let msg = json["message"] as? String ?? (ok ? "Story posted!" : "Upload failed")
+                print(ok ? "✅ [uploadMediaStory] \(msg)" : "🔴 [uploadMediaStory] \(msg)")
+                completion(ok, msg)
+            }
+        }
+    }
+
+    // MARK: - Fetch My Stories
+    func fetchMyStories(completion: @escaping ([UserStory]) -> Void) {
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !uid.isEmpty else { completion([]); return }
+
+        let endpoint = Constant.baseURL + "index.php/Api_Controller/get_stories"
+        AF.request(endpoint, method: .post, parameters: ["uid": uid], encoding: URLEncoding.default)
+            .responseData { response in
+                let raw = response.data.flatMap({ String(data: $0, encoding: .utf8) }) ?? ""
+                guard !raw.isEmpty,
+                      let start   = raw.range(of: "{"),
+                      let jsonData = String(raw[start.lowerBound...]).data(using: .utf8),
+                      let json    = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                      (json["success"] as? String) == "1",
+                      let data    = json["data"] as? [[String: Any]]
+                else { completion([]); return }
+                completion(data.compactMap { UserStory(dict: $0) })
+            }
+    }
+
+    // MARK: - Delete Story
+    func deleteMyStory(storyId: String, completion: @escaping (Bool) -> Void) {
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !uid.isEmpty else { completion(false); return }
+
+        let endpoint = Constant.baseURL + "index.php/Api_Controller/delete_story"
+        AF.request(endpoint, method: .post,
+                   parameters: ["uid": uid, "story_id": storyId],
+                   encoding: URLEncoding.default)
+            .responseData { response in
+                let raw = response.data.flatMap({ String(data: $0, encoding: .utf8) }) ?? ""
+                guard !raw.isEmpty,
+                      let start   = raw.range(of: "{"),
+                      let jsonData = String(raw[start.lowerBound...]).data(using: .utf8),
+                      let json    = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+                else { completion(false); return }
+                completion((json["success"] as? String) == "1")
+            }
+    }
 }
 
 // MARK: - Send OTP Response Model

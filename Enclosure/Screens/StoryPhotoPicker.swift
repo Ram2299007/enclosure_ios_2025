@@ -27,6 +27,7 @@ private struct AlbumItem: Identifiable {
 struct StoryPhotoPicker: View {
     @Environment(\.dismiss) private var dismiss
     var onPost: (([PHAsset], String) -> Void)? = nil
+    var onTextPost: ((String, String, String, String, String) -> Void)? = nil
 
     @State private var allAlbums: [AlbumItem] = []
     @State private var selectedAlbumTitle: String = "All Photos"
@@ -117,7 +118,10 @@ struct StoryPhotoPicker: View {
             }
         }
         .fullScreenCover(isPresented: $showTextEditor) {
-            StoryTextEditorView { assets, caption in onPost?(assets, caption); dismiss() }
+            StoryTextEditorView { text, bgType, bgColor, gradStart, gradEnd in
+                onTextPost?(text, bgType, bgColor, gradStart, gradEnd)
+                dismiss()
+            }
         }
         .fullScreenCover(isPresented: $showCameraView) {
             StoryCameraOnlyView { assets, caption in onPost?(assets, caption); dismiss() }
