@@ -2462,6 +2462,17 @@ class ApiService {
         }
     }
 
+    // Strips any leading non-JSON bytes (e.g. PHP notices) then parses as [String: Any].
+    private func parseStoryResponse(_ data: Data?) -> [String: Any]? {
+        guard let raw = data.flatMap({ String(data: $0, encoding: .utf8) }),
+              !raw.isEmpty,
+              let start = raw.range(of: "{"),
+              let jsonData = String(raw[start.lowerBound...]).data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+        else { return nil }
+        return json
+    }
+
     // MARK: - Upload Text Story
     func uploadTextStory(
         textContent: String,
@@ -2491,17 +2502,12 @@ class ApiService {
         print("📡 [uploadTextStory] Posting text story, bg_type=\(bgType)")
 
         AF.request(endpoint, method: .post, parameters: params, encoding: URLEncoding.default)
-            .responseData { response in
-                let raw = response.data.flatMap({ String(data: $0, encoding: .utf8) }) ?? ""
-                print("📥 [uploadTextStory] HTTP \(response.response?.statusCode ?? 0): \(raw.prefix(200))")
-                guard !raw.isEmpty,
-                      let start = raw.range(of: "{"),
-                      let jsonData = String(raw[start.lowerBound...]).data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
-                else { completion(false, "Server error"); return }
+            .responseData { [weak self] response in
+                guard let json = self?.parseStoryResponse(response.data) else {
+                    completion(false, "Server error"); return
+                }
                 let ok = (json["success"] as? String) == "1"
                 let msg = json["message"] as? String ?? (ok ? "Story posted!" : "Upload failed")
-                print(ok ? "✅ [uploadTextStory] \(msg)" : "🔴 [uploadTextStory] \(msg)")
                 completion(ok, msg)
             }
     }
@@ -2533,11 +2539,13 @@ class ApiService {
                     group.leave()
                 }
             } else if asset.mediaType == .video {
-                // Step 1: grab thumbnail frame from the video PHAsset
+                let inner = DispatchGroup()
+
+                // Thumbnail frame — must complete before outer group.leave()
+                inner.enter()
                 let thumbOpts = PHImageRequestOptions()
                 thumbOpts.deliveryMode = .highQualityFormat
                 thumbOpts.isNetworkAccessAllowed = true
-                thumbOpts.isSynchronous = false
                 PHImageManager.default().requestImage(
                     for: asset,
                     targetSize: CGSize(width: 720, height: 1280),
@@ -2547,9 +2555,11 @@ class ApiService {
                     if let image = image, let data = image.jpegData(compressionQuality: 0.80) {
                         thumbnailItems[i] = (data, "image/jpeg", "story_thumb_\(i).jpg")
                     }
+                    inner.leave()
                 }
 
-                // Step 2: export the full video
+                // Full video export
+                inner.enter()
                 let videoOpts = PHVideoRequestOptions()
                 videoOpts.deliveryMode = .highQualityFormat
                 videoOpts.isNetworkAccessAllowed = true
@@ -2560,8 +2570,8 @@ class ApiService {
                     try? FileManager.default.removeItem(at: exportURL)
                     guard let avAsset = avAsset,
                           let exporter = AVAssetExportSession(asset: avAsset, presetName: AVAssetExportPresetMediumQuality)
-                    else { group.leave(); return }
-                    exporter.outputURL  = exportURL
+                    else { inner.leave(); return }
+                    exporter.outputURL      = exportURL
                     exporter.outputFileType = .mp4
                     exporter.exportAsynchronously {
                         if exporter.status == .completed, let data = try? Data(contentsOf: exportURL) {
@@ -2569,9 +2579,11 @@ class ApiService {
                         } else {
                             print("🔴 [uploadMediaStory] Video export failed: \(exporter.error?.localizedDescription ?? "unknown")")
                         }
-                        group.leave()
+                        inner.leave()
                     }
                 }
+
+                inner.notify(queue: .global()) { group.leave() }
             } else {
                 group.leave()
             }
@@ -2617,23 +2629,12 @@ class ApiService {
             .uploadProgress { progress in
                 progressHandler?(progress.fractionCompleted)
             }
-            .responseData { response in
-                let raw = response.data.flatMap({ String(data: $0, encoding: .utf8) }) ?? ""
-                print("📥 [uploadMediaStory] HTTP \(response.response?.statusCode ?? 0)")
-                print("📥 [uploadMediaStory] Raw response: \(raw.prefix(500))")
-
-                guard !raw.isEmpty,
-                      let start = raw.range(of: "{"),
-                      let jsonData = String(raw[start.lowerBound...]).data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
-                else {
-                    print("🔴 [uploadMediaStory] Could not parse JSON from response")
-                    completion(false, "Server error")
-                    return
+            .responseData { [weak self] response in
+                guard let json = self?.parseStoryResponse(response.data) else {
+                    completion(false, "Server error"); return
                 }
                 let ok = (json["success"] as? String) == "1"
                 let msg = json["message"] as? String ?? (ok ? "Story posted!" : "Upload failed")
-                print(ok ? "✅ [uploadMediaStory] \(msg)" : "🔴 [uploadMediaStory] \(msg)")
                 completion(ok, msg)
             }
         }
@@ -2646,14 +2647,10 @@ class ApiService {
 
         let endpoint = Constant.baseURL + "index.php/Api_Controller/get_stories"
         AF.request(endpoint, method: .post, parameters: ["uid": uid], encoding: URLEncoding.default)
-            .responseData { response in
-                let raw = response.data.flatMap({ String(data: $0, encoding: .utf8) }) ?? ""
-                guard !raw.isEmpty,
-                      let start   = raw.range(of: "{"),
-                      let jsonData = String(raw[start.lowerBound...]).data(using: .utf8),
-                      let json    = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+            .responseData { [weak self] response in
+                guard let json = self?.parseStoryResponse(response.data),
                       (json["success"] as? String) == "1",
-                      let data    = json["data"] as? [[String: Any]]
+                      let data = json["data"] as? [[String: Any]]
                 else { completion([]); return }
                 completion(data.compactMap { UserStory(dict: $0) })
             }
@@ -2666,14 +2663,10 @@ class ApiService {
 
         let endpoint = Constant.baseURL + "index.php/Api_Controller/get_contact_stories"
         AF.request(endpoint, method: .post, parameters: ["uid": uid], encoding: URLEncoding.default)
-            .responseData { response in
-                let raw = response.data.flatMap({ String(data: $0, encoding: .utf8) }) ?? ""
-                guard !raw.isEmpty,
-                      let start    = raw.range(of: "{"),
-                      let jsonData = String(raw[start.lowerBound...]).data(using: .utf8),
-                      let json     = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+            .responseData { [weak self] response in
+                guard let json = self?.parseStoryResponse(response.data),
                       (json["success"] as? String) == "1",
-                      let data     = json["data"] as? [[String: Any]]
+                      let data = json["data"] as? [[String: Any]]
                 else { completion([]); return }
                 completion(data.compactMap { ContactStoryGroup(dict: $0) })
             }
@@ -2688,13 +2681,10 @@ class ApiService {
         AF.request(endpoint, method: .post,
                    parameters: ["uid": uid, "story_id": storyId],
                    encoding: URLEncoding.default)
-            .responseData { response in
-                let raw = response.data.flatMap({ String(data: $0, encoding: .utf8) }) ?? ""
-                guard !raw.isEmpty,
-                      let start   = raw.range(of: "{"),
-                      let jsonData = String(raw[start.lowerBound...]).data(using: .utf8),
-                      let json    = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
-                else { completion(false); return }
+            .responseData { [weak self] response in
+                guard let json = self?.parseStoryResponse(response.data) else {
+                    completion(false); return
+                }
                 completion((json["success"] as? String) == "1")
             }
     }

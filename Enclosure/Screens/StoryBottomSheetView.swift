@@ -22,11 +22,7 @@ struct StoryBottomSheetView: View {
             return pct > 0 ? "Posting stories... \(pct)%" : "Posting stories..."
         }
         if let posted = uploadManager.lastPostedAt {
-            let diff = now.timeIntervalSince(posted)
-            if diff < 60    { return "just now" }
-            if diff < 3600  { return "\(Int(diff / 60))m ago" }
-            if diff < 86400 { return "\(Int(diff / 3600))h ago" }
-            return "\(Int(diff / 86400))d ago"
+            return relativeTime(from: posted)
         }
         return "Tap to add story"
     }
@@ -126,7 +122,6 @@ struct StoryBottomSheetView: View {
                         // Add-more button at the far left — matches story card size
                         Button { showPhotoPicker = true } label: {
                             ZStack {
-                                // Profile pic fills the card
                                 CachedAsyncImage(url: URL(string: myProfileImageURL)) { image in
                                     image.resizable().scaledToFill()
                                 } placeholder: {
@@ -135,10 +130,8 @@ struct StoryBottomSheetView: View {
                                 .frame(width: 110, height: 170)
                                 .clipped()
 
-                                // Dark overlay so the + icon reads clearly
                                 Color.black.opacity(0.35)
 
-                                // Plus icon centered
                                 ZStack {
                                     Circle()
                                         .fill(Color(hex: Constant.themeColor))
