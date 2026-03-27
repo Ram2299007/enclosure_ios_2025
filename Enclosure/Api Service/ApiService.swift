@@ -2659,6 +2659,26 @@ class ApiService {
             }
     }
 
+    // MARK: - Fetch Contact Stories
+    func fetchContactStories(completion: @escaping ([ContactStoryGroup]) -> Void) {
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !uid.isEmpty else { completion([]); return }
+
+        let endpoint = Constant.baseURL + "index.php/Api_Controller/get_contact_stories"
+        AF.request(endpoint, method: .post, parameters: ["uid": uid], encoding: URLEncoding.default)
+            .responseData { response in
+                let raw = response.data.flatMap({ String(data: $0, encoding: .utf8) }) ?? ""
+                guard !raw.isEmpty,
+                      let start    = raw.range(of: "{"),
+                      let jsonData = String(raw[start.lowerBound...]).data(using: .utf8),
+                      let json     = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                      (json["success"] as? String) == "1",
+                      let data     = json["data"] as? [[String: Any]]
+                else { completion([]); return }
+                completion(data.compactMap { ContactStoryGroup(dict: $0) })
+            }
+    }
+
     // MARK: - Delete Story
     func deleteMyStory(storyId: String, completion: @escaping (Bool) -> Void) {
         let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""

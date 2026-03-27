@@ -173,19 +173,25 @@ struct StoryBottomSheetView: View {
                 .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isExpanded)
             }
 
-            Spacer()
-                .frame(maxWidth: .infinity)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    if isExpanded && hasStories {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                            isExpanded = false
+            // ── Contact stories feed ────────────────────────────────────
+            if !uploadManager.contactStoryGroups.isEmpty {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        ForEach(uploadManager.contactStoryGroups) { group in
+                            contactStoryRow(group)
+                            Divider().padding(.leading, 78)
                         }
                     }
                 }
+            } else {
+                Spacer()
+            }
         }
         .background(Color("BackgroundColor"))
-        .onAppear { uploadManager.fetchMyStories() }
+        .onAppear {
+            uploadManager.fetchMyStories()
+            uploadManager.fetchContactStories()
+        }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { date in
             now = date
         }
@@ -328,5 +334,90 @@ struct StoryBottomSheetView: View {
         .frame(width: 110, height: 170)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: Constant.themeColor), lineWidth: 1.5))
+    }
+
+    // MARK: - Contact story row
+
+    @ViewBuilder
+    private func contactStoryRow(_ group: ContactStoryGroup) -> some View {
+        HStack(spacing: 14) {
+            // Avatar with theme-colour ring
+            ZStack {
+                Circle()
+                    .stroke(Color(hex: Constant.themeColor), lineWidth: 2.5)
+                    .frame(width: 58, height: 58)
+                CachedAsyncImage(url: group.photoURL) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    Image("inviteimg").resizable().scaledToFill()
+                }
+                .frame(width: 54, height: 54)
+                .clipShape(Circle())
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(group.fullName)
+                    .font(.custom("Inter18pt-SemiBold", size: 15))
+                    .foregroundColor(Color("TextColor"))
+
+                // Time ago from most recent story
+                if let date = group.latestDate {
+                    Text(relativeTime(from: date))
+                        .font(.custom("Inter18pt-Medium", size: 12))
+                        .foregroundColor(Color(hex: Constant.themeColor))
+                }
+            }
+
+            Spacer()
+
+            // Preview thumbnails (up to 3)
+            HStack(spacing: -10) {
+                ForEach(group.stories.prefix(3)) { story in
+                    storyMiniThumb(story)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func storyMiniThumb(_ story: UserStory) -> some View {
+        ZStack {
+            if story.storyType == "media", let url = story.firstThumbnailURL {
+                CachedAsyncImage(url: url) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    Color(hex: Constant.themeColor).opacity(0.25)
+                }
+            } else if story.storyType == "media" {
+                Color.black
+                Image(systemName: "play.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white)
+            } else {
+                textStoryBackground(story)
+                if !story.textContent.isEmpty {
+                    Text(story.textContent)
+                        .font(.custom("Inter18pt-Medium", size: 7))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                        .padding(2)
+                }
+            }
+        }
+        .frame(width: 40, height: 56)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color("BackgroundColor"), lineWidth: 1.5))
+    }
+
+    // Relative time helper for contact rows
+    private func relativeTime(from date: Date) -> String {
+        let diff = now.timeIntervalSince(date)
+        if diff < 60    { return "just now" }
+        if diff < 3600  { return "\(Int(diff / 60))m ago" }
+        if diff < 86400 { return "\(Int(diff / 3600))h ago" }
+        return "\(Int(diff / 86400))d ago"
     }
 }

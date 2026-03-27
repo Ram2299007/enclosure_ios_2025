@@ -58,6 +58,34 @@ struct StoryMediaItem {
     }
 }
 
+// MARK: - Contact Story Group
+struct ContactStoryGroup: Identifiable {
+    let id: String          // uid of the contact
+    let fullName: String
+    let photo: String
+    let stories: [UserStory]
+
+    /// Profile photo full URL
+    var photoURL: URL? {
+        guard !photo.isEmpty else { return nil }
+        let full = photo.hasPrefix("http") ? photo : Constant.baseURL + photo
+        return URL(string: full)
+    }
+
+    /// Most recent story's createdDate (for "Xm ago" badge)
+    var latestDate: Date? { stories.first?.createdDate }
+
+    init?(dict: [String: Any]) {
+        guard let uid = dict["uid"] as? String else { return nil }
+        self.id       = uid
+        self.fullName = dict["full_name"] as? String ?? ""
+        self.photo    = dict["photo"]     as? String ?? ""
+        let raw = dict["stories"] as? [[String: Any]] ?? []
+        self.stories  = raw.compactMap { UserStory(dict: $0) }
+        guard !self.stories.isEmpty else { return nil }
+    }
+}
+
 // MARK: - Story Upload Manager
 // Singleton — state persists even when StoryBottomSheetView is dismissed/recreated.
 final class StoryUploadManager: ObservableObject {
@@ -68,6 +96,7 @@ final class StoryUploadManager: ObservableObject {
     @Published var progress: Double = 0.0   // 0.0 → 1.0
     @Published var lastPostedAt: Date? = nil
     @Published var myStories: [UserStory] = []
+    @Published var contactStoryGroups: [ContactStoryGroup] = []
 
     // MARK: - Date parsing (server uses "yyyy-MM-dd HH:mm:ss" UTC)
     static func parseServerDate(_ str: String) -> Date? {
@@ -87,6 +116,14 @@ final class StoryUploadManager: ObservableObject {
                 if let date = stories.first?.createdDate {
                     self?.lastPostedAt = date
                 }
+            }
+        }
+    }
+
+    func fetchContactStories() {
+        ApiService.shared.fetchContactStories { [weak self] groups in
+            DispatchQueue.main.async {
+                self?.contactStoryGroups = groups
             }
         }
     }
