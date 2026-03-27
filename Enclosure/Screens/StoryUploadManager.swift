@@ -12,6 +12,7 @@ struct UserStory: Identifiable {
     let gradientEnd: String
     let mediaItems: [StoryMediaItem]
     let createdAt: String
+    let viewsCount: Int
 
     init?(dict: [String: Any]) {
         guard let id = dict["id"] as? String else { return nil }
@@ -25,6 +26,8 @@ struct UserStory: Identifiable {
         self.createdAt     = dict["created_at"]      as? String ?? ""
         let raw = dict["media_items"] as? [[String: Any]] ?? []
         self.mediaItems = raw.compactMap { StoryMediaItem(dict: $0) }
+        self.viewsCount    = dict["views_count"] as? Int
+                          ?? Int(dict["views_count"] as? String ?? "") ?? 0
     }
 
     /// Parsed server date — used for the real-time "5m ago" timer.

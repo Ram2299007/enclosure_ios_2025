@@ -6,7 +6,8 @@ struct StoryBottomSheetView: View {
     @ObservedObject private var uploadManager = StoryUploadManager.shared
     @State private var showPhotoPicker = false
     @State private var now = Date()
-    @State private var isExpanded = true   // collapse / expand the cards section
+    @State private var isExpanded = true   // collapse / expand My Stories cards
+    @State private var collapsedContacts: Set<String> = []  // contacts NOT here are expanded
 
     private var myProfileImageURL: String {
         UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
@@ -34,7 +35,7 @@ struct StoryBottomSheetView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // ── Top header ──────────────────────────────────────────────
+            // ── Top header (sticky) ──────────────────────────────────────
             HStack {
                 Text("Stories")
                     .font(.custom("Inter18pt-Bold", size: 24))
@@ -49,135 +50,149 @@ struct StoryBottomSheetView: View {
             .padding(.horizontal, 16)
             .padding(.top, 20)
             .padding(.bottom, 12)
+            .background(Color("BackgroundColor"))
 
-            // ── My Stories row (tap to expand / collapse when stories exist) ──
-            HStack(spacing: 14) {
-                // Profile picture — + badge only when no stories
-                ZStack(alignment: .bottomTrailing) {
-                    profileImage(size: 56)
-                        .overlay(Circle().stroke(Color(hex: Constant.themeColor), lineWidth: 2))
-                    if !hasStories {
-                        plusBadge
-                    }
-                }
-                .onTapGesture {
-                    if hasStories {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                            isExpanded.toggle()
+            // ── Scrollable content ───────────────────────────────────────
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 0) {
+
+                    // My Stories row
+                    HStack(spacing: 14) {
+                        ZStack(alignment: .bottomTrailing) {
+                            profileImage(size: 56)
+                                .overlay(Circle().stroke(Color(hex: Constant.themeColor), lineWidth: 2))
+                            if !hasStories { plusBadge }
                         }
-                    } else {
-                        showPhotoPicker = true
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("My Stories")
-                        .font(.custom("Inter18pt-SemiBold", size: 16))
-                        .foregroundColor(Color(hex: Constant.themeColor))
-                    Text(subtitleText)
-                        .font(.custom("Inter18pt-Medium", size: 13))
-                        .foregroundColor(subtitleColor)
-                        .animation(.easeInOut(duration: 0.2), value: subtitleText)
-                }
-
-                Spacer()
-
-                // Chevron — only shown when stories exist
-                if hasStories {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(Color(hex: Constant.themeColor))
-                        .rotationEffect(.degrees(isExpanded ? 0 : -90))
-                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isExpanded)
-                        .padding(.trailing, 4)
-                }
-
-                Button { } label: {
-                    Image("setting")
-                        .renderingMode(.template)
-                        .resizable().scaledToFit()
-                        .frame(width: 24, height: 24)
-                        .foregroundColor(colorScheme == .dark ? .white : .black)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity)
-            .background(Color(hex: Constant.themeColor).opacity(0.15))
-            .contentShape(Rectangle())
-            .onTapGesture {
-                if hasStories {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        isExpanded.toggle()
-                    }
-                } else {
-                    showPhotoPicker = true
-                }
-            }
-
-            // ── Story cards (expandable) ────────────────────────────────
-            if hasStories {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        // Add-more button at the far left — matches story card size
-                        Button { showPhotoPicker = true } label: {
-                            ZStack {
-                                CachedAsyncImage(url: URL(string: myProfileImageURL)) { image in
-                                    image.resizable().scaledToFill()
-                                } placeholder: {
-                                    Image("inviteimg").resizable().scaledToFill()
-                                }
-                                .frame(width: 110, height: 170)
-                                .clipped()
-
-                                Color.black.opacity(0.35)
-
-                                ZStack {
-                                    Circle()
-                                        .fill(Color(hex: Constant.themeColor))
-                                        .frame(width: 36, height: 36)
-                                    Image(systemName: "plus")
-                                        .font(.system(size: 18, weight: .bold))
-                                        .foregroundColor(.white)
-                                }
+                        .onTapGesture {
+                            if hasStories {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) { isExpanded.toggle() }
+                            } else {
+                                showPhotoPicker = true
                             }
-                            .frame(width: 110, height: 170)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: Constant.themeColor), lineWidth: 1.5))
-                        }
-                        .buttonStyle(BorderlessButtonStyle())
-
-                        // One card per story (each asset was uploaded separately)
-                        ForEach(uploadManager.myStories) { story in
-                            storyCard(story)
                         }
 
-                        // Uploading placeholder card
-                        if uploadManager.isUploading {
-                            uploadingCard
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("My Stories")
+                                .font(.custom("Inter18pt-SemiBold", size: 16))
+                                .foregroundColor(Color(hex: Constant.themeColor))
+                            Text(subtitleText)
+                                .font(.custom("Inter18pt-Medium", size: 13))
+                                .foregroundColor(subtitleColor)
+                                .animation(.easeInOut(duration: 0.2), value: subtitleText)
+                        }
+
+                        Spacer()
+
+                        if hasStories {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(Color(hex: Constant.themeColor))
+                                .rotationEffect(.degrees(isExpanded ? 0 : -90))
+                                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isExpanded)
+                                .padding(.trailing, 4)
+                        }
+
+                        Button { } label: {
+                            Image("setting")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 24, height: 24)
+                                .foregroundColor(colorScheme == .dark ? .white : .black)
                         }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                }
-                .background(Color(hex: Constant.themeColor).opacity(0.07))
-                .frame(height: isExpanded ? nil : 0, alignment: .top)
-                .clipped()
-                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isExpanded)
-            }
-
-            // ── Contact stories feed ────────────────────────────────────
-            if !uploadManager.contactStoryGroups.isEmpty {
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 0) {
-                        ForEach(uploadManager.contactStoryGroups) { group in
-                            contactStoryRow(group)
-                            Divider().padding(.leading, 78)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity)
+                    .background(Color(hex: Constant.themeColor).opacity(0.15))
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if hasStories {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) { isExpanded.toggle() }
+                        } else {
+                            showPhotoPicker = true
                         }
                     }
+
+                    // My Stories cards
+                    if hasStories {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                Button { showPhotoPicker = true } label: {
+                                    ZStack {
+                                        CachedAsyncImage(url: URL(string: myProfileImageURL)) { image in
+                                            image.resizable().scaledToFill()
+                                        } placeholder: {
+                                            Image("inviteimg").resizable().scaledToFill()
+                                        }
+                                        .frame(width: 80, height: 120)
+                                        .clipped()
+
+                                        Color.black.opacity(0.35)
+
+                                        ZStack {
+                                            Circle()
+                                                .fill(Color(hex: Constant.themeColor))
+                                                .frame(width: 28, height: 28)
+                                            Image(systemName: "plus")
+                                                .font(.system(size: 14, weight: .bold))
+                                                .foregroundColor(.white)
+                                        }
+                                    }
+                                    .frame(width: 80, height: 120)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: Constant.themeColor), lineWidth: 1.5))
+                                }
+                                .buttonStyle(BorderlessButtonStyle())
+
+                                ForEach(uploadManager.myStories) { story in
+                                    storyCard(story, width: 80, height: 120)
+                                }
+
+                                if uploadManager.isUploading { uploadingCard }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                        }
+                        .background(Color(hex: Constant.themeColor).opacity(0.07))
+                        .frame(height: isExpanded ? nil : 0, alignment: .top)
+                        .clipped()
+                        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isExpanded)
+                    }
+
+                    // Contact stories
+                    ForEach(uploadManager.contactStoryGroups) { group in
+                        let isOpen = !collapsedContacts.contains(group.id)
+
+                        contactStoryRow(group, isOpen: isOpen)
+                            .background(Color(hex: Constant.themeColor).opacity(0.15))
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                    if isOpen {
+                                        collapsedContacts.insert(group.id)
+                                    } else {
+                                        collapsedContacts.remove(group.id)
+                                    }
+                                }
+                            }
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(group.stories) { story in
+                                    storyCard(story, showDelete: false, width: 80, height: 120)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                        }
+                        .background(Color(hex: Constant.themeColor).opacity(0.07))
+                        .frame(height: isOpen ? nil : 0, alignment: .top)
+                        .clipped()
+                        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isOpen)
+
+                        Divider().padding(.leading, 78)
+                    }
                 }
-            } else {
-                Spacer()
             }
         }
         .background(Color("BackgroundColor"))
@@ -227,7 +242,7 @@ struct StoryBottomSheetView: View {
     // MARK: - Story card
 
     @ViewBuilder
-    private func storyCard(_ story: UserStory) -> some View {
+    private func storyCard(_ story: UserStory, showDelete: Bool = true, width: CGFloat = 110, height: CGFloat = 170) -> some View {
         ZStack {
             // Background — thumbnail for media, colour/gradient for text
             Group {
@@ -238,13 +253,12 @@ struct StoryBottomSheetView: View {
                         Color(hex: Constant.themeColor).opacity(0.25)
                     }
                 } else if story.storyType == "media" {
-                    // Video with no thumbnail yet — dark placeholder
                     Color.black
                 } else {
                     textStoryBackground(story)
                 }
             }
-            .frame(width: 110, height: 170)
+            .frame(width: width, height: height)
             .clipped()
 
             // Play icon overlay for video stories
@@ -253,46 +267,68 @@ struct StoryBottomSheetView: View {
                 ZStack {
                     Circle()
                         .fill(Color.black.opacity(0.5))
-                        .frame(width: 36, height: 36)
+                        .frame(width: 28, height: 28)
                     Image(systemName: "play.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundColor(.white)
                         .offset(x: 1)
                 }
             }
 
-            // Delete button — top trailing
-            VStack {
-                HStack {
-                    Spacer()
-                    Button { uploadManager.deleteStory(id: story.id) } label: {
-                        ZStack {
-                            Circle().fill(Color.black.opacity(0.45)).frame(width: 26, height: 26)
-                            Image(systemName: "xmark")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.white)
+            // Delete button — top trailing (own stories only)
+            if showDelete {
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button { uploadManager.deleteStory(id: story.id) } label: {
+                            ZStack {
+                                Circle().fill(Color.black.opacity(0.45)).frame(width: 26, height: 26)
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                            .padding(6)
                         }
-                        .padding(6)
+                        .buttonStyle(BorderlessButtonStyle())
                     }
-                    .buttonStyle(BorderlessButtonStyle())
+                    Spacer()
                 }
-                Spacer()
             }
 
             // Text preview for text stories
             if story.storyType == "text", !story.textContent.isEmpty {
                 Text(story.textContent)
-                    .font(.custom("Inter18pt-SemiBold", size: 11))
+                    .font(.custom("Inter18pt-SemiBold", size: showDelete ? 11 : 9))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                     .lineLimit(4)
                     .padding(.horizontal, 6)
                     .shadow(color: .black.opacity(0.6), radius: 2)
             }
+
+            // Eye icon + views count — bottom center, own stories only
+            if showDelete {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 3) {
+                        Image(systemName: "eye.fill")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(.white)
+                        Text("\(story.viewsCount)")
+                            .font(.custom("Inter18pt-Medium", size: 9))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color.black.opacity(0.4))
+                    .clipShape(Capsule())
+                    .padding(.bottom, 6)
+                }
+            }
         }
-        .frame(width: 110, height: 170)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: Constant.themeColor), lineWidth: 1.5))
+        .frame(width: width, height: height)
+        .clipShape(RoundedRectangle(cornerRadius: showDelete ? 14 : 10))
+        .overlay(RoundedRectangle(cornerRadius: showDelete ? 14 : 10).stroke(Color(hex: Constant.themeColor), lineWidth: 1.5))
     }
 
     @ViewBuilder
@@ -324,15 +360,15 @@ struct StoryBottomSheetView: View {
                 }
             }
         }
-        .frame(width: 110, height: 170)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: Constant.themeColor), lineWidth: 1.5))
+        .frame(width: 80, height: 120)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: Constant.themeColor), lineWidth: 1.5))
     }
 
     // MARK: - Contact story row
 
     @ViewBuilder
-    private func contactStoryRow(_ group: ContactStoryGroup) -> some View {
+    private func contactStoryRow(_ group: ContactStoryGroup, isOpen: Bool) -> some View {
         HStack(spacing: 14) {
             // Avatar with theme-colour ring
             ZStack {
@@ -350,59 +386,50 @@ struct StoryBottomSheetView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(group.fullName)
-                    .font(.custom("Inter18pt-SemiBold", size: 15))
-                    .foregroundColor(Color("TextColor"))
+                    .font(.custom("Inter18pt-SemiBold", size: 16))
+                    .foregroundColor(Color(hex: Constant.themeColor))
 
-                // Time ago from most recent story
                 if let date = group.latestDate {
                     Text(relativeTime(from: date))
-                        .font(.custom("Inter18pt-Medium", size: 12))
+                        .font(.custom("Inter18pt-Medium", size: 13))
                         .foregroundColor(Color(hex: Constant.themeColor))
                 }
             }
 
             Spacer()
 
-            // Preview thumbnails (up to 3)
-            HStack(spacing: -10) {
-                ForEach(group.stories.prefix(3)) { story in
-                    storyMiniThumb(story)
+            // Chevron
+            Image(systemName: "chevron.down")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(Color(hex: Constant.themeColor))
+                .rotationEffect(.degrees(isOpen ? 0 : -90))
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isOpen)
+                .padding(.trailing, 4)
+
+            // 3-dot menu button (same design as MainActivityOld)
+            Menu {
+                Button(role: .destructive) { } label: {
+                    Label("Mute Stories", systemImage: "bell.slash")
                 }
+                Button { } label: {
+                    Label("View Profile", systemImage: "person.circle")
+                }
+                Button(role: .destructive) { } label: {
+                    Label("Hide Stories", systemImage: "eye.slash")
+                }
+            } label: {
+                VStack(spacing: 3) {
+                    Circle().fill(Color("menuPointColor")).frame(width: 4, height: 4)
+                    Circle().fill(Color(hex: Constant.themeColor)).frame(width: 4, height: 4)
+                    Circle().fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255)).frame(width: 4, height: 4)
+                }
+                .frame(width: 24, height: 24)
             }
+            .buttonStyle(BorderlessButtonStyle())
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .contentShape(Rectangle())
-    }
-
-    @ViewBuilder
-    private func storyMiniThumb(_ story: UserStory) -> some View {
-        ZStack {
-            if story.storyType == "media", let url = story.firstThumbnailURL {
-                CachedAsyncImage(url: url) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    Color(hex: Constant.themeColor).opacity(0.25)
-                }
-            } else if story.storyType == "media" {
-                Color.black
-                Image(systemName: "play.fill")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white)
-            } else {
-                textStoryBackground(story)
-                if !story.textContent.isEmpty {
-                    Text(story.textContent)
-                        .font(.custom("Inter18pt-Medium", size: 7))
-                        .foregroundColor(.white)
-                        .lineLimit(2)
-                        .padding(2)
-                }
-            }
-        }
-        .frame(width: 40, height: 56)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color("BackgroundColor"), lineWidth: 1.5))
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
     }
 
     // Relative time helper for contact rows
