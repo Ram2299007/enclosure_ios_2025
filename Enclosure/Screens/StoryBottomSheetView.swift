@@ -152,6 +152,7 @@ struct StoryBottomSheetView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 14))
                             .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: Constant.themeColor), lineWidth: 1.5))
                         }
+                        .buttonStyle(BorderlessButtonStyle())
 
                         // One card per story (each asset was uploaded separately)
                         ForEach(uploadManager.myStories) { story in
@@ -170,11 +171,6 @@ struct StoryBottomSheetView: View {
                 .frame(height: isExpanded ? nil : 0, alignment: .top)
                 .clipped()
                 .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isExpanded)
-                .onTapGesture {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        isExpanded = false
-                    }
-                }
             }
 
             Spacer()
@@ -242,12 +238,29 @@ struct StoryBottomSheetView: View {
                     } placeholder: {
                         Color(hex: Constant.themeColor).opacity(0.25)
                     }
+                } else if story.storyType == "media" {
+                    // Video with no thumbnail yet — dark placeholder
+                    Color.black
                 } else {
                     textStoryBackground(story)
                 }
             }
             .frame(width: 110, height: 170)
             .clipped()
+
+            // Play icon overlay for video stories
+            if story.storyType == "media",
+               story.mediaItems.first?.mediaType == "video" {
+                ZStack {
+                    Circle()
+                        .fill(Color.black.opacity(0.5))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                        .offset(x: 1)
+                }
+            }
 
             // Delete button — top trailing
             VStack {
@@ -262,6 +275,7 @@ struct StoryBottomSheetView: View {
                         }
                         .padding(6)
                     }
+                    .buttonStyle(BorderlessButtonStyle())
                 }
                 Spacer()
             }

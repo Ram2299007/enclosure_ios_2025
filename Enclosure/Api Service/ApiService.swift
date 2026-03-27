@@ -2512,7 +2512,8 @@ class ApiService {
         guard !uid.isEmpty else { completion(false, "User not logged in"); return }
 
         let group = DispatchGroup()
-        var mediaItems: [(data: Data, mime: String, name: String)?] = Array(repeating: nil, count: assets.count)
+        var mediaItems:     [(data: Data, mime: String, name: String)?] = Array(repeating: nil, count: assets.count)
+        var thumbnailItems: [(data: Data, mime: String, name: String)?] = Array(repeating: nil, count: assets.count)
 
         for (i, asset) in assets.enumerated() {
             group.enter()
@@ -2532,10 +2533,27 @@ class ApiService {
                     group.leave()
                 }
             } else if asset.mediaType == .video {
-                let opts = PHVideoRequestOptions()
-                opts.deliveryMode = .highQualityFormat
-                opts.isNetworkAccessAllowed = true
-                PHImageManager.default().requestAVAsset(forVideo: asset, options: opts) { avAsset, _, _ in
+                // Step 1: grab thumbnail frame from the video PHAsset
+                let thumbOpts = PHImageRequestOptions()
+                thumbOpts.deliveryMode = .highQualityFormat
+                thumbOpts.isNetworkAccessAllowed = true
+                thumbOpts.isSynchronous = false
+                PHImageManager.default().requestImage(
+                    for: asset,
+                    targetSize: CGSize(width: 720, height: 1280),
+                    contentMode: .aspectFill,
+                    options: thumbOpts
+                ) { image, _ in
+                    if let image = image, let data = image.jpegData(compressionQuality: 0.80) {
+                        thumbnailItems[i] = (data, "image/jpeg", "story_thumb_\(i).jpg")
+                    }
+                }
+
+                // Step 2: export the full video
+                let videoOpts = PHVideoRequestOptions()
+                videoOpts.deliveryMode = .highQualityFormat
+                videoOpts.isNetworkAccessAllowed = true
+                PHImageManager.default().requestAVAsset(forVideo: asset, options: videoOpts) { avAsset, _, _ in
                     let ts = Int(Date().timeIntervalSince1970)
                     let exportURL = URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("story_video_\(i)_\(ts).mp4")
@@ -2543,11 +2561,13 @@ class ApiService {
                     guard let avAsset = avAsset,
                           let exporter = AVAssetExportSession(asset: avAsset, presetName: AVAssetExportPresetMediumQuality)
                     else { group.leave(); return }
-                    exporter.outputURL = exportURL
+                    exporter.outputURL  = exportURL
                     exporter.outputFileType = .mp4
                     exporter.exportAsynchronously {
                         if exporter.status == .completed, let data = try? Data(contentsOf: exportURL) {
                             mediaItems[i] = (data, "video/mp4", "story_video_\(i).mp4")
+                        } else {
+                            print("🔴 [uploadMediaStory] Video export failed: \(exporter.error?.localizedDescription ?? "unknown")")
                         }
                         group.leave()
                     }
@@ -2558,14 +2578,22 @@ class ApiService {
         }
 
         group.notify(queue: .main) {
-            let valid = mediaItems.compactMap { $0 }
-            guard !valid.isEmpty else {
+            // Build ordered pairs so thumbnail index matches media index
+            var orderedMedia:     [(data: Data, mime: String, name: String)] = []
+            var orderedThumbnails:[(data: Data, mime: String, name: String)?] = []
+            for i in 0..<assets.count {
+                guard let m = mediaItems[i] else { continue }
+                orderedMedia.append(m)
+                orderedThumbnails.append(thumbnailItems[i])
+            }
+
+            guard !orderedMedia.isEmpty else {
                 completion(false, "Failed to process media files")
                 return
             }
 
             let endpoint = Constant.baseURL + "index.php/Api_Controller/create_story"
-            print("📡 [uploadMediaStory] Uploading \(valid.count) file(s) to \(endpoint)")
+            print("📡 [uploadMediaStory] Uploading \(orderedMedia.count) file(s) to \(endpoint)")
 
             AF.upload(multipartFormData: { form in
                 form.append(Data(uid.utf8), withName: "uid")
@@ -2573,8 +2601,17 @@ class ApiService {
                 if !caption.isEmpty {
                     form.append(Data(caption.utf8), withName: "caption")
                 }
-                for item in valid {
+                for item in orderedMedia {
                     form.append(item.data, withName: "media[]", fileName: item.name, mimeType: item.mime)
+                }
+                // Upload thumbnail alongside video (index-matched)
+                for thumb in orderedThumbnails {
+                    if let t = thumb {
+                        form.append(t.data, withName: "thumbnail[]", fileName: t.name, mimeType: t.mime)
+                    } else {
+                        // No thumbnail for this slot (image) — send empty placeholder so indices stay aligned
+                        form.append(Data(), withName: "thumbnail[]", fileName: "", mimeType: "application/octet-stream")
+                    }
                 }
             }, to: endpoint, method: .post)
             .uploadProgress { progress in

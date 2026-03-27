@@ -30,12 +30,16 @@ struct UserStory: Identifiable {
     /// Parsed server date — used for the real-time "5m ago" timer.
     var createdDate: Date? { StoryUploadManager.parseServerDate(createdAt) }
 
-    /// Full URL for the first thumbnail (falls back to media URL if no thumbnail).
+    /// Full URL for the first displayable thumbnail.
+    /// For images: thumbnailURL → mediaURL. For videos: thumbnailURL only (mp4 can't be shown as image).
     var firstThumbnailURL: URL? {
-        guard storyType == "media" else { return nil }
-        let path = mediaItems.first.map { m in
-            m.thumbnailURL.isEmpty ? m.mediaURL : m.thumbnailURL
-        } ?? ""
+        guard storyType == "media", let item = mediaItems.first else { return nil }
+        let path: String
+        if item.mediaType == "video" {
+            path = item.thumbnailURL   // only use thumbnail; don't fall back to .mp4
+        } else {
+            path = item.thumbnailURL.isEmpty ? item.mediaURL : item.thumbnailURL
+        }
         guard !path.isEmpty else { return nil }
         let full = path.hasPrefix("http") ? path : Constant.baseURL + path
         return URL(string: full)
