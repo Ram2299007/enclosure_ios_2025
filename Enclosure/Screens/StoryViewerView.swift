@@ -21,8 +21,12 @@ struct StoryViewerView: View {
     @State private var videoDuration: Double = 0
     @State private var now = Date()
     @State private var showViewersSheet = false
+    // Tracks which story IDs have already been marked seen this session
+    @State private var seenStoryIds: Set<String> = []
 
     private let tickInterval: Double = 1.0 / 60.0
+    // Mark as seen after this many seconds of actual (unpaused) viewing
+    private let seenThreshold: Double = 1.0
     private let imageDuration: Double = 5.0
 
     private var safeAreaTop: CGFloat {
@@ -163,7 +167,9 @@ struct StoryViewerView: View {
             now = date
         }
         .sheet(isPresented: $showViewersSheet) {
-            StoryViewersSheet(story: currentStory)
+            if let story = currentStory {
+                StoryViewersSheet(storyId: story.id, viewsCount: story.viewsCount)
+            }
         }
         .ignoresSafeArea()
     }
@@ -384,13 +390,26 @@ struct StoryViewerView: View {
             if d.isFinite && d > 0 {
                 videoDuration = d
                 elapsed = t
+                markSeenIfNeeded(story: story, elapsed: t)
                 if t >= d - 0.1 { goToNext() }
             }
             return
         }
 
         elapsed += tickInterval
+        if let story = currentStory {
+            markSeenIfNeeded(story: story, elapsed: elapsed)
+        }
         if elapsed >= currentDuration { goToNext() }
+    }
+
+    // Call mark_story_seen API once, only for other people's stories, after seenThreshold seconds
+    private func markSeenIfNeeded(story: UserStory, elapsed: Double) {
+        guard !isOwnStory,
+              elapsed >= seenThreshold,
+              !seenStoryIds.contains(story.id) else { return }
+        seenStoryIds.insert(story.id)
+        ApiService.shared.markStorySeen(storyId: story.id)
     }
 
     // MARK: - Navigation
@@ -461,11 +480,28 @@ struct StoryViewerView: View {
     }
 }
 
-// MARK: - Story Viewers / Comments Bottom Sheet
+// MARK: - Story Viewers / Replies Bottom Sheet
+
+private struct StoryViewerRow: Identifiable {
+    let id: String
+    let name: String
+    let photo: String
+    let seenAt: String
+
+    var photoURL: URL? {
+        guard !photo.isEmpty else { return nil }
+        let full = photo.hasPrefix("http") ? photo : Constant.baseURL + photo
+        return URL(string: full)
+    }
+}
 
 private struct StoryViewersSheet: View {
-    let story: UserStory?
+    let storyId: String
+    let viewsCount: Int
+
     @State private var selectedTab = 0
+    @State private var viewers: [StoryViewerRow] = []
+    @State private var isLoading = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -495,31 +531,68 @@ private struct StoryViewersSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.hidden)
+        .onAppear { loadViewers() }
+    }
+
+    private func loadViewers() {
+        isLoading = true
+        ApiService.shared.fetchStoryViewers(storyId: storyId) { data in
+            DispatchQueue.main.async {
+                isLoading = false
+                viewers = data.compactMap { dict -> StoryViewerRow? in
+                    guard let id = dict["viewer_uid"] as? String else { return nil }
+                    return StoryViewerRow(
+                        id: id,
+                        name: dict["full_name"] as? String ?? "Unknown",
+                        photo: dict["photo"] as? String ?? "",
+                        seenAt: dict["seen_at"] as? String ?? ""
+                    )
+                }
+            }
+        }
     }
 
     // MARK: Seen By tab
 
     private var seenByTab: some View {
         Group {
-            if let count = story?.viewsCount, count > 0 {
+            if isLoading {
+                Spacer()
+                ProgressView().scaleEffect(1.3)
+                Spacer()
+            } else if viewers.isEmpty {
+                Spacer()
+                VStack(spacing: 14) {
+                    Image(systemName: "eye.slash")
+                        .font(.system(size: 44))
+                        .foregroundColor(.secondary.opacity(0.5))
+                    Text("No views yet")
+                        .font(.custom("Inter18pt-Medium", size: 16))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+            } else {
                 List {
                     Section {
-                        ForEach(0..<count, id: \.self) { i in
+                        ForEach(viewers) { viewer in
                             HStack(spacing: 12) {
-                                Circle()
-                                    .fill(Color(hex: Constant.themeColor).opacity(0.25))
-                                    .frame(width: 44, height: 44)
-                                    .overlay(
-                                        Image(systemName: "person.fill")
-                                            .font(.system(size: 20))
-                                            .foregroundColor(Color(hex: Constant.themeColor))
-                                    )
+                                CachedAsyncImage(url: viewer.photoURL) { img in
+                                    img.resizable().scaledToFill()
+                                } placeholder: {
+                                    Image("inviteimg").resizable().scaledToFill()
+                                }
+                                .frame(width: 44, height: 44)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(Color(hex: Constant.themeColor).opacity(0.4), lineWidth: 1))
+
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text("Viewer \(i + 1)")
+                                    Text(viewer.name)
                                         .font(.custom("Inter18pt-SemiBold", size: 15))
-                                    Text("Viewed")
-                                        .font(.custom("Inter18pt-Regular", size: 12))
-                                        .foregroundColor(.secondary)
+                                    if !viewer.seenAt.isEmpty {
+                                        Text(viewer.seenAt)
+                                            .font(.custom("Inter18pt-Regular", size: 11))
+                                            .foregroundColor(.secondary)
+                                    }
                                 }
                                 Spacer()
                                 Image(systemName: "eye.fill")
@@ -529,71 +602,29 @@ private struct StoryViewersSheet: View {
                             .padding(.vertical, 4)
                         }
                     } header: {
-                        Text("\(count) view\(count == 1 ? "" : "s")")
+                        Text("\(viewers.count) view\(viewers.count == 1 ? "" : "s")")
                             .font(.custom("Inter18pt-Medium", size: 13))
                             .foregroundColor(.secondary)
                             .textCase(nil)
                     }
                 }
                 .listStyle(.plain)
-            } else {
-                Spacer()
-                VStack(spacing: 14) {
-                    Image(systemName: "eye.slash")
-                        .font(.system(size: 44))
-                        .foregroundColor(.secondary.opacity(0.5))
-                    Text("No views yet")
-                        .font(.custom("Inter18pt-Medium", size: 16))
-                        .foregroundColor(.secondary)
-                    Text("When people see your story, they'll appear here.")
-                        .font(.custom("Inter18pt-Regular", size: 13))
-                        .foregroundColor(.secondary.opacity(0.7))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 40)
-                }
-                Spacer()
             }
         }
     }
 
     // MARK: Replies tab
-    // Shows replies that other users sent to the story owner via the reply bar.
-    // Wire `storyReplies` from the API to replace the empty-state placeholder.
 
     private var repliesTab: some View {
-        Group {
-            // TODO: replace [] with real replies array fetched from API
-            let replies: [String] = []
-
-            if replies.isEmpty {
-                VStack(spacing: 12) {
-                    Spacer()
-                    Image(systemName: "arrowshape.turn.up.left")
-                        .font(.system(size: 40))
-                        .foregroundColor(.secondary.opacity(0.45))
-                    Text("No replies yet")
-                        .font(.custom("Inter18pt-Medium", size: 16))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
-            } else {
-                List(replies, id: \.self) { reply in
-                    HStack(spacing: 12) {
-                        Circle()
-                            .fill(Color(hex: Constant.themeColor).opacity(0.2))
-                            .frame(width: 40, height: 40)
-                            .overlay(
-                                Image(systemName: "person.fill")
-                                    .font(.system(size: 18))
-                                    .foregroundColor(Color(hex: Constant.themeColor))
-                            )
-                        Text(reply)
-                            .font(.custom("Inter18pt-Regular", size: 15))
-                    }
-                    .padding(.vertical, 4)
-                }
-                .listStyle(.plain)
-            }
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: "arrowshape.turn.up.left")
+                .font(.system(size: 40))
+                .foregroundColor(.secondary.opacity(0.45))
+            Text("No replies yet")
+                .font(.custom("Inter18pt-Medium", size: 16))
+                .foregroundColor(.secondary)
+            Spacer()
         }
     }
 }

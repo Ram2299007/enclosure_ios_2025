@@ -2688,6 +2688,39 @@ class ApiService {
                 completion((json["success"] as? String) == "1")
             }
     }
+
+    // MARK: - Mark Story Seen
+    // Call this once per story after the viewer actually watches it (1 second rule).
+    // Deduplication is handled server-side — safe to call multiple times.
+    func markStorySeen(storyId: String) {
+        let viewerUid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !viewerUid.isEmpty, !storyId.isEmpty else { return }
+
+        let endpoint = Constant.baseURL + "index.php/Api_Controller/mark_story_seen"
+        AF.request(endpoint, method: .post,
+                   parameters: ["viewer_uid": viewerUid, "story_id": storyId],
+                   encoding: URLEncoding.default)
+            .responseData { _ in } // fire-and-forget
+    }
+
+    // MARK: - Get Story Viewers
+    // Returns full viewer list for a story owned by the current user.
+    func fetchStoryViewers(storyId: String, completion: @escaping ([[String: Any]]) -> Void) {
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !uid.isEmpty, !storyId.isEmpty else { completion([]); return }
+
+        let endpoint = Constant.baseURL + "index.php/Api_Controller/get_story_viewers"
+        AF.request(endpoint, method: .post,
+                   parameters: ["uid": uid, "story_id": storyId],
+                   encoding: URLEncoding.default)
+            .responseData { [weak self] response in
+                guard let json = self?.parseStoryResponse(response.data),
+                      (json["success"] as? String) == "1",
+                      let data = json["data"] as? [[String: Any]]
+                else { completion([]); return }
+                completion(data)
+            }
+    }
 }
 
 // MARK: - Send OTP Response Model
