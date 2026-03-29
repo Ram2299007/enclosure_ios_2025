@@ -1,5 +1,15 @@
 import SwiftUI
 
+// MARK: - Story viewer config (atomic presentation)
+private struct StoryViewerConfig: Identifiable {
+    let id = UUID()
+    let stories: [UserStory]
+    let ownerName: String
+    let ownerPhotoURL: URL?
+    let isOwnStory: Bool
+    let startIndex: Int
+}
+
 // MARK: - Story Bottom Sheet
 struct StoryBottomSheetView: View {
     @Environment(\.colorScheme) private var colorScheme
@@ -9,8 +19,18 @@ struct StoryBottomSheetView: View {
     @State private var isExpanded = true   // collapse / expand My Stories cards
     @State private var collapsedContacts: Set<String> = []  // contacts NOT here are expanded
 
+    // Story viewer — single atomic config avoids race between index + isPresented
+    @State private var storyViewerConfig: StoryViewerConfig? = nil
+
     private var myProfileImageURL: String {
         UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
+    }
+
+    private var myProfileFullURL: URL? {
+        let raw = myProfileImageURL
+        guard !raw.isEmpty else { return nil }
+        let full = raw.hasPrefix("http") ? raw : Constant.baseURL + raw
+        return URL(string: full)
     }
 
     private var hasStories: Bool {
@@ -57,10 +77,9 @@ struct StoryBottomSheetView: View {
                 VStack(spacing: 0) {
 
                     // My Stories row
-                    HStack(spacing: 14) {
+                    HStack(spacing: 10) {
                         ZStack(alignment: .bottomTrailing) {
-                            profileImage(size: 56)
-                                .overlay(Circle().stroke(Color(hex: Constant.themeColor), lineWidth: 2))
+                            profileImage(size: 50)
                             if !hasStories { plusBadge }
                         }
                         .onTapGesture {
@@ -71,12 +90,12 @@ struct StoryBottomSheetView: View {
                             }
                         }
 
-                        VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: .leading, spacing: 2) {
                             Text("My Stories")
-                                .font(.custom("Inter18pt-SemiBold", size: 16))
+                                .font(.custom("Inter18pt-SemiBold", size: 15))
                                 .foregroundColor(Color(hex: Constant.themeColor))
                             Text(subtitleText)
-                                .font(.custom("Inter18pt-Medium", size: 13))
+                                .font(.custom("Inter18pt-Medium", size: 12))
                                 .foregroundColor(subtitleColor)
                                 .animation(.easeInOut(duration: 0.2), value: subtitleText)
                         }
@@ -96,12 +115,12 @@ struct StoryBottomSheetView: View {
                             Image("setting")
                                 .renderingMode(.template)
                                 .resizable().scaledToFit()
-                                .frame(width: 24, height: 24)
+                                .frame(width: 22, height: 22)
                                 .foregroundColor(colorScheme == .dark ? .white : .black)
                         }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, 8)
                     .frame(maxWidth: .infinity)
                     .background(Color(hex: Constant.themeColor).opacity(0.15))
                     .contentShape(Rectangle())
@@ -115,48 +134,70 @@ struct StoryBottomSheetView: View {
 
                     // My Stories cards
                     if hasStories {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                Button { showPhotoPicker = true } label: {
-                                    ZStack {
-                                        CachedAsyncImage(url: URL(string: myProfileImageURL)) { image in
-                                            image.resizable().scaledToFill()
-                                        } placeholder: {
-                                            Image("inviteimg").resizable().scaledToFill()
-                                        }
-                                        .frame(width: 80, height: 120)
-                                        .clipped()
-
-                                        Color.black.opacity(0.35)
-
-                                        ZStack {
-                                            Circle()
-                                                .fill(Color(hex: Constant.themeColor))
-                                                .frame(width: 28, height: 28)
-                                            Image(systemName: "plus")
-                                                .font(.system(size: 14, weight: .bold))
-                                                .foregroundColor(.white)
-                                        }
+                        HStack(spacing: 0) {
+                            // "+" add card lives OUTSIDE the ScrollView so the outer
+                            // vertical scroll cannot intercept its tap.
+                            Button { showPhotoPicker = true } label: {
+                                ZStack {
+                                    CachedAsyncImage(url: myProfileFullURL) { image in
+                                        image.resizable().scaledToFill()
+                                    } placeholder: {
+                                        Image("inviteimg").resizable().scaledToFill()
                                     }
                                     .frame(width: 80, height: 120)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: Constant.themeColor), lineWidth: 1.5))
-                                }
-                                .buttonStyle(BorderlessButtonStyle())
+                                    .clipped()
 
-                                ForEach(uploadManager.myStories) { story in
-                                    storyCard(story, width: 80, height: 120)
-                                }
+                                    Color.black.opacity(0.35)
 
-                                if uploadManager.isUploading { uploadingCard }
+                                    ZStack {
+                                        Circle()
+                                            .fill(Color(hex: Constant.themeColor))
+                                            .frame(width: 28, height: 28)
+                                        Image(systemName: "plus")
+                                            .font(.system(size: 14, weight: .bold))
+                                            .foregroundColor(.white)
+                                    }
+                                }
+                                .frame(width: 80, height: 120)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: Constant.themeColor), lineWidth: 1.5))
                             }
-                            .padding(.horizontal, 16)
+                            .buttonStyle(.plain)
+                            .padding(.leading, 16)
                             .padding(.vertical, 10)
+
+                            // Story cards inside the horizontal scroll
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(uploadManager.myStories) { story in
+                                        storyCard(story, width: 80, height: 120)
+                                            .simultaneousGesture(TapGesture().onEnded {
+                                                let idx = uploadManager.myStories.firstIndex(where: { $0.id == story.id }) ?? 0
+                                                storyViewerConfig = StoryViewerConfig(
+                                                    stories: uploadManager.myStories,
+                                                    ownerName: "My Stories",
+                                                    ownerPhotoURL: myProfileFullURL,
+                                                    isOwnStory: true,
+                                                    startIndex: idx
+                                                )
+                                            })
+                                    }
+
+                                    if uploadManager.isUploading { uploadingCard }
+                                }
+                                .padding(.leading, 8)
+                                .padding(.trailing, 16)
+                                .padding(.vertical, 10)
+                            }
                         }
                         .background(Color(hex: Constant.themeColor).opacity(0.07))
                         .frame(height: isExpanded ? nil : 0, alignment: .top)
                         .clipped()
                         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isExpanded)
+
+                        if !isExpanded && !uploadManager.contactStoryGroups.isEmpty {
+                            Divider()
+                        }
                     }
 
                     // Contact stories
@@ -180,6 +221,16 @@ struct StoryBottomSheetView: View {
                             HStack(spacing: 8) {
                                 ForEach(group.stories) { story in
                                     storyCard(story, showDelete: false, width: 80, height: 120)
+                                        .simultaneousGesture(TapGesture().onEnded {
+                                            let idx = group.stories.firstIndex(where: { $0.id == story.id }) ?? 0
+                                            storyViewerConfig = StoryViewerConfig(
+                                                stories: group.stories,
+                                                ownerName: group.fullName,
+                                                ownerPhotoURL: group.photoURL,
+                                                isOwnStory: false,
+                                                startIndex: idx
+                                            )
+                                        })
                                 }
                             }
                             .padding(.horizontal, 16)
@@ -215,20 +266,35 @@ struct StoryBottomSheetView: View {
                 }
             )
         }
+        .fullScreenCover(item: $storyViewerConfig) { config in
+            StoryViewerView(
+                stories: config.stories,
+                ownerName: config.ownerName,
+                ownerPhotoURL: config.ownerPhotoURL,
+                isOwnStory: config.isOwnStory,
+                startIndex: config.startIndex
+            )
+        }
     }
 
     // MARK: - Shared helpers
 
     @ViewBuilder
     private func profileImage(size: CGFloat) -> some View {
-        CachedAsyncImage(url: URL(string: myProfileImageURL)) { image in
-            image.resizable().scaledToFill()
-                .frame(width: size, height: size).clipShape(Circle())
-        } placeholder: {
-            Image("inviteimg").resizable().scaledToFill()
-                .frame(width: size, height: size).clipShape(Circle())
+        ZStack {
+            Circle()
+                .stroke(Color(hex: Constant.themeColor), lineWidth: 2)
+                .frame(width: size + 4, height: size + 4)
+            CachedAsyncImage(url: myProfileFullURL) { image in
+                image.resizable().scaledToFill()
+                    .frame(width: size, height: size).clipShape(Circle())
+            } placeholder: {
+                Image("inviteimg").resizable().scaledToFill()
+                    .frame(width: size, height: size).clipShape(Circle())
+            }
+            .frame(width: size, height: size)
         }
-        .frame(width: size, height: size)
+        .frame(width: size + 4, height: size + 4)
     }
 
     private var plusBadge: some View {
@@ -306,23 +372,29 @@ struct StoryBottomSheetView: View {
                     .shadow(color: .black.opacity(0.6), radius: 2)
             }
 
-            // Eye icon + views count — bottom center, own stories only
+            // Views bar — bottom gradient with eye + count horizontal, own stories only
             if showDelete {
                 VStack {
                     Spacer()
-                    HStack(spacing: 3) {
-                        Image(systemName: "eye.fill")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundColor(.white)
-                        Text("\(story.viewsCount)")
-                            .font(.custom("Inter18pt-Medium", size: 9))
-                            .foregroundColor(.white)
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(Color.black.opacity(0.4))
-                    .clipShape(Capsule())
-                    .padding(.bottom, 6)
+                    LinearGradient(
+                        colors: [.clear, .black.opacity(0.65)],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                    .frame(height: 36)
+                    .overlay(
+                        HStack(spacing: 3) {
+                            Image(systemName: "eye.fill")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundColor(.white)
+                                .shadow(color: .black.opacity(0.5), radius: 1)
+                            Text("\(story.viewsCount)")
+                                .font(.custom("Inter18pt-SemiBold", size: 9))
+                                .foregroundColor(.white)
+                                .shadow(color: .black.opacity(0.5), radius: 1)
+                        }
+                        .padding(.bottom, 5),
+                        alignment: .bottom
+                    )
                 }
             }
         }
@@ -369,29 +441,29 @@ struct StoryBottomSheetView: View {
 
     @ViewBuilder
     private func contactStoryRow(_ group: ContactStoryGroup, isOpen: Bool) -> some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 10) {
             // Avatar with theme-colour ring
             ZStack {
                 Circle()
-                    .stroke(Color(hex: Constant.themeColor), lineWidth: 2.5)
-                    .frame(width: 58, height: 58)
+                    .stroke(Color(hex: Constant.themeColor), lineWidth: 2)
+                    .frame(width: 54, height: 54)
                 CachedAsyncImage(url: group.photoURL) { image in
                     image.resizable().scaledToFill()
                 } placeholder: {
                     Image("inviteimg").resizable().scaledToFill()
                 }
-                .frame(width: 54, height: 54)
+                .frame(width: 50, height: 50)
                 .clipShape(Circle())
             }
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(group.fullName)
-                    .font(.custom("Inter18pt-SemiBold", size: 16))
+                    .font(.custom("Inter18pt-SemiBold", size: 15))
                     .foregroundColor(Color(hex: Constant.themeColor))
 
                 if let date = group.latestDate {
                     Text(relativeTime(from: date))
-                        .font(.custom("Inter18pt-Medium", size: 13))
+                        .font(.custom("Inter18pt-Medium", size: 12))
                         .foregroundColor(Color(hex: Constant.themeColor))
                 }
             }
@@ -415,7 +487,7 @@ struct StoryBottomSheetView: View {
                     Label("View Profile", systemImage: "person.circle")
                 }
                 Button(role: .destructive) { } label: {
-                    Label("Hide Stories", systemImage: "eye.slash")
+                    Label("Hide \(group.fullName)", systemImage: "eye.slash")
                 }
             } label: {
                 VStack(spacing: 3) {
@@ -428,7 +500,7 @@ struct StoryBottomSheetView: View {
             .buttonStyle(BorderlessButtonStyle())
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
     }
 
