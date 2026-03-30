@@ -304,15 +304,14 @@ struct StoryViewerView: View {
                 // ── Heart / like button (LEFT) — always visible ──
                 Button(action: sendLike) {
                     ZStack {
-                        // Glass background
                         Circle()
-                            .fill(.ultraThinMaterial)
+                            .fill(isLiked
+                                  ? Color(hex: Constant.themeColor)
+                                  : Color.white.opacity(0.15))
                             .frame(width: 44, height: 44)
                         Image(systemName: isLiked ? "heart.fill" : "heart")
                             .font(.system(size: 19, weight: .regular))
-                            .foregroundColor(
-                                isLiked ? Color(hex: Constant.themeColor) : .white.opacity(0.7)
-                            )
+                            .foregroundColor(isLiked ? .white : .white.opacity(0.7))
                     }
                 }
                 .buttonStyle(.plain)
