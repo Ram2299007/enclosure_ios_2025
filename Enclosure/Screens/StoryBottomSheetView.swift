@@ -217,6 +217,11 @@ struct StoryBottomSheetView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                     .padding(.horizontal, 10)
 
+                    // Extra gap before friends section
+                    if !uploadManager.contactStoryGroups.isEmpty {
+                        Color.clear.frame(height: 10)
+                    }
+
                     // Contact stories
                     ForEach(uploadManager.contactStoryGroups) { group in
                         let isOpen = !collapsedContacts.contains(group.id)
