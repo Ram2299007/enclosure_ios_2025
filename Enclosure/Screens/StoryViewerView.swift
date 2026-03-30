@@ -22,6 +22,8 @@ struct StoryViewerView: View {
     @State private var videoDuration: Double = 0
     @State private var now = Date()
     @State private var showViewersSheet = false
+    @State private var isLiked = false
+    @State private var keyboardHeight: CGFloat = 0
     // Tracks which story IDs have already been marked seen this session
     @State private var seenStoryIds: Set<String> = []
 
@@ -297,7 +299,25 @@ struct StoryViewerView: View {
 
     private var replyBar: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
+
+                // ── Heart / like button (LEFT) — always visible ──
+                Button(action: sendLike) {
+                    ZStack {
+                        // Glass background
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                            .frame(width: 44, height: 44)
+                        Image(systemName: isLiked ? "heart.fill" : "heart")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundColor(
+                                isLiked ? Color(hex: Constant.themeColor) : .white
+                            )
+                    }
+                }
+                .buttonStyle(.plain)
+
+                // ── Reply text field ──
                 ZStack(alignment: .leading) {
                     if replyText.isEmpty {
                         Text("Reply to \(ownerName)...")
@@ -313,47 +333,34 @@ struct StoryViewerView: View {
                         .tint(.white)
                         .submitLabel(.send)
                         .onSubmit { sendReply() }
-                        .onChange(of: replyText) { _ in
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) { }
-                        }
                 }
                 .frame(height: 44)
                 .background(Capsule().stroke(Color.white.opacity(0.45), lineWidth: 1.2))
 
-                if replyText.isEmpty {
-                    // Heart / like button — shown when no text
-                    Button(action: sendLike) {
-                        Image(systemName: "heart.fill")
-                            .font(.system(size: 26, weight: .medium))
-                            .foregroundColor(Color(hex: Constant.themeColor))
+                // ── Send button (RIGHT) — always visible, active when text present ──
+                Button(action: sendReply) {
+                    ZStack {
+                        Circle()
+                            .fill(replyText.isEmpty
+                                  ? Color.white.opacity(0.15)
+                                  : Color(hex: Constant.themeColor))
                             .frame(width: 44, height: 44)
+                        Image("baseline_keyboard_double_arrow_right_24")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 22, height: 22)
+                            .foregroundColor(replyText.isEmpty ? .white.opacity(0.35) : .white)
+                            .padding(.top, 3)
+                            .padding(.bottom, 6)
                     }
-                    .buttonStyle(.plain)
-                    .transition(.scale(scale: 0.6).combined(with: .opacity))
-                } else {
-                    // Send button — shown while typing
-                    Button(action: sendReply) {
-                        ZStack {
-                            Circle()
-                                .fill(Color(hex: Constant.themeColor))
-                                .frame(width: 44, height: 44)
-                            Image("baseline_keyboard_double_arrow_right_24")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 22, height: 22)
-                                .foregroundColor(.white)
-                                .padding(.top, 3)
-                                .padding(.bottom, 6)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .transition(.scale(scale: 0.6).combined(with: .opacity))
                 }
+                .buttonStyle(.plain)
+                .disabled(replyText.isEmpty)
             }
             .padding(.horizontal, 12)
             .padding(.top, 10)
-            .padding(.bottom, 32)
+            .padding(.bottom, keyboardHeight > 0 ? 12 : 32)
         }
         .background(
             LinearGradient(
@@ -361,6 +368,16 @@ struct StoryViewerView: View {
                 startPoint: .top, endPoint: .bottom
             )
         )
+        .padding(.bottom, keyboardHeight)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notif in
+            let frame = (notif.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect) ?? .zero
+            let duration = (notif.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
+            withAnimation(.easeOut(duration: duration)) { keyboardHeight = frame.height }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { notif in
+            let duration = (notif.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
+            withAnimation(.easeOut(duration: duration)) { keyboardHeight = 0 }
+        }
     }
 
     // MARK: - Own story footer
@@ -528,6 +545,9 @@ struct StoryViewerView: View {
     }
 
     private func sendLike() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
+            isLiked.toggle()
+        }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         // TODO: send like/reaction via API
     }
