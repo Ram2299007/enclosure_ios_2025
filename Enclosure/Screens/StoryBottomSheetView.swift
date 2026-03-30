@@ -184,9 +184,15 @@ struct StoryBottomSheetView: View {
 
                                             // Delete button — outside the card, below it
                                             Button { uploadManager.deleteStory(id: story.id) } label: {
-                                                Image(systemName: "trash")
-                                                    .font(.system(size: 13, weight: .medium))
-                                                    .foregroundColor(Color("gray3"))
+                                                ZStack {
+                                                    Circle()
+                                                        .fill(Color.black.opacity(0.5))
+                                                        .frame(width: 30, height: 30)
+                                                        .shadow(color: .black.opacity(0.4), radius: 4, x: 0, y: 2)
+                                                    Image(systemName: "trash")
+                                                        .font(.system(size: 13, weight: .medium))
+                                                        .foregroundColor(.white)
+                                                }
                                             }
                                             .buttonStyle(BorderlessButtonStyle())
                                         }
