@@ -170,16 +170,26 @@ struct StoryBottomSheetView: View {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 8) {
                                     ForEach(Array(uploadManager.myStories.enumerated()), id: \.element.id) { index, story in
-                                        storyCard(story, width: 80, height: 120)
-                                            .simultaneousGesture(TapGesture().onEnded {
-                                                storyViewerConfig = StoryViewerConfig(
-                                                    stories: uploadManager.myStories,
-                                                    ownerName: "My Stories",
-                                                    ownerPhotoURL: myProfileFullURL,
-                                                    isOwnStory: true,
-                                                    startIndex: index
-                                                )
-                                            })
+                                        VStack(spacing: 6) {
+                                            storyCard(story, width: 80, height: 120)
+                                                .simultaneousGesture(TapGesture().onEnded {
+                                                    storyViewerConfig = StoryViewerConfig(
+                                                        stories: uploadManager.myStories,
+                                                        ownerName: "My Stories",
+                                                        ownerPhotoURL: myProfileFullURL,
+                                                        isOwnStory: true,
+                                                        startIndex: index
+                                                    )
+                                                })
+
+                                            // Delete button — outside the card, below it
+                                            Button { uploadManager.deleteStory(id: story.id) } label: {
+                                                Image(systemName: "trash")
+                                                    .font(.system(size: 13, weight: .medium))
+                                                    .foregroundColor(Color("gray3"))
+                                            }
+                                            .buttonStyle(BorderlessButtonStyle())
+                                        }
                                     }
 
                                     if uploadManager.isUploading { uploadingCard }
@@ -339,25 +349,6 @@ struct StoryBottomSheetView: View {
                 }
             }
 
-            // Delete button — top trailing (own stories only)
-            if showDelete {
-                VStack {
-                    HStack {
-                        Spacer()
-                        Button { uploadManager.deleteStory(id: story.id) } label: {
-                            ZStack {
-                                Circle().fill(Color.black.opacity(0.45)).frame(width: 26, height: 26)
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(.white)
-                            }
-                            .padding(6)
-                        }
-                        .buttonStyle(BorderlessButtonStyle())
-                    }
-                    Spacer()
-                }
-            }
 
             // Text preview for text stories
             if story.storyType == "text", !story.textContent.isEmpty {
