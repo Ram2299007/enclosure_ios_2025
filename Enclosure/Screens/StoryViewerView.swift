@@ -12,6 +12,7 @@ struct StoryViewerView: View {
     var isOwnStory: Bool = false
 
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var manager = StoryUploadManager.shared
     @State private var currentIndex: Int
     @State private var elapsed: Double = 0
     @State private var isPaused = false
@@ -89,7 +90,7 @@ struct StoryViewerView: View {
             // ── Header + reply bar overlay ──
             VStack(spacing: 0) {
                 // Progress bars + user info
-                VStack(spacing: 6) {
+                VStack(spacing: 12) {
                     HStack(spacing: 3) {
                         ForEach(0..<stories.count, id: \.self) { i in
                             progressSegment(index: i)
@@ -158,7 +159,10 @@ struct StoryViewerView: View {
                     if val.translation.height > 80 { dismiss() }
                 }
         )
-        .onAppear { loadStory(at: currentIndex) }
+        .onAppear {
+            loadStory(at: currentIndex)
+            if isOwnStory { manager.fetchMyStories() }
+        }
         .onDisappear { player?.pause(); player = nil }
         .onReceive(Timer.publish(every: tickInterval, on: .main, in: .common).autoconnect()) { _ in
             tickProgress()
@@ -215,7 +219,7 @@ struct StoryViewerView: View {
         } else if let item = story.mediaItems.first {
             if item.mediaType == "video" {
                 if let p = player {
-                    VideoPlayer(player: p)
+                    StoryVideoPlayerView(player: p)
                         .ignoresSafeArea()
                 } else {
                     ZStack {
@@ -290,13 +294,21 @@ struct StoryViewerView: View {
                 .background(Capsule().stroke(Color.white.opacity(0.45), lineWidth: 1.2))
 
                 Button(action: sendReply) {
-                    Image(systemName: "paperplane.fill")
-                        .font(.system(size: 22))
-                        .foregroundColor(
-                            replyText.isEmpty
-                                ? Color.white.opacity(0.4)
-                                : Color(hex: Constant.themeColor)
-                        )
+                    ZStack {
+                        Circle()
+                            .fill(replyText.isEmpty
+                                  ? Color.white.opacity(0.15)
+                                  : Color(hex: Constant.themeColor))
+                            .frame(width: 44, height: 44)
+                        Image("baseline_keyboard_double_arrow_right_24")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 22, height: 22)
+                            .foregroundColor(replyText.isEmpty ? .white.opacity(0.4) : .white)
+                            .padding(.top, 3)
+                            .padding(.bottom, 6)
+                    }
                 }
                 .buttonStyle(.plain)
                 .disabled(replyText.isEmpty)
@@ -327,7 +339,7 @@ struct StoryViewerView: View {
                     Image(systemName: "eye")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundColor(.white)
-                    Text("\(currentStory?.viewsCount ?? 0)")
+                    Text("\(manager.myStories.first(where: { $0.id == currentStory?.id })?.viewsCount ?? currentStory?.viewsCount ?? 0)")
                         .font(.custom("Inter18pt-SemiBold", size: 12))
                         .foregroundColor(.white)
                 }
@@ -379,12 +391,13 @@ struct StoryViewerView: View {
     private func tickProgress() {
         guard !isPaused && !isReplyFocused else { return }
 
-        // For video stories, sync elapsed with actual player time
+        // For video stories, only drive progress from the actual player — never use the image timer
         if let story = currentStory,
            story.storyType == "media",
-           story.mediaItems.first?.mediaType == "video",
-           let p = player,
-           let item = p.currentItem {
+           let mediaItem = story.mediaItems.first,
+           mediaItem.mediaType == "video" {
+            // Player not ready yet — just wait, don't advance elapsed
+            guard let p = player, let item = p.currentItem else { return }
             let d = item.duration.seconds
             let t = p.currentTime().seconds
             if d.isFinite && d > 0 {
@@ -477,6 +490,35 @@ struct StoryViewerView: View {
         if diff < 3600  { return "\(Int(diff / 60))m ago" }
         if diff < 86400 { return "\(Int(diff / 3600))h ago" }
         return "\(Int(diff / 86400))d ago"
+    }
+}
+
+// MARK: - Controls-free video player (WhatsApp style)
+
+private struct StoryVideoPlayerView: UIViewRepresentable {
+    let player: AVPlayer
+
+    func makeUIView(context: Context) -> StoryVideoUIView {
+        let view = StoryVideoUIView()
+        view.backgroundColor = .black
+        let layer = AVPlayerLayer(player: player)
+        layer.videoGravity = .resizeAspect
+        view.layer.addSublayer(layer)
+        view.playerLayer = layer
+        return view
+    }
+
+    func updateUIView(_ uiView: StoryVideoUIView, context: Context) {
+        uiView.playerLayer?.player = player
+    }
+}
+
+private final class StoryVideoUIView: UIView {
+    var playerLayer: AVPlayerLayer?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        playerLayer?.frame = bounds
     }
 }
 

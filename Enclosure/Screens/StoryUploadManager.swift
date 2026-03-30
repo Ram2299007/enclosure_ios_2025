@@ -26,7 +26,7 @@ struct UserStory: Identifiable {
         self.createdAt     = dict["created_at"]      as? String ?? ""
         let raw = dict["media_items"] as? [[String: Any]] ?? []
         self.mediaItems = raw.compactMap { StoryMediaItem(dict: $0) }
-        self.viewsCount    = dict["views_count"] as? Int
+        self.viewsCount    = (dict["views_count"] as? NSNumber)?.intValue
                           ?? Int(dict["views_count"] as? String ?? "") ?? 0
     }
 

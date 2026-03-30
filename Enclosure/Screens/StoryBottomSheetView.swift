@@ -169,16 +169,15 @@ struct StoryBottomSheetView: View {
                             // Story cards inside the horizontal scroll
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 8) {
-                                    ForEach(uploadManager.myStories) { story in
+                                    ForEach(Array(uploadManager.myStories.enumerated()), id: \.element.id) { index, story in
                                         storyCard(story, width: 80, height: 120)
                                             .simultaneousGesture(TapGesture().onEnded {
-                                                let idx = uploadManager.myStories.firstIndex(where: { $0.id == story.id }) ?? 0
                                                 storyViewerConfig = StoryViewerConfig(
                                                     stories: uploadManager.myStories,
                                                     ownerName: "My Stories",
                                                     ownerPhotoURL: myProfileFullURL,
                                                     isOwnStory: true,
-                                                    startIndex: idx
+                                                    startIndex: index
                                                 )
                                             })
                                     }
@@ -219,16 +218,15 @@ struct StoryBottomSheetView: View {
 
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
-                                ForEach(group.stories) { story in
+                                ForEach(Array(group.stories.enumerated()), id: \.element.id) { index, story in
                                     storyCard(story, showDelete: false, width: 80, height: 120)
                                         .simultaneousGesture(TapGesture().onEnded {
-                                            let idx = group.stories.firstIndex(where: { $0.id == story.id }) ?? 0
                                             storyViewerConfig = StoryViewerConfig(
                                                 stories: group.stories,
                                                 ownerName: group.fullName,
                                                 ownerPhotoURL: group.photoURL,
                                                 isOwnStory: false,
-                                                startIndex: idx
+                                                startIndex: index
                                             )
                                         })
                                 }
