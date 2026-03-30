@@ -309,9 +309,9 @@ struct StoryViewerView: View {
                             .fill(.ultraThinMaterial)
                             .frame(width: 44, height: 44)
                         Image(systemName: isLiked ? "heart.fill" : "heart")
-                            .font(.system(size: 22, weight: .semibold))
+                            .font(.system(size: 19, weight: .regular))
                             .foregroundColor(
-                                isLiked ? Color(hex: Constant.themeColor) : .white
+                                isLiked ? Color(hex: Constant.themeColor) : .white.opacity(0.7)
                             )
                     }
                 }
