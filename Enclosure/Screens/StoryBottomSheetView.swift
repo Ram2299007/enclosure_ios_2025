@@ -193,7 +193,6 @@ struct StoryBottomSheetView: View {
                                                             .fill(.ultraThinMaterial)
                                                             .overlay(Circle().fill(Color.black.opacity(0.45)))
                                                     }
-                                                    .shadow(color: .black.opacity(0.5), radius: 10, x: 0, y: 4)
                                             }
                                             .buttonStyle(BorderlessButtonStyle())
                                         }
