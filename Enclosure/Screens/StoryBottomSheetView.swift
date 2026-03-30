@@ -188,7 +188,11 @@ struct StoryBottomSheetView: View {
                                                     .font(.system(size: 13, weight: .medium))
                                                     .foregroundColor(.white)
                                                     .frame(width: 30, height: 30)
-                                                    .background(.ultraThinMaterial, in: Circle())
+                                                    .background {
+                                                        Circle()
+                                                            .fill(.ultraThinMaterial)
+                                                            .overlay(Circle().fill(Color.black.opacity(0.45)))
+                                                    }
                                                     .shadow(color: .black.opacity(0.25), radius: 6, x: 0, y: 2)
                                             }
                                             .buttonStyle(BorderlessButtonStyle())
