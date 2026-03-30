@@ -100,19 +100,15 @@ struct StoryViewerView: View {
                     .padding(.top, safeAreaTop + 8)   // below Dynamic Island / status bar
 
                     HStack(spacing: 10) {
-                        // Back button
+                        // Back button — simple, no background
                         Button { dismiss() } label: {
-                            ZStack {
-                                Circle()
-                                    .fill(Color.white.opacity(0.2))
-                                    .frame(width: 34, height: 34)
-                                Image("leftvector")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 20, height: 15)
-                                    .foregroundColor(.white)
-                            }
+                            Image("leftvector")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 22, height: 16)
+                                .foregroundColor(.white)
+                                .padding(8)
                         }
                         .buttonStyle(.plain)
 
@@ -139,20 +135,23 @@ struct StoryViewerView: View {
 
                         Spacer()
 
-                        // 3-dot menu
+                        // 3-dot menu — same style as MainActivityOld
                         Menu {
                             Button("For Visible") { }
                             Button("Hide \(ownerName)") { }
                         } label: {
-                            ZStack {
+                            VStack(spacing: 3) {
                                 Circle()
-                                    .fill(Color(hex: Constant.themeColor).opacity(0.85))
-                                    .frame(width: 34, height: 34)
-                                Image(systemName: "ellipsis")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .rotationEffect(.degrees(90))
+                                    .fill(Color("menuPointColor"))
+                                    .frame(width: 4, height: 4)
+                                Circle()
+                                    .fill(Color(hex: Constant.themeColor))
+                                    .frame(width: 4, height: 4)
+                                Circle()
+                                    .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
+                                    .frame(width: 4, height: 4)
                             }
+                            .frame(width: 24, height: 24)
                         }
                         .buttonStyle(.plain)
                     }
