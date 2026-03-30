@@ -400,14 +400,16 @@ struct StoryViewerView: View {
             elapsed += tickInterval
             markSeenIfNeeded(story: story, elapsed: elapsed)
 
-            // If player is ready, override elapsed with actual playback position for progress bar
+            // If player is ready, sync progress bar to player time — but only when player
+            // is actually moving (t > 0.1). If video decode fails (Fig -12900 etc.) t stays
+            // at 0 forever; in that case we keep wall-clock elapsed so mark-seen still fires.
             if let p = player,
                let item = p.currentItem {
                 let d = item.duration.seconds
                 let t = p.currentTime().seconds
                 if d.isFinite && d > 0 {
                     videoDuration = d
-                    elapsed = t
+                    if t > 0.1 { elapsed = t }  // only sync when player is advancing
                     if t >= d - 0.1 { goToNext() }
                 }
             }
