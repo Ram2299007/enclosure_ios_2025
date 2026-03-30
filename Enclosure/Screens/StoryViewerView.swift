@@ -125,15 +125,22 @@ struct StoryViewerView: View {
                         }
                         .buttonStyle(.plain)
 
-                        // Avatar
-                        CachedAsyncImage(url: ownerPhotoURL) { image in
-                            image.resizable().scaledToFill()
-                        } placeholder: {
-                            Image("inviteimg").resizable().scaledToFill()
+                        // Avatar — tap to view profile
+                        Button {
+                            isPaused = true
+                            player?.pause()
+                            navigateToProfile = true
+                        } label: {
+                            CachedAsyncImage(url: ownerPhotoURL) { image in
+                                image.resizable().scaledToFill()
+                            } placeholder: {
+                                Image("inviteimg").resizable().scaledToFill()
+                            }
+                            .frame(width: 36, height: 36)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.white.opacity(0.7), lineWidth: 1.5))
                         }
-                        .frame(width: 36, height: 36)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(Color.white.opacity(0.7), lineWidth: 1.5))
+                        .buttonStyle(.plain)
 
                         VStack(alignment: .leading, spacing: 1) {
                             Text(ownerName)
