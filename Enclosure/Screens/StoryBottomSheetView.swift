@@ -212,12 +212,9 @@ struct StoryBottomSheetView: View {
                         .clipped()
                         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isExpanded)
 
-                        if !isExpanded && !uploadManager.contactStoryGroups.isEmpty {
-                            Divider()
-                        }
                     }
                     } // end My Stories container VStack
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
                     .padding(.horizontal, 10)
 
                     // Contact stories
@@ -261,7 +258,7 @@ struct StoryBottomSheetView: View {
                             .clipped()
                             .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isOpen)
                         }
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
                         .padding(.horizontal, 10)
                     }
                 }
