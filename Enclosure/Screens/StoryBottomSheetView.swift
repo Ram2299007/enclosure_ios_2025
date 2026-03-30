@@ -223,7 +223,7 @@ struct StoryBottomSheetView: View {
 
                         VStack(spacing: 0) {
                             contactStoryRow(group, isOpen: isOpen)
-                                .background(Color(hex: Constant.themeColor).opacity(0.15))
+                                .background(Color("gray3").opacity(0.12))
                                 .contentShape(Rectangle())
                                 .onTapGesture {
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
@@ -253,7 +253,7 @@ struct StoryBottomSheetView: View {
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 10)
                             }
-                            .background(Color(hex: Constant.themeColor).opacity(0.07))
+                            .background(Color("gray3").opacity(0.06))
                             .frame(height: isOpen ? nil : 0, alignment: .top)
                             .clipped()
                             .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isOpen)
@@ -399,7 +399,7 @@ struct StoryBottomSheetView: View {
         }
         .frame(width: width, height: height)
         .clipShape(RoundedRectangle(cornerRadius: showDelete ? 14 : 10))
-        .overlay(RoundedRectangle(cornerRadius: showDelete ? 14 : 10).stroke(Color(hex: Constant.themeColor), lineWidth: 1.5))
+        .overlay(RoundedRectangle(cornerRadius: showDelete ? 14 : 10).stroke(showDelete ? Color(hex: Constant.themeColor) : Color("gray3").opacity(0.35), lineWidth: 1.5))
     }
 
     @ViewBuilder
@@ -441,10 +441,10 @@ struct StoryBottomSheetView: View {
     @ViewBuilder
     private func contactStoryRow(_ group: ContactStoryGroup, isOpen: Bool) -> some View {
         HStack(spacing: 10) {
-            // Avatar with theme-colour ring
+            // Avatar with gray ring
             ZStack {
                 Circle()
-                    .stroke(Color(hex: Constant.themeColor), lineWidth: 2)
+                    .stroke(Color("gray3").opacity(0.4), lineWidth: 2)
                     .frame(width: 54, height: 54)
                 CachedAsyncImage(url: group.photoURL) { image in
                     image.resizable().scaledToFill()
@@ -458,12 +458,12 @@ struct StoryBottomSheetView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(group.fullName)
                     .font(.custom("Inter18pt-SemiBold", size: 15))
-                    .foregroundColor(Color(hex: Constant.themeColor))
+                    .foregroundColor(Color("TextColor"))
 
                 if let date = group.latestDate {
                     Text(relativeTime(from: date))
                         .font(.custom("Inter18pt-Medium", size: 12))
-                        .foregroundColor(Color(hex: Constant.themeColor))
+                        .foregroundColor(Color("gray3"))
                 }
             }
 
@@ -472,7 +472,7 @@ struct StoryBottomSheetView: View {
             // Chevron
             Image(systemName: "chevron.down")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(Color(hex: Constant.themeColor))
+                .foregroundColor(Color("gray3"))
                 .rotationEffect(.degrees(isOpen ? 0 : -90))
                 .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isOpen)
                 .padding(.trailing, 4)
