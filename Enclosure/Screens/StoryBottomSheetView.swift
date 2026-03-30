@@ -285,7 +285,7 @@ struct StoryBottomSheetView: View {
                         .clipped()
                         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isOpen)
 
-                        Divider().padding(.leading, 78)
+                        Divider()
                     }
                 }
             }
