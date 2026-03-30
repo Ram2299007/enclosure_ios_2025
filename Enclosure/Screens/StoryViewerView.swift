@@ -391,20 +391,25 @@ struct StoryViewerView: View {
     private func tickProgress() {
         guard !isPaused && !isReplyFocused else { return }
 
-        // For video stories, only drive progress from the actual player — never use the image timer
+        // For video stories, drive progress from the player but always tick wall-clock for mark-seen
         if let story = currentStory,
            story.storyType == "media",
            let mediaItem = story.mediaItems.first,
            mediaItem.mediaType == "video" {
-            // Player not ready yet — just wait, don't advance elapsed
-            guard let p = player, let item = p.currentItem else { return }
-            let d = item.duration.seconds
-            let t = p.currentTime().seconds
-            if d.isFinite && d > 0 {
-                videoDuration = d
-                elapsed = t
-                markSeenIfNeeded(story: story, elapsed: t)
-                if t >= d - 0.1 { goToNext() }
+            // Always advance elapsed as wall-clock — ensures mark-seen fires even if video fails
+            elapsed += tickInterval
+            markSeenIfNeeded(story: story, elapsed: elapsed)
+
+            // If player is ready, override elapsed with actual playback position for progress bar
+            if let p = player,
+               let item = p.currentItem {
+                let d = item.duration.seconds
+                let t = p.currentTime().seconds
+                if d.isFinite && d > 0 {
+                    videoDuration = d
+                    elapsed = t
+                    if t >= d - 0.1 { goToNext() }
+                }
             }
             return
         }
