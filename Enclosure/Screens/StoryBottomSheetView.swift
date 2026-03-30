@@ -74,8 +74,10 @@ struct StoryBottomSheetView: View {
 
             // ── Scrollable content ───────────────────────────────────────
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 0) {
+                VStack(spacing: 10) {
 
+                    // ── My Stories container ──
+                    VStack(spacing: 0) {
                     // My Stories row
                     HStack(spacing: 10) {
                         ZStack(alignment: .bottomTrailing) {
@@ -214,53 +216,53 @@ struct StoryBottomSheetView: View {
                             Divider()
                         }
                     }
-
-                    // ── Gap between My Stories and Friends ──
-                    if !uploadManager.contactStoryGroups.isEmpty {
-                        Color.clear.frame(height: 10)
-                    }
+                    } // end My Stories container VStack
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(.horizontal, 10)
 
                     // Contact stories
                     ForEach(uploadManager.contactStoryGroups) { group in
                         let isOpen = !collapsedContacts.contains(group.id)
 
-                        contactStoryRow(group, isOpen: isOpen)
-                            .background(Color(hex: Constant.themeColor).opacity(0.15))
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                                    if isOpen {
-                                        collapsedContacts.insert(group.id)
-                                    } else {
-                                        collapsedContacts.remove(group.id)
+                        VStack(spacing: 0) {
+                            contactStoryRow(group, isOpen: isOpen)
+                                .background(Color(hex: Constant.themeColor).opacity(0.15))
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                        if isOpen {
+                                            collapsedContacts.insert(group.id)
+                                        } else {
+                                            collapsedContacts.remove(group.id)
+                                        }
                                     }
                                 }
-                            }
 
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(Array(group.stories.enumerated()), id: \.element.id) { index, story in
-                                    storyCard(story, showDelete: false, width: 80, height: 120)
-                                        .simultaneousGesture(TapGesture().onEnded {
-                                            storyViewerConfig = StoryViewerConfig(
-                                                stories: group.stories,
-                                                ownerName: group.fullName,
-                                                ownerPhotoURL: group.photoURL,
-                                                isOwnStory: false,
-                                                startIndex: index
-                                            )
-                                        })
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(Array(group.stories.enumerated()), id: \.element.id) { index, story in
+                                        storyCard(story, showDelete: false, width: 80, height: 120)
+                                            .simultaneousGesture(TapGesture().onEnded {
+                                                storyViewerConfig = StoryViewerConfig(
+                                                    stories: group.stories,
+                                                    ownerName: group.fullName,
+                                                    ownerPhotoURL: group.photoURL,
+                                                    isOwnStory: false,
+                                                    startIndex: index
+                                                )
+                                            })
+                                    }
                                 }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
+                            .background(Color(hex: Constant.themeColor).opacity(0.07))
+                            .frame(height: isOpen ? nil : 0, alignment: .top)
+                            .clipped()
+                            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isOpen)
                         }
-                        .background(Color(hex: Constant.themeColor).opacity(0.07))
-                        .frame(height: isOpen ? nil : 0, alignment: .top)
-                        .clipped()
-                        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isOpen)
-
-                        Divider()
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .padding(.horizontal, 10)
                     }
                 }
             }
