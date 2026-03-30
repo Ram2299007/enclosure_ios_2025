@@ -4,6 +4,7 @@ import SwiftUI
 private struct StoryViewerConfig: Identifiable {
     let id = UUID()
     let stories: [UserStory]
+    let ownerUid: String
     let ownerName: String
     let ownerPhotoURL: URL?
     let isOwnStory: Bool
@@ -177,6 +178,7 @@ struct StoryBottomSheetView: View {
                                                 .simultaneousGesture(TapGesture().onEnded {
                                                     storyViewerConfig = StoryViewerConfig(
                                                         stories: uploadManager.myStories,
+                                                        ownerUid: Constant.SenderIdMy,
                                                         ownerName: "My Stories",
                                                         ownerPhotoURL: myProfileFullURL,
                                                         isOwnStory: true,
@@ -242,6 +244,7 @@ struct StoryBottomSheetView: View {
                                             .simultaneousGesture(TapGesture().onEnded {
                                                 storyViewerConfig = StoryViewerConfig(
                                                     stories: group.stories,
+                                                    ownerUid: group.id,
                                                     ownerName: group.fullName,
                                                     ownerPhotoURL: group.photoURL,
                                                     isOwnStory: false,
@@ -287,6 +290,7 @@ struct StoryBottomSheetView: View {
         .fullScreenCover(item: $storyViewerConfig) { config in
             StoryViewerView(
                 stories: config.stories,
+                ownerUid: config.ownerUid,
                 ownerName: config.ownerName,
                 ownerPhotoURL: config.ownerPhotoURL,
                 isOwnStory: config.isOwnStory,

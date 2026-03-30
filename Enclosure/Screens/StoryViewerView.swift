@@ -7,6 +7,7 @@ import AVKit
 struct StoryViewerView: View {
 
     let stories: [UserStory]
+    let ownerUid: String
     let ownerName: String
     let ownerPhotoURL: URL?
     var isOwnStory: Bool = false
@@ -24,6 +25,7 @@ struct StoryViewerView: View {
     @State private var showViewersSheet = false
     @State private var isLiked = false
     @State private var keyboardHeight: CGFloat = 0
+    @State private var navigateToProfile = false
     // Tracks which story IDs have already been marked seen this session
     @State private var seenStoryIds: Set<String> = []
 
@@ -38,9 +40,10 @@ struct StoryViewerView: View {
             .first?.keyWindow?.safeAreaInsets.top ?? 50
     }
 
-    init(stories: [UserStory], ownerName: String, ownerPhotoURL: URL?,
+    init(stories: [UserStory], ownerUid: String = "", ownerName: String, ownerPhotoURL: URL?,
          isOwnStory: Bool = false, startIndex: Int = 0) {
         self.stories = stories
+        self.ownerUid = ownerUid
         self.ownerName = ownerName
         self.ownerPhotoURL = ownerPhotoURL
         self.isOwnStory = isOwnStory
@@ -63,8 +66,16 @@ struct StoryViewerView: View {
     }
 
     var body: some View {
+        NavigationStack {
         ZStack {
             Color.black.ignoresSafeArea()
+
+            // Hidden navigation to profile
+            NavigationLink(
+                destination: UserInfoScreen(recUserId: ownerUid, recUserName: ownerName),
+                isActive: $navigateToProfile
+            ) { EmptyView() }
+                .hidden()
 
             // ── Story content (non-interactive, taps handled by zones below) ──
             if let story = currentStory {
@@ -139,8 +150,19 @@ struct StoryViewerView: View {
 
                         // 3-dot menu — same style as MainActivityOld
                         Menu {
-                            Button("For Visible") { }
-                            Button("Hide \(ownerName)") { }
+                            Button("For Visible") {
+                                isPaused = true
+                                player?.pause()
+                                navigateToProfile = true
+                            }
+                            Button(role: .destructive) {
+                                if let story = currentStory {
+                                    manager.deleteStory(id: story.id)
+                                    dismiss()
+                                }
+                            } label: {
+                                Text("Delete Story")
+                            }
                         } label: {
                             VStack(spacing: 3) {
                                 Circle()
@@ -202,6 +224,7 @@ struct StoryViewerView: View {
             }
         }
         .ignoresSafeArea()
+        } // end NavigationStack
     }
 
     // MARK: - Progress bar segment
