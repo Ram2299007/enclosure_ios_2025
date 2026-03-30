@@ -100,6 +100,22 @@ struct StoryViewerView: View {
                     .padding(.top, safeAreaTop + 8)   // below Dynamic Island / status bar
 
                     HStack(spacing: 10) {
+                        // Back button
+                        Button { dismiss() } label: {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.white.opacity(0.2))
+                                    .frame(width: 34, height: 34)
+                                Image("leftvector")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 20, height: 15)
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
                         // Avatar
                         CachedAsyncImage(url: ownerPhotoURL) { image in
                             image.resizable().scaledToFill()
@@ -123,11 +139,20 @@ struct StoryViewerView: View {
 
                         Spacer()
 
-                        Button { dismiss() } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundColor(.white)
-                                .padding(10)
+                        // 3-dot menu
+                        Menu {
+                            Button("For Visible") { }
+                            Button("Hide \(ownerName)") { }
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(hex: Constant.themeColor).opacity(0.85))
+                                    .frame(width: 34, height: 34)
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .rotationEffect(.degrees(90))
+                            }
                         }
                         .buttonStyle(.plain)
                     }
