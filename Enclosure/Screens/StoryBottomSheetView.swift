@@ -215,34 +215,9 @@ struct StoryBottomSheetView: View {
                         }
                     }
 
-                    // ── Section separator between My Stories and Friends ──
+                    // ── Gap between My Stories and Friends ──
                     if !uploadManager.contactStoryGroups.isEmpty {
-                        HStack(spacing: 10) {
-                            Rectangle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Color(hex: Constant.themeColor).opacity(0), Color(hex: Constant.themeColor).opacity(0.4)],
-                                        startPoint: .leading, endPoint: .trailing
-                                    )
-                                )
-                                .frame(height: 1)
-
-                            Text("Friends")
-                                .font(.custom("Inter18pt-SemiBold", size: 11))
-                                .foregroundColor(Color(hex: Constant.themeColor).opacity(0.7))
-                                .fixedSize()
-
-                            Rectangle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Color(hex: Constant.themeColor).opacity(0.4), Color(hex: Constant.themeColor).opacity(0)],
-                                        startPoint: .leading, endPoint: .trailing
-                                    )
-                                )
-                                .frame(height: 1)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
+                        Color.clear.frame(height: 10)
                     }
 
                     // Contact stories
