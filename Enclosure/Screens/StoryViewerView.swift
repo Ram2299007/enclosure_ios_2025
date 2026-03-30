@@ -313,29 +313,43 @@ struct StoryViewerView: View {
                         .tint(.white)
                         .submitLabel(.send)
                         .onSubmit { sendReply() }
+                        .onChange(of: replyText) { _ in
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) { }
+                        }
                 }
                 .frame(height: 44)
                 .background(Capsule().stroke(Color.white.opacity(0.45), lineWidth: 1.2))
 
-                Button(action: sendReply) {
-                    ZStack {
-                        Circle()
-                            .fill(replyText.isEmpty
-                                  ? Color.white.opacity(0.15)
-                                  : Color(hex: Constant.themeColor))
+                if replyText.isEmpty {
+                    // Heart / like button — shown when no text
+                    Button(action: sendLike) {
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: 26, weight: .medium))
+                            .foregroundColor(Color(hex: Constant.themeColor))
                             .frame(width: 44, height: 44)
-                        Image("baseline_keyboard_double_arrow_right_24")
-                            .renderingMode(.template)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 22, height: 22)
-                            .foregroundColor(replyText.isEmpty ? .white.opacity(0.4) : .white)
-                            .padding(.top, 3)
-                            .padding(.bottom, 6)
                     }
+                    .buttonStyle(.plain)
+                    .transition(.scale(scale: 0.6).combined(with: .opacity))
+                } else {
+                    // Send button — shown while typing
+                    Button(action: sendReply) {
+                        ZStack {
+                            Circle()
+                                .fill(Color(hex: Constant.themeColor))
+                                .frame(width: 44, height: 44)
+                            Image("baseline_keyboard_double_arrow_right_24")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 22, height: 22)
+                                .foregroundColor(.white)
+                                .padding(.top, 3)
+                                .padding(.bottom, 6)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.scale(scale: 0.6).combined(with: .opacity))
                 }
-                .buttonStyle(.plain)
-                .disabled(replyText.isEmpty)
             }
             .padding(.horizontal, 12)
             .padding(.top, 10)
@@ -511,6 +525,11 @@ struct StoryViewerView: View {
         // TODO: send reply via API
         replyText = ""
         isReplyFocused = false
+    }
+
+    private func sendLike() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        // TODO: send like/reaction via API
     }
 
     // MARK: - Helpers
