@@ -134,7 +134,7 @@ struct StoryBottomSheetView: View {
 
                     // My Stories cards
                     if hasStories {
-                        HStack(spacing: 0) {
+                        HStack(alignment: .top, spacing: 0) {
                             // "+" add card lives OUTSIDE the ScrollView so the outer
                             // vertical scroll cannot intercept its tap.
                             Button { showPhotoPicker = true } label: {
