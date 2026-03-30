@@ -155,14 +155,8 @@ struct StoryViewerView: View {
                                 player?.pause()
                                 navigateToProfile = true
                             }
-                            Button(role: .destructive) {
-                                if let story = currentStory {
-                                    manager.deleteStory(id: story.id)
-                                    dismiss()
-                                }
-                            } label: {
-                                Text("Delete Story")
-                            }
+                            Button("Mute Stories") { }
+                            Button("Hide \(ownerName)") { }
                         } label: {
                             VStack(spacing: 3) {
                                 Circle()
