@@ -157,13 +157,17 @@ struct StoryViewerView: View {
 
                         // 3-dot menu — same style as MainActivityOld
                         Menu {
-                            Button("For Visible") {
-                                isPaused = true
-                                player?.pause()
-                                navigateToProfile = true
+                            Button("For Visible") { }
+                            if isOwnStory {
+                                Button("Delete Story", role: .destructive) {
+                                    if let story = currentStory {
+                                        StoryUploadManager.shared.deleteStory(id: story.id)
+                                        dismiss()
+                                    }
+                                }
+                            } else {
+                                Button("Hide \(ownerName)", role: .destructive) { }
                             }
-                            Button("Mute Stories") { }
-                            Button("Hide \(ownerName)") { }
                         } label: {
                             VStack(spacing: 3) {
                                 Circle()
@@ -254,17 +258,46 @@ struct StoryViewerView: View {
 
     // MARK: - Story content
 
+    private func storyFontSizeMultiplier(_ text: String) -> CGFloat {
+        let lines = max(text.components(separatedBy: "\n").count, max(0, text.count / 24))
+        switch lines {
+        case 0...4:  return 1.00
+        case 5...7:  return 0.78
+        case 8...10: return 0.62
+        default:     return 0.50
+        }
+    }
+
     @ViewBuilder
     private func storyContent(_ story: UserStory) -> some View {
         if story.storyType == "text" {
             ZStack {
                 textBackground(story).ignoresSafeArea()
+                if story.bgType == "gradient" {
+                    NightWindParticlesView().ignoresSafeArea()
+                }
+                // Recover font index:
+                // - gradient: bg_color holds the raw integer (e.g. "3")
+                // - solid:    bg_color is "#RRGGBB:fontIndex" (e.g. "#FFC107:3")
+                let rawFontIndex: Int = {
+                    if story.bgType == "gradient" {
+                        return Int(story.bgColor) ?? story.fontIndex
+                    } else {
+                        let parts = story.bgColor.split(separator: ":", maxSplits: 1)
+                        return parts.count == 2 ? (Int(parts[1]) ?? story.fontIndex) : story.fontIndex
+                    }
+                }()
+                let fontIndex = max(0, min(rawFontIndex, storyRoyalFonts.count - 1))
+                let scale = storyFontSizeMultiplier(story.textContent)
+                // Amber solid (#FFC107) needs dark text; parse hex from bg_color
+                let solidHex = story.bgColor.split(separator: ":").first.map(String.init) ?? story.bgColor
+                let isLight = story.bgType == "solid" && solidHex.lowercased() == "#ffc107"
                 Text(story.textContent)
-                    .font(.custom("Inter18pt-Bold", size: 26))
-                    .foregroundColor(.white)
+                    .font(storyRoyalFonts[fontIndex].typingFont(scale: scale))
+                    .foregroundColor(isLight ? .black : .white)
                     .multilineTextAlignment(.center)
                     .padding(40)
-                    .shadow(color: .black.opacity(0.5), radius: 4)
+                    .shadow(color: .black.opacity(0.4), radius: 4)
             }
         } else if let item = story.mediaItems.first {
             if item.mediaType == "video" {
@@ -308,14 +341,22 @@ struct StoryViewerView: View {
 
     @ViewBuilder
     private func textBackground(_ story: UserStory) -> some View {
-        if story.bgType == "gradient",
-           !story.gradientStart.isEmpty, !story.gradientEnd.isEmpty {
+        if story.bgType == "gradient", !story.gradientStart.isEmpty {
+            // Reverse-lookup: find the matching gradient entry by start hex so we always
+            // get all 3 colours regardless of whether the server returns gradient_mid.
+            let startLower = story.gradientStart.lowercased()
+            let hexColors: [String] = storyGradients
+                .first(where: { $0.hexColors[0].lowercased() == startLower })?
+                .hexColors
+                ?? [story.gradientStart, story.gradientMid, story.gradientEnd].filter { !$0.isEmpty }
             LinearGradient(
-                colors: [Color(hex: story.gradientStart), Color(hex: story.gradientEnd)],
-                startPoint: .top, endPoint: .bottom
+                colors: hexColors.map { Color(hex: $0) },
+                startPoint: .topLeading, endPoint: .bottomTrailing
             )
         } else {
-            Color(hex: story.bgColor.isEmpty ? "#1a1a1a" : story.bgColor)
+            // Strip the ":fontIndex" suffix before using as a Color hex
+            let hex = story.bgColor.split(separator: ":").first.map(String.init) ?? story.bgColor
+            Color(hex: hex.isEmpty ? "#1a1a1a" : hex)
         }
     }
 

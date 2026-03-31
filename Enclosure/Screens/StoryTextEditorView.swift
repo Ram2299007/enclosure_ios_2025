@@ -1,7 +1,7 @@
 import SwiftUI
 
 // MARK: - Night Wind Particle Effect
-private struct NightWindParticlesView: View {
+struct NightWindParticlesView: View {
     var body: some View {
         ZStack {
             TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
@@ -61,7 +61,7 @@ private struct NightWindParticlesView: View {
 }
 
 // MARK: - Royal Font Model
-private struct RoyalFont {
+struct RoyalFont {
     let baseTypingSize: CGFloat
     let weight: Font.Weight
     let design: Font.Design
@@ -312,10 +312,66 @@ private enum BottomPickerTab: CaseIterable {
     }
 }
 
+// MARK: - Shared Royal Fonts (used by editor + viewer)
+let storyRoyalFonts: [RoyalFont] = [
+    RoyalFont(baseTypingSize: 32, weight: .regular,   design: .serif,      italic: false,
+              previewSize: 19, previewWeight: .regular,   previewDesign: .serif),
+    RoyalFont(baseTypingSize: 30, weight: .regular,   design: .serif,      italic: false,
+              previewSize: 18, previewWeight: .regular,   previewDesign: .serif,
+              customFontName: "Gotu-Regular"),
+    RoyalFont(baseTypingSize: 36, weight: .light,     design: .serif,      italic: false,
+              previewSize: 22, previewWeight: .light,     previewDesign: .serif),
+    RoyalFont(baseTypingSize: 30, weight: .heavy,     design: .default,    italic: false,
+              previewSize: 17, previewWeight: .heavy,     previewDesign: .default),
+    RoyalFont(baseTypingSize: 32, weight: .semibold,  design: .rounded,    italic: false,
+              previewSize: 19, previewWeight: .semibold,  previewDesign: .rounded),
+    RoyalFont(baseTypingSize: 32, weight: .medium,    design: .serif,      italic: true,
+              previewSize: 20, previewWeight: .medium,    previewDesign: .serif),
+    RoyalFont(baseTypingSize: 28, weight: .black,     design: .default,    italic: false,
+              previewSize: 16, previewWeight: .black,     previewDesign: .default),
+    RoyalFont(baseTypingSize: 31, weight: .semibold,  design: .serif,      italic: false,
+              previewSize: 18, previewWeight: .semibold,  previewDesign: .serif),
+    RoyalFont(baseTypingSize: 31, weight: .bold,      design: .rounded,    italic: false,
+              previewSize: 18, previewWeight: .bold,      previewDesign: .rounded),
+    RoyalFont(baseTypingSize: 38, weight: .ultraLight,design: .serif,      italic: false,
+              previewSize: 23, previewWeight: .ultraLight,previewDesign: .serif),
+    RoyalFont(baseTypingSize: 28, weight: .regular,   design: .monospaced, italic: false,
+              previewSize: 16, previewWeight: .regular,   previewDesign: .monospaced),
+    RoyalFont(baseTypingSize: 28, weight: .black,     design: .serif,      italic: false,
+              previewSize: 16, previewWeight: .black,     previewDesign: .serif),
+    RoyalFont(baseTypingSize: 36, weight: .ultraLight,design: .rounded,    italic: false,
+              previewSize: 22, previewWeight: .ultraLight,previewDesign: .rounded),
+    RoyalFont(baseTypingSize: 32, weight: .regular,   design: .serif,      italic: false,
+              previewSize: 20, previewWeight: .regular,   previewDesign: .serif,
+              customFontName: "KohinoorDevanagari-Regular"),
+    RoyalFont(baseTypingSize: 38, weight: .thin,      design: .default,    italic: false,
+              previewSize: 24, previewWeight: .thin,      previewDesign: .default)
+]
+
+// MARK: - Shared Gradients (used by editor + viewer)
+// Each entry: (name, [startHex, midHex, endHex])
+let storyGradients: [(name: String, hexColors: [String])] = [
+    ("Royal",    ["#0D1B40", "#1A3A6E", "#C9972A"]),
+    ("Emerald",  ["#062215", "#0B6E38", "#1FCA6A"]),
+    ("Burgundy", ["#3B0020", "#8B1A4A", "#E8A0A0"]),
+    ("Sapphire", ["#020524", "#0A2472", "#1565C0"]),
+    ("Amethyst", ["#1A0533", "#7B1FA2", "#E040FB"]),
+    ("Obsidian", ["#1C1C2E", "#16213E", "#0F3460"]),
+    ("Crimson",  ["#1A0000", "#8B0000", "#C62828"]),
+    ("Jade",     ["#002828", "#00695C", "#00BFA5"]),
+    ("Gilded",   ["#1C1008", "#7D5A00", "#F5C518"]),
+    ("Slate",    ["#0F172A", "#1E3A5F", "#2196F3"]),
+    ("Copper",   ["#2C1204", "#8B4513", "#D2691E"]),
+    ("Aurora",   ["#001020", "#006050", "#00E5CC"]),
+    ("Dusk",     ["#1A0A00", "#C0392B", "#F39C12"]),
+    ("Void",     ["#050505", "#0D0D1A", "#1A1A2E"]),
+    ("Rose",     ["#2D0A1F", "#8B2252", "#FFB6C1"])
+]
+
 // MARK: - Story Text Editor
 struct StoryTextEditorView: View {
-    // Called with (textContent, bgType, bgColor, gradStart, gradEnd) when user taps post
-    var onPost: ((String, String, String, String, String) -> Void)? = nil
+    // Called with (textContent, bgType, bgColor, gradStart, gradMid, gradEnd, fontIndex) when user taps post
+    var onPost: ((String, String, String, String, String, String, Int) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
@@ -325,24 +381,10 @@ struct StoryTextEditorView: View {
     @State private var isTextEditing: Bool = false
     @State private var glowPulse = false
 
-    // MARK: - 15 Rich Gradients
-    private let gradients: [(name: String, colors: [Color])] = [
-        ("Royal",    [Color(hex: "#0D1B40"), Color(hex: "#1A3A6E"), Color(hex: "#C9972A")]),
-        ("Emerald",  [Color(hex: "#062215"), Color(hex: "#0B6E38"), Color(hex: "#1FCA6A")]),
-        ("Burgundy", [Color(hex: "#3B0020"), Color(hex: "#8B1A4A"), Color(hex: "#E8A0A0")]),
-        ("Sapphire", [Color(hex: "#020524"), Color(hex: "#0A2472"), Color(hex: "#1565C0")]),
-        ("Amethyst", [Color(hex: "#1A0533"), Color(hex: "#7B1FA2"), Color(hex: "#E040FB")]),
-        ("Obsidian", [Color(hex: "#1C1C2E"), Color(hex: "#16213E"), Color(hex: "#0F3460")]),
-        ("Crimson",  [Color(hex: "#1A0000"), Color(hex: "#8B0000"), Color(hex: "#C62828")]),
-        ("Jade",     [Color(hex: "#002828"), Color(hex: "#00695C"), Color(hex: "#00BFA5")]),
-        ("Gilded",   [Color(hex: "#1C1008"), Color(hex: "#7D5A00"), Color(hex: "#F5C518")]),
-        ("Slate",    [Color(hex: "#0F172A"), Color(hex: "#1E3A5F"), Color(hex: "#2196F3")]),
-        ("Copper",   [Color(hex: "#2C1204"), Color(hex: "#8B4513"), Color(hex: "#D2691E")]),
-        ("Aurora",   [Color(hex: "#001020"), Color(hex: "#006050"), Color(hex: "#00E5CC")]),
-        ("Dusk",     [Color(hex: "#1A0A00"), Color(hex: "#C0392B"), Color(hex: "#F39C12")]),
-        ("Void",     [Color(hex: "#050505"), Color(hex: "#0D0D1A"), Color(hex: "#1A1A2E")]),
-        ("Rose",     [Color(hex: "#2D0A1F"), Color(hex: "#8B2252"), Color(hex: "#FFB6C1")])
-    ]
+    // MARK: - 15 Rich Gradients (shared with viewer via storyGradients)
+    private var gradients: [(name: String, colors: [Color])] {
+        storyGradients.map { g in (g.name, g.hexColors.map { Color(hex: $0) }) }
+    }
 
     // MARK: - Solid Colors
     private let solidColors: [(name: String, color: Color)] = [
@@ -361,41 +403,8 @@ struct StoryTextEditorView: View {
         ("Navy",    Color(hex: "#0A1929"))
     ]
 
-    // MARK: - 15 Royal Fonts
-    private let royalFonts: [RoyalFont] = [
-        RoyalFont(baseTypingSize: 32, weight: .regular,   design: .serif,      italic: false,
-                  previewSize: 19, previewWeight: .regular,   previewDesign: .serif),
-        RoyalFont(baseTypingSize: 30, weight: .regular,   design: .serif,      italic: false,
-                  previewSize: 18, previewWeight: .regular,   previewDesign: .serif,
-                  customFontName: "Gotu-Regular"),
-        RoyalFont(baseTypingSize: 36, weight: .light,     design: .serif,      italic: false,
-                  previewSize: 22, previewWeight: .light,     previewDesign: .serif),
-        RoyalFont(baseTypingSize: 30, weight: .heavy,     design: .default,    italic: false,
-                  previewSize: 17, previewWeight: .heavy,     previewDesign: .default),
-        RoyalFont(baseTypingSize: 32, weight: .semibold,  design: .rounded,    italic: false,
-                  previewSize: 19, previewWeight: .semibold,  previewDesign: .rounded),
-        RoyalFont(baseTypingSize: 32, weight: .medium,    design: .serif,      italic: true,
-                  previewSize: 20, previewWeight: .medium,    previewDesign: .serif),
-        RoyalFont(baseTypingSize: 28, weight: .black,     design: .default,    italic: false,
-                  previewSize: 16, previewWeight: .black,     previewDesign: .default),
-        RoyalFont(baseTypingSize: 31, weight: .semibold,  design: .serif,      italic: false,
-                  previewSize: 18, previewWeight: .semibold,  previewDesign: .serif),
-        RoyalFont(baseTypingSize: 31, weight: .bold,      design: .rounded,    italic: false,
-                  previewSize: 18, previewWeight: .bold,      previewDesign: .rounded),
-        RoyalFont(baseTypingSize: 38, weight: .ultraLight,design: .serif,      italic: false,
-                  previewSize: 23, previewWeight: .ultraLight,previewDesign: .serif),
-        RoyalFont(baseTypingSize: 28, weight: .regular,   design: .monospaced, italic: false,
-                  previewSize: 16, previewWeight: .regular,   previewDesign: .monospaced),
-        RoyalFont(baseTypingSize: 28, weight: .black,     design: .serif,      italic: false,
-                  previewSize: 16, previewWeight: .black,     previewDesign: .serif),
-        RoyalFont(baseTypingSize: 36, weight: .ultraLight,design: .rounded,    italic: false,
-                  previewSize: 22, previewWeight: .ultraLight,previewDesign: .rounded),
-        RoyalFont(baseTypingSize: 32, weight: .regular,    design: .serif,      italic: false,
-                  previewSize: 20, previewWeight: .regular,   previewDesign: .serif,
-                  customFontName: "KohinoorDevanagari-Regular"),
-        RoyalFont(baseTypingSize: 38, weight: .thin,      design: .default,    italic: false,
-                  previewSize: 24, previewWeight: .thin,      previewDesign: .default)
-    ]
+    // MARK: - 15 Royal Fonts (shared with viewer via storyRoyalFonts)
+    private var royalFonts: [RoyalFont] { storyRoyalFonts }
 
     // MARK: - Computed Properties
     private var fontSizeMultiplier: CGFloat {
@@ -449,24 +458,21 @@ struct StoryTextEditorView: View {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    // Hex strings matching the gradients/solidColors arrays above (by index)
-    private let gradientStartHex = [
-        "#0D1B40","#062215","#3B0020","#020524","#1A0533","#1C1C2E","#1A0000",
-        "#002828","#1C1008","#0F172A","#2C1204","#001020","#1A0A00","#050505","#2D0A1F"
-    ]
-    private let gradientEndHex = [
-        "#C9972A","#1FCA6A","#E8A0A0","#1565C0","#E040FB","#0F3460","#C62828",
-        "#00BFA5","#F5C518","#2196F3","#D2691E","#00E5CC","#F39C12","#1A1A2E","#FFB6C1"
-    ]
     private let solidHex = [
         "#000000","#D32F2F","#F57C00","#FFC107","#388E3C","#00796B",
         "#1976D2","#303F9F","#7B1FA2","#C2185B","#5D4037","#455A64","#0A1929"
     ]
 
-    private var bgAPIParams: (bgType: String, bgColor: String, gradStart: String, gradEnd: String) {
+    private var bgAPIParams: (bgType: String, bgColor: String, gradStart: String, gradMid: String, gradEnd: String) {
         switch bgSelection {
-        case .gradient(let i): return ("gradient", "", gradientStartHex[i], gradientEndHex[i])
-        case .solid(let i):    return ("solid", solidHex[i], "", "")
+        case .gradient(let i):
+            let g = storyGradients[i].hexColors
+            // bg_color is unused for gradient type — store font_index there so the viewer
+            // can recover the font without any new backend field
+            return ("gradient", "\(selectedFont)", g[0], g[1], g[2])
+        case .solid(let i):
+            // Encode font_index after a colon so the viewer can recover it
+            return ("solid", "\(solidHex[i]):\(selectedFont)", "", "", "")
         }
     }
 
@@ -768,7 +774,9 @@ struct StoryTextEditorView: View {
             params.bgType,
             params.bgColor,
             params.gradStart,
-            params.gradEnd
+            params.gradMid,
+            params.gradEnd,
+            selectedFont
         )
         dismiss()
     }

@@ -23,6 +23,10 @@ struct StoryBottomSheetView: View {
     // Story viewer — single atomic config avoids race between index + isPresented
     @State private var storyViewerConfig: StoryViewerConfig? = nil
 
+    // UserInfoScreen navigation
+    @State private var selectedContactGroup: ContactStoryGroup? = nil
+    @State private var showMyUserInfo = false
+
     private var myProfileImageURL: String {
         UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
     }
@@ -86,11 +90,7 @@ struct StoryBottomSheetView: View {
                             if !hasStories { plusBadge }
                         }
                         .onTapGesture {
-                            if hasStories {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) { isExpanded.toggle() }
-                            } else {
-                                showPhotoPicker = true
-                            }
+                            if hasStories { showMyUserInfo = true } else { showPhotoPicker = true }
                         }
 
                         VStack(alignment: .leading, spacing: 2) {
@@ -280,10 +280,11 @@ struct StoryBottomSheetView: View {
                 onPost: { assets, caption in
                     uploadManager.uploadMedia(assets: assets, caption: caption)
                 },
-                onTextPost: { text, bgType, bgColor, gradStart, gradEnd in
+                onTextPost: { text, bgType, bgColor, gradStart, gradMid, gradEnd, fontIndex in
                     uploadManager.uploadText(textContent: text, bgType: bgType,
                                              bgColor: bgColor, gradStart: gradStart,
-                                             gradEnd: gradEnd)
+                                             gradMid: gradMid, gradEnd: gradEnd,
+                                             fontIndex: fontIndex)
                 }
             )
         }
@@ -296,6 +297,34 @@ struct StoryBottomSheetView: View {
                 isOwnStory: config.isOwnStory,
                 startIndex: config.startIndex
             )
+        }
+        .fullScreenCover(item: $selectedContactGroup) { group in
+            NavigationStack {
+                UserInfoScreen(recUserId: group.id, recUserName: group.fullName)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button { selectedContactGroup = nil } label: {
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundColor(Color(hex: Constant.themeColor))
+                            }
+                        }
+                    }
+            }
+        }
+        .fullScreenCover(isPresented: $showMyUserInfo) {
+            NavigationStack {
+                UserInfoScreen(recUserId: Constant.SenderIdMy, recUserName: Constant.currentUserName)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button { showMyUserInfo = false } label: {
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundColor(Color(hex: Constant.themeColor))
+                            }
+                        }
+                    }
+            }
         }
     }
 
@@ -367,8 +396,8 @@ struct StoryBottomSheetView: View {
             // Text preview for text stories
             if story.storyType == "text", !story.textContent.isEmpty {
                 Text(story.textContent)
-                    .font(.custom("Inter18pt-SemiBold", size: showDelete ? 11 : 9))
-                    .foregroundColor(.white)
+                    .font(storyCardFont(story, size: showDelete ? 11 : 9))
+                    .foregroundColor(storyCardTextColor(story))
                     .multilineTextAlignment(.center)
                     .lineLimit(4)
                     .padding(.horizontal, 6)
@@ -408,15 +437,45 @@ struct StoryBottomSheetView: View {
 
     @ViewBuilder
     private func textStoryBackground(_ story: UserStory) -> some View {
-        if story.bgType == "gradient",
-           !story.gradientStart.isEmpty, !story.gradientEnd.isEmpty {
+        if story.bgType == "gradient", !story.gradientStart.isEmpty {
+            // Reverse-lookup full 3-colour gradient — same logic as StoryViewerView
+            let startLower = story.gradientStart.lowercased()
+            let hexColors: [String] = storyGradients
+                .first(where: { $0.hexColors[0].lowercased() == startLower })?
+                .hexColors
+                ?? [story.gradientStart, story.gradientMid, story.gradientEnd].filter { !$0.isEmpty }
             LinearGradient(
-                colors: [Color(hex: story.gradientStart), Color(hex: story.gradientEnd)],
-                startPoint: .top, endPoint: .bottom
+                colors: hexColors.map { Color(hex: $0) },
+                startPoint: .topLeading, endPoint: .bottomTrailing
             )
         } else {
-            Color(hex: story.bgColor.isEmpty ? "#1a1a1a" : story.bgColor)
+            // Strip ":fontIndex" suffix that may be appended to solid hex
+            let hex = story.bgColor.split(separator: ":").first.map(String.init) ?? story.bgColor
+            Color(hex: hex.isEmpty ? "#1a1a1a" : hex)
         }
+    }
+
+    /// Font matching the story's chosen royal-font style, at a small thumbnail size.
+    private func storyCardFont(_ story: UserStory, size: CGFloat) -> Font {
+        let fi: Int = {
+            if story.bgType == "gradient" {
+                return max(0, min(Int(story.bgColor) ?? story.fontIndex, storyRoyalFonts.count - 1))
+            }
+            let parts = story.bgColor.split(separator: ":", maxSplits: 1)
+            let raw = parts.count == 2 ? (Int(parts[1]) ?? story.fontIndex) : story.fontIndex
+            return max(0, min(raw, storyRoyalFonts.count - 1))
+        }()
+        let rf = storyRoyalFonts[fi]
+        if let name = rf.customFontName { return .custom(name, size: size) }
+        let f = Font.system(size: size, weight: rf.weight, design: rf.design)
+        return rf.italic ? f.italic() : f
+    }
+
+    /// Text colour for thumbnail cards — dark only on Amber (#FFC107) solid background.
+    private func storyCardTextColor(_ story: UserStory) -> Color {
+        guard story.bgType == "solid" else { return .white }
+        let hex = story.bgColor.split(separator: ":").first.map(String.init) ?? story.bgColor
+        return hex.lowercased() == "#ffc107" ? .black : .white
     }
 
     // MARK: - Uploading placeholder card
@@ -458,6 +517,7 @@ struct StoryBottomSheetView: View {
                 .frame(width: 50, height: 50)
                 .clipShape(Circle())
             }
+            .onTapGesture { selectedContactGroup = group }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(group.fullName)
@@ -483,14 +543,11 @@ struct StoryBottomSheetView: View {
 
             // 3-dot menu button (same design as MainActivityOld)
             Menu {
-                Button(role: .destructive) { } label: {
-                    Label("Mute Stories", systemImage: "bell.slash")
-                }
                 Button { } label: {
-                    Label("View Profile", systemImage: "person.circle")
+                    Text("For Visible")
                 }
                 Button(role: .destructive) { } label: {
-                    Label("Hide \(group.fullName)", systemImage: "eye.slash")
+                    Text("Hide \(group.fullName)")
                 }
             } label: {
                 VStack(spacing: 3) {

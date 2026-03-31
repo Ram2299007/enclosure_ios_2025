@@ -2479,7 +2479,9 @@ class ApiService {
         bgType: String,
         bgColor: String = "",
         gradientStart: String = "",
+        gradientMid: String = "",
         gradientEnd: String = "",
+        fontIndex: Int = 0,
         completion: @escaping (Bool, String) -> Void
     ) {
         let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
@@ -2489,13 +2491,14 @@ class ApiService {
             "uid": uid,
             "story_type": "text",
             "text_content": textContent,
-            "bg_type": bgType
+            "bg_type": bgType,
+            "bg_color": bgColor,
+            "font_index": "\(fontIndex)"
         ]
-        if bgType == "solid" {
-            params["bg_color"] = bgColor
-        } else {
+        if bgType != "solid" {
             params["gradient_start"] = gradientStart
-            params["gradient_end"] = gradientEnd
+            params["gradient_mid"]   = gradientMid
+            params["gradient_end"]   = gradientEnd
         }
 
         let endpoint = Constant.baseURL + "index.php/Api_Controller/create_story"

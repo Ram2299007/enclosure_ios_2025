@@ -9,7 +9,9 @@ struct UserStory: Identifiable {
     let bgType: String
     let bgColor: String
     let gradientStart: String
+    let gradientMid: String
     let gradientEnd: String
+    let fontIndex: Int
     let mediaItems: [StoryMediaItem]
     let createdAt: String
     let viewsCount: Int
@@ -22,7 +24,10 @@ struct UserStory: Identifiable {
         self.bgType        = dict["bg_type"]         as? String ?? ""
         self.bgColor       = dict["bg_color"]        as? String ?? ""
         self.gradientStart = dict["gradient_start"]  as? String ?? ""
+        self.gradientMid   = dict["gradient_mid"]    as? String ?? ""
         self.gradientEnd   = dict["gradient_end"]    as? String ?? ""
+        self.fontIndex     = (dict["font_index"] as? NSNumber)?.intValue
+                          ?? Int(dict["font_index"] as? String ?? "") ?? 0
         self.createdAt     = dict["created_at"]      as? String ?? ""
         let raw = dict["media_items"] as? [[String: Any]] ?? []
         self.mediaItems = raw.compactMap { StoryMediaItem(dict: $0) }
@@ -183,12 +188,13 @@ final class StoryUploadManager: ObservableObject {
 
     // MARK: - Upload text
     func uploadText(textContent: String, bgType: String, bgColor: String,
-                    gradStart: String, gradEnd: String) {
+                    gradStart: String, gradMid: String, gradEnd: String, fontIndex: Int) {
         isUploading = true
         progress    = 0.0
         ApiService.shared.uploadTextStory(
-            textContent: textContent, bgType: bgType,
-            bgColor: bgColor, gradientStart: gradStart, gradientEnd: gradEnd
+            textContent: textContent, bgType: bgType, bgColor: bgColor,
+            gradientStart: gradStart, gradientMid: gradMid, gradientEnd: gradEnd,
+            fontIndex: fontIndex
         ) { [weak self] success, _ in
             DispatchQueue.main.async {
                 self?.isUploading = false
