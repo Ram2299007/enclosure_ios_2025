@@ -467,11 +467,12 @@ struct StoryTextEditorView: View {
         switch bgSelection {
         case .gradient(let i):
             let g = storyGradients[i].hexColors
-            // bg_color is unused for gradient type — store font_index there so the viewer
-            // can recover the font without any new backend field
-            return ("gradient", "\(selectedFont)", g[0], g[1], g[2])
+            // Encode font_index as a suffix on gradient_end (":N") — this field is always
+            // stored and returned by the server for gradient stories, so recovery is reliable.
+            // The viewer uses a reverse-lookup table for colors, so the suffix is harmless.
+            return ("gradient", "", g[0], g[1], "\(g[2]):\(selectedFont)")
         case .solid(let i):
-            // Encode font_index after a colon so the viewer can recover it
+            // Encode font_index after a colon in bg_color so the viewer can recover it
             return ("solid", "\(solidHex[i]):\(selectedFont)", "", "", "")
         }
     }

@@ -459,6 +459,11 @@ struct StoryBottomSheetView: View {
     private func storyCardFont(_ story: UserStory, size: CGFloat) -> Font {
         let fi: Int = {
             if story.bgType == "gradient" {
+                // Font index encoded as suffix on gradient_end ("#HEX:N")
+                let parts = story.gradientEnd.split(separator: ":", maxSplits: 1)
+                if parts.count == 2, let n = Int(parts[1]) {
+                    return max(0, min(n, storyRoyalFonts.count - 1))
+                }
                 return max(0, min(Int(story.bgColor) ?? story.fontIndex, storyRoyalFonts.count - 1))
             }
             let parts = story.bgColor.split(separator: ":", maxSplits: 1)

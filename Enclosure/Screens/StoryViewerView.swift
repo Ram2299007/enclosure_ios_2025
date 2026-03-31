@@ -277,10 +277,13 @@ struct StoryViewerView: View {
                     NightWindParticlesView().ignoresSafeArea()
                 }
                 // Recover font index:
-                // - gradient: bg_color holds the raw integer (e.g. "3")
-                // - solid:    bg_color is "#RRGGBB:fontIndex" (e.g. "#FFC107:3")
+                // - gradient: font index encoded as suffix on gradient_end ("#HEX:N")
+                //             — falls back to bg_color integer or story.fontIndex
+                // - solid:    bg_color is "#RRGGBB:N"
                 let rawFontIndex: Int = {
                     if story.bgType == "gradient" {
+                        let parts = story.gradientEnd.split(separator: ":", maxSplits: 1)
+                        if parts.count == 2, let n = Int(parts[1]) { return n }
                         return Int(story.bgColor) ?? story.fontIndex
                     } else {
                         let parts = story.bgColor.split(separator: ":", maxSplits: 1)
