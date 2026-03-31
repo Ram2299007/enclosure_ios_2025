@@ -2493,6 +2493,7 @@ class ApiService {
             "text_content": textContent,
             "bg_type": bgType,
             "bg_color": bgColor,
+            "font_name": "\(fontIndex)",
             "font_index": "\(fontIndex)"
         ]
         if bgType != "solid" {
