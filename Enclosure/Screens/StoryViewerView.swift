@@ -100,6 +100,20 @@ struct StoryViewerView: View {
                 if pressing { player?.pause() } else { player?.play() }
             }, perform: {})
 
+            // ── Caption overlay (interactive — must be outside allowsHitTesting(false)) ──
+            if let story = currentStory,
+               story.storyType == "media",
+               !story.caption.isEmpty {
+                VStack {
+                    Spacer()
+                    StoryCaptionOverlay(caption: story.caption, isOwnStory: isOwnStory)
+                        .id(currentIndex)   // reset expand state on story change
+                        .padding(.bottom, isOwnStory ? 130 : 100)
+                }
+                .ignoresSafeArea()
+                .allowsHitTesting(true)
+            }
+
             // ── Header + reply bar overlay ──
             VStack(spacing: 0) {
                 // Progress bars + user info
@@ -627,6 +641,107 @@ struct StoryViewerView: View {
         if diff < 3600  { return "\(Int(diff / 60))m ago" }
         if diff < 86400 { return "\(Int(diff / 3600))h ago" }
         return "\(Int(diff / 86400))d ago"
+    }
+}
+
+// MARK: - Caption overlay with expand / collapse (WhatsApp style)
+
+private struct StoryCaptionOverlay: View {
+    let caption: String
+    let isOwnStory: Bool
+
+    @State private var isExpanded = false
+    @State private var isTruncated = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text(caption)
+                .font(.custom("Inter18pt-SemiBold", size: 14))
+                .lineLimit(isExpanded ? nil : 3)
+                .multilineTextAlignment(.center)
+                .foregroundColor(.white)
+                .shadow(color: .black.opacity(0.7), radius: 4, x: 0, y: 2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if isTruncated || isExpanded {
+                Spacer().frame(height: 6)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.22)) { isExpanded.toggle() }
+                } label: {
+                    Text(isExpanded ? "less" : "more")
+                        .font(.custom("Inter18pt-SemiBold", size: 13))
+                        .foregroundColor(.white.opacity(0.85))
+                        .underline()
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        .background(
+            LinearGradient(
+                colors: [Color.clear, Color.black.opacity(0.6)],
+                startPoint: .top, endPoint: .bottom
+            )
+        )
+        // Measure full vs 4-line height to decide whether "more" is needed
+        .background(
+            GeometryReader { container in
+                CaptionTruncationDetector(
+                    caption: caption,
+                    width: container.size.width - 40,
+                    isTruncated: $isTruncated
+                )
+            }
+        )
+    }
+}
+
+/// Two hidden Text views at identical width: one unconstrained, one limited to 4 lines.
+/// Sets isTruncated = true when the unconstrained height exceeds the limited height.
+private struct CaptionTruncationDetector: View {
+    let caption: String
+    let width: CGFloat
+    @Binding var isTruncated: Bool
+
+    @State private var fullH: CGFloat = 0
+    @State private var limitH: CGFloat = 0
+
+    var body: some View {
+        ZStack {
+            Text(caption)
+                .font(.custom("Inter18pt-SemiBold", size: 14))
+                .lineLimit(nil)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: width)
+                .hidden()
+                .background(GeometryReader { g in
+                    Color.clear
+                        .onAppear     { fullH = g.size.height; compare() }
+                        .onChange(of: g.size.height) { fullH = $0; compare() }
+                })
+
+            Text(caption)
+                .font(.custom("Inter18pt-SemiBold", size: 14))
+                .lineLimit(3)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: width)
+                .hidden()
+                .background(GeometryReader { g in
+                    Color.clear
+                        .onAppear     { limitH = g.size.height; compare() }
+                        .onChange(of: g.size.height) { limitH = $0; compare() }
+                })
+        }
+        .frame(width: 0, height: 0)   // occupies no space in the layout
+    }
+
+    private func compare() {
+        guard fullH > 0, limitH > 0 else { return }
+        let result = fullH > limitH + 2
+        if result != isTruncated { isTruncated = result }
     }
 }
 

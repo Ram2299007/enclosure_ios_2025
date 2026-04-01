@@ -13,6 +13,7 @@ struct UserStory: Identifiable {
     let gradientEnd: String
     let fontIndex: Int
     let mediaItems: [StoryMediaItem]
+    let caption: String
     let createdAt: String
     let viewsCount: Int
 
@@ -28,6 +29,7 @@ struct UserStory: Identifiable {
         self.gradientEnd   = dict["gradient_end"]    as? String ?? ""
         self.fontIndex     = (dict["font_index"] as? NSNumber)?.intValue
                           ?? Int(dict["font_index"] as? String ?? "") ?? 0
+        self.caption       = dict["caption"]         as? String ?? ""
         self.createdAt     = dict["created_at"]      as? String ?? ""
         let raw = dict["media_items"] as? [[String: Any]] ?? []
         self.mediaItems = raw.compactMap { StoryMediaItem(dict: $0) }
