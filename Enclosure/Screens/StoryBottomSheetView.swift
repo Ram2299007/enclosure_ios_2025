@@ -187,7 +187,13 @@ struct StoryBottomSheetView: View {
                                                 })
 
                                             // Delete button — outside the card, below it
-                                            Button { uploadManager.deleteStory(id: story.id) } label: {
+                                            Menu {
+                                                Button(role: .destructive) {
+                                                    uploadManager.deleteStory(id: story.id)
+                                                } label: {
+                                                    Label("Delete now", systemImage: "trash")
+                                                }
+                                            } label: {
                                                 Image(systemName: "trash")
                                                     .font(.system(size: 13, weight: .medium))
                                                     .foregroundColor(.white)
