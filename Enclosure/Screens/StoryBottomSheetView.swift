@@ -604,6 +604,7 @@ private struct StoryPrivacySheet: View {
     @State private var isLoading = false
     @State private var isSaving  = false
     @State private var hasLoadedPrivacy = false
+    @State private var showEmptyOnlyWithAlert = false
 
     // Contact list — used to resolve uid → name + photo
     @StateObject private var chatVM = ChatViewModel()
@@ -793,6 +794,11 @@ private struct StoryPrivacySheet: View {
             }
             .background(Color("BackgroundColor"))
             .navigationBarHidden(true)
+            .alert("No contacts selected", isPresented: $showEmptyOnlyWithAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Please select at least one contact for \"Only share with\", or choose \"My contacts\".")
+            }
             .onAppear {
                 chatVM.fetchChatList(uid: Constant.SenderIdMy)
                 if !hasLoadedPrivacy {
@@ -918,6 +924,10 @@ private struct StoryPrivacySheet: View {
     }
 
     private func savePrivacy() {
+        guard !(shareMode == .onlyWith && onlyWithIds.isEmpty) else {
+            showEmptyOnlyWithAlert = true
+            return
+        }
         isSaving = true
         let visType = shareMode == .onlyWith ? "only_share_with" : "my_contacts"
         ApiService.shared.saveStoryPrivacy(
