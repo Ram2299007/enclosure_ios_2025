@@ -883,7 +883,10 @@ private struct StoryViewersSheet: View {
             group.leave()
         }
 
-        group.notify(queue: .main) { isLoading = false }
+        group.notify(queue: .main) {
+            isLoading = false
+            print("📊 [StoryViewersSheet] viewers=\(viewers.map { $0.id }) likerUids=\(likerUids)")
+        }
     }
 
     // MARK: Seen By tab

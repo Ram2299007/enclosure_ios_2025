@@ -2838,11 +2838,15 @@ class ApiService {
                    parameters: ["story_id": storyId],
                    encoding: URLEncoding.default)
             .responseData { [weak self] response in
+                let raw = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "(nil)"
+                print("📥 [fetchStoryLikes] storyId=\(storyId) body=\(raw)")
                 guard let json = self?.parseStoryResponse(response.data),
                       (json["success"] as? String) == "1",
                       let data = json["data"] as? [[String: Any]] else {
+                    print("🔴 [fetchStoryLikes] parse/success guard failed")
                     completion([]); return
                 }
+                print("✅ [fetchStoryLikes] \(data.count) likers: \(data.compactMap { $0["uid"] })")
                 completion(data)
             }
     }
