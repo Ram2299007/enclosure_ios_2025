@@ -23,6 +23,8 @@ struct StoryBottomSheetView: View {
     // Story viewer — single atomic config avoids race between index + isPresented
     @State private var storyViewerConfig: StoryViewerConfig? = nil
 
+    @State private var showPrivacySheet = false
+
     // UserInfoScreen navigation
     @State private var selectedContactGroup: ContactStoryGroup? = nil
     @State private var showMyUserInfo = false
@@ -114,7 +116,7 @@ struct StoryBottomSheetView: View {
                                 .padding(.trailing, 4)
                         }
 
-                        Button { } label: {
+                        Button { showPrivacySheet = true } label: {
                             Image("setting")
                                 .renderingMode(.template)
                                 .resizable().scaledToFit()
@@ -331,6 +333,11 @@ struct StoryBottomSheetView: View {
                         }
                     }
             }
+        }
+        .sheet(isPresented: $showPrivacySheet) {
+            StoryPrivacySheet(isPresented: $showPrivacySheet)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -582,5 +589,346 @@ struct StoryBottomSheetView: View {
         if diff < 3600  { return "\(Int(diff / 60))m ago" }
         if diff < 86400 { return "\(Int(diff / 3600))h ago" }
         return "\(Int(diff / 86400))d ago"
+    }
+}
+
+// MARK: - Stories Privacy Sheet
+private struct StoryPrivacySheet: View {
+    @Binding var isPresented: Bool
+
+    enum StoryShareMode { case myContacts, onlyWith }
+
+    @State private var shareMode: StoryShareMode = .myContacts
+    @State private var onlyWithIds: Set<String>  = []
+    @State private var neverShareIds: Set<String> = []
+    @State private var isLoading = false
+    @State private var isSaving  = false
+    @State private var hasLoadedPrivacy = false
+
+    // Contact list — used to resolve uid → name + photo
+    @StateObject private var chatVM = ChatViewModel()
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // ── Header ──
+                ZStack {
+                    Text("Stories Privacy")
+                        .font(.custom("Inter18pt-SemiBold", size: 17))
+                        .foregroundColor(Color("TextColor"))
+                    HStack {
+                        Button { isPresented = false } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(Color("TextColor"))
+                                .frame(width: 32, height: 32)
+                                .background(Color("gray3").opacity(0.15))
+                                .clipShape(Circle())
+                        }
+                        Spacer()
+                        Button { savePrivacy() } label: {
+                            if isSaving {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: Color(hex: Constant.themeColor)))
+                                    .frame(width: 56, height: 32)
+                            } else {
+                                Text("Save")
+                                    .font(.custom("Inter18pt-SemiBold", size: 15))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 7)
+                                    .background(Color(hex: Constant.themeColor))
+                                    .clipShape(Capsule())
+                            }
+                        }
+                        .disabled(isSaving)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
+                .padding(.bottom, 16)
+
+                if isLoading {
+                    Spacer()
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: Color(hex: Constant.themeColor)))
+                    Spacer()
+                } else {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 0) {
+
+                            // ── Share with ──
+                            Text("Share with")
+                                .font(.custom("Inter18pt-Bold", size: 16))
+                                .foregroundColor(Color("TextColor"))
+                                .padding(.horizontal, 20)
+                                .padding(.bottom, 12)
+
+                            VStack(spacing: 0) {
+                                // My contacts
+                                Button { shareMode = .myContacts } label: {
+                                    HStack(spacing: 14) {
+                                        radioCircle(selected: shareMode == .myContacts)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("My contacts")
+                                                .font(.custom("Inter18pt-SemiBold", size: 15))
+                                                .foregroundColor(Color("TextColor"))
+                                            Text("Share with all of your contacts")
+                                                .font(.custom("Inter18pt-Regular", size: 13))
+                                                .foregroundColor(Color("gray3"))
+                                        }
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 14)
+                                }
+                                .buttonStyle(.plain)
+
+                                Divider().padding(.leading, 58)
+
+                                // Only share with row
+                                HStack(spacing: 14) {
+                                    Button { shareMode = .onlyWith } label: {
+                                        radioCircle(selected: shareMode == .onlyWith)
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Only share with")
+                                            .font(.custom("Inter18pt-SemiBold", size: 15))
+                                            .foregroundColor(Color("TextColor"))
+                                        Text(onlyWithIds.isEmpty
+                                             ? "Only share with selected contacts"
+                                             : "\(onlyWithIds.count) contact\(onlyWithIds.count == 1 ? "" : "s") selected")
+                                            .font(.custom("Inter18pt-Regular", size: 13))
+                                            .foregroundColor(onlyWithIds.isEmpty ? Color("gray3") : Color(hex: Constant.themeColor))
+                                    }
+
+                                    Spacer()
+
+                                    NavigationLink {
+                                        StoryOnlyShareWithView(preSelectedIds: onlyWithIds) { ids in
+                                            onlyWithIds = ids.subtracting(neverShareIds)
+                                            shareMode = .onlyWith
+                                        }
+                                    } label: {
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundColor(Color("gray3").opacity(0.6))
+                                            .frame(width: 36, height: 36)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.top, 14)
+                                .padding(.bottom, onlyWithIds.isEmpty ? 14 : 8)
+
+                                // ── Included contacts chips ──
+                                if !onlyWithIds.isEmpty {
+                                    contactChips(ids: onlyWithIds, accentColor: Color(hex: Constant.themeColor), label: "Visible to")
+                                        .padding(.bottom, 12)
+                                }
+                            }
+                            .background(Color("gray3").opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .padding(.horizontal, 16)
+
+                            Text("Changes to your story privacy settings will not affect stories that you have already shared.")
+                                .font(.custom("Inter18pt-Regular", size: 12))
+                                .foregroundColor(Color("gray3"))
+                                .padding(.horizontal, 20)
+                                .padding(.top, 10)
+                                .padding(.bottom, 24)
+
+                            // ── Add exception ──
+                            Text("Add exception")
+                                .font(.custom("Inter18pt-Bold", size: 16))
+                                .foregroundColor(Color("TextColor"))
+                                .padding(.horizontal, 20)
+                                .padding(.bottom, 12)
+
+                            VStack(spacing: 0) {
+                                NavigationLink {
+                                    StoryOnlyShareWithView(
+                                        screenTitle: "Never share with",
+                                        preSelectedIds: neverShareIds
+                                    ) { ids in
+                                        neverShareIds = ids.subtracting(onlyWithIds)
+                                    }
+                                } label: {
+                                    HStack {
+                                        Text("Never share with")
+                                            .font(.custom("Inter18pt-SemiBold", size: 15))
+                                            .foregroundColor(Color("TextColor"))
+                                        Spacer()
+                                        HStack(spacing: 4) {
+                                            Text(neverShareIds.isEmpty ? "Add users" : "\(neverShareIds.count) selected")
+                                                .font(.custom("Inter18pt-Regular", size: 14))
+                                                .foregroundColor(neverShareIds.isEmpty ? Color("gray3") : Color.red.opacity(0.85))
+                                            Image(systemName: "chevron.right")
+                                                .font(.system(size: 13, weight: .semibold))
+                                                .foregroundColor(Color("gray3").opacity(0.6))
+                                        }
+                                    }
+                                    .padding(.horizontal, 20)
+                                    .padding(.top, 16)
+                                    .padding(.bottom, neverShareIds.isEmpty ? 16 : 8)
+                                }
+                                .buttonStyle(.plain)
+
+                                // ── Excluded contacts chips ──
+                                if !neverShareIds.isEmpty {
+                                    contactChips(ids: neverShareIds, accentColor: Color.red.opacity(0.8), label: "Hidden from")
+                                        .padding(.bottom, 12)
+                                }
+                            }
+                            .background(Color("gray3").opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .padding(.horizontal, 16)
+                        }
+                        .padding(.bottom, 30)
+                    }
+                }
+            }
+            .background(Color("BackgroundColor"))
+            .navigationBarHidden(true)
+            .onAppear {
+                chatVM.fetchChatList(uid: Constant.SenderIdMy)
+                if !hasLoadedPrivacy {
+                    hasLoadedPrivacy = true
+                    loadPrivacy()
+                }
+            }
+        }
+    }
+
+    // MARK: - Contact chips strip
+
+    @ViewBuilder
+    private func contactChips(ids: Set<String>, accentColor: Color, label: String) -> some View {
+        let contacts = chatVM.chatList.filter { ids.contains($0.uid) }
+        if !contacts.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(label)
+                    .font(.custom("Inter18pt-Regular", size: 11))
+                    .foregroundColor(accentColor)
+                    .padding(.horizontal, 20)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(contacts) { contact in
+                            VStack(spacing: 4) {
+                                ZStack {
+                                    Circle()
+                                        .strokeBorder(accentColor, lineWidth: 2)
+                                        .frame(width: 38, height: 38)
+                                    if let url = contactPhotoURL(contact) {
+                                        CachedAsyncImage(url: url) { img in
+                                            img.resizable().scaledToFill()
+                                                .frame(width: 34, height: 34)
+                                                .clipShape(Circle())
+                                        } placeholder: {
+                                            initialsCircle(contact.fullName, color: accentColor)
+                                        }
+                                    } else {
+                                        initialsCircle(contact.fullName, color: accentColor)
+                                    }
+                                }
+                                .frame(width: 38, height: 38)
+
+                                Text(contact.fullName.components(separatedBy: " ").first ?? contact.fullName)
+                                    .font(.custom("Inter18pt-Regular", size: 10))
+                                    .foregroundColor(Color("TextColor"))
+                                    .lineLimit(1)
+                                    .frame(width: 44)
+                            }
+                        }
+                        // If saved UIDs have no matching chat contact, show count badge for the remainder
+                        let unknownCount = ids.count - contacts.count
+                        if unknownCount > 0 {
+                            VStack(spacing: 4) {
+                                ZStack {
+                                    Circle()
+                                        .fill(accentColor.opacity(0.15))
+                                        .frame(width: 38, height: 38)
+                                    Text("+\(unknownCount)")
+                                        .font(.custom("Inter18pt-SemiBold", size: 11))
+                                        .foregroundColor(accentColor)
+                                }
+                                Text("more")
+                                    .font(.custom("Inter18pt-Regular", size: 10))
+                                    .foregroundColor(Color("gray3"))
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func initialsCircle(_ name: String, color: Color) -> some View {
+        let initial = name.first.map { String($0).uppercased() } ?? "?"
+        ZStack {
+            Circle().fill(color.opacity(0.18)).frame(width: 34, height: 34)
+            Text(initial)
+                .font(.custom("Inter18pt-Bold", size: 13))
+                .foregroundColor(color)
+        }
+    }
+
+    private func contactPhotoURL(_ contact: UserActiveContactModel) -> URL? {
+        guard !contact.photo.isEmpty else { return nil }
+        let full = contact.photo.hasPrefix("http") ? contact.photo : Constant.baseURL + contact.photo
+        return URL(string: full)
+    }
+
+    // MARK: - Helpers
+
+    @ViewBuilder
+    private func radioCircle(selected: Bool) -> some View {
+        ZStack {
+            Circle()
+                .fill(selected ? Color(hex: Constant.themeColor) : Color.clear)
+                .frame(width: 24, height: 24)
+            if selected {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white)
+            } else {
+                Circle()
+                    .stroke(Color("gray3").opacity(0.5), lineWidth: 1.5)
+                    .frame(width: 24, height: 24)
+            }
+        }
+    }
+
+    private func loadPrivacy() {
+        isLoading = true
+        ApiService.shared.fetchStoryPrivacy { settings in
+            DispatchQueue.main.async {
+                shareMode     = settings.visibilityType == "only_share_with" ? .onlyWith : .myContacts
+                onlyWithIds   = Set(settings.shareWithUids)
+                neverShareIds = Set(settings.neverShareUids)
+                isLoading     = false
+            }
+        }
+    }
+
+    private func savePrivacy() {
+        isSaving = true
+        let visType = shareMode == .onlyWith ? "only_share_with" : "my_contacts"
+        ApiService.shared.saveStoryPrivacy(
+            visibilityType: visType,
+            shareWithUids:  Array(onlyWithIds),
+            neverShareUids: Array(neverShareIds)
+        ) { success in
+            DispatchQueue.main.async {
+                isSaving = false
+                if success { isPresented = false }
+            }
+        }
     }
 }

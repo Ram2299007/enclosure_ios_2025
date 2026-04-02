@@ -2725,6 +2725,87 @@ class ApiService {
                 completion(data)
             }
     }
+
+    // MARK: - Story Privacy
+
+    struct StoryPrivacySettings {
+        var visibilityType: String      // "my_contacts" | "only_share_with"
+        var shareWithUids: [String]
+        var neverShareUids: [String]
+    }
+
+    func fetchStoryPrivacy(completion: @escaping (StoryPrivacySettings) -> Void) {
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !uid.isEmpty else {
+            print("🔴 [fetchStoryPrivacy] uid is empty — returning defaults")
+            completion(StoryPrivacySettings(visibilityType: "my_contacts", shareWithUids: [], neverShareUids: []))
+            return
+        }
+        let endpoint = Constant.baseURL + "index.php/Api_Controller/get_story_privacy"
+        print("📤 [fetchStoryPrivacy] POST \(endpoint) uid=\(uid)")
+        AF.request(endpoint, method: .post, parameters: ["uid": uid], encoding: URLEncoding.default)
+            .responseData { [weak self] response in
+                let rawBody = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "(nil)"
+                print("📥 [fetchStoryPrivacy] status=\(response.response?.statusCode ?? -1) body=\(rawBody)")
+                guard let json = self?.parseStoryResponse(response.data),
+                      (json["success"] as? String) == "1"
+                else {
+                    print("🔴 [fetchStoryPrivacy] parse/success guard failed — returning defaults")
+                    completion(StoryPrivacySettings(visibilityType: "my_contacts", shareWithUids: [], neverShareUids: []))
+                    return
+                }
+                let visType    = json["visibility_type"]  as? String   ?? "my_contacts"
+                // PHP may encode numeric UIDs as Int — normalise to [String]
+                func toStringArray(_ val: Any?) -> [String] {
+                    if let arr = val as? [String]  { return arr }
+                    if let arr = val as? [Int]     { return arr.map { String($0) } }
+                    if let arr = val as? [Any]     { return arr.map { "\($0)" } }
+                    return []
+                }
+                let shareWith  = toStringArray(json["share_with_uids"])
+                let neverShare = toStringArray(json["never_share_uids"])
+                print("✅ [fetchStoryPrivacy] visType=\(visType) shareWith=\(shareWith) neverShare=\(neverShare)")
+                completion(StoryPrivacySettings(visibilityType: visType,
+                                                shareWithUids: shareWith,
+                                                neverShareUids: neverShare))
+            }
+    }
+
+    func saveStoryPrivacy(visibilityType: String,
+                          shareWithUids: [String],
+                          neverShareUids: [String],
+                          completion: @escaping (Bool) -> Void) {
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !uid.isEmpty else { completion(false); return }
+
+        let endpoint = Constant.baseURL + "index.php/Api_Controller/save_story_privacy"
+
+        // Encode uid arrays as JSON strings so URLEncoding handles them cleanly
+        let shareJSON  = (try? JSONSerialization.data(withJSONObject: shareWithUids))
+                            .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+        let neverJSON  = (try? JSONSerialization.data(withJSONObject: neverShareUids))
+                            .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+
+        let params: [String: String] = [
+            "uid":              uid,
+            "visibility_type":  visibilityType,
+            "share_with_uids":  shareJSON,
+            "never_share_uids": neverJSON,
+        ]
+        print("📤 [saveStoryPrivacy] visType=\(visibilityType) shareWith=\(shareJSON) neverShare=\(neverJSON)")
+        AF.request(endpoint, method: .post, parameters: params, encoding: URLEncoding.default)
+            .responseData { [weak self] response in
+                let rawBody = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "(nil)"
+                print("📥 [saveStoryPrivacy] status=\(response.response?.statusCode ?? -1) body=\(rawBody)")
+                guard let json = self?.parseStoryResponse(response.data) else {
+                    print("🔴 [saveStoryPrivacy] parse failed")
+                    completion(false); return
+                }
+                let ok = (json["success"] as? String) == "1"
+                print(ok ? "✅ [saveStoryPrivacy] saved OK" : "🔴 [saveStoryPrivacy] server returned failure: \(json["message"] ?? "")")
+                completion(ok)
+            }
+    }
 }
 
 // MARK: - Send OTP Response Model
