@@ -2832,6 +2832,21 @@ class ApiService {
             }
     }
 
+    func fetchStoryLikes(storyId: String, completion: @escaping ([[String: Any]]) -> Void) {
+        let endpoint = Constant.baseURL + "index.php/Api_Controller/get_story_likes"
+        AF.request(endpoint, method: .post,
+                   parameters: ["story_id": storyId],
+                   encoding: URLEncoding.default)
+            .responseData { [weak self] response in
+                guard let json = self?.parseStoryResponse(response.data),
+                      (json["success"] as? String) == "1",
+                      let data = json["data"] as? [[String: Any]] else {
+                    completion([]); return
+                }
+                completion(data)
+            }
+    }
+
     func toggleStoryLike(storyId: String, completion: @escaping (StoryLikeStatus) -> Void) {
         let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         guard !uid.isEmpty else { completion(StoryLikeStatus(liked: false, likesCount: 0)); return }

@@ -390,22 +390,15 @@ struct StoryViewerView: View {
 
                 // ── Heart / like button (LEFT) — always visible ──
                 Button(action: sendLike) {
-                    VStack(spacing: 3) {
-                        ZStack {
-                            Circle()
-                                .fill(isLiked
-                                      ? Color(hex: Constant.themeColor)
-                                      : Color.white.opacity(0.15))
-                                .frame(width: 44, height: 44)
-                            Image(systemName: isLiked ? "heart.fill" : "heart")
-                                .font(.system(size: 19, weight: .regular))
-                                .foregroundColor(isLiked ? .white : .white.opacity(0.7))
-                        }
-                        if likesCount > 0 {
-                            Text("\(likesCount)")
-                                .font(.custom("Inter18pt-SemiBold", size: 11))
-                                .foregroundColor(.white.opacity(0.85))
-                        }
+                    ZStack {
+                        Circle()
+                            .fill(isLiked
+                                  ? Color(hex: Constant.themeColor)
+                                  : Color.white.opacity(0.15))
+                            .frame(width: 44, height: 44)
+                        Image(systemName: isLiked ? "heart.fill" : "heart")
+                            .font(.system(size: 19, weight: .regular))
+                            .foregroundColor(isLiked ? .white : .white.opacity(0.7))
                     }
                 }
                 .buttonStyle(.plain)
@@ -827,6 +820,7 @@ private struct StoryViewersSheet: View {
 
     @State private var selectedTab = 0
     @State private var viewers: [StoryViewerRow] = []
+    @State private var likerUids: Set<String> = []
     @State private var isLoading = false
 
     var body: some View {
@@ -855,16 +849,19 @@ private struct StoryViewersSheet: View {
                 repliesTab
             }
         }
+        .background(Color("background_color"))
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.hidden)
-        .onAppear { loadViewers() }
+        .onAppear { loadData() }
     }
 
-    private func loadViewers() {
+    private func loadData() {
         isLoading = true
+        let group = DispatchGroup()
+
+        group.enter()
         ApiService.shared.fetchStoryViewers(storyId: storyId) { data in
             DispatchQueue.main.async {
-                isLoading = false
                 viewers = data.compactMap { dict -> StoryViewerRow? in
                     guard let id = dict["viewer_uid"] as? String else { return nil }
                     return StoryViewerRow(
@@ -875,7 +872,18 @@ private struct StoryViewersSheet: View {
                     )
                 }
             }
+            group.leave()
         }
+
+        group.enter()
+        ApiService.shared.fetchStoryLikes(storyId: storyId) { data in
+            DispatchQueue.main.async {
+                likerUids = Set(data.compactMap { $0["uid"] as? String })
+            }
+            group.leave()
+        }
+
+        group.notify(queue: .main) { isLoading = false }
     }
 
     // MARK: Seen By tab
@@ -898,45 +906,76 @@ private struct StoryViewersSheet: View {
                 }
                 Spacer()
             } else {
-                List {
-                    Section {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 0) {
                         ForEach(viewers) { viewer in
-                            HStack(spacing: 12) {
-                                CachedAsyncImage(url: viewer.photoURL) { img in
-                                    img.resizable().scaledToFill()
-                                } placeholder: {
-                                    Image("inviteimg").resizable().scaledToFill()
-                                }
-                                .frame(width: 44, height: 44)
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Color(hex: Constant.themeColor).opacity(0.4), lineWidth: 1))
-
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(viewer.name)
-                                        .font(.custom("Inter18pt-SemiBold", size: 15))
-                                    if !viewer.seenAt.isEmpty {
-                                        Text(viewer.seenAt)
-                                            .font(.custom("Inter18pt-Regular", size: 11))
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                                Spacer()
-                                Image(systemName: "eye.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(Color(hex: Constant.themeColor).opacity(0.6))
-                            }
-                            .padding(.vertical, 4)
+                            viewerRow(viewer)
+                            Divider()
+                                .padding(.leading, 76)
                         }
-                    } header: {
-                        Text("\(viewers.count) view\(viewers.count == 1 ? "" : "s")")
-                            .font(.custom("Inter18pt-Medium", size: 13))
-                            .foregroundColor(.secondary)
-                            .textCase(nil)
                     }
                 }
-                .listStyle(.plain)
+                .background(Color("background_color"))
             }
         }
+    }
+
+    // chatView-style row
+    @ViewBuilder
+    private func viewerRow(_ viewer: StoryViewerRow) -> some View {
+        let liked = likerUids.contains(viewer.id)
+        HStack(alignment: .center, spacing: 0) {
+            // Avatar with theme-colored border (matches CardView)
+            ZStack {
+                Circle()
+                    .stroke(Color(hex: Constant.themeColor), lineWidth: 2)
+                    .frame(width: 54, height: 54)
+                CachedAsyncImage(url: viewer.photoURL) { img in
+                    img.resizable().scaledToFill()
+                        .frame(width: 50, height: 50)
+                        .clipShape(Circle())
+                } placeholder: {
+                    Image("inviteimg").resizable().scaledToFill()
+                        .frame(width: 50, height: 50)
+                        .clipShape(Circle())
+                }
+                .frame(width: 50, height: 50)
+            }
+            .padding(.leading, 1)
+            .padding(.trailing, 16)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(viewer.name)
+                    .font(.custom("Inter18pt-SemiBold", size: 16))
+                    .foregroundColor(Color("TextColor"))
+                    .lineLimit(1)
+                if !viewer.seenAt.isEmpty {
+                    Text(viewer.seenAt)
+                        .font(.custom("Inter18pt-Medium", size: 13))
+                        .foregroundColor(Color("gray3"))
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Like indicator — heart badge matching themeColor
+            if liked {
+                ZStack {
+                    Circle()
+                        .fill(Color(hex: Constant.themeColor))
+                        .frame(width: 28, height: 28)
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(.white)
+                }
+                .padding(.trailing, 16)
+            }
+        }
+        .padding(.leading, 10)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: 82)
+        .background(Color("background_color"))
     }
 
     // MARK: Replies tab
