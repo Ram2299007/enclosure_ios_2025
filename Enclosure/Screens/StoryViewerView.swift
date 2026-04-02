@@ -24,6 +24,7 @@ struct StoryViewerView: View {
     @State private var now = Date()
     @State private var showViewersSheet = false
     @State private var isLiked = false
+    @State private var likesCount: Int = 0
     @State private var keyboardHeight: CGFloat = 0
     @State private var navigateToProfile = false
     // Tracks which story IDs have already been marked seen this session
@@ -228,7 +229,11 @@ struct StoryViewerView: View {
         )
         .onAppear {
             loadStory(at: currentIndex)
+            loadLikeStatus()
             if isOwnStory { manager.fetchMyStories() }
+        }
+        .onChange(of: currentIndex) { _ in
+            loadLikeStatus()
         }
         .onDisappear { player?.pause(); player = nil }
         .onReceive(Timer.publish(every: tickInterval, on: .main, in: .common).autoconnect()) { _ in
@@ -385,15 +390,22 @@ struct StoryViewerView: View {
 
                 // ── Heart / like button (LEFT) — always visible ──
                 Button(action: sendLike) {
-                    ZStack {
-                        Circle()
-                            .fill(isLiked
-                                  ? Color(hex: Constant.themeColor)
-                                  : Color.white.opacity(0.15))
-                            .frame(width: 44, height: 44)
-                        Image(systemName: isLiked ? "heart.fill" : "heart")
-                            .font(.system(size: 19, weight: .regular))
-                            .foregroundColor(isLiked ? .white : .white.opacity(0.7))
+                    VStack(spacing: 3) {
+                        ZStack {
+                            Circle()
+                                .fill(isLiked
+                                      ? Color(hex: Constant.themeColor)
+                                      : Color.white.opacity(0.15))
+                                .frame(width: 44, height: 44)
+                            Image(systemName: isLiked ? "heart.fill" : "heart")
+                                .font(.system(size: 19, weight: .regular))
+                                .foregroundColor(isLiked ? .white : .white.opacity(0.7))
+                        }
+                        if likesCount > 0 {
+                            Text("\(likesCount)")
+                                .font(.custom("Inter18pt-SemiBold", size: 11))
+                                .foregroundColor(.white.opacity(0.85))
+                        }
                     }
                 }
                 .buttonStyle(.plain)
@@ -626,11 +638,31 @@ struct StoryViewerView: View {
     }
 
     private func sendLike() {
+        guard let story = currentStory else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        // Optimistic update
         withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
             isLiked.toggle()
+            likesCount = max(0, likesCount + (isLiked ? 1 : -1))
         }
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        // TODO: send like/reaction via API
+        ApiService.shared.toggleStoryLike(storyId: story.id) { status in
+            DispatchQueue.main.async {
+                isLiked    = status.liked
+                likesCount = status.likesCount
+            }
+        }
+    }
+
+    private func loadLikeStatus() {
+        guard !isOwnStory, let story = currentStory else { return }
+        isLiked    = false
+        likesCount = 0
+        ApiService.shared.getStoryLikeStatus(storyId: story.id) { status in
+            DispatchQueue.main.async {
+                isLiked    = status.liked
+                likesCount = status.likesCount
+            }
+        }
     }
 
     // MARK: - Helpers

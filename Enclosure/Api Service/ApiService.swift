@@ -2806,6 +2806,49 @@ class ApiService {
                 completion(ok)
             }
     }
+
+    // MARK: - Story Like
+
+    struct StoryLikeStatus {
+        var liked: Bool
+        var likesCount: Int
+    }
+
+    func getStoryLikeStatus(storyId: String, completion: @escaping (StoryLikeStatus) -> Void) {
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !uid.isEmpty else { completion(StoryLikeStatus(liked: false, likesCount: 0)); return }
+        let endpoint = Constant.baseURL + "index.php/Api_Controller/get_story_like_status"
+        AF.request(endpoint, method: .post,
+                   parameters: ["uid": uid, "story_id": storyId],
+                   encoding: URLEncoding.default)
+            .responseData { [weak self] response in
+                guard let json = self?.parseStoryResponse(response.data),
+                      (json["success"] as? String) == "1" else {
+                    completion(StoryLikeStatus(liked: false, likesCount: 0)); return
+                }
+                let liked = json["liked"] as? Bool ?? false
+                let count = json["likes_count"] as? Int ?? 0
+                completion(StoryLikeStatus(liked: liked, likesCount: count))
+            }
+    }
+
+    func toggleStoryLike(storyId: String, completion: @escaping (StoryLikeStatus) -> Void) {
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !uid.isEmpty else { completion(StoryLikeStatus(liked: false, likesCount: 0)); return }
+        let endpoint = Constant.baseURL + "index.php/Api_Controller/toggle_story_like"
+        AF.request(endpoint, method: .post,
+                   parameters: ["uid": uid, "story_id": storyId],
+                   encoding: URLEncoding.default)
+            .responseData { [weak self] response in
+                guard let json = self?.parseStoryResponse(response.data),
+                      (json["success"] as? String) == "1" else {
+                    completion(StoryLikeStatus(liked: false, likesCount: 0)); return
+                }
+                let liked = json["liked"] as? Bool ?? false
+                let count = json["likes_count"] as? Int ?? 0
+                completion(StoryLikeStatus(liked: liked, likesCount: count))
+            }
+    }
 }
 
 // MARK: - Send OTP Response Model
