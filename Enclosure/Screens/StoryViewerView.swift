@@ -944,32 +944,19 @@ private struct StoryViewersSheet: View {
             .padding(.leading, 1)
             .padding(.trailing, 16)
 
-            VStack(alignment: .leading, spacing: 2) {
+            // Name + inline heart (WhatsApp style)
+            HStack(spacing: 6) {
                 Text(viewer.name)
                     .font(.custom("Inter18pt-SemiBold", size: 16))
                     .foregroundColor(Color("TextColor"))
                     .lineLimit(1)
-                if !viewer.seenAt.isEmpty {
-                    Text(viewer.seenAt)
-                        .font(.custom("Inter18pt-Medium", size: 13))
-                        .foregroundColor(Color("gray3"))
-                        .lineLimit(1)
+                if liked {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(Color(hex: Constant.themeColor))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-
-            // Like indicator — heart badge matching themeColor
-            if liked {
-                ZStack {
-                    Circle()
-                        .fill(Color(hex: Constant.themeColor))
-                        .frame(width: 28, height: 28)
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 13))
-                        .foregroundColor(.white)
-                }
-                .padding(.trailing, 16)
-            }
         }
         .padding(.leading, 10)
         .padding(.vertical, 16)
