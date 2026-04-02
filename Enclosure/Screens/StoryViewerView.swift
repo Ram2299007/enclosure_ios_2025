@@ -951,19 +951,20 @@ private struct StoryViewersSheet: View {
             .padding(.leading, 1)
             .padding(.trailing, 16)
 
-            // Name + inline heart (WhatsApp style)
-            HStack(spacing: 6) {
-                Text(viewer.name)
-                    .font(.custom("Inter18pt-SemiBold", size: 16))
-                    .foregroundColor(Color("TextColor"))
-                    .lineLimit(1)
-                if liked {
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(Color(hex: Constant.themeColor))
-                }
+            // Name (takes remaining space)
+            Text(viewer.name)
+                .font(.custom("Inter18pt-SemiBold", size: 16))
+                .foregroundColor(Color("TextColor"))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Heart pinned to trailing edge
+            if liked {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(Color(hex: Constant.themeColor))
+                    .padding(.trailing, 16)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.leading, 10)
         .padding(.vertical, 16)
