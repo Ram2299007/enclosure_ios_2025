@@ -2846,7 +2846,7 @@ class ApiService {
                     print("🔴 [fetchStoryLikes] parse/success guard failed")
                     completion([]); return
                 }
-                print("✅ [fetchStoryLikes] \(data.count) likers: \(data.compactMap { $0["uid"] })")
+                print("✅ [fetchStoryLikes] \(data.count) likers raw: \(data.map { $0["uid"] ?? "nil" })")
                 completion(data)
             }
     }

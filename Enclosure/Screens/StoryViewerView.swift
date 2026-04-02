@@ -878,7 +878,11 @@ private struct StoryViewersSheet: View {
         group.enter()
         ApiService.shared.fetchStoryLikes(storyId: storyId) { data in
             DispatchQueue.main.async {
-                likerUids = Set(data.compactMap { $0["uid"] as? String })
+                likerUids = Set(data.compactMap { dict -> String? in
+                    if let s = dict["uid"] as? String { return s }
+                    if let n = dict["uid"] as? Int    { return String(n) }
+                    return nil
+                })
             }
             group.leave()
         }
