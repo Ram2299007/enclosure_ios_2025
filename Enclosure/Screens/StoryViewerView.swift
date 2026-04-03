@@ -23,6 +23,7 @@ struct StoryViewerView: View {
     @State private var videoDuration: Double = 0
     @State private var now = Date()
     @State private var showViewersSheet = false
+    @State private var showRepliesSheet = false
     @State private var isLiked = false
     @State private var likesCount: Int = 0
     @State private var keyboardHeight: CGFloat = 0
@@ -247,6 +248,14 @@ struct StoryViewerView: View {
                 StoryViewersSheet(storyId: story.id, viewsCount: story.viewsCount)
             }
         }
+        .sheet(isPresented: $showRepliesSheet) {
+            if let story = currentStory {
+                StoryViewersSheet(storyId: story.id, viewsCount: story.viewsCount, initialTab: 1, repliesOnly: true)
+            }
+        }
+        .onChange(of: showRepliesSheet) { open in
+            if !open { isPaused = false; player?.play() }
+        }
         .ignoresSafeArea()
         } // end NavigationStack
     }
@@ -399,6 +408,23 @@ struct StoryViewerView: View {
                         Image(systemName: isLiked ? "heart.fill" : "heart")
                             .font(.system(size: 19, weight: .regular))
                             .foregroundColor(isLiked ? .white : .white.opacity(0.7))
+                    }
+                }
+                .buttonStyle(.plain)
+
+                // ── Replies bubble button ──
+                Button {
+                    isPaused = true
+                    player?.pause()
+                    showRepliesSheet = true
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.15))
+                            .frame(width: 44, height: 44)
+                        Image(systemName: "bubble.left.fill")
+                            .font(.system(size: 18, weight: .regular))
+                            .foregroundColor(.white.opacity(0.85))
                     }
                 }
                 .buttonStyle(.plain)
@@ -624,10 +650,21 @@ struct StoryViewerView: View {
     // MARK: - Reply
 
     private func sendReply() {
-        guard !replyText.isEmpty else { return }
-        // TODO: send reply via API
+        guard !replyText.isEmpty, let story = currentStory else { return }
+        let text = replyText.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return }
+        print("📨 [StoryViewerView] sendReply storyId=\(story.id) message=\(text)")
         replyText = ""
         isReplyFocused = false
+        ApiService.shared.postStoryReply(storyId: story.id, message: text) { reply in
+            DispatchQueue.main.async {
+                if let reply = reply {
+                    print("✅ [StoryViewerView] reply posted id=\(reply.id)")
+                } else {
+                    print("🔴 [StoryViewerView] reply post failed")
+                }
+            }
+        }
     }
 
     private func sendLike() {
@@ -817,43 +854,77 @@ private struct StoryViewerRow: Identifiable {
 private struct StoryViewersSheet: View {
     let storyId: String
     let viewsCount: Int
+    var initialTab: Int = 0
+    var repliesOnly: Bool = false
 
     @State private var selectedTab = 0
     @State private var viewers: [StoryViewerRow] = []
     @State private var likerUids: Set<String> = []
     @State private var isLoading = false
 
+    // Replies state
+    @State private var replies: [ApiService.StoryReply] = []
+    @State private var repliesLoaded = false
+    @State private var repliesLoading = false
+    @State private var replyText = ""
+    @State private var isPostingReply = false
+    @State private var replyingTo: ApiService.StoryReply? = nil   // nil = top-level
+    @State private var expandedThreads: Set<String> = []           // parent IDs with children visible
+    @FocusState private var replyFieldFocused: Bool
+
+    // MARK: - Derived reply structure
+
+    private var topLevelReplies: [ApiService.StoryReply] {
+        replies.filter { $0.isTopLevel }
+    }
+
+    private func childReplies(of parentId: String) -> [ApiService.StoryReply] {
+        replies.filter { $0.parentId == parentId }
+    }
+
+    // MARK: - Body
+
     var body: some View {
         VStack(spacing: 0) {
-            // Drag handle
             Capsule()
                 .fill(Color.secondary.opacity(0.35))
                 .frame(width: 40, height: 4)
                 .padding(.top, 12)
                 .padding(.bottom, 16)
 
-            // Tab picker
-            Picker("", selection: $selectedTab) {
-                Text("Seen by").tag(0)
-                Text("Replies").tag(1)
+            if !repliesOnly {
+                Picker("", selection: $selectedTab) {
+                    Text("Seen by").tag(0)
+                    Text("Replies").tag(1)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+
+                Divider()
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 12)
 
-            Divider()
-
-            if selectedTab == 0 {
-                seenByTab
-            } else {
+            if repliesOnly || selectedTab == 1 {
                 repliesTab
+            } else {
+                seenByTab
             }
         }
         .background(Color("background_color"))
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.hidden)
-        .onAppear { loadData() }
+        .onAppear {
+            selectedTab = initialTab
+            loadData()
+            if initialTab == 1 { loadReplies() }
+        }
+        .onChange(of: selectedTab, perform: { newTab in
+            print("📋 [StoryViewersSheet] tab changed to \(newTab)")
+            if newTab == 1 && !repliesLoaded { loadReplies() }
+        })
     }
+
+    // MARK: - Data loading
 
     private func loadData() {
         isLoading = true
@@ -893,7 +964,57 @@ private struct StoryViewersSheet: View {
         }
     }
 
-    // MARK: Seen By tab
+    private func loadReplies() {
+        print("📋 [StoryViewersSheet] loadReplies() called for storyId=\(storyId)")
+        repliesLoading = true
+        ApiService.shared.fetchStoryReplies(storyId: storyId) { data in
+            DispatchQueue.main.async {
+                replies = data
+                repliesLoaded = true
+                repliesLoading = false
+            }
+        }
+    }
+
+    private func sendReply() {
+        let text = replyText.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty, !isPostingReply else { return }
+        let parentId = replyingTo?.id
+        isPostingReply = true
+        ApiService.shared.postStoryReply(storyId: storyId, message: text, parentReplyId: parentId) { reply in
+            DispatchQueue.main.async {
+                isPostingReply = false
+                if let reply = reply {
+                    replyText = ""
+                    replyingTo = nil
+                    replies.append(reply)
+                    // Auto-expand thread if this is a nested reply
+                    if let pid = reply.parentId, pid != "0" {
+                        expandedThreads.insert(pid)
+                    }
+                }
+            }
+        }
+    }
+
+    private func toggleReplyLike(reply: ApiService.StoryReply) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        // Optimistic update
+        if let idx = replies.firstIndex(where: { $0.id == reply.id }) {
+            replies[idx].isLiked = !replies[idx].isLiked
+            replies[idx].likesCount += replies[idx].isLiked ? 1 : -1
+        }
+        ApiService.shared.toggleReplyLike(replyId: reply.id) { liked, count in
+            DispatchQueue.main.async {
+                if let idx = replies.firstIndex(where: { $0.id == reply.id }) {
+                    replies[idx].isLiked = liked
+                    replies[idx].likesCount = count
+                }
+            }
+        }
+    }
+
+    // MARK: - Seen By tab
 
     private var seenByTab: some View {
         Group {
@@ -917,8 +1038,7 @@ private struct StoryViewersSheet: View {
                     VStack(spacing: 0) {
                         ForEach(viewers) { viewer in
                             viewerRow(viewer)
-                            Divider()
-                                .padding(.leading, 76)
+                            Divider().padding(.leading, 76)
                         }
                     }
                 }
@@ -927,12 +1047,10 @@ private struct StoryViewersSheet: View {
         }
     }
 
-    // chatView-style row
     @ViewBuilder
     private func viewerRow(_ viewer: StoryViewerRow) -> some View {
         let liked = likerUids.contains(viewer.id)
         HStack(alignment: .center, spacing: 0) {
-            // Avatar with theme-colored border (matches CardView)
             ZStack {
                 Circle()
                     .stroke(Color(hex: Constant.themeColor), lineWidth: 2)
@@ -951,14 +1069,12 @@ private struct StoryViewersSheet: View {
             .padding(.leading, 1)
             .padding(.trailing, 16)
 
-            // Name (takes remaining space)
             Text(viewer.name)
                 .font(.custom("Inter18pt-SemiBold", size: 16))
                 .foregroundColor(Color("TextColor"))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Heart pinned to trailing edge
             if liked {
                 Image(systemName: "heart.fill")
                     .font(.system(size: 16))
@@ -973,18 +1089,212 @@ private struct StoryViewersSheet: View {
         .background(Color("background_color"))
     }
 
-    // MARK: Replies tab
+    // MARK: - Replies tab
 
     private var repliesTab: some View {
-        VStack(spacing: 12) {
-            Spacer()
-            Image(systemName: "arrowshape.turn.up.left")
-                .font(.system(size: 40))
-                .foregroundColor(.secondary.opacity(0.45))
-            Text("No replies yet")
-                .font(.custom("Inter18pt-Medium", size: 16))
-                .foregroundColor(.secondary)
+        VStack(spacing: 0) {
+            if repliesLoading {
+                Spacer()
+                ProgressView().scaleEffect(1.3)
+                Spacer()
+            } else if topLevelReplies.isEmpty {
+                Spacer()
+                VStack(spacing: 14) {
+                    Image(systemName: "bubble.left")
+                        .font(.system(size: 44))
+                        .foregroundColor(.secondary.opacity(0.45))
+                    Text("No replies yet\nBe the first to reply!")
+                        .multilineTextAlignment(.center)
+                        .font(.custom("Inter18pt-Medium", size: 15))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(topLevelReplies) { reply in
+                            // Top-level comment
+                            commentRow(reply, isNested: false)
+
+                            let children = childReplies(of: reply.id)
+                            if !children.isEmpty {
+                                let expanded = expandedThreads.contains(reply.id)
+                                // Toggle to show/hide nested replies
+                                Button(action: {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        if expanded { expandedThreads.remove(reply.id) }
+                                        else        { expandedThreads.insert(reply.id) }
+                                    }
+                                }) {
+                                    HStack(spacing: 6) {
+                                        Rectangle()
+                                            .fill(Color(hex: Constant.themeColor).opacity(0.5))
+                                            .frame(width: 24, height: 1)
+                                        Text(expanded ? "Hide replies" : "\(children.count) \(children.count == 1 ? "reply" : "replies")")
+                                            .font(.custom("Inter18pt-SemiBold", size: 12))
+                                            .foregroundColor(Color(hex: Constant.themeColor))
+                                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundColor(Color(hex: Constant.themeColor))
+                                    }
+                                    .padding(.leading, 64)
+                                    .padding(.vertical, 6)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .buttonStyle(.plain)
+
+                                if expanded {
+                                    ForEach(children) { child in
+                                        commentRow(child, isNested: true)
+                                    }
+                                }
+                            }
+
+                            Divider().padding(.leading, 64)
+                        }
+                    }
+                    .padding(.top, 4)
+                    .padding(.bottom, 8)
+                }
+            }
+
+            Divider()
+
+            // Reply-to context chip
+            if let target = replyingTo {
+                HStack(spacing: 8) {
+                    Text("Replying to \(target.name)")
+                        .font(.custom("Inter18pt-Regular", size: 13))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                    Spacer()
+                    Button(action: { replyingTo = nil; replyText = "" }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+                .background(Color.secondary.opacity(0.08))
+            }
+
+            // Input bar
+            HStack(spacing: 10) {
+                // My profile avatar
+                let myPhotoRaw = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
+                let myPhotoURL: URL? = myPhotoRaw.isEmpty ? nil : URL(string: myPhotoRaw.hasPrefix("http") ? myPhotoRaw : Constant.baseURL + myPhotoRaw)
+                CachedAsyncImage(url: myPhotoURL) { img in
+                    img.resizable().scaledToFill()
+                        .frame(width: 36, height: 36)
+                        .clipShape(Circle())
+                } placeholder: {
+                    Image("inviteimg").resizable().scaledToFill()
+                        .frame(width: 36, height: 36)
+                        .clipShape(Circle())
+                }
+                .frame(width: 36, height: 36)
+
+                TextField(replyingTo == nil ? "Add a reply…" : "Reply to \(replyingTo!.name)…",
+                          text: $replyText)
+                    .font(.custom("Inter18pt-Regular", size: 15))
+                    .focused($replyFieldFocused)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(Color.secondary.opacity(0.1))
+                    .clipShape(Capsule())
+
+                Button(action: sendReply) {
+                    if isPostingReply {
+                        ProgressView().frame(width: 44, height: 44)
+                    } else {
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    replyText.trimmingCharacters(in: .whitespaces).isEmpty
+                                        ? Color.secondary.opacity(0.25)
+                                        : Color(hex: Constant.themeColor)
+                                )
+                                .frame(width: 44, height: 44)
+                            Image("baseline_keyboard_double_arrow_right_24")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 24, height: 24)
+                                .foregroundColor(.white)
+                        }
+                    }
+                }
+                .disabled(replyText.trimmingCharacters(in: .whitespaces).isEmpty || isPostingReply)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color("background_color"))
+        }
+    }
+
+    // MARK: - Comment row (YouTube style)
+
+    @ViewBuilder
+    private func commentRow(_ reply: ApiService.StoryReply, isNested: Bool) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            // Indent nested replies
+            if isNested {
+                Spacer().frame(width: 40)
+            }
+
+            // Avatar
+            CachedAsyncImage(url: reply.photoURL) { img in
+                img.resizable().scaledToFill()
+                    .frame(width: isNested ? 30 : 38, height: isNested ? 30 : 38)
+                    .clipShape(Circle())
+            } placeholder: {
+                Image("inviteimg").resizable().scaledToFill()
+                    .frame(width: isNested ? 30 : 38, height: isNested ? 30 : 38)
+                    .clipShape(Circle())
+            }
+            .frame(width: isNested ? 30 : 38, height: isNested ? 30 : 38)
+
+            VStack(alignment: .leading, spacing: 4) {
+                // Name + time
+                HStack(spacing: 5) {
+                    Text(reply.name)
+                        .font(.custom("Inter18pt-SemiBold", size: isNested ? 12 : 13))
+                        .foregroundColor(Color("TextColor"))
+                    Text("•")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                    Text(reply.relativeTime)
+                        .font(.custom("Inter18pt-Regular", size: isNested ? 11 : 12))
+                        .foregroundColor(.secondary)
+                }
+
+                // Message
+                Text(reply.message)
+                    .font(.custom("Inter18pt-Regular", size: isNested ? 13 : 14))
+                    .foregroundColor(Color("TextColor"))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(nil)
+
+                // Action row: Reply button (only on top-level comments)
+                if !isNested {
+                    Button(action: {
+                        replyingTo = reply
+                        replyFieldFocused = true
+                    }) {
+                        Text("Reply")
+                            .font(.custom("Inter18pt-SemiBold", size: 12))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 2)
+                }
+            }
+
             Spacer()
         }
+        .padding(.leading, isNested ? 8 : 14)
+        .padding(.trailing, 14)
+        .padding(.vertical, 10)
+        .background(Color("background_color"))
     }
 }

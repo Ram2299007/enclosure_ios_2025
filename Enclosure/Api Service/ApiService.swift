@@ -2807,6 +2807,131 @@ class ApiService {
             }
     }
 
+    // MARK: - Story Reply
+
+    struct StoryReply: Identifiable {
+        let id: String
+        let uid: String
+        let name: String
+        let photo: String
+        let message: String
+        let createdAt: String
+        let parentId: String?   // nil / "0" = top-level comment
+        var likesCount: Int
+        var isLiked: Bool
+
+        var isTopLevel: Bool { parentId == nil || parentId == "0" }
+
+        var photoURL: URL? {
+            guard !photo.isEmpty else { return nil }
+            let full = photo.hasPrefix("http") ? photo : Constant.baseURL + photo
+            return URL(string: full)
+        }
+
+        var relativeTime: String {
+            let fmt = DateFormatter()
+            fmt.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            guard let date = fmt.date(from: createdAt) else { return "" }
+            let diff = Int(Date().timeIntervalSince(date))
+            switch diff {
+            case ..<60:          return "just now"
+            case 60..<3600:      return "\(diff/60)m ago"
+            case 3600..<86400:   return "\(diff/3600)h ago"
+            case 86400..<604800: return "\(diff/86400)d ago"
+            default:             return "\(diff/604800)w ago"
+            }
+        }
+    }
+
+    private func parseReply(_ d: [String: Any]) -> StoryReply? {
+        guard let id  = d["id"]  as? String ?? (d["id"]  as? Int).map(String.init),
+              let uid = d["uid"] as? String ?? (d["uid"] as? Int).map(String.init),
+              let msg = d["message"] as? String else { return nil }
+        let parentRaw = d["parent_id"] as? String ?? (d["parent_id"] as? Int).map(String.init)
+        let likes = d["likes_count"] as? Int ?? (d["likes_count"] as? String).flatMap(Int.init) ?? 0
+        let liked = (d["is_liked"] as? Int ?? (d["is_liked"] as? String).flatMap(Int.init) ?? 0) == 1
+        return StoryReply(
+            id: id, uid: uid,
+            name: d["full_name"] as? String ?? "Unknown",
+            photo: d["photo"] as? String ?? "",
+            message: msg,
+            createdAt: d["created_at"] as? String ?? "",
+            parentId: parentRaw,
+            likesCount: likes,
+            isLiked: liked
+        )
+    }
+
+    func fetchStoryReplies(storyId: String, completion: @escaping ([StoryReply]) -> Void) {
+        let viewerUid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        let endpoint = Constant.baseURL + "index.php/Api_Controller/get_story_replies"
+        AF.request(endpoint, method: .post,
+                   parameters: ["story_id": storyId, "viewer_uid": viewerUid],
+                   encoding: URLEncoding.default)
+            .responseData { [weak self] response in
+                let status = response.response?.statusCode ?? -1
+                let raw = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "(nil)"
+                print("📥 [fetchStoryReplies] status=\(status) body=\(raw)")
+                guard let self, let json = self.parseStoryResponse(response.data),
+                      (json["success"] as? String) == "1",
+                      let data = json["data"] as? [[String: Any]] else {
+                    print("🔴 [fetchStoryReplies] parse/success guard failed")
+                    completion([]); return
+                }
+                completion(data.compactMap { self.parseReply($0) })
+            }
+    }
+
+    func postStoryReply(storyId: String, message: String, parentReplyId: String? = nil,
+                        completion: @escaping (StoryReply?) -> Void) {
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !uid.isEmpty else {
+            print("🔴 [postStoryReply] uid is empty, aborting")
+            completion(nil); return
+        }
+        let endpoint = Constant.baseURL + "index.php/Api_Controller/post_story_reply"
+        var params: [String: String] = ["uid": uid, "story_id": storyId, "message": message]
+        if let pid = parentReplyId { params["parent_id"] = pid }
+        print("📤 [postStoryReply] POST uid=\(uid) story_id=\(storyId) parent=\(parentReplyId ?? "nil") message=\(message)")
+        AF.request(endpoint, method: .post, parameters: params, encoding: URLEncoding.default)
+            .responseData { [weak self] response in
+                let status = response.response?.statusCode ?? -1
+                let raw = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "(nil)"
+                print("📥 [postStoryReply] status=\(status) body=\(raw)")
+                if let err = response.error { print("🔴 [postStoryReply] network error: \(err)") }
+                guard let self,
+                      let json = self.parseStoryResponse(response.data),
+                      (json["success"] as? String) == "1",
+                      let d = json["reply"] as? [String: Any],
+                      let reply = self.parseReply(d) else {
+                    print("🔴 [postStoryReply] parse/success guard failed")
+                    completion(nil); return
+                }
+                print("✅ [postStoryReply] saved reply id=\(reply.id) parent=\(reply.parentId ?? "nil")")
+                completion(reply)
+            }
+    }
+
+    func toggleReplyLike(replyId: String, completion: @escaping (Bool, Int) -> Void) {
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !uid.isEmpty else { return }
+        let endpoint = Constant.baseURL + "index.php/Api_Controller/toggle_reply_like"
+        print("📤 [toggleReplyLike] uid=\(uid) reply_id=\(replyId)")
+        AF.request(endpoint, method: .post,
+                   parameters: ["uid": uid, "reply_id": replyId],
+                   encoding: URLEncoding.default)
+            .responseData { [weak self] response in
+                let status = response.response?.statusCode ?? -1
+                let raw = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "(nil)"
+                print("📥 [toggleReplyLike] status=\(status) body=\(raw)")
+                guard let json = self?.parseStoryResponse(response.data),
+                      (json["success"] as? String) == "1" else { return }
+                let liked = json["liked"] as? Bool ?? false
+                let count = json["likes_count"] as? Int ?? 0
+                completion(liked, count)
+            }
+    }
+
     // MARK: - Story Like
 
     struct StoryLikeStatus {
