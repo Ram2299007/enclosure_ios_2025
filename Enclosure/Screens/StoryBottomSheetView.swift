@@ -316,7 +316,7 @@ struct StoryBottomSheetView: View {
                                             ScrollView(.horizontal, showsIndicators: false) {
                                                 HStack(spacing: 8) {
                                                     ForEach(Array(group.stories.enumerated()), id: \.element.id) { index, story in
-                                                        storyCard(story, showDelete: false, width: 80, height: 120)
+                                                        storyCard(story, showDelete: false, isSeen: localSeenIds.contains(story.id), width: 80, height: 120)
                                                             .simultaneousGesture(TapGesture().onEnded {
                                                                 storyViewerConfig = StoryViewerConfig(
                                                                     stories: group.stories,
@@ -368,7 +368,7 @@ struct StoryBottomSheetView: View {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 8) {
                                     ForEach(Array(group.stories.enumerated()), id: \.element.id) { index, story in
-                                        storyCard(story, showDelete: false, width: 80, height: 120)
+                                        storyCard(story, showDelete: false, isSeen: localSeenIds.contains(story.id), width: 80, height: 120)
                                             .simultaneousGesture(TapGesture().onEnded {
                                                 storyViewerConfig = StoryViewerConfig(
                                                     stories: group.stories,
@@ -506,7 +506,7 @@ struct StoryBottomSheetView: View {
     // MARK: - Story card
 
     @ViewBuilder
-    private func storyCard(_ story: UserStory, showDelete: Bool = true, width: CGFloat = 110, height: CGFloat = 170) -> some View {
+    private func storyCard(_ story: UserStory, showDelete: Bool = true, isSeen: Bool = false, width: CGFloat = 110, height: CGFloat = 170) -> some View {
         ZStack {
             // Background — thumbnail for media, colour/gradient for text
             Group {
@@ -579,7 +579,31 @@ struct StoryBottomSheetView: View {
         }
         .frame(width: width, height: height)
         .clipShape(RoundedRectangle(cornerRadius: showDelete ? 14 : 10))
-        .overlay(RoundedRectangle(cornerRadius: showDelete ? 14 : 10).stroke(showDelete ? Color(hex: Constant.themeColor) : Color("gray3").opacity(0.35), lineWidth: 1.5))
+        .overlay {
+            let corner: CGFloat = showDelete ? 14 : 10
+            if showDelete {
+                RoundedRectangle(cornerRadius: corner)
+                    .stroke(Color(hex: Constant.themeColor), lineWidth: 1.5)
+            } else if isSeen {
+                RoundedRectangle(cornerRadius: corner)
+                    .stroke(Color("gray3").opacity(0.35), lineWidth: 1.5)
+            } else {
+                RoundedRectangle(cornerRadius: corner)
+                    .stroke(
+                        AngularGradient(
+                            colors: [
+                                Color(hex: Constant.themeColor),
+                                Color(hex: "#FCAF45"),
+                                Color(hex: "#FD1D1D"),
+                                Color(hex: "#C13584"),
+                                Color(hex: Constant.themeColor),
+                            ],
+                            center: .center
+                        ),
+                        lineWidth: 1.5
+                    )
+            }
+        }
     }
 
     @ViewBuilder
