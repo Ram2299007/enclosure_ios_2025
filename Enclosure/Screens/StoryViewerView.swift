@@ -25,6 +25,7 @@ struct StoryViewerView: View {
     @State private var showViewersSheet = false
     @State private var showRepliesSheet = false
     @State private var showHideAlert = false
+    @State private var isOwnerHidden = false
     @State private var isLiked = false
     @State private var likesCount: Int = 0
     @State private var keyboardHeight: CGFloat = 0
@@ -182,6 +183,13 @@ struct StoryViewerView: View {
                                         dismiss()
                                     }
                                 }
+                            } else if isOwnerHidden {
+                                Button("Unhide \(ownerName)") {
+                                    var uids = Set(UserDefaults.standard.stringArray(forKey: "hiddenStoryUids") ?? [])
+                                    uids.remove(ownerUid)
+                                    UserDefaults.standard.set(Array(uids), forKey: "hiddenStoryUids")
+                                    isOwnerHidden = false
+                                }
                             } else {
                                 Button("Hide \(ownerName)", role: .destructive) {
                                     showHideAlert = true
@@ -235,6 +243,7 @@ struct StoryViewerView: View {
             loadStory(at: currentIndex)
             loadLikeStatus()
             if isOwnStory { manager.fetchMyStories() }
+            isOwnerHidden = Set(UserDefaults.standard.stringArray(forKey: "hiddenStoryUids") ?? []).contains(ownerUid)
         }
         .onChange(of: currentIndex) { _ in
             loadLikeStatus()
@@ -265,6 +274,7 @@ struct StoryViewerView: View {
                 var uids = Set(UserDefaults.standard.stringArray(forKey: "hiddenStoryUids") ?? [])
                 uids.insert(ownerUid)
                 UserDefaults.standard.set(Array(uids), forKey: "hiddenStoryUids")
+                isOwnerHidden = true
                 dismiss()
             }
         } message: {

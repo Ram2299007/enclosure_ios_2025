@@ -420,7 +420,7 @@ struct StoryBottomSheetView: View {
                             Button { selectedContactGroup = nil } label: {
                                 Image(systemName: "chevron.left")
                                     .font(.system(size: 17, weight: .semibold))
-                                    .foregroundColor(Color(hex: Constant.themeColor))
+                                    .foregroundColor(.black)
                             }
                         }
                     }
@@ -434,7 +434,7 @@ struct StoryBottomSheetView: View {
                             Button { showMyUserInfo = false } label: {
                                 Image(systemName: "chevron.left")
                                     .font(.system(size: 17, weight: .semibold))
-                                    .foregroundColor(Color(hex: Constant.themeColor))
+                                    .foregroundColor(.black)
                             }
                         }
                     }
@@ -679,7 +679,7 @@ struct StoryBottomSheetView: View {
 
             // 3-dot menu button
             Menu {
-                Button { } label: { Text("For Visible") }
+                Button { selectedContactGroup = group } label: { Text("For Visible") }
                 if isHidden {
                     Button {
                         hiddenUids.remove(group.id)
