@@ -24,6 +24,7 @@ struct StoryViewerView: View {
     @State private var now = Date()
     @State private var showViewersSheet = false
     @State private var showRepliesSheet = false
+    @State private var showHideAlert = false
     @State private var isLiked = false
     @State private var likesCount: Int = 0
     @State private var keyboardHeight: CGFloat = 0
@@ -182,7 +183,9 @@ struct StoryViewerView: View {
                                     }
                                 }
                             } else {
-                                Button("Hide \(ownerName)", role: .destructive) { }
+                                Button("Hide \(ownerName)", role: .destructive) {
+                                    showHideAlert = true
+                                }
                             }
                         } label: {
                             VStack(spacing: 3) {
@@ -255,6 +258,17 @@ struct StoryViewerView: View {
         }
         .onChange(of: showRepliesSheet) { open in
             if !open { isPaused = false; player?.play() }
+        }
+        .alert("Hide \(ownerName)'s status updates?", isPresented: $showHideAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Hide", role: .destructive) {
+                var uids = Set(UserDefaults.standard.stringArray(forKey: "hiddenStoryUids") ?? [])
+                uids.insert(ownerUid)
+                UserDefaults.standard.set(Array(uids), forKey: "hiddenStoryUids")
+                dismiss()
+            }
+        } message: {
+            Text("You won't be notified of mentions from this contact. Their new status updates also won't appear at the top of the status list anymore.")
         }
         .ignoresSafeArea()
         } // end NavigationStack

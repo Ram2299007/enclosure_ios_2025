@@ -25,6 +25,14 @@ struct StoryBottomSheetView: View {
 
     @State private var showPrivacySheet = false
 
+    // Hide user
+    @State private var hideTargetGroup: ContactStoryGroup? = nil
+    @State private var hiddenUids: Set<String> = {
+        Set(UserDefaults.standard.stringArray(forKey: "hiddenStoryUids") ?? [])
+    }()
+    @State private var isHiddenSectionExpanded = false
+    @State private var collapsedHidden: Set<String> = []
+
     // UserInfoScreen navigation
     @State private var selectedContactGroup: ContactStoryGroup? = nil
     @State private var showMyUserInfo = false
@@ -38,6 +46,14 @@ struct StoryBottomSheetView: View {
         guard !raw.isEmpty else { return nil }
         let full = raw.hasPrefix("http") ? raw : Constant.baseURL + raw
         return URL(string: full)
+    }
+
+    private var visibleGroups: [ContactStoryGroup] {
+        uploadManager.contactStoryGroups.filter { !hiddenUids.contains($0.id) }
+    }
+
+    private var hiddenGroups: [ContactStoryGroup] {
+        uploadManager.contactStoryGroups.filter { hiddenUids.contains($0.id) }
     }
 
     private var hasStories: Bool {
@@ -227,8 +243,98 @@ struct StoryBottomSheetView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                     .padding(.horizontal, 10)
 
-                    // Contact stories
-                    ForEach(uploadManager.contactStoryGroups) { group in
+                    // ── Hidden updates section ──────────────────────────
+                    if !hiddenGroups.isEmpty {
+                        VStack(spacing: 0) {
+                            // Header row
+                            HStack(spacing: 10) {
+                                Image(systemName: "eye.slash.fill")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(Color("gray3"))
+                                    .frame(width: 50, height: 50)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Hidden updates")
+                                        .font(.custom("Inter18pt-SemiBold", size: 15))
+                                        .foregroundColor(Color("TextColor"))
+                                    Text("\(hiddenGroups.count) \(hiddenGroups.count == 1 ? "contact" : "contacts")")
+                                        .font(.custom("Inter18pt-Medium", size: 12))
+                                        .foregroundColor(Color("gray3"))
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(Color("gray3"))
+                                    .rotationEffect(.degrees(isHiddenSectionExpanded ? 0 : -90))
+                                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHiddenSectionExpanded)
+                                    .padding(.trailing, 4)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity)
+                            .background(Color("gray3").opacity(0.12))
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                    isHiddenSectionExpanded.toggle()
+                                }
+                            }
+
+                            // Expanded: list each hidden contact with their story cards
+                            if isHiddenSectionExpanded {
+                                VStack(spacing: 0) {
+                                    ForEach(hiddenGroups) { group in
+                                        let isOpen = !collapsedHidden.contains(group.id)
+
+                                        VStack(spacing: 0) {
+                                            contactStoryRow(group, isOpen: isOpen, isHidden: true)
+                                                .background(Color("gray3").opacity(0.08))
+                                                .contentShape(Rectangle())
+                                                .onTapGesture {
+                                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                                        if isOpen { collapsedHidden.insert(group.id) }
+                                                        else { collapsedHidden.remove(group.id) }
+                                                    }
+                                                }
+
+                                            ScrollView(.horizontal, showsIndicators: false) {
+                                                HStack(spacing: 8) {
+                                                    ForEach(Array(group.stories.enumerated()), id: \.element.id) { index, story in
+                                                        storyCard(story, showDelete: false, width: 80, height: 120)
+                                                            .simultaneousGesture(TapGesture().onEnded {
+                                                                storyViewerConfig = StoryViewerConfig(
+                                                                    stories: group.stories,
+                                                                    ownerUid: group.id,
+                                                                    ownerName: group.fullName,
+                                                                    ownerPhotoURL: group.photoURL,
+                                                                    isOwnStory: false,
+                                                                    startIndex: index
+                                                                )
+                                                            })
+                                                    }
+                                                }
+                                                .padding(.horizontal, 16)
+                                                .padding(.vertical, 10)
+                                            }
+                                            .background(Color("gray3").opacity(0.04))
+                                            .frame(height: isOpen ? nil : 0, alignment: .top)
+                                            .clipped()
+                                            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isOpen)
+                                        }
+                                    }
+                                }
+                                .background(Color("gray3").opacity(0.06))
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                            }
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .padding(.horizontal, 10)
+                    }
+
+                    // ── Visible contact stories ──────────────────────────
+                    ForEach(visibleGroups) { group in
                         let isOpen = !collapsedContacts.contains(group.id)
 
                         VStack(spacing: 0) {
@@ -338,6 +444,17 @@ struct StoryBottomSheetView: View {
             StoryPrivacySheet(isPresented: $showPrivacySheet)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+        }
+        .alert(item: $hideTargetGroup) { target in
+            Alert(
+                title: Text("Hide \(target.fullName)'s status updates?"),
+                message: Text("You won't be notified of mentions from this contact. Their new status updates also won't appear at the top of the status list anymore."),
+                primaryButton: .cancel(Text("Cancel")),
+                secondaryButton: .destructive(Text("Hide")) {
+                    hiddenUids.insert(target.id)
+                    UserDefaults.standard.set(Array(hiddenUids), forKey: "hiddenStoryUids")
+                }
+            )
         }
     }
 
@@ -520,7 +637,7 @@ struct StoryBottomSheetView: View {
     // MARK: - Contact story row
 
     @ViewBuilder
-    private func contactStoryRow(_ group: ContactStoryGroup, isOpen: Bool) -> some View {
+    private func contactStoryRow(_ group: ContactStoryGroup, isOpen: Bool, isHidden: Bool = false) -> some View {
         HStack(spacing: 10) {
             // Avatar with gray ring
             ZStack {
@@ -534,6 +651,7 @@ struct StoryBottomSheetView: View {
                 }
                 .frame(width: 50, height: 50)
                 .clipShape(Circle())
+                .opacity(isHidden ? 0.5 : 1)
             }
             .onTapGesture { selectedContactGroup = group }
 
@@ -559,13 +677,22 @@ struct StoryBottomSheetView: View {
                 .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isOpen)
                 .padding(.trailing, 4)
 
-            // 3-dot menu button (same design as MainActivityOld)
+            // 3-dot menu button
             Menu {
-                Button { } label: {
-                    Text("For Visible")
-                }
-                Button(role: .destructive) { } label: {
-                    Text("Hide \(group.fullName)")
+                Button { } label: { Text("For Visible") }
+                if isHidden {
+                    Button {
+                        hiddenUids.remove(group.id)
+                        UserDefaults.standard.set(Array(hiddenUids), forKey: "hiddenStoryUids")
+                    } label: {
+                        Label("Unhide \(group.fullName)", systemImage: "eye")
+                    }
+                } else {
+                    Button(role: .destructive) {
+                        hideTargetGroup = group
+                    } label: {
+                        Text("Hide \(group.fullName)")
+                    }
                 }
             } label: {
                 VStack(spacing: 3) {
