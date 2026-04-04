@@ -620,6 +620,10 @@ struct StoryViewerView: View {
               elapsed >= seenThreshold,
               !seenStoryIds.contains(story.id) else { return }
         seenStoryIds.insert(story.id)
+        // Persist locally so StoryBottomSheetView can show the seen ring
+        var localSeen = Set(UserDefaults.standard.stringArray(forKey: "localSeenStoryIds") ?? [])
+        localSeen.insert(story.id)
+        UserDefaults.standard.set(Array(localSeen), forKey: "localSeenStoryIds")
         ApiService.shared.markStorySeen(storyId: story.id)
     }
 

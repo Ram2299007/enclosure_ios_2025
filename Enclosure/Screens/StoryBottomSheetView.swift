@@ -33,6 +33,11 @@ struct StoryBottomSheetView: View {
     @State private var isHiddenSectionExpanded = false
     @State private var collapsedHidden: Set<String> = []
 
+    // Seen story IDs (local, loaded from UserDefaults) — drives ring color
+    @State private var localSeenIds: Set<String> = {
+        Set(UserDefaults.standard.stringArray(forKey: "localSeenStoryIds") ?? [])
+    }()
+
     // UserInfoScreen navigation
     @State private var selectedContactGroup: ContactStoryGroup? = nil
     @State private var showMyUserInfo = false
@@ -48,8 +53,17 @@ struct StoryBottomSheetView: View {
         return URL(string: full)
     }
 
+    /// Returns true if every story in the group has been locally seen.
+    private func isGroupAllSeen(_ group: ContactStoryGroup) -> Bool {
+        !group.stories.isEmpty && group.stories.allSatisfy { localSeenIds.contains($0.id) }
+    }
+
     private var visibleGroups: [ContactStoryGroup] {
-        uploadManager.contactStoryGroups.filter { !hiddenUids.contains($0.id) }
+        let groups = uploadManager.contactStoryGroups.filter { !hiddenUids.contains($0.id) }
+        // Unseen groups first (most recent), then fully-seen groups (most recent)
+        let unseen = groups.filter { !isGroupAllSeen($0) }.sorted { ($0.latestDate ?? .distantPast) > ($1.latestDate ?? .distantPast) }
+        let seen   = groups.filter {  isGroupAllSeen($0) }.sorted { ($0.latestDate ?? .distantPast) > ($1.latestDate ?? .distantPast) }
+        return unseen + seen
     }
 
     private var hiddenGroups: [ContactStoryGroup] {
@@ -289,7 +303,7 @@ struct StoryBottomSheetView: View {
                                         let isOpen = !collapsedHidden.contains(group.id)
 
                                         VStack(spacing: 0) {
-                                            contactStoryRow(group, isOpen: isOpen, isHidden: true)
+                                            contactStoryRow(group, isOpen: isOpen, isHidden: true, isAllSeen: isGroupAllSeen(group))
                                                 .background(Color("gray3").opacity(0.08))
                                                 .contentShape(Rectangle())
                                                 .onTapGesture {
@@ -338,7 +352,7 @@ struct StoryBottomSheetView: View {
                         let isOpen = !collapsedContacts.contains(group.id)
 
                         VStack(spacing: 0) {
-                            contactStoryRow(group, isOpen: isOpen)
+                            contactStoryRow(group, isOpen: isOpen, isAllSeen: isGroupAllSeen(group))
                                 .background(Color("gray3").opacity(0.12))
                                 .contentShape(Rectangle())
                                 .onTapGesture {
@@ -403,8 +417,8 @@ struct StoryBottomSheetView: View {
             )
         }
         .fullScreenCover(item: $storyViewerConfig, onDismiss: {
-            // Reload hidden UIDs so hidden/visible sections update immediately
             hiddenUids = Set(UserDefaults.standard.stringArray(forKey: "hiddenStoryUids") ?? [])
+            localSeenIds = Set(UserDefaults.standard.stringArray(forKey: "localSeenStoryIds") ?? [])
         }) { config in
             StoryViewerView(
                 stories: config.stories,
@@ -640,13 +654,31 @@ struct StoryBottomSheetView: View {
     // MARK: - Contact story row
 
     @ViewBuilder
-    private func contactStoryRow(_ group: ContactStoryGroup, isOpen: Bool, isHidden: Bool = false) -> some View {
+    private func contactStoryRow(_ group: ContactStoryGroup, isOpen: Bool, isHidden: Bool = false, isAllSeen: Bool = false) -> some View {
         HStack(spacing: 10) {
-            // Avatar with gray ring
+            // Avatar with story ring (gradient = unseen, gray = seen)
             ZStack {
-                Circle()
-                    .stroke(Color("gray3").opacity(0.4), lineWidth: 2)
-                    .frame(width: 54, height: 54)
+                if isAllSeen {
+                    Circle()
+                        .stroke(Color("gray3").opacity(0.4), lineWidth: 2.5)
+                        .frame(width: 54, height: 54)
+                } else {
+                    Circle()
+                        .stroke(
+                            AngularGradient(
+                                colors: [
+                                    Color(hex: Constant.themeColor),
+                                    Color(hex: "#FCAF45"),
+                                    Color(hex: "#FD1D1D"),
+                                    Color(hex: "#C13584"),
+                                    Color(hex: Constant.themeColor),
+                                ],
+                                center: .center
+                            ),
+                            lineWidth: 2.5
+                        )
+                        .frame(width: 54, height: 54)
+                }
                 CachedAsyncImage(url: group.photoURL) { image in
                     image.resizable().scaledToFill()
                 } placeholder: {
