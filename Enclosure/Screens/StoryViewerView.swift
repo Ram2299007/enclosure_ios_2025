@@ -175,7 +175,7 @@ struct StoryViewerView: View {
 
                         // 3-dot menu — same style as MainActivityOld
                         Menu {
-                            Button("For Visible") { }
+                            Button("For Visible") { navigateToProfile = true }
                             if isOwnStory {
                                 Button("Delete Story", role: .destructive) {
                                     if let story = currentStory {

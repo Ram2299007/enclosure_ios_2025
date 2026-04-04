@@ -402,7 +402,10 @@ struct StoryBottomSheetView: View {
                 }
             )
         }
-        .fullScreenCover(item: $storyViewerConfig) { config in
+        .fullScreenCover(item: $storyViewerConfig, onDismiss: {
+            // Reload hidden UIDs so hidden/visible sections update immediately
+            hiddenUids = Set(UserDefaults.standard.stringArray(forKey: "hiddenStoryUids") ?? [])
+        }) { config in
             StoryViewerView(
                 stories: config.stories,
                 ownerUid: config.ownerUid,
