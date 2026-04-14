@@ -20,6 +20,11 @@ struct StoryBottomSheetView: View {
     @State private var isExpanded = true   // collapse / expand My Stories cards
     @State private var collapsedContacts: Set<String> = []  // contacts NOT here are expanded
 
+    // Search
+    @State private var searchText = ""
+    @State private var isSearchActive = false
+    @FocusState private var isSearchFieldFocused: Bool
+
     // Story viewer — single atomic config avoids race between index + isPresented
     @State private var storyViewerConfig: StoryViewerConfig? = nil
 
@@ -70,6 +75,11 @@ struct StoryBottomSheetView: View {
         uploadManager.contactStoryGroups.filter { hiddenUids.contains($0.id) }
     }
 
+    private var filteredVisibleGroups: [ContactStoryGroup] {
+        guard !searchText.isEmpty else { return visibleGroups }
+        return visibleGroups.filter { $0.fullName.localizedCaseInsensitiveContains(searchText) }
+    }
+
     private var hasStories: Bool {
         !uploadManager.myStories.isEmpty || uploadManager.isUploading
     }
@@ -93,15 +103,49 @@ struct StoryBottomSheetView: View {
     var body: some View {
         VStack(spacing: 0) {
             // ── Top header (sticky) ──────────────────────────────────────
-            HStack {
-                Text("Stories")
-                    .font(.custom("Inter18pt-Bold", size: 24))
-                    .foregroundColor(Color("TextColor"))
-                Spacer()
-                Button { } label: {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(Color(hex: Constant.themeColor))
+            HStack(spacing: 10) {
+                if isSearchActive {
+                    // Back arrow
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.22)) { isSearchActive = false }
+                        searchText = ""
+                        isSearchFieldFocused = false
+                    } label: {
+                        Image(systemName: "arrow.left")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(Color("TextColor"))
+                    }
+                    // Search field
+                    TextField("Search name...", text: $searchText)
+                        .font(.custom("Inter18pt-Regular", size: 15))
+                        .foregroundColor(Color("TextColor"))
+                        .focused($isSearchFieldFocused)
+                        .textInputAutocapitalization(.never)
+                        .disableAutocorrection(true)
+                        .frame(maxWidth: .infinity)
+                    // Clear button
+                    if !searchText.isEmpty {
+                        Button { searchText = "" } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 17))
+                                .foregroundColor(Color("gray3"))
+                        }
+                    }
+                } else {
+                    Text("Stories")
+                        .font(.custom("Inter18pt-Bold", size: 24))
+                        .foregroundColor(Color("TextColor"))
+                    Spacer()
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.22)) { isSearchActive = true }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            isSearchFieldFocused = true
+                        }
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundColor(Color(hex: Constant.themeColor))
+                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -348,7 +392,7 @@ struct StoryBottomSheetView: View {
                     }
 
                     // ── Visible contact stories ──────────────────────────
-                    ForEach(visibleGroups) { group in
+                    ForEach(filteredVisibleGroups) { group in
                         let isOpen = !collapsedContacts.contains(group.id)
 
                         VStack(spacing: 0) {
