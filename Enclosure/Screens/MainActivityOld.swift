@@ -440,6 +440,147 @@ struct MainActivityOld: View {
         }
     }
 
+    @ViewBuilder
+    private var dialogOverlays: some View {
+        if showNameDialog {
+            WhatsYourNameDialog(isPresented: $showNameDialog)
+        }
+        if showChatLongPressDialog, let selectedChat = selectedChatForDialog {
+            chatView.ChatLongPressDialog(
+                chat: selectedChat,
+                position: chatDialogPosition,
+                isShowing: $showChatLongPressDialog,
+                onDelete: { deleteChatItem(selectedChat) }
+            )
+            .zIndex(999)
+            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        }
+        if showCallLogDialog, let selectedCallLog = selectedCallLogForDialog {
+            callView.CallLogLongPressDialog(
+                callLog: selectedCallLog,
+                position: callLogDialogPosition,
+                logType: .voice,
+                isShowing: $showCallLogDialog,
+                onDelete: { deleteCallLogItem(selectedCallLog, callType: "1") }
+            )
+            .zIndex(999)
+            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        }
+        if showVideoCallLogDialog, let selectedVideoCallLog = selectedVideoCallLogForDialog {
+            videoCallView.VideoCallLogLongPressDialog(
+                callLog: selectedVideoCallLog,
+                position: videoCallLogDialogPosition,
+                logType: .video,
+                isShowing: $showVideoCallLogDialog,
+                onDelete: { deleteVideoCallLogItem(selectedVideoCallLog) }
+            )
+            .zIndex(999)
+            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        }
+        if showGroupDialog, let selectedGroup = selectedGroupForDialog {
+            groupMessageView.GroupLongPressDialog(
+                group: selectedGroup,
+                position: groupDialogPosition,
+                isShowing: $showGroupDialog,
+                onDelete: { deleteGroupItem(selectedGroup) }
+            )
+            .zIndex(999)
+            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        }
+        if showClearLogDialog {
+            ClearLogDialog(
+                isShowing: $showClearLogDialog,
+                onClearLog: { handleClearVoiceLog() }
+            )
+            .zIndex(999)
+            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        }
+        if showClearVideoCallLogDialog {
+            ClearVideoCallLogDialog(
+                isShowing: $showClearVideoCallLogDialog,
+                onClearLog: { handleClearVideoLog() }
+            )
+            .zIndex(999)
+            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        }
+        if showMenu {
+            UpperLayoutDialog(
+                isPresented: $showMenu,
+                shouldNavigateToLockScreen: $navigateToLockScreen,
+                shouldNavigateToPayView: $navigateToPayView,
+                shouldNavigateToSettings: $navigateToSettings,
+                shouldNavigateToThemeView: $navigateToThemeView
+            )
+            .zIndex(999)
+            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        }
+        if showThemeChangeDialog {
+            ZStack {
+                Color.black.opacity(0.5)
+                    .ignoresSafeArea()
+                    .onTapGesture { }
+                VStack(spacing: 0) {
+                    Text("Continue with last theme.")
+                        .font(.custom("Inter18pt-Regular", size: 17))
+                        .foregroundColor(Color("TextColor"))
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(4)
+                        .padding(.top, 20)
+                        .padding(.horizontal, 10)
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.2)) { showThemeChangeDialog = false }
+                        if let colorCode = fetchedThemeColorFromAPI {
+                            UserDefaults.standard.set(colorCode, forKey: Constant.ThemeColorKey)
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("ThemeColorUpdated"),
+                                object: nil,
+                                userInfo: ["themeColor": colorCode]
+                            )
+                            updateLogoBasedOnTheme()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                changeAppIconForTheme(colorCode)
+                            }
+                        }
+                    }) {
+                        Text("Continue")
+                            .font(.custom("Inter18pt-Medium", size: 15))
+                            .foregroundColor(.white)
+                            .frame(minWidth: 120)
+                            .frame(height: 36)
+                            .background(Color(hex: Constant.themeColor))
+                            .cornerRadius(18)
+                    }
+                    .padding(.top, 20)
+                    .padding(.bottom, 20)
+                }
+                .padding(15)
+                .background(Color("cardBackgroundColornew"))
+                .cornerRadius(20)
+                .shadow(color: Color.black.opacity(0.2), radius: 20, x: 0, y: 0)
+                .padding(.horizontal, 40)
+            }
+            .zIndex(1001)
+            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        }
+        if showIncomingOnOffToast {
+            VStack {
+                Text(incomingOnOffText)
+                    .font(.custom("Inter18pt-Medium", size: 17))
+                    .foregroundColor(Color("TextColor"))
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 8)
+                    .background(Color("cardBackgroundColornew"))
+                    .cornerRadius(10)
+                    .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 4)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 146)
+            .zIndex(1000)
+            .transition(.opacity)
+        }
+    }
+
     @ToolbarContentBuilder
     private var mainToolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigationBarLeading) {
@@ -614,7 +755,7 @@ struct MainActivityOld: View {
 
                         collapseButton
 
-                        expandedHeaderContent
+                        AnyView(expandedHeaderContent)
 
                         Spacer()
 
@@ -728,182 +869,7 @@ struct MainActivityOld: View {
                 
                 // Logo is now a ToolbarItem — no overlay needed
 
-                // Custom Alert
-                if showNameDialog {
-                    WhatsYourNameDialog(isPresented: $showNameDialog)
-                }
-                
-                // Chat Long Press Dialog - shown on top of everything
-                if showChatLongPressDialog, let selectedChat = selectedChatForDialog {
-                    chatView.ChatLongPressDialog(
-                        chat: selectedChat,
-                        position: chatDialogPosition,
-                        isShowing: $showChatLongPressDialog,
-                        onDelete: {
-                            deleteChatItem(selectedChat)
-                        }
-                    )
-                    .zIndex(999) // Ensure it's on top of everything
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                }
-                
-                // Call Log Long Press Dialog (Voice) - shown on top of everything
-                if showCallLogDialog, let selectedCallLog = selectedCallLogForDialog {
-                    callView.CallLogLongPressDialog(
-                        callLog: selectedCallLog,
-                        position: callLogDialogPosition,
-                        logType: .voice,
-                        isShowing: $showCallLogDialog,
-                        onDelete: {
-                            deleteCallLogItem(selectedCallLog, callType: "1")
-                        }
-                    )
-                    .zIndex(999) // Ensure it's on top of everything
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                }
-                
-                // Video Call Log Long Press Dialog - shown on top of everything
-                if showVideoCallLogDialog, let selectedVideoCallLog = selectedVideoCallLogForDialog {
-                    videoCallView.VideoCallLogLongPressDialog(
-                        callLog: selectedVideoCallLog,
-                        position: videoCallLogDialogPosition,
-                        logType: .video,
-                        isShowing: $showVideoCallLogDialog,
-                        onDelete: {
-                            deleteVideoCallLogItem(selectedVideoCallLog)
-                        }
-                    )
-                    .zIndex(999) // Ensure it's on top of everything
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                }
-                
-                // Group Message Long Press Dialog - shown on top of everything
-                if showGroupDialog, let selectedGroup = selectedGroupForDialog {
-                    groupMessageView.GroupLongPressDialog(
-                        group: selectedGroup,
-                        position: groupDialogPosition,
-                        isShowing: $showGroupDialog,
-                        onDelete: {
-                            deleteGroupItem(selectedGroup)
-                        }
-                    )
-                    .zIndex(999) // Ensure it's on top of everything
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                }
-                
-                // Clear Log Dialog - shown centered on screen (voice calls)
-                if showClearLogDialog {
-                    ClearLogDialog(
-                        isShowing: $showClearLogDialog,
-                        onClearLog: {
-                            handleClearVoiceLog()
-                        }
-                    )
-                    .zIndex(999) // Ensure it's on top of everything
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                }
-                
-                // Clear Video Call Log Dialog - shown centered on screen
-                if showClearVideoCallLogDialog {
-                    ClearVideoCallLogDialog(
-                        isShowing: $showClearVideoCallLogDialog,
-                        onClearLog: {
-                            handleClearVideoLog()
-                        }
-                    )
-                    .zIndex(999) // Ensure it's on top of everything
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                }
-                
-                // Menu Dialog - shown at top-right position
-                if showMenu {
-                    UpperLayoutDialog(
-                        isPresented: $showMenu,
-                        shouldNavigateToLockScreen: $navigateToLockScreen,
-                        shouldNavigateToPayView: $navigateToPayView,
-                        shouldNavigateToSettings: $navigateToSettings,
-                        shouldNavigateToThemeView: $navigateToThemeView
-                    )
-                        .zIndex(999) // Ensure it's on top of everything
-                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                }
-                
-                // Theme change dialog (matching Android theme_dialogue.xml)
-                if showThemeChangeDialog {
-                    ZStack {
-                        Color.black.opacity(0.5)
-                            .ignoresSafeArea()
-                            .onTapGesture { } // Prevent dismiss on outside tap (matching Android setCanceledOnTouchOutside(false))
-                        
-                        VStack(spacing: 0) {
-                            Text("Continue with last theme.")
-                                .font(.custom("Inter18pt-Regular", size: 17))
-                                .foregroundColor(Color("TextColor"))
-                                .multilineTextAlignment(.center)
-                                .lineSpacing(4)
-                                .padding(.top, 20)
-                                .padding(.horizontal, 10)
-                            
-                            // Continue button only (non-dismissable dialog)
-                            Button(action: {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    showThemeChangeDialog = false
-                                }
-                                // Save theme color and change app icon
-                                if let colorCode = fetchedThemeColorFromAPI {
-                                    UserDefaults.standard.set(colorCode, forKey: Constant.ThemeColorKey)
-                                    NotificationCenter.default.post(
-                                        name: NSNotification.Name("ThemeColorUpdated"),
-                                        object: nil,
-                                        userInfo: ["themeColor": colorCode]
-                                    )
-                                    updateLogoBasedOnTheme()
-                                    
-                                    // Change app icon after 1 second delay (matching Android Handler postDelayed 1000ms)
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                                        changeAppIconForTheme(colorCode)
-                                    }
-                                }
-                            }) {
-                                Text("Continue")
-                                    .font(.custom("Inter18pt-Medium", size: 15))
-                                    .foregroundColor(.white)
-                                    .frame(minWidth: 120)
-                                    .frame(height: 36)
-                                    .background(Color(hex: Constant.themeColor))
-                                    .cornerRadius(18)
-                            }
-                            .padding(.top, 20)
-                            .padding(.bottom, 20)
-                        }
-                        .padding(15)
-                        .background(Color("cardBackgroundColornew"))
-                        .cornerRadius(20)
-                        .shadow(color: Color.black.opacity(0.2), radius: 20, x: 0, y: 0)
-                        .padding(.horizontal, 40)
-                    }
-                    .zIndex(1001)
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                }
-                
-                // Incoming call on/off toast (matching Android incomingonoffLyt CardView)
-                if showIncomingOnOffToast {
-                    VStack {
-                        Text(incomingOnOffText)
-                            .font(.custom("Inter18pt-Medium", size: 17))
-                            .foregroundColor(Color("TextColor"))
-                            .padding(.horizontal, 22)
-                            .padding(.vertical, 8)
-                            .background(Color("cardBackgroundColornew"))
-                            .cornerRadius(10)
-                            .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 4)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 146)
-                    .zIndex(1000)
-                    .transition(.opacity)
-                }
+                AnyView(dialogOverlays)
             }
             .ignoresSafeArea(.keyboard)
             .opacity(initialFadeInOpacity)
