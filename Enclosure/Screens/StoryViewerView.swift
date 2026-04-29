@@ -11,6 +11,10 @@ struct StoryViewerView: View {
     let ownerName: String
     let ownerPhotoURL: URL?
     var isOwnStory: Bool = false
+    // Queue callbacks — set by QueuedContentView when viewer is part of a chain.
+    // nil = standalone open (back/finish → dismiss normally).
+    var onQueueAdvance: (() -> Void)? = nil
+    var onGoBack: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var manager = StoryUploadManager.shared
@@ -635,6 +639,9 @@ struct StoryViewerView: View {
             currentIndex = next
             elapsed = 0
             loadStory(at: next)
+        } else if let advance = onQueueAdvance {
+            // Part of a queue chain — hand off to next queue item
+            advance()
         } else {
             dismiss()
         }
@@ -648,6 +655,9 @@ struct StoryViewerView: View {
             currentIndex -= 1
             elapsed = 0
             loadStory(at: currentIndex)
+        } else if let back = onGoBack {
+            // At first story, first second — go back to previous queue item
+            back()
         }
     }
 

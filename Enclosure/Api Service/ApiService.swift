@@ -2979,6 +2979,79 @@ class ApiService {
             }
     }
 
+    // MARK: - Advertisement API
+
+    func fetchAdvertisements(uid: String, country: String, completion: @escaping ([AdData]) -> Void) {
+        let endpoint = Constant.baseURL + "get_advertisements"
+        let params: [String: String] = ["uid": uid, "country": country]
+        AF.request(endpoint, method: .post, parameters: params, encoding: URLEncoding.default)
+            .responseData { [weak self] response in
+                guard let json = self?.parseStoryResponse(response.data),
+                      (json["success"] as? String) == "1",
+                      let adsRaw = json["ads"] as? [[String: Any]]
+                else { completion([]); return }
+                completion(adsRaw.compactMap { AdData(dict: $0) })
+            }
+    }
+
+    func fetchMyAdvertisements(uid: String, completion: @escaping ([AdData]) -> Void) {
+        let endpoint = Constant.baseURL + "get_my_advertisements"
+        AF.request(endpoint, method: .post, parameters: ["uid": uid], encoding: URLEncoding.default)
+            .responseData { [weak self] response in
+                guard let json = self?.parseStoryResponse(response.data),
+                      (json["success"] as? String) == "1",
+                      let adsRaw = json["ads"] as? [[String: Any]]
+                else { completion([]); return }
+                completion(adsRaw.compactMap { AdData(dict: $0) })
+            }
+    }
+
+    func recordAdImpression(uid: String, adId: String) {
+        let endpoint = Constant.baseURL + "record_ad_impression"
+        AF.request(endpoint, method: .post,
+                   parameters: ["uid": uid, "ad_id": adId],
+                   encoding: URLEncoding.default)
+            .responseData { _ in }  // fire-and-forget
+    }
+
+    func deleteAdvertisement(adId: String, completion: @escaping (Bool) -> Void) {
+        let endpoint = Constant.baseURL + "delete_advertisement"
+        AF.request(endpoint, method: .post, parameters: ["ad_id": adId], encoding: URLEncoding.default)
+            .responseData { [weak self] response in
+                let ok = (self?.parseStoryResponse(response.data)?["success"] as? String) == "1"
+                completion(ok)
+            }
+    }
+
+    func postAdvertisement(uid: String, country: String, category: String,
+                           title: String, description: String, link: String,
+                           budget: String, duration: String, mediaData: [Data],
+                           completion: @escaping (Bool, String) -> Void) {
+        let endpoint = Constant.baseURL + "post_advertise"
+        let dialCode = UserDefaults.standard.string(forKey: Constant.country_Code) ?? "+1"
+
+        AF.upload(multipartFormData: { form in
+            for (key, val) in [
+                "uid": uid, "country": country, "category": category,
+                "title": title, "description": description, "link": link,
+                "budget": budget, "duration": duration, "states": dialCode
+            ] {
+                if let d = val.data(using: .utf8) { form.append(d, withName: key) }
+            }
+            for (i, data) in mediaData.enumerated() {
+                form.append(data, withName: "media[]",
+                            fileName: "ad_\(uid)_\(i).jpg",
+                            mimeType: "image/jpeg")
+            }
+        }, to: endpoint)
+        .responseData { [weak self] response in
+            let json = self?.parseStoryResponse(response.data)
+            let ok   = (json?["success"] as? String) == "1"
+            let msg  = json?["message"] as? String ?? (ok ? "Ad posted!" : "Failed to post ad.")
+            completion(ok, msg)
+        }
+    }
+
     func toggleStoryLike(storyId: String, completion: @escaping (StoryLikeStatus) -> Void) {
         let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         guard !uid.isEmpty else { completion(StoryLikeStatus(liked: false, likesCount: 0)); return }

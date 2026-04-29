@@ -28,6 +28,16 @@ struct StoryBottomSheetView: View {
     // Story viewer — single atomic config avoids race between index + isPresented
     @State private var storyViewerConfig: StoryViewerConfig? = nil
 
+    // Queue-based presentation for contact stories (may include ads between groups)
+    @State private var queuePresentation: StoryQueuePresentation? = nil
+
+    // Ads
+    @State private var loadedAds: [AdData] = []
+    @State private var myOwnAds: [AdData] = []
+    @State private var shownAdIdsToday: Set<String> = []
+    @State private var showPostAd = false
+    private let adInterval = 3  // insert ad every N contact groups
+
     @State private var showPrivacySheet = false
 
     // Hide user
@@ -81,7 +91,7 @@ struct StoryBottomSheetView: View {
     }
 
     private var hasStories: Bool {
-        !uploadManager.myStories.isEmpty || uploadManager.isUploading
+        !uploadManager.myStories.isEmpty || uploadManager.isUploading || !myOwnAds.isEmpty
     }
 
     private var subtitleText: String {
@@ -214,9 +224,15 @@ struct StoryBottomSheetView: View {
                     // My Stories cards
                     if hasStories {
                         HStack(alignment: .top, spacing: 0) {
-                            // "+" add card lives OUTSIDE the ScrollView so the outer
-                            // vertical scroll cannot intercept its tap.
-                            Button { showPhotoPicker = true } label: {
+                            // "+" add card — menu: Add Story | Promote Post
+                            Menu {
+                                Button { showPhotoPicker = true } label: {
+                                    Label("Add Story", systemImage: "plus.circle")
+                                }
+                                Button { showPostAd = true } label: {
+                                    Label("Promote Post", systemImage: "megaphone")
+                                }
+                            } label: {
                                 ZStack {
                                     CachedAsyncImage(url: myProfileFullURL) { image in
                                         image.resizable().scaledToFill()
@@ -268,6 +284,41 @@ struct StoryBottomSheetView: View {
                                                     uploadManager.deleteStory(id: story.id)
                                                 } label: {
                                                     Label("Delete now", systemImage: "trash")
+                                                }
+                                            } label: {
+                                                Image(systemName: "trash")
+                                                    .font(.system(size: 13, weight: .medium))
+                                                    .foregroundColor(.white)
+                                                    .frame(width: 30, height: 30)
+                                                    .background {
+                                                        Circle()
+                                                            .fill(.ultraThinMaterial)
+                                                            .overlay(Circle().fill(Color.black.opacity(0.45)))
+                                                    }
+                                            }
+                                            .buttonStyle(BorderlessButtonStyle())
+                                        }
+                                    }
+
+                                    // Own ad cards — shown after story cards with "AD" badge
+                                    ForEach(myOwnAds) { ad in
+                                        VStack(spacing: 6) {
+                                            adCard(ad, width: 80, height: 120)
+                                                .simultaneousGesture(TapGesture().onEnded {
+                                                    openMyAdPreview(ad)
+                                                })
+                                            // Delete button below card
+                                            Menu {
+                                                Button(role: .destructive) {
+                                                    ApiService.shared.deleteAdvertisement(adId: ad.id) { success in
+                                                        if success {
+                                                            DispatchQueue.main.async {
+                                                                myOwnAds.removeAll { $0.id == ad.id }
+                                                            }
+                                                        }
+                                                    }
+                                                } label: {
+                                                    Label("Delete Ad", systemImage: "trash")
                                                 }
                                             } label: {
                                                 Image(systemName: "trash")
@@ -391,8 +442,8 @@ struct StoryBottomSheetView: View {
                         .padding(.horizontal, 10)
                     }
 
-                    // ── Visible contact stories ──────────────────────────
-                    ForEach(filteredVisibleGroups) { group in
+                    // ── Visible contact stories (with ads interspersed) ──
+                    ForEach(Array(filteredVisibleGroups.enumerated()), id: \.element.id) { idx, group in
                         let isOpen = !collapsedContacts.contains(group.id)
 
                         VStack(spacing: 0) {
@@ -401,11 +452,8 @@ struct StoryBottomSheetView: View {
                                 .contentShape(Rectangle())
                                 .onTapGesture {
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                                        if isOpen {
-                                            collapsedContacts.insert(group.id)
-                                        } else {
-                                            collapsedContacts.remove(group.id)
-                                        }
+                                        if isOpen { collapsedContacts.insert(group.id) }
+                                        else { collapsedContacts.remove(group.id) }
                                     }
                                 }
 
@@ -414,14 +462,7 @@ struct StoryBottomSheetView: View {
                                     ForEach(Array(group.stories.enumerated()), id: \.element.id) { index, story in
                                         storyCard(story, showDelete: false, isSeen: localSeenIds.contains(story.id), width: 80, height: 120)
                                             .simultaneousGesture(TapGesture().onEnded {
-                                                storyViewerConfig = StoryViewerConfig(
-                                                    stories: group.stories,
-                                                    ownerUid: group.id,
-                                                    ownerName: group.fullName,
-                                                    ownerPhotoURL: group.photoURL,
-                                                    isOwnStory: false,
-                                                    startIndex: index
-                                                )
+                                                openContactQueue(startingAt: group, storyIndex: index)
                                             })
                                     }
                                 }
@@ -443,6 +484,8 @@ struct StoryBottomSheetView: View {
         .onAppear {
             uploadManager.fetchMyStories()
             uploadManager.fetchContactStories()
+            fetchAds()
+            fetchMyAds()
         }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { date in
             now = date
@@ -472,6 +515,21 @@ struct StoryBottomSheetView: View {
                 isOwnStory: config.isOwnStory,
                 startIndex: config.startIndex
             )
+        }
+        // Contact story queue — includes ads between groups
+        .fullScreenCover(item: $queuePresentation, onDismiss: {
+            hiddenUids = Set(UserDefaults.standard.stringArray(forKey: "hiddenStoryUids") ?? [])
+            localSeenIds = Set(UserDefaults.standard.stringArray(forKey: "localSeenStoryIds") ?? [])
+        }) { pres in
+            QueuedContentView(
+                queue: pres.queue,
+                startIndex: pres.startIndex,
+                shownAdIds: $shownAdIdsToday
+            )
+        }
+        // Post new advertisement sheet
+        .fullScreenCover(isPresented: $showPostAd) {
+            PostAdvertiseView()
         }
         .fullScreenCover(item: $selectedContactGroup) { group in
             NavigationStack {
@@ -819,6 +877,117 @@ struct StoryBottomSheetView: View {
         if diff < 3600  { return "\(Int(diff / 60))m ago" }
         if diff < 86400 { return "\(Int(diff / 3600))h ago" }
         return "\(Int(diff / 86400))d ago"
+    }
+
+    // MARK: - Ad fetch
+
+    private func fetchAds() {
+        let uid      = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        let dialCode = UserDefaults.standard.string(forKey: Constant.country_Code) ?? "+1"
+        guard !uid.isEmpty else { return }
+
+        let dialMap: [String: String] = [
+            "+91": "India", "+1": "United States", "+44": "United Kingdom",
+            "+61": "Australia", "+971": "UAE", "+92": "Pakistan",
+            "+880": "Bangladesh", "+977": "Nepal"
+        ]
+        let country = dialMap[dialCode] ?? "India"
+
+        ApiService.shared.fetchAdvertisements(uid: uid, country: country) { ads in
+            DispatchQueue.main.async { self.loadedAds = ads }
+        }
+    }
+
+    private func fetchMyAds() {
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !uid.isEmpty else { return }
+        ApiService.shared.fetchMyAdvertisements(uid: uid) { ads in
+            DispatchQueue.main.async { self.myOwnAds = ads }
+        }
+    }
+
+    // MARK: - Queue builder
+
+    private func buildContactQueue(startingAt targetGroup: ContactStoryGroup, storyIndex: Int) -> StoryQueuePresentation {
+        let eligible = loadedAds.filter { !shownAdIdsToday.contains($0.id) }
+        var queue: [StoryQueueContent] = []
+        var adSlot = 0
+        var startQueueIndex = 0
+
+        for (i, group) in filteredVisibleGroups.enumerated() {
+            let si = group.id == targetGroup.id ? storyIndex : 0
+            if group.id == targetGroup.id { startQueueIndex = queue.count }
+            queue.append(.stories(group: group, startIndex: si))
+
+            // Insert ad between groups (never after the last one)
+            let notLast = i + 1 < filteredVisibleGroups.count
+            if notLast && !eligible.isEmpty && (i + 1) % adInterval == 0 && adSlot < eligible.count {
+                queue.append(.ad(eligible[adSlot]))
+                adSlot += 1
+            }
+        }
+
+        return StoryQueuePresentation(queue: queue, startIndex: startQueueIndex)
+    }
+
+    private func openContactQueue(startingAt group: ContactStoryGroup, storyIndex: Int) {
+        queuePresentation = buildContactQueue(startingAt: group, storyIndex: storyIndex)
+    }
+
+    // MARK: - Own ad helpers
+
+    private func openMyAdPreview(_ ad: AdData) {
+        // Build a queue of own ads only; start at the tapped ad
+        let queue: [StoryQueueContent] = myOwnAds.map { .ad($0) }
+        let startIdx = myOwnAds.firstIndex(where: { $0.id == ad.id }) ?? 0
+        queuePresentation = StoryQueuePresentation(queue: queue, startIndex: startIdx)
+    }
+
+    // MARK: - Ad card (thumbnail for My Stories row)
+
+    @ViewBuilder
+    private func adCard(_ ad: AdData, width: CGFloat = 80, height: CGFloat = 120) -> some View {
+        ZStack {
+            if let url = ad.mediaURLs.first {
+                CachedAsyncImage(url: url) { img in
+                    img.resizable().scaledToFill()
+                } placeholder: {
+                    Color(hex: Constant.themeColor).opacity(0.25)
+                }
+                .frame(width: width, height: height)
+                .clipped()
+            } else {
+                LinearGradient(
+                    colors: [Color(hex: "#00A3E9"), Color(hex: "#005080")],
+                    startPoint: .top, endPoint: .bottom
+                )
+                .frame(width: width, height: height)
+                Text(ad.title)
+                    .font(.custom("Inter18pt-SemiBold", size: 9))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .padding(.horizontal, 4)
+            }
+
+            // "AD" badge — bottom-center
+            VStack {
+                Spacer()
+                Text("AD")
+                    .font(.custom("Inter18pt-Bold", size: 7.5))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(Color.black.opacity(0.7))
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                    .padding(.bottom, 6)
+            }
+        }
+        .frame(width: width, height: height)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color(hex: Constant.themeColor), lineWidth: 1.5)
+        )
     }
 }
 
