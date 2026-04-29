@@ -868,7 +868,7 @@ struct StoryVideoPlayerView: UIViewRepresentable {
     }
 }
 
-private final class StoryVideoUIView: UIView {
+final class StoryVideoUIView: UIView {
     var playerLayer: AVPlayerLayer?
 
     override func layoutSubviews() {
