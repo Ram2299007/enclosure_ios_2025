@@ -49,12 +49,15 @@ struct StoryViewerView: View {
     }
 
     init(stories: [UserStory], ownerUid: String = "", ownerName: String, ownerPhotoURL: URL?,
-         isOwnStory: Bool = false, startIndex: Int = 0) {
+         isOwnStory: Bool = false, startIndex: Int = 0,
+         onQueueAdvance: (() -> Void)? = nil, onGoBack: (() -> Void)? = nil) {
         self.stories = stories
         self.ownerUid = ownerUid
         self.ownerName = ownerName
         self.ownerPhotoURL = ownerPhotoURL
         self.isOwnStory = isOwnStory
+        self.onQueueAdvance = onQueueAdvance
+        self.onGoBack = onGoBack
         _currentIndex = State(
             initialValue: stories.isEmpty ? 0 : max(0, min(startIndex, stories.count - 1))
         )
@@ -847,7 +850,7 @@ private struct CaptionTruncationDetector: View {
 
 // MARK: - Controls-free video player (WhatsApp style)
 
-private struct StoryVideoPlayerView: UIViewRepresentable {
+struct StoryVideoPlayerView: UIViewRepresentable {
     let player: AVPlayer
 
     func makeUIView(context: Context) -> StoryVideoUIView {
