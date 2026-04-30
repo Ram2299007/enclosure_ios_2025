@@ -171,12 +171,26 @@ struct StoryBottomSheetView: View {
                     VStack(spacing: 0) {
                     // My Stories row
                     HStack(spacing: 10) {
-                        ZStack(alignment: .bottomTrailing) {
-                            profileImage(size: 50)
-                            if !hasStories { plusBadge }
-                        }
-                        .onTapGesture {
-                            if hasStories { showMyUserInfo = true } else { showPhotoPicker = true }
+                        if hasStories {
+                            ZStack(alignment: .bottomTrailing) {
+                                profileImage(size: 50)
+                            }
+                            .onTapGesture { showMyUserInfo = true }
+                        } else {
+                            Menu {
+                                Button { showPhotoPicker = true } label: {
+                                    Label("Add Story", systemImage: "plus.circle")
+                                }
+                                Button { showPostAd = true } label: {
+                                    Label("Promote Post", systemImage: "megaphone")
+                                }
+                            } label: {
+                                ZStack(alignment: .bottomTrailing) {
+                                    profileImage(size: 50)
+                                    plusBadge
+                                }
+                            }
+                            .buttonStyle(.plain)
                         }
 
                         VStack(alignment: .leading, spacing: 2) {
@@ -214,11 +228,8 @@ struct StoryBottomSheetView: View {
                     .background(Color(hex: Constant.themeColor).opacity(0.15))
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        if hasStories {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) { isExpanded.toggle() }
-                        } else {
-                            showPhotoPicker = true
-                        }
+                        guard hasStories else { return }
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) { isExpanded.toggle() }
                     }
 
                     // My Stories cards
