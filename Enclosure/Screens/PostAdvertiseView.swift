@@ -1547,24 +1547,24 @@ private struct AdPreviewSheet: View {
                     }
 
                     let trimLink = adLink.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimLink.isEmpty, let linkURL = URL(string: trimLink) {
-                        let display = trimLink
-                            .replacingOccurrences(of: "https://", with: "")
-                            .replacingOccurrences(of: "http://", with: "")
-                        Button {
-                            showWebView = true
-                        } label: {
-                            Text(display)
-                                .font(.custom("Inter18pt-SemiBold", size: 13))
-                                .foregroundColor(Color(hex: "#4A9EFF"))
-                                .underline()
-                                .lineLimit(1)
-                                .padding(.top, 2)
-                        }
-                        .buttonStyle(.plain)
-                        .sheet(isPresented: $showWebView) {
-                            SafariView(url: linkURL)
-                                .ignoresSafeArea()
+                    if !trimLink.isEmpty {
+                        let normalized = (trimLink.hasPrefix("http://") || trimLink.hasPrefix("https://"))
+                            ? trimLink : "https://\(trimLink)"
+                        if URL(string: normalized) != nil {
+                            let display = trimLink
+                                .replacingOccurrences(of: "https://", with: "")
+                                .replacingOccurrences(of: "http://", with: "")
+                            Button {
+                                showWebView = true
+                            } label: {
+                                Text(display)
+                                    .font(.custom("Inter18pt-SemiBold", size: 13))
+                                    .foregroundColor(Color(hex: "#4A9EFF"))
+                                    .underline()
+                                    .lineLimit(1)
+                                    .padding(.top, 2)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -1621,6 +1621,13 @@ private struct AdPreviewSheet: View {
             }
         }
         .onAppear { preloadAssets() }
+        .sheet(isPresented: $showWebView) {
+            let raw = adLink.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalized = (raw.hasPrefix("http://") || raw.hasPrefix("https://")) ? raw : "https://\(raw)"
+            if let url = URL(string: normalized) {
+                SafariView(url: url).ignoresSafeArea()
+            }
+        }
     }
 
     private func preloadAssets() {
