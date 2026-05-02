@@ -1,5 +1,23 @@
 import SwiftUI
 import AVKit
+import SafariServices
+
+// MARK: - Safari view
+
+private struct AdSafariView: UIViewControllerRepresentable {
+    let url: URL
+    func makeUIViewController(context: Context) -> SFSafariViewController { SFSafariViewController(url: url) }
+    func updateUIViewController(_ vc: SFSafariViewController, context: Context) {}
+}
+
+// MARK: - Truncation detection key
+
+private struct AdDescDiffKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+// MARK: - AdvertisePreviewView
 
 struct AdvertisePreviewView: View {
     let ad: AdData
@@ -8,12 +26,17 @@ struct AdvertisePreviewView: View {
     var onGoBack: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
+    @State private var currentMediaIndex = 0
     @State private var elapsed: Double = 0
     @State private var isPaused = false
     @State private var player: AVPlayer? = nil
+    @State private var descExpanded = false
+    @State private var isDescTruncated = false
+    @State private var showWebView = false
 
     private let tickInterval: Double = 1.0 / 60.0
     private let adDuration: Double = 5.0
+    private var totalMedia: Int { max(1, ad.mediaURLs.count) }
 
     private var safeTop: CGFloat {
         UIApplication.shared.connectedScenes
@@ -21,14 +44,22 @@ struct AdvertisePreviewView: View {
             .first?.keyWindow?.safeAreaInsets.top ?? 50
     }
 
+    private var relativeTimeText: String {
+        guard ad.createdAt > 0 else { return "" }
+        let diff = Date().timeIntervalSince1970 - ad.createdAt
+        if diff < 60    { return "just now" }
+        if diff < 3600  { return "\(Int(diff / 60))m ago" }
+        if diff < 86400 { return "\(Int(diff / 3600))h ago" }
+        return "\(Int(diff / 86400))d ago"
+    }
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            // ── Media content ──
             mediaContent
 
-            // ── Tap zones: left = back, right = forward ──
+            // Tap zones: left = back, right = forward
             HStack(spacing: 0) {
                 Color.clear.contentShape(Rectangle())
                     .onTapGesture { handleBack() }
@@ -41,7 +72,6 @@ struct AdvertisePreviewView: View {
                 if pressing { player?.pause() } else { player?.play() }
             }, perform: {})
 
-            // ── Header + bottom overlay ──
             VStack(spacing: 0) {
                 headerOverlay
                 Spacer()
@@ -53,20 +83,38 @@ struct AdvertisePreviewView: View {
             if val.translation.height > 80 { dismiss() }
         })
         .onAppear {
-            loadMedia()
+            loadMedia(for: 0)
             if isViewOnly { recordImpression() }
         }
         .onDisappear { player?.pause(); player = nil }
-        .onReceive(Timer.publish(every: tickInterval, on: .main, in: .common).autoconnect()) { _ in
-            tick()
+        .onChange(of: currentMediaIndex) { _ in loadMedia(for: currentMediaIndex) }
+        .onReceive(Timer.publish(every: tickInterval, on: .main, in: .common).autoconnect()) { _ in tick() }
+        .sheet(isPresented: $showWebView) {
+            let raw = ad.link.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalized = (raw.hasPrefix("http://") || raw.hasPrefix("https://")) ? raw : "https://\(raw)"
+            if let url = URL(string: normalized) {
+                AdSafariView(url: url).ignoresSafeArea()
+            }
         }
     }
 
-    // MARK: - Media
+    // MARK: - Media content
 
     @ViewBuilder
     private var mediaContent: some View {
-        if let url = ad.mediaURLs.first {
+        if ad.mediaURLs.isEmpty {
+            LinearGradient(
+                colors: [Color(hex: "#00A3E9"), Color(hex: "#005080")],
+                startPoint: .top, endPoint: .bottom
+            )
+            .ignoresSafeArea()
+            Text(ad.title)
+                .font(.custom("Inter18pt-Bold", size: 28))
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+                .padding(40)
+        } else {
+            let url = ad.mediaURLs[min(currentMediaIndex, ad.mediaURLs.count - 1)]
             if isVideoURL(url), let p = player {
                 StoryVideoPlayerView(player: p).ignoresSafeArea()
             } else if !isVideoURL(url) {
@@ -80,44 +128,36 @@ struct AdvertisePreviewView: View {
             } else {
                 ProgressView().tint(.white)
             }
-        } else {
-            // No media: gradient background with title
-            LinearGradient(
-                colors: [Color(hex: "#00A3E9"), Color(hex: "#005080")],
-                startPoint: .top, endPoint: .bottom
-            )
-            .ignoresSafeArea()
-            Text(ad.title)
-                .font(.custom("Inter18pt-Bold", size: 28))
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
-                .padding(40)
         }
     }
 
-    // MARK: - Header
+    // MARK: - Header overlay
 
     private var headerOverlay: some View {
         VStack(spacing: 12) {
-            // Single progress bar
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.35))
-                        .frame(height: 2.5)
-                    Capsule()
-                        .fill(Color.white)
-                        .frame(
-                            width: geo.size.width * CGFloat(min(elapsed / adDuration, 1.0)),
-                            height: 2.5
-                        )
+            // Progress bars — one per media item
+            HStack(spacing: 3) {
+                ForEach(0..<totalMedia, id: \.self) { i in
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(Color.white.opacity(0.35))
+                                .frame(height: 2.5)
+                            Capsule()
+                                .fill(Color.white)
+                                .frame(
+                                    width: geo.size.width * progressFraction(for: i),
+                                    height: 2.5
+                                )
+                        }
+                    }
+                    .frame(height: 2.5)
                 }
             }
-            .frame(height: 2.5)
             .padding(.horizontal, 10)
             .padding(.top, safeTop + 8)
 
-            // User info row
+            // Owner info row
             HStack(spacing: 10) {
                 Button { dismiss() } label: {
                     Image("leftvector")
@@ -142,9 +182,12 @@ struct AdvertisePreviewView: View {
                     Text(ad.ownerName.isEmpty ? "Sponsored" : ad.ownerName)
                         .font(.custom("Inter18pt-SemiBold", size: 14))
                         .foregroundColor(.white)
-                    Text("Sponsored")
-                        .font(.custom("Inter18pt-Regular", size: 11))
-                        .foregroundColor(.white.opacity(0.7))
+                    let t = relativeTimeText
+                    if !t.isEmpty {
+                        Text(t)
+                            .font(.custom("Inter18pt-Regular", size: 11))
+                            .foregroundColor(.white.opacity(0.7))
+                    }
                 }
 
                 Spacer()
@@ -169,46 +212,72 @@ struct AdvertisePreviewView: View {
         )
     }
 
-    // MARK: - Bottom info
+    // MARK: - Bottom overlay
 
     private var bottomOverlay: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if !ad.title.isEmpty {
-                Text(ad.title)
+        VStack(alignment: .leading, spacing: 6) {
+            let trimTitle = ad.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimTitle.isEmpty {
+                Text(trimTitle)
                     .font(.custom("Inter18pt-Bold", size: 18))
                     .foregroundColor(.white)
                     .lineLimit(2)
             }
-            if !ad.description.isEmpty {
-                Text(ad.description)
+
+            let trimDesc = ad.description.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimDesc.isEmpty {
+                Text(trimDesc)
                     .font(.custom("Inter18pt-Regular", size: 14))
                     .foregroundColor(.white.opacity(0.85))
-                    .lineLimit(3)
-            }
-            if !ad.link.isEmpty {
-                let linkStr = ad.link.hasPrefix("http") ? ad.link : "https://\(ad.link)"
-                if let url = URL(string: linkStr) {
-                    Link(destination: url) {
-                        HStack {
-                            Text("Visit Link")
-                                .font(.custom("Inter18pt-SemiBold", size: 15))
-                                .foregroundColor(.white)
-                            Image(systemName: "arrow.up.right")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.white)
+                    .lineLimit(descExpanded ? nil : 3)
+                    .overlay(
+                        GeometryReader { limited in
+                            Color.clear.overlay(
+                                Text(trimDesc)
+                                    .font(.custom("Inter18pt-Regular", size: 14))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .hidden()
+                                    .background(
+                                        GeometryReader { full in
+                                            Color.clear.preference(
+                                                key: AdDescDiffKey.self,
+                                                value: full.size.height - limited.size.height
+                                            )
+                                        }
+                                    )
+                                    .frame(width: limited.size.width)
+                            )
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color(hex: Constant.themeColor))
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
+                    )
+                    .onPreferenceChange(AdDescDiffKey.self) { diff in isDescTruncated = diff > 1 }
+
+                if isDescTruncated || descExpanded {
+                    Button(descExpanded ? "less" : "more") { descExpanded.toggle() }
+                        .font(.custom("Inter18pt-SemiBold", size: 13))
+                        .foregroundColor(.white.opacity(0.85))
+                        .underline()
                 }
+            }
+
+            let trimLink = ad.link.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimLink.isEmpty {
+                let display = trimLink
+                    .replacingOccurrences(of: "https://", with: "")
+                    .replacingOccurrences(of: "http://", with: "")
+                Button { showWebView = true } label: {
+                    Text(display)
+                        .font(.custom("Inter18pt-SemiBold", size: 13))
+                        .foregroundColor(Color(hex: "#4A9EFF"))
+                        .underline()
+                        .lineLimit(1)
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 16)
         .padding(.top, 20)
         .padding(.bottom, 48)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             LinearGradient(
                 colors: [Color.clear, Color.black.opacity(0.85)],
@@ -218,12 +287,29 @@ struct AdvertisePreviewView: View {
         )
     }
 
+    // MARK: - Progress
+
+    private func progressFraction(for index: Int) -> CGFloat {
+        if index < currentMediaIndex { return 1.0 }
+        if index > currentMediaIndex { return 0.0 }
+        return CGFloat(min(elapsed / adDuration, 1.0))
+    }
+
     // MARK: - Timer
 
     private func tick() {
         guard !isPaused else { return }
         elapsed += tickInterval
-        if elapsed >= adDuration { handleForward() }
+        if elapsed >= adDuration { advanceMedia() }
+    }
+
+    private func advanceMedia() {
+        elapsed = 0
+        if currentMediaIndex < ad.mediaURLs.count - 1 {
+            currentMediaIndex += 1
+        } else {
+            handleForward()
+        }
     }
 
     // MARK: - Navigation
@@ -238,7 +324,12 @@ struct AdvertisePreviewView: View {
     }
 
     private func handleBack() {
-        if let back = onGoBack { back() } else { dismiss() }
+        if currentMediaIndex > 0 {
+            elapsed = 0
+            currentMediaIndex -= 1
+        } else {
+            if let back = onGoBack { back() } else { dismiss() }
+        }
     }
 
     // MARK: - Helpers
@@ -247,8 +338,12 @@ struct AdvertisePreviewView: View {
         ["mp4", "mov", "m4v", "avi"].contains(url.pathExtension.lowercased())
     }
 
-    private func loadMedia() {
-        guard let url = ad.mediaURLs.first, isVideoURL(url) else { return }
+    private func loadMedia(for index: Int) {
+        player?.pause()
+        player = nil
+        guard index < ad.mediaURLs.count else { return }
+        let url = ad.mediaURLs[index]
+        guard isVideoURL(url) else { return }
         let p = AVPlayer(url: url)
         player = p
         p.play()

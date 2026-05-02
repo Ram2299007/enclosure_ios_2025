@@ -2,6 +2,10 @@ import SwiftUI
 import Photos
 import SafariServices
 
+extension Notification.Name {
+    static let adPosted = Notification.Name("com.enclosure.adPosted")
+}
+
 // MARK: - Lookup tables (mirrors Android PostAdvertiseActivity)
 
 private let kCountries: [String] = [
@@ -877,7 +881,10 @@ struct PostAdvertiseView: View {
         ) { success, message in
             DispatchQueue.main.async {
                 isPosting = false
-                if success { showSuccess = true } else { errorMessage = message }
+                if success {
+                    showSuccess = true
+                    NotificationCenter.default.post(name: .adPosted, object: nil)
+                } else { errorMessage = message }
             }
         }
     }

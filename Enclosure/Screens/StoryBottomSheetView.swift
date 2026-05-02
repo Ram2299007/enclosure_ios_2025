@@ -498,6 +498,9 @@ struct StoryBottomSheetView: View {
             fetchAds()
             fetchMyAds()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .adPosted)) { _ in
+            fetchMyAds()
+        }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { date in
             now = date
         }
