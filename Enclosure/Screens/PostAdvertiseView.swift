@@ -1,5 +1,6 @@
 import SwiftUI
-import PhotosUI
+import Photos
+import SafariServices
 
 // MARK: - Lookup tables (mirrors Android PostAdvertiseActivity)
 
@@ -396,14 +397,11 @@ struct PostAdvertiseView: View {
     @State private var budget = ""
     @State private var duration = ""
 
-    // Media
-    @State private var selectedPhotos: [PhotosPickerItem] = []
-    @State private var selectedImages: [UIImage] = []
-
     // Sheet toggles
     @State private var showCountryPicker = false
     @State private var showStatePicker = false
     @State private var showCategoryPicker = false
+    @State private var showMediaPicker = false
 
     // Posting
     @State private var isPosting = false
@@ -511,11 +509,6 @@ struct PostAdvertiseView: View {
                     reachTable
                         .padding(.bottom, 18)
 
-                    // ── Media (optional) ──
-                    fieldLabel("Media (optional)")
-                    mediaPickerSection
-                        .padding(.bottom, 18)
-
                     // ── 18+ Warning Banner ──
                     if isFlagged {
                         warningBanner
@@ -582,6 +575,11 @@ struct PostAdvertiseView: View {
                 selectedSingle: $selectedCategory,
                 selectedMultiple: .constant([])
             )
+        }
+        .fullScreenCover(isPresented: $showMediaPicker) {
+            AdMediaPickerSheet(adTitle: title, adDescription: description, adLink: link) { images in
+                actuallyPost(images: images)
+            }
         }
         .alert("Ad Posted!", isPresented: $showSuccess) {
             Button("OK") { dismiss() }
@@ -770,60 +768,6 @@ struct PostAdvertiseView: View {
         .padding(.horizontal, 16)
     }
 
-    @ViewBuilder
-    private var mediaPickerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            PhotosPicker(
-                selection: $selectedPhotos,
-                maxSelectionCount: 5,
-                matching: .any(of: [.images, .videos])
-            ) {
-                HStack {
-                    Image(systemName: "photo.badge.plus")
-                        .font(.system(size: 20))
-                        .foregroundColor(Color(hex: Constant.themeColor))
-                    Text(selectedImages.isEmpty
-                         ? "Add photos / videos"
-                         : "\(selectedImages.count) selected")
-                        .font(.custom("Inter18pt-Regular", size: 15))
-                        .foregroundColor(selectedImages.isEmpty ? Color(hex: "#6E6E73") : .white)
-                    Spacer()
-                }
-                .padding(.horizontal, 14)
-                .frame(height: 52)
-                .background(Color(hex: "#1C1C1E"))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .padding(.horizontal, 16)
-            }
-            .onChange(of: selectedPhotos) { items in
-                selectedImages = []
-                for item in items {
-                    item.loadTransferable(type: Data.self) { result in
-                        if case .success(let data) = result,
-                           let data = data,
-                           let img = UIImage(data: data) {
-                            DispatchQueue.main.async { selectedImages.append(img) }
-                        }
-                    }
-                }
-            }
-
-            if !selectedImages.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(selectedImages.enumerated()), id: \.offset) { _, img in
-                            Image(uiImage: img)
-                                .resizable().scaledToFill()
-                                .frame(width: 64, height: 64)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                }
-            }
-        }
-    }
-
     private var warningBanner: some View {
         HStack(spacing: 10) {
             Text("18+")
@@ -903,7 +847,6 @@ struct PostAdvertiseView: View {
         guard !budget.isEmpty else { errorMessage = "Daily budget is required."; return }
         guard !duration.isEmpty else { errorMessage = "Ad duration is required."; return }
 
-        // Minimum budget validation
         if let budgetVal = Double(budget) {
             let minBudget = Double(tiers.first ?? 1)
             if budgetVal < minBudget {
@@ -915,21 +858,930 @@ struct PostAdvertiseView: View {
         let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         guard !uid.isEmpty else { errorMessage = "Not logged in."; return }
 
+        errorMessage = nil
+        showMediaPicker = true
+    }
+
+    private func actuallyPost(images: [UIImage]) {
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         isPosting = true
         errorMessage = nil
 
         let states = selectedStates.sorted().joined(separator: ",")
-        let mediaData = selectedImages.compactMap { $0.jpegData(compressionQuality: 0.8) }
+        let mediaData = images.compactMap { $0.jpegData(compressionQuality: 0.8) }
 
         ApiService.shared.postAdvertisement(
             uid: uid, country: selectedCountry, category: selectedCategory,
             title: title, description: description, link: link,
-            budget: budget, duration: duration, mediaData: mediaData
+            budget: budget, duration: duration, states: states, mediaData: mediaData
         ) { success, message in
             DispatchQueue.main.async {
                 isPosting = false
                 if success { showSuccess = true } else { errorMessage = message }
             }
+        }
+    }
+}
+
+// MARK: - Ad Album Model
+
+private struct AdAlbumItem: Identifiable {
+    let id: String
+    let collection: PHAssetCollection
+    let title: String
+    let count: Int
+    var thumbnail: UIImage? = nil
+}
+
+// MARK: - Ad Media Picker Sheet
+
+struct AdMediaPickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    var adTitle: String = ""
+    var adDescription: String = ""
+    var adLink: String = ""
+    var onSelected: ([UIImage]) -> Void
+
+    @State private var allAlbums: [AdAlbumItem] = []
+    @State private var selectedAlbumTitle: String = "All Photos"
+    @State private var showAlbumDropdown = false
+    @State private var assets: [PHAsset] = []
+    @State private var isLoading: Bool = true
+    @State private var permissionDenied: Bool = false
+    @State private var selectedAssets: [PHAsset] = []
+    @State private var showCameraView: Bool = false
+    @State private var showPreview: Bool = false
+    @State private var isResolving: Bool = false
+    @State private var headerHeight: CGFloat = 0
+
+    private let imageManager = PHCachingImageManager()
+    private let columns = [
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2)
+    ]
+    private let thumbnailSize = CGSize(width: 300, height: 300)
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                headerBar
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.onAppear { headerHeight = geo.size.height }
+                        }
+                    )
+
+                if permissionDenied {
+                    permissionView
+                } else if isLoading {
+                    loadingView
+                } else if assets.isEmpty {
+                    emptyView
+                } else {
+                    gridView
+                }
+            }
+
+            if showAlbumDropdown {
+                Color.black.opacity(0.55)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.22)) { showAlbumDropdown = false }
+                    }
+
+                VStack(spacing: 0) {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 0) {
+                            ForEach(allAlbums) { item in
+                                AdAlbumRow(item: item, isSelected: item.title == selectedAlbumTitle) {
+                                    withAnimation(.easeInOut(duration: 0.22)) { showAlbumDropdown = false }
+                                    selectAlbum(item.collection)
+                                }
+                                if item.id != allAlbums.last?.id {
+                                    Divider()
+                                        .background(Color.white.opacity(0.08))
+                                        .padding(.leading, 72)
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 400)
+                }
+                .background(RoundedRectangle(cornerRadius: 18).fill(Color(white: 0.12)))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.08), lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.5), radius: 24, x: 0, y: 8)
+                .padding(.horizontal, 12)
+                .padding(.top, headerHeight + 8)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .move(edge: .top)),
+                    removal: .opacity.combined(with: .move(edge: .top))
+                ))
+            }
+        }
+        .fullScreenCover(isPresented: $showCameraView) {
+            AdCameraPickerView { image in
+                if let image {
+                    dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { onSelected([image]) }
+                }
+            }
+        }
+        .fullScreenCover(isPresented: $showPreview) {
+            AdPreviewSheet(
+                assets: selectedAssets,
+                adTitle: adTitle,
+                adDescription: adDescription,
+                adLink: adLink,
+                onConfirm: { updatedAssets in
+                    selectedAssets = updatedAssets
+                    showPreview = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { resolveAndPost() }
+                }
+            )
+        }
+        .onAppear { requestPhotoAccess() }
+    }
+
+    // MARK: - Header
+
+    private var headerBar: some View {
+        HStack(spacing: 0) {
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 38, height: 38)
+                    .background(Circle().fill(Color.white.opacity(0.12)))
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                    showAlbumDropdown.toggle()
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(selectedAlbumTitle)
+                        .font(.custom("Inter18pt-SemiBold", size: 15))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    Image(systemName: showAlbumDropdown ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white.opacity(0.7))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Capsule().fill(Color.white.opacity(0.12)))
+                .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 0.5))
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            if !selectedAssets.isEmpty {
+                Button { showPreview = true } label: {
+                    HStack(spacing: 6) {
+                        if isResolving {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .tint(.white)
+                                .scaleEffect(0.7)
+                        } else {
+                            Text("Next")
+                                .font(.custom("Inter18pt-SemiBold", size: 15))
+                                .foregroundColor(.white)
+                            ZStack {
+                                Circle()
+                                    .fill(Color(hex: Constant.themeColor))
+                                    .frame(width: 22, height: 22)
+                                Text("\(selectedAssets.count)")
+                                    .font(.custom("Inter18pt-Bold", size: 11))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Capsule().fill(Color.white.opacity(0.12)))
+                    .overlay(Capsule().stroke(Color(hex: Constant.themeColor).opacity(0.6), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .disabled(isResolving)
+                .transition(.opacity.combined(with: .scale))
+            } else {
+                Spacer().frame(width: 60)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 10)
+        .animation(.easeInOut(duration: 0.2), value: selectedAssets.isEmpty)
+    }
+
+    // MARK: - Grid
+
+    private var gridView: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 2) {
+                // Camera-only full-width action row (text option hidden, same as Android)
+                Button { handleCameraButtonClick() } label: {
+                    VStack(spacing: 8) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.white.opacity(0.1))
+                                .frame(width: 48, height: 48)
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 20, weight: .medium))
+                                .foregroundColor(.white)
+                        }
+                        Text("Camera")
+                            .font(.custom("Inter18pt-Medium", size: 13))
+                            .foregroundColor(.white.opacity(0.75))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+                    .background(Color.white.opacity(0.06))
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 2)
+
+                LazyVGrid(columns: columns, spacing: 2) {
+                    ForEach(assets, id: \.localIdentifier) { asset in
+                        let selIdx = selectedAssets.firstIndex(where: { $0.localIdentifier == asset.localIdentifier })
+                        AdAssetCell(
+                            asset: asset,
+                            imageManager: imageManager,
+                            thumbnailSize: thumbnailSize,
+                            isSelected: selIdx != nil,
+                            selectionNumber: selIdx.map { $0 + 1 }
+                        ) { toggleSelection(asset) }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - State views
+
+    private var loadingView: some View {
+        VStack {
+            Spacer()
+            ProgressView().progressViewStyle(.circular).tint(.white).scaleEffect(1.3)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var emptyView: some View {
+        VStack(spacing: 14) {
+            Spacer()
+            Image(systemName: "photo.on.rectangle.angled")
+                .font(.system(size: 46))
+                .foregroundColor(.white.opacity(0.3))
+            Text("No Photos or Videos")
+                .font(.custom("Inter18pt-Medium", size: 16))
+                .foregroundColor(.white.opacity(0.4))
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var permissionView: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "lock.fill")
+                .font(.system(size: 44))
+                .foregroundColor(.white.opacity(0.3))
+            Text("No Access to Photos")
+                .font(.custom("Inter18pt-SemiBold", size: 17))
+                .foregroundColor(.white)
+            Text("Allow access in Settings to pick photos and videos.")
+                .font(.custom("Inter18pt-Regular", size: 14))
+                .foregroundColor(.white.opacity(0.5))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            .font(.custom("Inter18pt-SemiBold", size: 15))
+            .foregroundColor(.black)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 12)
+            .background(Capsule().fill(Color.white))
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Selection
+
+    private func toggleSelection(_ asset: PHAsset) {
+        let impact = UIImpactFeedbackGenerator(style: .light)
+        impact.impactOccurred()
+        withAnimation(.spring(response: 0.22, dampingFraction: 0.7)) {
+            if let idx = selectedAssets.firstIndex(where: { $0.localIdentifier == asset.localIdentifier }) {
+                selectedAssets.remove(at: idx)
+            } else if selectedAssets.count < 5 {
+                selectedAssets.append(asset)
+            }
+        }
+    }
+
+    // MARK: - Camera
+
+    private func handleCameraButtonClick() {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        AndroidStylePermissionManager.shared.requestPermissionWithDialogFromTopVC(for: .camera) { granted in
+            DispatchQueue.main.async { if granted { showCameraView = true } }
+        }
+    }
+
+    // MARK: - Resolve & Post
+
+    private func resolveAndPost() {
+        guard !selectedAssets.isEmpty else { return }
+        isResolving = true
+        var images: [UIImage] = Array(repeating: UIImage(), count: selectedAssets.count)
+        let group = DispatchGroup()
+        for (i, asset) in selectedAssets.enumerated() {
+            group.enter()
+            let opts = PHImageRequestOptions()
+            opts.deliveryMode = .highQualityFormat
+            opts.isNetworkAccessAllowed = true
+            imageManager.requestImage(
+                for: asset,
+                targetSize: CGSize(width: 1080, height: 1080),
+                contentMode: .aspectFit,
+                options: opts
+            ) { img, _ in
+                if let img { images[i] = img }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) {
+            isResolving = false
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                onSelected(images.filter { $0.size.width > 0 })
+            }
+        }
+    }
+
+    // MARK: - Photo Library
+
+    private func requestPhotoAccess() {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        switch status {
+        case .authorized, .limited: loadAlbums()
+        case .notDetermined:
+            PHPhotoLibrary.requestAuthorization(for: .readWrite) { s in
+                DispatchQueue.main.async {
+                    if s == .authorized || s == .limited { loadAlbums() }
+                    else { isLoading = false; permissionDenied = true }
+                }
+            }
+        default:
+            isLoading = false
+            permissionDenied = true
+        }
+    }
+
+    private func loadAlbums() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            var items: [AdAlbumItem] = []
+
+            func addCollection(_ col: PHAssetCollection) {
+                let assets = PHAsset.fetchAssets(in: col, options: nil)
+                guard assets.count > 0 else { return }
+                let title = col.localizedTitle ?? "Album"
+                var item = AdAlbumItem(id: col.localIdentifier, collection: col,
+                                      title: "\(title) (\(assets.count))", count: assets.count)
+                if let first = assets.firstObject {
+                    let opts = PHImageRequestOptions()
+                    opts.isSynchronous = true
+                    opts.deliveryMode = .fastFormat
+                    PHImageManager.default().requestImage(
+                        for: first, targetSize: CGSize(width: 80, height: 80),
+                        contentMode: .aspectFill, options: opts
+                    ) { img, _ in item.thumbnail = img }
+                }
+                items.append(item)
+            }
+
+            let smartSubtypes: [PHAssetCollectionSubtype] = [
+                .smartAlbumUserLibrary, .smartAlbumRecentlyAdded, .smartAlbumFavorites,
+                .smartAlbumVideos, .smartAlbumSlomoVideos, .smartAlbumTimelapses,
+                .smartAlbumPanoramas, .smartAlbumScreenshots, .smartAlbumBursts,
+                .smartAlbumSelfPortraits, .smartAlbumLivePhotos, .smartAlbumDepthEffect,
+                .smartAlbumLongExposures
+            ]
+            for subtype in smartSubtypes {
+                PHAssetCollection.fetchAssetCollections(with: .smartAlbum, subtype: subtype, options: nil)
+                    .enumerateObjects { col, _, _ in addCollection(col) }
+            }
+            PHAssetCollection.fetchAssetCollections(with: .album, subtype: .albumRegular, options: nil)
+                .enumerateObjects { col, _, _ in addCollection(col) }
+            PHAssetCollection.fetchAssetCollections(with: .album, subtype: .albumSyncedAlbum, options: nil)
+                .enumerateObjects { col, _, _ in addCollection(col) }
+
+            DispatchQueue.main.async {
+                allAlbums = items
+                let defaultAlbum = items.first(where: { $0.collection.assetCollectionSubtype == .smartAlbumUserLibrary })
+                    ?? items.first
+                if let a = defaultAlbum { selectAlbum(a.collection) } else { isLoading = false }
+            }
+        }
+    }
+
+    private func selectAlbum(_ album: PHAssetCollection) {
+        let rawTitle = album.localizedTitle ?? "All Photos"
+        selectedAlbumTitle = rawTitle
+        isLoading = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            let opts = PHFetchOptions()
+            opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+            opts.predicate = NSPredicate(format: "mediaType == %d OR mediaType == %d",
+                                         PHAssetMediaType.image.rawValue,
+                                         PHAssetMediaType.video.rawValue)
+            let result = PHAsset.fetchAssets(in: album, options: opts)
+            var fetched: [PHAsset] = []
+            result.enumerateObjects { a, _, _ in fetched.append(a) }
+            DispatchQueue.main.async {
+                assets = fetched
+                isLoading = false
+            }
+        }
+    }
+}
+
+// MARK: - Ad Album Row
+
+private struct AdAlbumRow: View {
+    let item: AdAlbumItem
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 14) {
+                Group {
+                    if let thumb = item.thumbnail {
+                        Image(uiImage: thumb)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Color.white.opacity(0.07)
+                    }
+                }
+                .frame(width: 46, height: 46)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                Text(item.title)
+                    .font(.custom(isSelected ? "Inter18pt-SemiBold" : "Inter18pt-Regular", size: 15))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+
+                Spacer()
+
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Color(hex: Constant.themeColor))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Safari Web View
+
+private struct SafariView: UIViewControllerRepresentable {
+    let url: URL
+    func makeUIViewController(context: Context) -> SFSafariViewController { SFSafariViewController(url: url) }
+    func updateUIViewController(_ vc: SFSafariViewController, context: Context) {}
+}
+
+private struct HeightDiffKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+// MARK: - Ad Preview Sheet
+
+private struct AdPreviewSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State var assets: [PHAsset]
+    var adTitle: String
+    var adDescription: String
+    var adLink: String
+    var onConfirm: ([PHAsset]) -> Void
+
+    @State private var currentIndex = 0
+    @State private var loadedImages: [String: UIImage] = [:]
+    @State private var descExpanded = false
+    @State private var isTruncated = false
+    @State private var isSending = false
+    @State private var showWebView = false
+
+    private let imageManager = PHCachingImageManager()
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            // Full-screen pager
+            TabView(selection: $currentIndex) {
+                ForEach(Array(assets.enumerated()), id: \.element.localIdentifier) { index, asset in
+                    ZStack {
+                        Color.black
+                        if let img = loadedImages[asset.localIdentifier] {
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            ProgressView().tint(.white)
+                        }
+                    }
+                    .tag(index)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .ignoresSafeArea()
+
+            // Top gradient scrim
+            VStack(spacing: 0) {
+                LinearGradient(
+                    colors: [Color.black.opacity(0.65), Color.clear],
+                    startPoint: .top, endPoint: .bottom
+                )
+                .frame(height: 160)
+                .ignoresSafeArea(edges: .top)
+                Spacer()
+            }
+
+            // Bottom gradient scrim
+            VStack(spacing: 0) {
+                Spacer()
+                LinearGradient(
+                    colors: [Color.clear, Color.black.opacity(0.85)],
+                    startPoint: .top, endPoint: .bottom
+                )
+                .frame(height: 240)
+                .ignoresSafeArea(edges: .bottom)
+            }
+
+            // Top bar
+            VStack(spacing: 0) {
+                HStack {
+                    Button { dismiss() } label: {
+                        ZStack {
+                            Circle()
+                                .fill(Color.white.opacity(0.2))
+                                .frame(width: 40, height: 40)
+                            Image("leftvector")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 25, height: 18)
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.leading, 16)
+
+                    Spacer()
+
+                    if assets.count > 1 {
+                        Text("\(currentIndex + 1) / \(assets.count)")
+                            .font(.custom("Inter18pt-Medium", size: 16))
+                            .foregroundColor(.white)
+                    }
+
+                    Spacer()
+
+                    Button { removeCurrentAsset() } label: {
+                        ZStack {
+                            Circle()
+                                .fill(Color.white.opacity(0.2))
+                                .frame(width: 40, height: 40)
+                            Image(systemName: "trash")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 16)
+                }
+                .frame(height: 60)
+                Spacer()
+            }
+
+            // Bottom section
+            VStack(spacing: 0) {
+                Spacer()
+
+                VStack(alignment: .center, spacing: 4) {
+                    let trimTitle = adTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimTitle.isEmpty {
+                        Text(trimTitle)
+                            .font(.custom("Inter18pt-Bold", size: 15))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.horizontal, 20)
+                    }
+
+                    let trimDesc = adDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimDesc.isEmpty {
+                        Text(trimDesc)
+                            .font(.custom("Inter18pt-SemiBold", size: 14))
+                            .foregroundColor(.white)
+                            .lineLimit(descExpanded ? nil : 3)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 20)
+                            .overlay(
+                                GeometryReader { limited in
+                                    Color.clear.overlay(
+                                        Text(trimDesc)
+                                            .font(.custom("Inter18pt-SemiBold", size: 14))
+                                            .multilineTextAlignment(.center)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .hidden()
+                                            .background(
+                                                GeometryReader { full in
+                                                    Color.clear.preference(
+                                                        key: HeightDiffKey.self,
+                                                        value: full.size.height - limited.size.height
+                                                    )
+                                                }
+                                            )
+                                            .frame(width: limited.size.width)
+                                    )
+                                }
+                            )
+                            .onPreferenceChange(HeightDiffKey.self) { diff in
+                                isTruncated = diff > 1
+                            }
+                        if isTruncated || descExpanded {
+                            Button(descExpanded ? "less" : "more") {
+                                descExpanded.toggle()
+                            }
+                            .font(.custom("Inter18pt-SemiBold", size: 13))
+                            .foregroundColor(.white.opacity(0.85))
+                            .underline()
+                        }
+                    }
+
+                    let trimLink = adLink.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimLink.isEmpty, let linkURL = URL(string: trimLink) {
+                        let display = trimLink
+                            .replacingOccurrences(of: "https://", with: "")
+                            .replacingOccurrences(of: "http://", with: "")
+                        Button {
+                            showWebView = true
+                        } label: {
+                            Text(display)
+                                .font(.custom("Inter18pt-SemiBold", size: 13))
+                                .foregroundColor(Color(hex: "#4A9EFF"))
+                                .underline()
+                                .lineLimit(1)
+                                .padding(.top, 2)
+                        }
+                        .buttonStyle(.plain)
+                        .sheet(isPresented: $showWebView) {
+                            SafariView(url: linkURL)
+                                .ignoresSafeArea()
+                        }
+                    }
+                }
+                .padding(.bottom, 10)
+
+                // "Ad" pill (left) + Send button (right)
+                HStack {
+                    Text("Ad")
+                        .font(.custom("Inter18pt-SemiBold", size: 11))
+                        .foregroundColor(.white.opacity(0.8))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.white.opacity(0.15))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.white.opacity(0.3), lineWidth: 0.5)
+                                )
+                        )
+
+                    Spacer()
+
+                    Button {
+                        guard !isSending else { return }
+                        isSending = true
+                        onConfirm(assets)
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(Color(hex: Constant.themeColor))
+                                .frame(width: 50, height: 50)
+                            if isSending {
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .tint(.white)
+                                    .scaleEffect(0.75)
+                            } else {
+                                Image("baseline_keyboard_double_arrow_right_24")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 26, height: 26)
+                                    .foregroundColor(.white)
+                                    .padding(.top, 4)
+                                    .padding(.bottom, 8)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 34)
+            }
+        }
+        .onAppear { preloadAssets() }
+    }
+
+    private func preloadAssets() {
+        for asset in assets {
+            let opts = PHImageRequestOptions()
+            opts.deliveryMode = .highQualityFormat
+            opts.isNetworkAccessAllowed = true
+            imageManager.requestImage(
+                for: asset,
+                targetSize: CGSize(
+                    width: UIScreen.main.bounds.width * 2,
+                    height: UIScreen.main.bounds.height * 2
+                ),
+                contentMode: .aspectFit,
+                options: opts
+            ) { img, _ in
+                if let img { DispatchQueue.main.async { loadedImages[asset.localIdentifier] = img } }
+            }
+        }
+    }
+
+    private func removeCurrentAsset() {
+        guard !assets.isEmpty else { return }
+        loadedImages.removeValue(forKey: assets[currentIndex].localIdentifier)
+        assets.remove(at: currentIndex)
+        if assets.isEmpty { dismiss(); return }
+        currentIndex = min(currentIndex, assets.count - 1)
+    }
+}
+
+// MARK: - Ad Asset Cell
+
+private struct AdAssetCell: View {
+    let asset: PHAsset
+    let imageManager: PHCachingImageManager
+    let thumbnailSize: CGSize
+    let isSelected: Bool
+    let selectionNumber: Int?
+    let onTap: () -> Void
+
+    @State private var thumbnail: UIImage? = nil
+    private var isVideo: Bool { asset.mediaType == .video }
+
+    var body: some View {
+        GeometryReader { geo in
+            let size = geo.size.width
+
+            ZStack(alignment: .bottomLeading) {
+                Group {
+                    if let img = thumbnail {
+                        Image(uiImage: img)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Color(white: 0.14)
+                            .overlay(
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .tint(.white.opacity(0.35))
+                                    .scaleEffect(0.65)
+                            )
+                    }
+                }
+                .frame(width: size, height: size)
+                .clipped()
+
+                if isSelected {
+                    Color.black.opacity(0.35).frame(width: size, height: size)
+                }
+
+                if isVideo {
+                    HStack(spacing: 3) {
+                        Image(systemName: "video.fill")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text(durationString(asset.duration))
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color.black.opacity(0.55)))
+                    .padding(6)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                selectionBadge.padding(5)
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 7)
+                    .stroke(isSelected ? Color(hex: Constant.themeColor) : Color.clear, lineWidth: 2.5)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+            .contentShape(Rectangle())
+            .onTapGesture { onTap() }
+            .scaleEffect(isSelected ? 0.97 : 1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.7), value: isSelected)
+            .onAppear { loadThumbnail(size: thumbnailSize) }
+        }
+        .aspectRatio(1, contentMode: .fit)
+    }
+
+    @ViewBuilder
+    private var selectionBadge: some View {
+        if isSelected, let num = selectionNumber {
+            ZStack {
+                Circle()
+                    .fill(Color(hex: Constant.themeColor))
+                    .frame(width: 24, height: 24)
+                    .shadow(color: Color(hex: Constant.themeColor).opacity(0.5), radius: 4)
+                Text("\(num)")
+                    .font(.custom("Inter18pt-Bold", size: 11))
+                    .foregroundColor(.white)
+            }
+            .transition(.scale.combined(with: .opacity))
+        }
+    }
+
+    private func loadThumbnail(size: CGSize) {
+        let opts = PHImageRequestOptions()
+        opts.deliveryMode = .opportunistic
+        opts.resizeMode = .fast
+        opts.isNetworkAccessAllowed = true
+        imageManager.requestImage(for: asset, targetSize: size, contentMode: .aspectFill, options: opts) { img, _ in
+            if let img { DispatchQueue.main.async { thumbnail = img } }
+        }
+    }
+
+    private func durationString(_ d: TimeInterval) -> String {
+        String(format: "%d:%02d", Int(d) / 60, Int(d) % 60)
+    }
+}
+
+// MARK: - Camera Picker
+
+struct AdCameraPickerView: UIViewControllerRepresentable {
+    var onCapture: (UIImage?) -> Void
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(onCapture: onCapture) }
+
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        var onCapture: (UIImage?) -> Void
+        init(onCapture: @escaping (UIImage?) -> Void) { self.onCapture = onCapture }
+
+        func imagePickerController(_ picker: UIImagePickerController,
+                                   didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            picker.dismiss(animated: true)
+            onCapture(info[.originalImage] as? UIImage)
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true)
+            onCapture(nil)
         }
     }
 }
