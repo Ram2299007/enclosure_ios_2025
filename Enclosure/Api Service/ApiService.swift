@@ -3025,16 +3025,16 @@ class ApiService {
 
     func postAdvertisement(uid: String, country: String, category: String,
                            title: String, description: String, link: String,
-                           budget: String, duration: String, mediaData: [Data],
+                           budget: String, duration: String, states: String,
+                           mediaData: [Data] = [],
                            completion: @escaping (Bool, String) -> Void) {
         let endpoint = Constant.baseURL + "post_advertise"
-        let dialCode = UserDefaults.standard.string(forKey: Constant.country_Code) ?? "+1"
 
         AF.upload(multipartFormData: { form in
             for (key, val) in [
                 "uid": uid, "country": country, "category": category,
                 "title": title, "description": description, "link": link,
-                "budget": budget, "duration": duration, "states": dialCode
+                "budget": budget, "duration": duration, "states": states
             ] {
                 if let d = val.data(using: .utf8) { form.append(d, withName: key) }
             }

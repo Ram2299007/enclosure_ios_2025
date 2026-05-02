@@ -38,6 +38,23 @@ struct AdvertisePreviewView: View {
     private let adDuration: Double = 5.0
     private var totalMedia: Int { max(1, ad.mediaURLs.count) }
 
+    // Resolved owner fields — fall back to current user's cached data when ad.uid matches self
+    private var resolvedOwnerName: String {
+        if !ad.ownerName.isEmpty { return ad.ownerName }
+        let myUid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !myUid.isEmpty, ad.uid == myUid else { return "" }
+        return UserDefaults.standard.string(forKey: Constant.full_name) ?? ""
+    }
+
+    private var resolvedOwnerPhotoURL: URL? {
+        if let url = ad.ownerPhotoURL { return url }
+        let myUid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !myUid.isEmpty, ad.uid == myUid else { return nil }
+        let pic = UserDefaults.standard.string(forKey: Constant.profilePic) ?? ""
+        guard !pic.isEmpty else { return nil }
+        return URL(string: pic)
+    }
+
     private var safeTop: CGFloat {
         UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
@@ -169,7 +186,7 @@ struct AdvertisePreviewView: View {
                 }
                 .buttonStyle(.plain)
 
-                CachedAsyncImage(url: ad.ownerPhotoURL) { img in
+                CachedAsyncImage(url: resolvedOwnerPhotoURL) { img in
                     img.resizable().scaledToFill()
                 } placeholder: {
                     Image("inviteimg").resizable().scaledToFill()
@@ -179,9 +196,12 @@ struct AdvertisePreviewView: View {
                 .overlay(Circle().stroke(Color.white.opacity(0.7), lineWidth: 1.5))
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(ad.ownerName.isEmpty ? "Sponsored" : ad.ownerName)
-                        .font(.custom("Inter18pt-SemiBold", size: 14))
-                        .foregroundColor(.white)
+                    let name = resolvedOwnerName
+                    if !name.isEmpty {
+                        Text(name)
+                            .font(.custom("Inter18pt-SemiBold", size: 14))
+                            .foregroundColor(.white)
+                    }
                     let t = relativeTimeText
                     if !t.isEmpty {
                         Text(t)
@@ -191,14 +211,6 @@ struct AdvertisePreviewView: View {
                 }
 
                 Spacer()
-
-                Text("AD")
-                    .font(.custom("Inter18pt-Bold", size: 10))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.white.opacity(0.2))
-                    .clipShape(Capsule())
             }
             .padding(.horizontal, 10)
             .padding(.bottom, 6)
@@ -215,26 +227,32 @@ struct AdvertisePreviewView: View {
     // MARK: - Bottom overlay
 
     private var bottomOverlay: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .center, spacing: 6) {
             let trimTitle = ad.title.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimTitle.isEmpty {
                 Text(trimTitle)
-                    .font(.custom("Inter18pt-Bold", size: 18))
+                    .font(.custom("Inter18pt-Bold", size: 15))
                     .foregroundColor(.white)
-                    .lineLimit(2)
+                    .lineLimit(1)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
 
             let trimDesc = ad.description.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimDesc.isEmpty {
                 Text(trimDesc)
-                    .font(.custom("Inter18pt-Regular", size: 14))
-                    .foregroundColor(.white.opacity(0.85))
+                    .font(.custom("Inter18pt-SemiBold", size: 14))
+                    .foregroundColor(.white)
+                    .lineSpacing(2)
                     .lineLimit(descExpanded ? nil : 3)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, alignment: .center)
                     .overlay(
                         GeometryReader { limited in
                             Color.clear.overlay(
                                 Text(trimDesc)
-                                    .font(.custom("Inter18pt-Regular", size: 14))
+                                    .font(.custom("Inter18pt-SemiBold", size: 14))
+                                    .lineSpacing(2)
                                     .fixedSize(horizontal: false, vertical: true)
                                     .hidden()
                                     .background(
@@ -254,8 +272,9 @@ struct AdvertisePreviewView: View {
                 if isDescTruncated || descExpanded {
                     Button(descExpanded ? "less" : "more") { descExpanded.toggle() }
                         .font(.custom("Inter18pt-SemiBold", size: 13))
-                        .foregroundColor(.white.opacity(0.85))
+                        .foregroundColor(Color.white.opacity(0.85))
                         .underline()
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
 
@@ -270,14 +289,27 @@ struct AdvertisePreviewView: View {
                         .foregroundColor(Color(hex: "#4A9EFF"))
                         .underline()
                         .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .buttonStyle(.plain)
             }
+
+            // "Ad" pill (left) — matches Android advertise_tag_bg: #44FFFFFF fill, 6dp corners
+            HStack {
+                Text("Ad")
+                    .font(.custom("Inter18pt-SemiBold", size: 11))
+                    .foregroundColor(Color.white.opacity(0.8))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.267)))
+                Spacer()
+            }
+            .padding(.top, 6)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 20)
-        .padding(.bottom, 48)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 20)
+        .padding(.top, 10)
+        .padding(.bottom, 24)
+        .frame(maxWidth: .infinity, alignment: .center)
         .background(
             LinearGradient(
                 colors: [Color.clear, Color.black.opacity(0.85)],

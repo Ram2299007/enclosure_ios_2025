@@ -773,18 +773,20 @@ struct StoryBottomSheetView: View {
     // MARK: - Uploading placeholder card
 
     private var uploadingCard: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             Color(hex: Constant.themeColor).opacity(0.15)
-            VStack(spacing: 8) {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: Color(hex: Constant.themeColor)))
-                    .scaleEffect(1.2)
+            VStack(spacing: 6) {
                 if uploadManager.progress > 0 {
                     Text("\(Int(uploadManager.progress * 100))%")
                         .font(.custom("Inter18pt-Medium", size: 12))
                         .foregroundColor(Color(hex: Constant.themeColor))
                 }
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: Color(hex: Constant.themeColor)))
+                    .scaleEffect(1.2)
+                Spacer()
             }
+            .padding(.top, 10)
         }
         .frame(width: 80, height: 120)
         .clipShape(RoundedRectangle(cornerRadius: 10))

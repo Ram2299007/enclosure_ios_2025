@@ -26,6 +26,8 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Allow Enclosure to access your camera for video calls.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Allow Enclosure to access your photos to attach media to your ad.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Allow Enclosure to access your microphone for voice and video calls.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
