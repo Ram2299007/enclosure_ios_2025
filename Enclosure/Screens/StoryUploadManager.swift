@@ -66,6 +66,13 @@ struct StoryMediaItem {
         self.thumbnailURL = dict["thumbnail_url"] as? String ?? ""
         self.mediaType    = dict["media_type"]    as? String ?? ""
     }
+
+    // Reliable check: server field OR URL extension (handles servers that mis-detect MIME type)
+    var isVideo: Bool {
+        if mediaType == "video" { return true }
+        let url = mediaURL.lowercased()
+        return url.hasSuffix(".mp4") || url.hasSuffix(".mov") || url.hasSuffix(".m4v")
+    }
 }
 
 // MARK: - Contact Story Group

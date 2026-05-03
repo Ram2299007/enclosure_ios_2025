@@ -36,7 +36,7 @@ struct StoryBottomSheetView: View {
     @State private var myOwnAds: [AdData] = []
     @State private var shownAdIdsToday: Set<String> = []
     @State private var showPostAd = false
-    private let adInterval = 3  // insert ad every N contact groups
+    private let adInterval = 1  // insert ad every N contact groups (matches Android AD_INTERVAL)
 
     @State private var showPrivacySheet = false
 
@@ -643,7 +643,7 @@ struct StoryBottomSheetView: View {
 
             // Play icon overlay for video stories
             if story.storyType == "media",
-               story.mediaItems.first?.mediaType == "video" {
+               story.mediaItems.first?.isVideo == true {
                 ZStack {
                     Circle()
                         .fill(Color.black.opacity(0.5))
@@ -900,7 +900,7 @@ struct StoryBottomSheetView: View {
     private func fetchAds() {
         let uid      = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         let dialCode = UserDefaults.standard.string(forKey: Constant.country_Code) ?? "+1"
-        guard !uid.isEmpty else { return }
+        guard !uid.isEmpty else { print("📢 [fetchAds] uid empty, skipping"); return }
 
         let dialMap: [String: String] = [
             "+91": "India", "+1": "United States", "+44": "United Kingdom",
@@ -909,7 +909,11 @@ struct StoryBottomSheetView: View {
         ]
         let country = dialMap[dialCode] ?? "India"
 
+        print("📢 [fetchAds] calling API uid=\(uid) dialCode=\(dialCode) country=\(country)")
+
         ApiService.shared.fetchAdvertisements(uid: uid, country: country) { ads in
+            print("📢 [fetchAds] API returned \(ads.count) ads")
+            for ad in ads { print("📢 [fetchAds] ad id=\(ad.id) title=\(ad.title) mediaCount=\(ad.mediaURLs.count)") }
             DispatchQueue.main.async { self.loadedAds = ads }
         }
     }
@@ -930,6 +934,8 @@ struct StoryBottomSheetView: View {
         var adSlot = 0
         var startQueueIndex = 0
 
+        print("📢 [buildQueue] totalGroups=\(filteredVisibleGroups.count) loadedAds=\(loadedAds.count) eligible=\(eligible.count) adInterval=\(adInterval)")
+
         for (i, group) in filteredVisibleGroups.enumerated() {
             let si = group.id == targetGroup.id ? storyIndex : 0
             if group.id == targetGroup.id { startQueueIndex = queue.count }
@@ -938,11 +944,13 @@ struct StoryBottomSheetView: View {
             // Insert ad between groups (never after the last one)
             let notLast = i + 1 < filteredVisibleGroups.count
             if notLast && !eligible.isEmpty && (i + 1) % adInterval == 0 && adSlot < eligible.count {
+                print("📢 [buildQueue] inserting ad after group[\(i)] \(group.fullName)")
                 queue.append(.ad(eligible[adSlot]))
                 adSlot += 1
             }
         }
 
+        print("📢 [buildQueue] final queue size=\(queue.count) startIndex=\(startQueueIndex)")
         return StoryQueuePresentation(queue: queue, startIndex: startQueueIndex)
     }
 

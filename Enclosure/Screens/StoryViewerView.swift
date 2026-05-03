@@ -362,7 +362,7 @@ struct StoryViewerView: View {
                     .shadow(color: .black.opacity(0.4), radius: 4)
             }
         } else if let item = story.mediaItems.first {
-            if item.mediaType == "video" {
+            if item.isVideo {
                 if let p = player {
                     StoryVideoPlayerView(player: p)
                         .ignoresSafeArea()
@@ -593,7 +593,7 @@ struct StoryViewerView: View {
         if let story = currentStory,
            story.storyType == "media",
            let mediaItem = story.mediaItems.first,
-           mediaItem.mediaType == "video" {
+           mediaItem.isVideo {
             // Always advance elapsed as wall-clock — ensures mark-seen fires even if video fails
             elapsed += tickInterval
             markSeenIfNeeded(story: story, elapsed: elapsed)
@@ -676,7 +676,7 @@ struct StoryViewerView: View {
 
         guard story.storyType == "media",
               let item = story.mediaItems.first,
-              item.mediaType == "video",
+              item.isVideo,
               !item.mediaURL.isEmpty else { return }
 
         let urlStr = item.mediaURL
