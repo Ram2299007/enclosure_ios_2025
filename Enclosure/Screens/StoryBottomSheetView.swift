@@ -984,8 +984,17 @@ struct StoryBottomSheetView: View {
     // MARK: - Own ad helpers
 
     private func openMyAdPreview(_ ad: AdData) {
+        let myUid  = Constant.SenderIdMy
+        let myName = Constant.currentUserName.isEmpty ? "My Stories" : Constant.currentUserName
         var segments: [FlatQueueSegment] = []
-        var startIdx = 0
+        // Include own stories first so the queue is stories → ads (same as buildMyStoriesQueue)
+        for story in uploadManager.myStories {
+            segments.append(.story(story: story,
+                                   ownerUid: myUid,
+                                   ownerName: myName,
+                                   ownerPhotoURL: myProfileFullURL))
+        }
+        var startIdx = segments.count   // default: first ad segment
         for myAd in myOwnAds {
             if myAd.id == ad.id { startIdx = segments.count }
             let count = max(1, myAd.mediaURLs.count)

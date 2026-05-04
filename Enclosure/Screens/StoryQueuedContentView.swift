@@ -446,22 +446,33 @@ struct UnifiedStoryQueueView: View {
 
     private func ownStoriesFooter(story: UserStory) -> some View {
         VStack(spacing: 0) {
+            // Viewers button — centered, large tap target, glowing capsule like Android
             Button {
                 isPaused = true; player?.pause(); showViewersSheet = true
             } label: {
-                VStack(spacing: 3) {
-                    Image(systemName: "eye")
-                        .font(.system(size: 16, weight: .medium))
+                HStack(spacing: 8) {
+                    Image(systemName: "eye.fill")
+                        .font(.system(size: 20, weight: .bold))
                         .foregroundColor(.white)
                     Text("\(story.viewsCount)")
-                        .font(.custom("Inter18pt-SemiBold", size: 12))
+                        .font(.custom("Inter18pt-Bold", size: 17))
                         .foregroundColor(.white)
                 }
-                .shadow(color: .black.opacity(0.55), radius: 3)
-                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 28)
+                .padding(.vertical, 13)
+                .background(
+                    Capsule()
+                        .fill(Color.white.opacity(0.18))
+                        .overlay(Capsule().stroke(Color.white.opacity(0.55), lineWidth: 1.5))
+                )
+                .shadow(color: Color.white.opacity(0.25), radius: 10, x: 0, y: 0)
+                .shadow(color: Color.black.opacity(0.5), radius: 6, x: 0, y: 3)
+                .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            .padding(.top, 10).padding(.bottom, 8)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.top, 16)
+            .padding(.bottom, 14)
 
             HStack {
                 HStack(spacing: 5) {
@@ -482,7 +493,7 @@ struct UnifiedStoryQueueView: View {
             .padding(.bottom, 32)
         }
         .background(LinearGradient(
-            colors: [Color.clear, Color.black.opacity(0.6)],
+            colors: [Color.clear, Color.black.opacity(0.7)],
             startPoint: .top, endPoint: .bottom
         ))
     }
