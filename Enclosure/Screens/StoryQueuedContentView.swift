@@ -64,8 +64,11 @@ struct UnifiedStoryQueueView: View {
     @State private var isOwnerHidden     = false
 
     // Ad UI state
-    @State private var showWebView  = false
-    @State private var descExpanded = false
+    @State private var showWebView    = false
+    @State private var descExpanded   = false
+
+    // Own-story viewers sheet
+    @State private var showViewersSheet = false
 
     private let tickInterval  = 1.0 / 60.0
     private let imageDuration = 5.0
@@ -108,12 +111,13 @@ struct UnifiedStoryQueueView: View {
 
                 // Caption overlay for media stories (interactive — expand/collapse)
                 if let seg = currentSegment,
-                   case .story(let story, _, _, _) = seg,
+                   case .story(let story, let ownerUid, _, _) = seg,
                    story.storyType == "media",
                    !story.caption.isEmpty {
                     VStack {
                         Spacer()
-                        StoryCaptionOverlay(caption: story.caption, isOwnStory: false)
+                        StoryCaptionOverlay(caption: story.caption,
+                                            isOwnStory: ownerUid == Constant.SenderIdMy)
                             .id(currentIndex)
                             .padding(.bottom, 100)
                     }
@@ -165,6 +169,7 @@ struct UnifiedStoryQueueView: View {
         .onReceive(Timer.publish(every: 1,           on: .main, in: .common).autoconnect()) { date in now = date }
         .sheet(isPresented: $showWebView)      { adWebViewSheet }
         .sheet(isPresented: $showRepliesSheet) { repliesSheetView }
+        .sheet(isPresented: $showViewersSheet) { viewersSheetView }
         .onChange(of: showRepliesSheet) { open in if !open { isPaused = false; player?.play() } }
         .alert(hideAlertTitle, isPresented: $showHideAlert) {
             Button("Cancel", role: .cancel) {}
@@ -219,9 +224,9 @@ struct UnifiedStoryQueueView: View {
 
             if let seg = currentSegment,
                case .story(let story, let ownerUid, let ownerName, let ownerPhotoURL) = seg {
-                Button {
-                    isPaused = true; player?.pause(); navigateToProfile = true
-                } label: {
+                let isOwn = ownerUid == Constant.SenderIdMy
+
+                if isOwn {
                     CachedAsyncImage(url: ownerPhotoURL) { img in
                         img.resizable().scaledToFill()
                     } placeholder: {
@@ -230,8 +235,21 @@ struct UnifiedStoryQueueView: View {
                     .frame(width: 36, height: 36)
                     .clipShape(Circle())
                     .overlay(Circle().stroke(Color.white.opacity(0.7), lineWidth: 1.5))
+                } else {
+                    Button {
+                        isPaused = true; player?.pause(); navigateToProfile = true
+                    } label: {
+                        CachedAsyncImage(url: ownerPhotoURL) { img in
+                            img.resizable().scaledToFill()
+                        } placeholder: {
+                            Image("inviteimg").resizable().scaledToFill()
+                        }
+                        .frame(width: 36, height: 36)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.white.opacity(0.7), lineWidth: 1.5))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(ownerName)
@@ -245,16 +263,23 @@ struct UnifiedStoryQueueView: View {
                 }
                 Spacer()
                 Menu {
-                    Button("For Visible") { navigateToProfile = true }
-                    if isOwnerHidden {
-                        Button("Unhide \(ownerName)") {
-                            var uids = Set(UserDefaults.standard.stringArray(forKey: "hiddenStoryUids") ?? [])
-                            uids.remove(ownerUid)
-                            UserDefaults.standard.set(Array(uids), forKey: "hiddenStoryUids")
-                            isOwnerHidden = false
+                    if isOwn {
+                        Button("Delete Story", role: .destructive) {
+                            StoryUploadManager.shared.deleteStory(id: story.id)
+                            dismiss()
                         }
                     } else {
-                        Button("Hide \(ownerName)", role: .destructive) { showHideAlert = true }
+                        Button("For Visible") { navigateToProfile = true }
+                        if isOwnerHidden {
+                            Button("Unhide \(ownerName)") {
+                                var uids = Set(UserDefaults.standard.stringArray(forKey: "hiddenStoryUids") ?? [])
+                                uids.remove(ownerUid)
+                                UserDefaults.standard.set(Array(uids), forKey: "hiddenStoryUids")
+                                isOwnerHidden = false
+                            }
+                        } else {
+                            Button("Hide \(ownerName)", role: .destructive) { showHideAlert = true }
+                        }
                     }
                 } label: {
                     VStack(spacing: 3) {
@@ -406,12 +431,70 @@ struct UnifiedStoryQueueView: View {
 
     @ViewBuilder
     private var footerOverlay: some View {
-        if let seg = currentSegment, case .story(let story, _, let ownerName, _) = seg {
-            replyBar(ownerName: ownerName, storyId: story.id)
+        if let seg = currentSegment, case .story(let story, let ownerUid, let ownerName, _) = seg {
+            if ownerUid == Constant.SenderIdMy {
+                ownStoriesFooter(story: story)
+            } else {
+                replyBar(ownerName: ownerName, storyId: story.id)
+            }
         } else if let seg = currentSegment, case .adMedia(let ad, _) = seg {
             adBottomOverlay(ad: ad)
         }
     }
+
+    // MARK: - Own-story footer (viewers count + pill)
+
+    private func ownStoriesFooter(story: UserStory) -> some View {
+        VStack(spacing: 0) {
+            Button {
+                isPaused = true; player?.pause(); showViewersSheet = true
+            } label: {
+                VStack(spacing: 3) {
+                    Image(systemName: "eye")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white)
+                    Text("\(story.viewsCount)")
+                        .font(.custom("Inter18pt-SemiBold", size: 12))
+                        .foregroundColor(.white)
+                }
+                .shadow(color: .black.opacity(0.55), radius: 3)
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 10).padding(.bottom, 8)
+
+            HStack {
+                HStack(spacing: 5) {
+                    Text("My stories")
+                        .font(.custom("Inter18pt-SemiBold", size: 13))
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 12, weight: .bold))
+                }
+                .foregroundStyle(LinearGradient(
+                    colors: [Color(hex: Constant.themeColor), .purple, .pink],
+                    startPoint: .leading, endPoint: .trailing
+                ))
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.leading, 12)
+                Spacer()
+            }
+            .padding(.bottom, 32)
+        }
+        .background(LinearGradient(
+            colors: [Color.clear, Color.black.opacity(0.6)],
+            startPoint: .top, endPoint: .bottom
+        ))
+    }
+
+    @ViewBuilder
+    private var viewersSheetView: some View {
+        if let seg = currentSegment, case .story(let story, _, _, _) = seg {
+            StoryViewersSheet(storyId: story.id, viewsCount: story.viewsCount)
+        }
+    }
+
+    // MARK: - Reply bar (contact stories)
 
     private func replyBar(ownerName: String, storyId: String) -> some View {
         VStack(spacing: 0) {

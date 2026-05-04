@@ -279,14 +279,7 @@ struct StoryBottomSheetView: View {
                                         VStack(spacing: 6) {
                                             storyCard(story, width: 80, height: 120)
                                                 .simultaneousGesture(TapGesture().onEnded {
-                                                    storyViewerConfig = StoryViewerConfig(
-                                                        stories: uploadManager.myStories,
-                                                        ownerUid: Constant.SenderIdMy,
-                                                        ownerName: "My Stories",
-                                                        ownerPhotoURL: myProfileFullURL,
-                                                        isOwnStory: true,
-                                                        startIndex: index
-                                                    )
+                                                    queuePresentation = buildMyStoriesQueue(startingAt: index)
                                                 })
 
                                             // Delete button — outside the card, below it
@@ -965,6 +958,27 @@ struct StoryBottomSheetView: View {
 
     private func openContactQueue(startingAt group: ContactStoryGroup, storyIndex: Int) {
         queuePresentation = buildContactQueue(startingAt: group, storyIndex: storyIndex)
+    }
+
+    // Builds a flat queue for My Stories + My Own Ads so they share one unified progress bar.
+    private func buildMyStoriesQueue(startingAt index: Int) -> StoryQueuePresentation {
+        let myUid  = Constant.SenderIdMy
+        let myName = Constant.currentUserName.isEmpty ? "My Stories" : Constant.currentUserName
+        var segments: [FlatQueueSegment] = []
+        for story in uploadManager.myStories {
+            segments.append(.story(story: story,
+                                   ownerUid: myUid,
+                                   ownerName: myName,
+                                   ownerPhotoURL: myProfileFullURL))
+        }
+        for ad in myOwnAds {
+            let count = max(1, ad.mediaURLs.count)
+            for idx in 0..<count {
+                segments.append(.adMedia(ad: ad, mediaIndex: idx))
+            }
+        }
+        let clamped = max(0, min(index, max(0, segments.count - 1)))
+        return StoryQueuePresentation(segments: segments, startIndex: clamped)
     }
 
     // MARK: - Own ad helpers
