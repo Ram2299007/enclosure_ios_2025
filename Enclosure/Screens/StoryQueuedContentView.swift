@@ -450,24 +450,23 @@ struct UnifiedStoryQueueView: View {
             Button {
                 isPaused = true; player?.pause(); showViewersSheet = true
             } label: {
-                HStack(spacing: 8) {
+                VStack(spacing: 3) {
                     Image(systemName: "eye.fill")
                         .font(.system(size: 20, weight: .bold))
                         .foregroundColor(.white)
                     Text("\(story.viewsCount)")
-                        .font(.custom("Inter18pt-Bold", size: 17))
+                        .font(.custom("Inter18pt-Bold", size: 13))
                         .foregroundColor(.white)
                 }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 13)
+                .padding(12)
                 .background(
-                    Capsule()
+                    Circle()
                         .fill(Color.white.opacity(0.18))
-                        .overlay(Capsule().stroke(Color.white.opacity(0.55), lineWidth: 1.5))
+                        .overlay(Circle().stroke(Color.white.opacity(0.55), lineWidth: 1.5))
                 )
-                .shadow(color: Color.white.opacity(0.25), radius: 10, x: 0, y: 0)
-                .shadow(color: Color.black.opacity(0.5), radius: 6, x: 0, y: 3)
-                .contentShape(Capsule())
+                .shadow(color: Color.white.opacity(0.25), radius: 8, x: 0, y: 0)
+                .shadow(color: Color.black.opacity(0.5), radius: 5, x: 0, y: 2)
+                .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity, alignment: .center)
