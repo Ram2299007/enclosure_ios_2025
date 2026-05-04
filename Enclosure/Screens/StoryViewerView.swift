@@ -749,7 +749,7 @@ struct StoryViewerView: View {
 
 // MARK: - Caption overlay with expand / collapse (WhatsApp style)
 
-private struct StoryCaptionOverlay: View {
+struct StoryCaptionOverlay: View {
     let caption: String
     let isOwnStory: Bool
 
@@ -802,7 +802,7 @@ private struct StoryCaptionOverlay: View {
 
 /// Two hidden Text views at identical width: one unconstrained, one limited to 4 lines.
 /// Sets isTruncated = true when the unconstrained height exceeds the limited height.
-private struct CaptionTruncationDetector: View {
+struct CaptionTruncationDetector: View {
     let caption: String
     let width: CGFloat
     @Binding var isTruncated: Bool
@@ -879,7 +879,7 @@ final class StoryVideoUIView: UIView {
 
 // MARK: - Story Viewers / Replies Bottom Sheet
 
-private struct StoryViewerRow: Identifiable {
+struct StoryViewerRow: Identifiable {
     let id: String
     let name: String
     let photo: String
@@ -892,7 +892,7 @@ private struct StoryViewerRow: Identifiable {
     }
 }
 
-private struct StoryViewersSheet: View {
+struct StoryViewersSheet: View {
     let storyId: String
     let viewsCount: Int
     var initialTab: Int = 0

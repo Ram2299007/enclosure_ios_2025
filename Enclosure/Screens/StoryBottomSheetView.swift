@@ -530,13 +530,13 @@ struct StoryBottomSheetView: View {
                 startIndex: config.startIndex
             )
         }
-        // Contact story queue — includes ads between groups
+        // Contact story queue — single unified viewer with one continuous progress bar
         .fullScreenCover(item: $queuePresentation, onDismiss: {
-            hiddenUids = Set(UserDefaults.standard.stringArray(forKey: "hiddenStoryUids") ?? [])
+            hiddenUids   = Set(UserDefaults.standard.stringArray(forKey: "hiddenStoryUids") ?? [])
             localSeenIds = Set(UserDefaults.standard.stringArray(forKey: "localSeenStoryIds") ?? [])
         }) { pres in
-            QueuedContentView(
-                queue: pres.queue,
+            UnifiedStoryQueueView(
+                segments: pres.segments,
                 startIndex: pres.startIndex,
                 shownAdIds: $shownAdIdsToday
             )
@@ -927,31 +927,40 @@ struct StoryBottomSheetView: View {
     }
 
     // MARK: - Queue builder
+    // Produces a flat [FlatQueueSegment] where every story AND every ad image is its own
+    // segment, so the unified viewer can show one continuous progress bar for all of them.
 
     private func buildContactQueue(startingAt targetGroup: ContactStoryGroup, storyIndex: Int) -> StoryQueuePresentation {
         let eligible = loadedAds.filter { !shownAdIdsToday.contains($0.id) }
-        var queue: [StoryQueueContent] = []
+        var segments: [FlatQueueSegment] = []
         var adSlot = 0
-        var startQueueIndex = 0
-
-        print("📢 [buildQueue] totalGroups=\(filteredVisibleGroups.count) loadedAds=\(loadedAds.count) eligible=\(eligible.count) adInterval=\(adInterval)")
+        var startSegmentIndex = 0
 
         for (i, group) in filteredVisibleGroups.enumerated() {
-            let si = group.id == targetGroup.id ? storyIndex : 0
-            if group.id == targetGroup.id { startQueueIndex = queue.count }
-            queue.append(.stories(group: group, startIndex: si))
-
-            // Insert ad between groups (never after the last one)
+            // Record where this group starts; add storyIndex offset for the tapped group
+            if group.id == targetGroup.id {
+                startSegmentIndex = segments.count + storyIndex
+            }
+            // One segment per story in the group
+            for story in group.stories {
+                segments.append(.story(story: story,
+                                       ownerUid: group.id,
+                                       ownerName: group.fullName,
+                                       ownerPhotoURL: group.photoURL))
+            }
+            // Insert ad images between groups (never after the last group)
             let notLast = i + 1 < filteredVisibleGroups.count
             if notLast && !eligible.isEmpty && (i + 1) % adInterval == 0 && adSlot < eligible.count {
-                print("📢 [buildQueue] inserting ad after group[\(i)] \(group.fullName)")
-                queue.append(.ad(eligible[adSlot]))
+                let ad = eligible[adSlot]
+                let count = max(1, ad.mediaURLs.count)
+                for idx in 0..<count {
+                    segments.append(.adMedia(ad: ad, mediaIndex: idx))
+                }
                 adSlot += 1
             }
         }
 
-        print("📢 [buildQueue] final queue size=\(queue.count) startIndex=\(startQueueIndex)")
-        return StoryQueuePresentation(queue: queue, startIndex: startQueueIndex)
+        return StoryQueuePresentation(segments: segments, startIndex: startSegmentIndex)
     }
 
     private func openContactQueue(startingAt group: ContactStoryGroup, storyIndex: Int) {
@@ -961,10 +970,16 @@ struct StoryBottomSheetView: View {
     // MARK: - Own ad helpers
 
     private func openMyAdPreview(_ ad: AdData) {
-        // Build a queue of own ads only; start at the tapped ad
-        let queue: [StoryQueueContent] = myOwnAds.map { .ad($0) }
-        let startIdx = myOwnAds.firstIndex(where: { $0.id == ad.id }) ?? 0
-        queuePresentation = StoryQueuePresentation(queue: queue, startIndex: startIdx)
+        var segments: [FlatQueueSegment] = []
+        var startIdx = 0
+        for myAd in myOwnAds {
+            if myAd.id == ad.id { startIdx = segments.count }
+            let count = max(1, myAd.mediaURLs.count)
+            for idx in 0..<count {
+                segments.append(.adMedia(ad: myAd, mediaIndex: idx))
+            }
+        }
+        queuePresentation = StoryQueuePresentation(segments: segments, startIndex: startIdx)
     }
 
     // MARK: - Ad card (thumbnail for My Stories row)
