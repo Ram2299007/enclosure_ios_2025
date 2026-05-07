@@ -8,6 +8,9 @@ target 'Enclosure' do
   # WebRTC for native voice calls
   pod 'GoogleWebRTC', '~> 1.0.136171'
 
+  # Cashfree Payment Gateway
+  pod 'CashfreePG', '~> 2.3.7'
+
 end
 
 post_install do |installer|

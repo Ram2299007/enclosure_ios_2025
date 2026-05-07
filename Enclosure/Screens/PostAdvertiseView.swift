@@ -412,11 +412,44 @@ struct PostAdvertiseView: View {
     @State private var errorMessage: String? = nil
     @State private var showSuccess = false
 
+    // Payment
+    @State private var showPayment = false
+    @State private var cashfreeSessionId = ""
+    @State private var cashfreeOrderId = ""
+    @State private var pendingImages: [UIImage] = []
+
     // MARK: - Computed helpers
 
     private var currencySymbol: String { kCountryCurrency[selectedCountry] ?? "$" }
     private var tiers: [Int] { kCurrencyTiers[currencySymbol] ?? [3, 6, 12, 25] }
     private var statesForCountry: [String] { kCountryStates[selectedCountry] ?? [] }
+
+    private var currencyCode: String {
+        switch currencySymbol {
+        case "₹": return "INR"
+        case "$": return "USD"
+        case "£": return "GBP"
+        case "€": return "EUR"
+        case "A$": return "AUD"
+        case "C$": return "CAD"
+        case "¥": return "JPY"
+        case "₩": return "KRW"
+        case "R$": return "BRL"
+        case "₺": return "TRY"
+        case "₽": return "RUB"
+        default: return "USD"
+        }
+    }
+
+    private var totalAmount: Double {
+        let b = Double(budget) ?? 0
+        let d = Double(duration) ?? 0
+        return b * d
+    }
+
+    private var totalAmountDisplay: String {
+        "\(currencySymbol)\(String(format: "%.2f", totalAmount))"
+    }
 
     private var statesLabel: String {
         selectedStates.isEmpty ? "Select State(s)" : selectedStates.sorted().joined(separator: ", ")
@@ -519,6 +552,12 @@ struct PostAdvertiseView: View {
                             .padding(.bottom, 16)
                     }
 
+                    // ── Total Payment Summary ──
+                    if totalAmount > 0 {
+                        totalSummaryCard
+                            .padding(.bottom, 18)
+                    }
+
                     // ── Error ──
                     if let err = errorMessage {
                         Text(err)
@@ -580,9 +619,21 @@ struct PostAdvertiseView: View {
                 selectedMultiple: .constant([])
             )
         }
+        .fullScreenCover(isPresented: $showPayment) {
+            CashfreePaymentScreen(
+                sessionId: cashfreeSessionId,
+                orderId: cashfreeOrderId,
+                totalAmount: totalAmount,
+                currencySymbol: currencySymbol
+            ) { success in
+                handlePaymentResult(success)
+            }
+        }
         .fullScreenCover(isPresented: $showMediaPicker) {
             AdMediaPickerSheet(adTitle: title, adDescription: description, adLink: link) { images in
-                actuallyPost(images: images)
+                // Step 2: media picked & previewed — now initiate payment
+                pendingImages = images
+                initiateCashfreePayment()
             }
         }
         .alert("Ad Posted!", isPresented: $showSuccess) {
@@ -794,6 +845,61 @@ struct PostAdvertiseView: View {
         .padding(.horizontal, 16)
     }
 
+    private var totalSummaryCard: some View {
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Total Payment")
+                        .font(.custom("Inter18pt-Regular", size: 12))
+                        .foregroundColor(Color(hex: "#6E6E73"))
+                    Text(totalAmountDisplay)
+                        .font(.custom("Inter18pt-Bold", size: 22))
+                        .foregroundColor(.white)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("\(budget.isEmpty ? "-" : budget) × \(duration.isEmpty ? "-" : duration) days")
+                        .font(.custom("Inter18pt-Regular", size: 12))
+                        .foregroundColor(Color(hex: "#6E6E73"))
+                    HStack(spacing: 4) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(Color(hex: "#34C759"))
+                        Text("Secured Payment")
+                            .font(.custom("Inter18pt-Regular", size: 11))
+                            .foregroundColor(Color(hex: "#34C759"))
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+
+            Divider().background(Color(hex: "#3A3A3C"))
+
+            HStack(spacing: 8) {
+                Image(systemName: "creditcard.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(hex: "#6E6E73"))
+                Text("UPI · Cards · Net Banking · Wallets")
+                    .font(.custom("Inter18pt-Regular", size: 12))
+                    .foregroundColor(Color(hex: "#6E6E73"))
+                Spacer()
+                Text("Cashfree")
+                    .font(.custom("Inter18pt-Bold", size: 11))
+                    .foregroundColor(Color(hex: "#6E6E73"))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+        }
+        .background(Color(hex: "#1C1C1E"))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color(hex: Constant.themeColor).opacity(0.4), lineWidth: 1)
+        )
+        .padding(.horizontal, 16)
+    }
+
     private var postButton: some View {
         Button { postAd() } label: {
             ZStack {
@@ -801,9 +907,13 @@ struct PostAdvertiseView: View {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                 } else {
-                    Text("Post")
-                        .font(.custom("Inter18pt-SemiBold", size: 16))
-                        .foregroundColor(.white)
+                    HStack(spacing: 8) {
+                        Image(systemName: "creditcard.fill")
+                            .font(.system(size: 14))
+                        Text(totalAmount > 0 ? "Pay \(totalAmountDisplay) & Post" : "Pay & Post")
+                            .font(.custom("Inter18pt-SemiBold", size: 16))
+                    }
+                    .foregroundColor(.white)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -863,7 +973,40 @@ struct PostAdvertiseView: View {
         guard !uid.isEmpty else { errorMessage = "Not logged in."; return }
 
         errorMessage = nil
+        // Step 1: pick media first, then pay, then post
         showMediaPicker = true
+    }
+
+    private func initiateCashfreePayment() {
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        let phone = UserDefaults.standard.string(forKey: Constant.PHONE_NUMBERKEY) ?? ""
+        isPosting = true
+
+        ApiService.shared.createCashfreeOrder(
+            uid: uid,
+            amount: totalAmount,
+            currency: currencyCode,
+            customerPhone: phone
+        ) { success, sessionId, orderId in
+            DispatchQueue.main.async {
+                self.isPosting = false
+                if success && !sessionId.isEmpty {
+                    self.cashfreeSessionId = sessionId
+                    self.cashfreeOrderId = orderId
+                    self.showPayment = true
+                } else {
+                    self.errorMessage = "Payment setup failed. Please try again."
+                }
+            }
+        }
+    }
+
+    private func handlePaymentResult(_ success: Bool) {
+        if success {
+            actuallyPost(images: pendingImages)
+        } else {
+            errorMessage = "Payment failed or cancelled. Please try again."
+        }
     }
 
     private func actuallyPost(images: [UIImage]) {

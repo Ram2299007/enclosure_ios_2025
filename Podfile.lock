@@ -1,16 +1,36 @@
 PODS:
+  - CashfreeAnalyticsSDK (2.3.3):
+    - CFNetworkSDK (= 2.3.3)
+  - CashfreePG (2.3.7):
+    - CashfreePGUISDK (= 2.3.7)
+  - CashfreePGCoreSDK (2.3.7):
+    - CashfreeAnalyticsSDK (= 2.3.3)
+  - CashfreePGUISDK (2.3.7):
+    - CashfreePGCoreSDK (= 2.3.7)
+  - CFNetworkSDK (2.3.3)
   - GoogleWebRTC (1.0.136171)
 
 DEPENDENCIES:
+  - CashfreePG (~> 2.3.7)
   - GoogleWebRTC (~> 1.0.136171)
 
 SPEC REPOS:
   trunk:
+    - CashfreeAnalyticsSDK
+    - CashfreePG
+    - CashfreePGCoreSDK
+    - CashfreePGUISDK
+    - CFNetworkSDK
     - GoogleWebRTC
 
 SPEC CHECKSUMS:
+  CashfreeAnalyticsSDK: 11f37b2323be07bf07948bd6046b7c19e947ae07
+  CashfreePG: 88c1cdaa0ab8decb1c2e02263cca37eda9f30c59
+  CashfreePGCoreSDK: 0895818f75ea22e347e715a285cf241fe01f4349
+  CashfreePGUISDK: 2e4a3be02dbaf0af48520c573eb08585491b5545
+  CFNetworkSDK: 6a6261de10185efd4d2957583f0cbad395999cac
   GoogleWebRTC: 4976d11243fc00b357ec0b36c17d6ac7ef3c7e12
 
-PODFILE CHECKSUM: 99d42c1043a21ccfdd0e652df1338775a9ad6cf6
+PODFILE CHECKSUM: 134f4c94135a9200b9f91fff4b8b5ee2b09a836f
 
 COCOAPODS: 1.16.2
