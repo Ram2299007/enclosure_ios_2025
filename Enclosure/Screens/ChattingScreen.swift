@@ -33,6 +33,8 @@ struct ChattingScreen: View {
     @State private var wasGalleryPickerOpenBeforeVideoPicker: Bool = false
     @State private var wasGalleryPickerOpenBeforeDocumentPicker: Bool = false
     @State private var showMenu: Bool = false
+    @State private var activeVoiceCallPayload: VoiceCallPayload?
+    @State private var activeVideoCallPayload: VideoCallPayload?
     @State private var showWhatsAppImagePicker: Bool = false
     @State private var showWhatsAppVideoPicker: Bool = false
     @State private var showDocumentPicker: Bool = false
@@ -452,6 +454,17 @@ struct ChattingScreen: View {
         )
         .fullScreenCover(isPresented: $showCameraView) {
             CameraGalleryView(contact: contact)
+        }
+        .fullScreenCover(item: $activeVoiceCallPayload) { payload in
+            VoiceCallScreen(payload: payload)
+        }
+        .fullScreenCover(item: $activeVideoCallPayload) { payload in
+            VideoCallScreen(payload: payload)
+                .onDisappear {
+                    if !ActiveCallManager.shared.isInPiPMode {
+                        activeVideoCallPayload = nil
+                    }
+                }
         }
         .fullScreenCover(isPresented: $showWhatsAppImagePicker, onDismiss: {
             // Restore gallery picker when image picker is dismissed (matching CameraGalleryView behavior)
@@ -2353,13 +2366,66 @@ struct ChattingScreen: View {
             
             VStack(alignment: .trailing, spacing: 0) {
                 VStack(alignment: .leading, spacing: 0) {
+                    // Voice Call and Video Call row (first row)
+                    if Constant.SenderIdMy != contact.uid {
+                        HStack(spacing: 0) {
+                            // Voice Call
+                            Button(action: {
+                                withAnimation { showMenu = false }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    startVoiceCallFromChat()
+                                }
+                            }) {
+                                VStack(spacing: 6) {
+                                    Image(systemName: "phone.fill")
+                                        .font(.system(size: 22))
+                                        .foregroundColor(Color(hex: Constant.themeColor))
+                                    Text("Voice Call")
+                                        .font(.custom("Inter18pt-Medium", size: 11))
+                                        .foregroundColor(Color("TextColor"))
+                                        .multilineTextAlignment(.center)
+                                }
+                                .frame(width: 88, height: 72)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(CallSquareButtonStyle())
+
+                            // Vertical divider between call buttons
+                            Rectangle()
+                                .fill(Color("TextColor").opacity(0.12))
+                                .frame(width: 0.5, height: 72)
+
+                            // Video Call
+                            Button(action: {
+                                withAnimation { showMenu = false }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    startVideoCallFromChat()
+                                }
+                            }) {
+                                VStack(spacing: 6) {
+                                    Image(systemName: "video.fill")
+                                        .font(.system(size: 22))
+                                        .foregroundColor(Color(hex: Constant.themeColor))
+                                    Text("Video Call")
+                                        .font(.custom("Inter18pt-Medium", size: 11))
+                                        .foregroundColor(Color("TextColor"))
+                                        .multilineTextAlignment(.center)
+                                }
+                                .frame(width: 88, height: 72)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(CallSquareButtonStyle())
+                        }
+                        Divider()
+                            .background(Color("TextColor").opacity(0.12))
+                    }
+
                     // Search button
                     Button(action: {
                         withAnimation {
                             showSearch = true
                             showMenu = false
                         }
-                        // Focus search field (matching Android binding.searchEt.requestFocus())
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                             isMessageFieldFocused = false
                             isSearchFieldFocused = true
@@ -2372,20 +2438,18 @@ struct ChattingScreen: View {
                             Spacer()
                         }
                         .padding(.leading, 15)
-                        .padding(.top, 12)
-                        .padding(.bottom, 12)
+                        .padding(.vertical, 12)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(MenuItemRippleStyle())
-                    
+
+                    Divider()
+                        .background(Color("TextColor").opacity(0.12))
+
                     // For visible button (View Profile)
                     Button(action: {
-                        withAnimation {
-                            showMenu = false
-                        }
-                        // Navigate to UserInfoScreen (matching Android userInfoScreen)
-                        // Use immediate navigation without delay for better UX
+                        withAnimation { showMenu = false }
                         navigateToUserInfo = true
                     }) {
                         HStack {
@@ -2395,19 +2459,18 @@ struct ChattingScreen: View {
                             Spacer()
                         }
                         .padding(.leading, 15)
-                        .padding(.top, 12)
-                        .padding(.bottom, 12)
+                        .padding(.vertical, 12)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(MenuItemRippleStyle())
-                    
+
+                    Divider()
+                        .background(Color("TextColor").opacity(0.12))
+
                     // Clear All button
                     Button(action: {
-                        withAnimation {
-                            showMenu = false
-                        }
-                        // Show confirmation dialog (matching Android delete_popup_row)
+                        withAnimation { showMenu = false }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                             showClearChatDialog = true
                         }
@@ -2419,20 +2482,18 @@ struct ChattingScreen: View {
                             Spacer()
                         }
                         .padding(.leading, 15)
-                        .padding(.top, 12)
-                        .padding(.bottom, 12)
+                        .padding(.vertical, 12)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(MenuItemRippleStyle())
-                    
+
                     // Block button (hidden if chatting with yourself - matching Android logic)
                     if Constant.SenderIdMy != contact.uid {
+                        Divider()
+                            .background(Color("TextColor").opacity(0.12))
                         Button(action: {
-                            withAnimation {
-                                showMenu = false
-                            }
-                            // Handle block/unblock (matching Android blockUser onClick)
+                            withAnimation { showMenu = false }
                             handleBlockUserClick()
                         }) {
                             HStack {
@@ -2442,8 +2503,7 @@ struct ChattingScreen: View {
                                 Spacer()
                             }
                             .padding(.leading, 15)
-                            .padding(.top, 12)
-                            .padding(.bottom, 12)
+                            .padding(.vertical, 12)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
                         }
@@ -2453,7 +2513,7 @@ struct ChattingScreen: View {
             }
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color("BackgroundColor"))
+                    .fill(Color(UIColor.secondarySystemBackground))
                     .shadow(color: Color.black.opacity(0.2), radius: 5, x: 0, y: 2)
             )
             .frame(width: 180)
@@ -2463,6 +2523,106 @@ struct ChattingScreen: View {
         }
     }
     
+    // MARK: - Call from Chat
+    private func startVoiceCallFromChat() {
+        RecentCallContactStore.shared.saveFromOutgoingCall(
+            friendId: contact.uid,
+            fullName: contact.fullName,
+            photo: contact.photo,
+            fToken: contact.fToken,
+            voipToken: "",
+            deviceType: contact.deviceType,
+            mobileNo: contact.mobileNo
+        )
+        AndroidStylePermissionManager.shared.requestPermissionWithDialogFromTopVC(for: .microphone) { granted in
+            DispatchQueue.main.async {
+                guard granted else {
+                    Constant.showToast(message: "Microphone permission is required for voice calls.")
+                    return
+                }
+                let roomId = generateChatRoomId()
+                activeVoiceCallPayload = VoiceCallPayload(
+                    receiverId: contact.uid,
+                    receiverName: contact.fullName,
+                    receiverPhoto: contact.photo,
+                    receiverToken: contact.fToken,
+                    receiverDeviceType: contact.deviceType,
+                    receiverPhone: contact.mobileNo,
+                    roomId: roomId,
+                    isSender: true
+                )
+                let sleepKey = UserDefaults.standard.string(forKey: Constant.sleepKey) ?? ""
+                guard sleepKey != Constant.sleepKey,
+                      !contact.fToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                MessageUploadService.shared.sendVoiceCallNotification(
+                    receiverToken: contact.fToken,
+                    receiverDeviceType: contact.deviceType,
+                    receiverId: contact.uid,
+                    receiverPhone: contact.mobileNo,
+                    roomId: roomId,
+                    voipToken: nil
+                )
+            }
+        }
+    }
+
+    private func startVideoCallFromChat() {
+        RecentCallContactStore.shared.saveFromOutgoingCall(
+            friendId: contact.uid,
+            fullName: contact.fullName,
+            photo: contact.photo,
+            fToken: contact.fToken,
+            voipToken: "",
+            deviceType: contact.deviceType,
+            mobileNo: contact.mobileNo,
+            isVideoCall: true
+        )
+        AndroidStylePermissionManager.shared.requestPermissionWithDialogFromTopVC(for: .camera) { cameraGranted in
+            guard cameraGranted else {
+                DispatchQueue.main.async {
+                    Constant.showToast(message: "Camera and microphone permissions are required for video calls.")
+                }
+                return
+            }
+            AndroidStylePermissionManager.shared.requestPermissionWithDialogFromTopVC(for: .microphone) { micGranted in
+                DispatchQueue.main.async {
+                    guard micGranted else {
+                        Constant.showToast(message: "Camera and microphone permissions are required for video calls.")
+                        return
+                    }
+                    let roomId = generateChatRoomId()
+                    activeVideoCallPayload = VideoCallPayload(
+                        receiverId: contact.uid,
+                        receiverName: contact.fullName,
+                        receiverPhoto: contact.photo,
+                        receiverToken: contact.fToken,
+                        receiverDeviceType: contact.deviceType,
+                        receiverPhone: contact.mobileNo,
+                        roomId: roomId,
+                        isSender: true
+                    )
+                    let sleepKey = UserDefaults.standard.string(forKey: Constant.sleepKey) ?? ""
+                    guard sleepKey != Constant.sleepKey,
+                          !contact.fToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                    MessageUploadService.shared.sendVideoCallNotification(
+                        receiverToken: contact.fToken,
+                        receiverDeviceType: contact.deviceType,
+                        receiverId: contact.uid,
+                        receiverPhone: contact.mobileNo,
+                        roomId: roomId,
+                        voipToken: nil
+                    )
+                }
+            }
+        }
+    }
+
+    private func generateChatRoomId() -> String {
+        let timestamp = Int(Date().timeIntervalSince1970 * 1000)
+        let random = Int.random(in: 1000...9999)
+        return "\(timestamp)\(random)"
+    }
+
     // MARK: - Helper Functions
     private func handleBackTap() {
         withAnimation {

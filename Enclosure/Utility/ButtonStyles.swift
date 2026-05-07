@@ -37,3 +37,15 @@ struct MenuItemRippleStyle: ButtonStyle {
     }
 }
 
+struct CallSquareButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color("circlebtnhover").opacity(configuration.isPressed ? 0.18 : 0))
+            )
+            .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
+            .animation(.easeInOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
