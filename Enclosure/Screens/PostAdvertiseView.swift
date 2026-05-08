@@ -978,26 +978,39 @@ struct PostAdvertiseView: View {
     }
 
     private func initiateCashfreePayment() {
-        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        let uid   = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         let phone = UserDefaults.standard.string(forKey: Constant.PHONE_NUMBERKEY) ?? ""
+        let email = ""  // PHP backend uses uid@enclosure.app as fallback for IPG
         isPosting = true
 
-        ApiService.shared.createCashfreeOrder(
-            uid: uid,
-            amount: totalAmount,
-            currency: currencyCode,
-            customerPhone: phone
-        ) { success, sessionId, orderId in
+        let onResult = { (success: Bool, sessionId: String, orderId: String) in
             DispatchQueue.main.async {
                 self.isPosting = false
                 if success && !sessionId.isEmpty {
                     self.cashfreeSessionId = sessionId
-                    self.cashfreeOrderId = orderId
-                    self.showPayment = true
+                    self.cashfreeOrderId   = orderId
+                    self.showPayment       = true
                 } else {
                     self.errorMessage = "Payment setup failed. Please try again."
                 }
             }
+        }
+
+        if currencyCode == "INR" {
+            // India — domestic Cashfree gateway
+            ApiService.shared.createCashfreeOrder(
+                uid: uid, amount: totalAmount,
+                currency: currencyCode, customerPhone: phone,
+                completion: onResult
+            )
+        } else {
+            // International — Cashfree IPG
+            ApiService.shared.createCashfreeIPGOrder(
+                uid: uid, amount: totalAmount,
+                currency: currencyCode, customerPhone: phone,
+                customerEmail: email,
+                completion: onResult
+            )
         }
     }
 

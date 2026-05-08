@@ -3077,13 +3077,37 @@ class ApiService {
     }
 
     func verifyCashfreePayment(orderId: String, completion: @escaping (Bool) -> Void) {
-        let endpoint = Constant.baseURL + "verify_cashfree_payment"
+        // Route to IPG verify if order was created via IPG
+        let isIPG = orderId.hasPrefix("ENCIPG_")
+        let endpoint = Constant.baseURL + (isIPG ? "verify_cashfree_ipg_payment" : "verify_cashfree_payment")
         AF.request(endpoint, method: .post,
                    parameters: ["order_id": orderId],
                    encoding: URLEncoding.default)
             .responseData { [weak self] response in
                 let ok = (self?.parseStoryResponse(response.data)?["success"] as? String) == "1"
                 completion(ok)
+            }
+    }
+
+    func createCashfreeIPGOrder(uid: String, amount: Double, currency: String,
+                                customerPhone: String, customerEmail: String,
+                                completion: @escaping (Bool, String, String) -> Void) {
+        let endpoint = Constant.baseURL + "create_cashfree_ipg_order"
+        let params: [String: String] = [
+            "uid": uid,
+            "amount": String(format: "%.2f", amount),
+            "currency": currency,
+            "customer_phone": customerPhone,
+            "customer_email": customerEmail
+        ]
+        AF.request(endpoint, method: .post, parameters: params, encoding: URLEncoding.default)
+            .responseData { [weak self] response in
+                guard let json = self?.parseStoryResponse(response.data),
+                      (json["success"] as? String) == "1",
+                      let sessionId = json["payment_session_id"] as? String,
+                      let orderId   = json["order_id"] as? String
+                else { completion(false, "", ""); return }
+                completion(true, sessionId, orderId)
             }
     }
 
