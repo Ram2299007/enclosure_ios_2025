@@ -3057,7 +3057,6 @@ class ApiService {
     func createCashfreeOrder(uid: String, amount: Double, currency: String,
                               customerPhone: String,
                               completion: @escaping (Bool, String, String) -> Void) {
-        // Returns (success, payment_session_id, order_id)
         let endpoint = Constant.baseURL + "create_cashfree_order"
         let params: [String: String] = [
             "uid": uid,
@@ -3065,8 +3064,12 @@ class ApiService {
             "currency": currency,
             "customer_phone": customerPhone
         ]
+        print("💳 [createCashfreeOrder] POST \(endpoint) params=\(params)")
         AF.request(endpoint, method: .post, parameters: params, encoding: URLEncoding.default)
             .responseData { [weak self] response in
+                let raw = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "(nil)"
+                let status = response.response?.statusCode ?? -1
+                print("💳 [createCashfreeOrder] status=\(status) body=\(raw)")
                 guard let json = self?.parseStoryResponse(response.data),
                       (json["success"] as? String) == "1",
                       let sessionId = json["payment_session_id"] as? String,
@@ -3100,8 +3103,12 @@ class ApiService {
             "customer_phone": customerPhone,
             "customer_email": customerEmail
         ]
+        print("🌐 [createCashfreeIPGOrder] POST \(endpoint) params=\(params)")
         AF.request(endpoint, method: .post, parameters: params, encoding: URLEncoding.default)
             .responseData { [weak self] response in
+                let raw = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "(nil)"
+                let status = response.response?.statusCode ?? -1
+                print("🌐 [createCashfreeIPGOrder] status=\(status) body=\(raw)")
                 guard let json = self?.parseStoryResponse(response.data),
                       (json["success"] as? String) == "1",
                       let sessionId = json["payment_session_id"] as? String,

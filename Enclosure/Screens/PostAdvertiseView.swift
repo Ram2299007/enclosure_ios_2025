@@ -437,6 +437,39 @@ struct PostAdvertiseView: View {
         case "R$": return "BRL"
         case "₺": return "TRY"
         case "₽": return "RUB"
+        case "د.إ": return "AED"
+        case "﷼": return "SAR"
+        case "₨": return "PKR"
+        case "৳": return "BDT"
+        case "RM": return "MYR"
+        case "₱": return "PHP"
+        case "฿": return "THB"
+        case "R": return "ZAR"
+        case "₦": return "NGN"
+        case "Rp": return "IDR"
+        case "₫": return "VND"
+        case "₴": return "UAH"
+        case "MX$": return "MXN"
+        case "AR$": return "ARS"
+        case "NZ$": return "NZD"
+        case "CHF": return "CHF"
+        case "zł": return "PLN"
+        case "kr": return "NOK"
+        case "₪": return "ILS"
+        case "JD": return "JOD"
+        case "රු": return "LKR"
+        case "KSh": return "KES"
+        case "Br": return "ETB"
+        case "USh": return "UGX"
+        case "TSh": return "TZS"
+        case "GH₵": return "GHS"
+        case "MAD": return "MAD"
+        case "DA": return "DZD"
+        case "Af": return "AFN"
+        case "L": return "ALL"
+        case "COP": return "COP"
+        case "IQD": return "IQD"
+        case "E£": return "EGP"
         default: return "USD"
         }
     }
@@ -996,6 +1029,7 @@ struct PostAdvertiseView: View {
             }
         }
 
+        print("💰 [payment] uid=\(uid) phone=\(phone) amount=\(totalAmount) currency=\(currencyCode) country=\(selectedCountry)")
         if currencyCode == "INR" {
             // India — domestic Cashfree gateway
             ApiService.shared.createCashfreeOrder(
