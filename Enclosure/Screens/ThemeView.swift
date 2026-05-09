@@ -9,6 +9,8 @@ struct ThemeView: View {
     @State private var alertMessage = ""
     @State private var alertTitle = ""
     @State private var isSubmitting = false
+    @State private var isPremiumUnlocked = false
+    @State private var showPayView = false
     
     // Theme colors mapping (matching Android)
     private let themeColors: [(color: String, name: String, logoImage: String)] = [
@@ -93,8 +95,15 @@ struct ThemeView: View {
         } message: {
             Text(alertMessage)
         }
+        .sheet(isPresented: $showPayView) {
+            NavigationView { PayView() }
+        }
         .onAppear {
             selectedThemeColor = Constant.themeColor
+            checkPremiumStatus()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PremiumUnlocked"))) { _ in
+            checkPremiumStatus()
         }
     }
     
@@ -390,9 +399,19 @@ struct ThemeView: View {
         }
     }
     
+    private func checkPremiumStatus() {
+        let expiry = UserDefaults.standard.double(forKey: "premiumExpiryTimestamp")
+        guard expiry > 0 else { isPremiumUnlocked = false; return }
+        isPremiumUnlocked = Date() < Date(timeIntervalSince1970: expiry)
+    }
+
     private func handleSubmit() {
+        guard isPremiumUnlocked else {
+            showPayView = true
+            return
+        }
         isSubmitting = true
-        
+
         // Save to UserDefaults
         UserDefaults.standard.set(selectedThemeColor, forKey: Constant.ThemeColorKey)
         

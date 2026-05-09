@@ -8,6 +8,8 @@ struct LockScreenView: View {
     @State private var isDropdownVisible = false
     @State private var selectedValue = "0°" // Default value
     @State private var isPressed = false
+    @State private var isPremiumUnlocked = false
+    @State private var showPayView = false
     @Environment(\.dismiss) var dismiss
     let dropdownOptions = ["0°", "90°", "180°", "360°"]
 
@@ -129,6 +131,10 @@ struct LockScreenView: View {
                     // Tick Button
                     Button(
                         action: {
+                            guard isPremiumUnlocked else {
+                                showPayView = true
+                                return
+                            }
                             if Int(progress) == 0 {
                                 Constant
                                     .showToast(
@@ -177,11 +183,20 @@ struct LockScreenView: View {
                 Spacer()
             }
         }
+        .sheet(isPresented: $showPayView) {
+            NavigationView { PayView() }
+        }
         .onTapGesture {
             hideKeyboard()
         }
         .onAppear {
             prepareHaptics()
+            let expiry = UserDefaults.standard.double(forKey: "premiumExpiryTimestamp")
+            isPremiumUnlocked = expiry > 0 && Date() < Date(timeIntervalSince1970: expiry)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PremiumUnlocked"))) { _ in
+            let expiry = UserDefaults.standard.double(forKey: "premiumExpiryTimestamp")
+            isPremiumUnlocked = expiry > 0 && Date() < Date(timeIntervalSince1970: expiry)
         }
         .navigationBarBackButtonHidden(true)
         .background(NavigationGestureEnabler())

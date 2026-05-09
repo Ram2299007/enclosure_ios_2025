@@ -118,10 +118,6 @@ struct PayView: View {
                                 .font(.custom("Inter18pt-Medium", size: 11))
                                 .foregroundColor(.green)
                         } else {
-                            Text("₹99 / 3mo")
-                                .font(.custom("Inter18pt-Medium", size: 14))
-                                .fontWeight(.semibold)
-                                .foregroundColor(Color("TextColor"))
                             Button(action: {
                                 withAnimation(.easeInOut(duration: 0.2)) { isChecked.toggle() }
                             }) {
