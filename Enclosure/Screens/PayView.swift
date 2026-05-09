@@ -110,6 +110,7 @@ struct PayView: View {
                     .cornerRadius(8)
 
                     VStack(spacing: 6) {
+                        Spacer()
                         if isPremiumUnlocked {
                             Image(systemName: "checkmark.seal.fill")
                                 .foregroundColor(.green)
@@ -118,25 +119,18 @@ struct PayView: View {
                                 .font(.custom("Inter18pt-Medium", size: 11))
                                 .foregroundColor(.green)
                         } else {
-                            Button(action: {
-                                withAnimation(.easeInOut(duration: 0.2)) { isChecked.toggle() }
-                            }) {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .fill(isChecked ? Color("TextColor") : Color.clear)
-                                        .frame(width: 22, height: 22)
-                                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color("TextColor"), lineWidth: 2))
-                                    if isChecked {
-                                        Image(systemName: "checkmark")
-                                            .foregroundColor(colorScheme == .dark ? .black : Color(red: 0xF6/255, green: 0xF7/255, blue: 0xFF/255))
-                                            .font(.system(size: 12, weight: .bold))
-                                            .transition(.scale.combined(with: .opacity))
-                                    }
-                                }
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color("TextColor"))
+                                    .frame(width: 22, height: 22)
+                                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color("TextColor"), lineWidth: 2))
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(colorScheme == .dark ? .black : Color(red: 0xF6/255, green: 0xF7/255, blue: 0xFF/255))
+                                    .font(.system(size: 12, weight: .bold))
                             }
-                            .buttonStyle(.plain)
                             .padding(.leading, 14)
                         }
+                        Spacer()
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 100)
@@ -231,14 +225,10 @@ struct PayView: View {
                                         .foregroundColor(.white)
                                 }
                             } else {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "arrow.triangle.2.circlepath")
-                                        .font(.system(size: 14, weight: .semibold))
-                                    Text(isExpired ? "Renew ₹99 AutoPay" : "Subscribe ₹99 AutoPay")
-                                        .font(.custom("Inter18pt-Medium", size: 16))
-                                        .fontWeight(.semibold)
-                                }
-                                .foregroundColor(.white)
+                                Text(isExpired ? "Renew ₹99" : "Subscribe ₹99")
+                                    .font(.custom("Inter18pt-Medium", size: 16))
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.white)
                             }
                         }
                         .frame(maxWidth: .infinity)
