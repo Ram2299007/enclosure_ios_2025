@@ -312,11 +312,11 @@ struct PayView: View {
         guard !uid.isEmpty else { paymentErrorMessage = "Not logged in."; return }
 
         isPaymentLoading = true
-        ApiService.shared.createCashfreePremiumSubscription(uid: uid, phone: phone) { success, subId, authLink in
+        ApiService.shared.createCashfreePremiumSubscription(uid: uid, phone: phone) { success, subId, authLink, errMsg in
             DispatchQueue.main.async {
                 isPaymentLoading = false
                 guard success, !authLink.isEmpty, let url = URL(string: authLink) else {
-                    paymentErrorMessage = "Could not start subscription. Please try again."
+                    paymentErrorMessage = errMsg.isEmpty ? "Could not start subscription. Please try again." : errMsg
                     return
                 }
                 pendingSubscriptionId = subId

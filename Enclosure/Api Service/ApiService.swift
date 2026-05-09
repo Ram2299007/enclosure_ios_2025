@@ -3119,19 +3119,27 @@ class ApiService {
     }
 
     func createCashfreePremiumSubscription(uid: String, phone: String,
-                                           completion: @escaping (Bool, String, String) -> Void) {
+                                           completion: @escaping (Bool, String, String, String) -> Void) {
         let endpoint = Constant.baseURL + "create_cashfree_premium_subscription"
         print("🔒 [createPremiumSubscription] uid=\(uid)")
         AF.request(endpoint, method: .post,
                    parameters: ["uid": uid, "customer_phone": phone],
                    encoding: URLEncoding.default)
             .responseData { [weak self] response in
-                guard let json = self?.parseStoryResponse(response.data),
-                      (json["success"] as? String) == "1",
+                let raw = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                print("🔒 [createPremiumSubscription] raw=\(raw)")
+                guard let json = self?.parseStoryResponse(response.data) else {
+                    completion(false, "", "", "Server error. Please try again."); return
+                }
+                let serverMsg = json["message"] as? String ?? ""
+                guard (json["success"] as? String) == "1",
                       let subId    = json["subscription_id"] as? String,
                       let authLink = json["auth_link"] as? String
-                else { completion(false, "", ""); return }
-                completion(true, subId, authLink)
+                else {
+                    let errMsg = serverMsg.isEmpty ? "Could not start subscription. Please try again." : serverMsg
+                    completion(false, "", "", errMsg); return
+                }
+                completion(true, subId, authLink, "")
             }
     }
 
