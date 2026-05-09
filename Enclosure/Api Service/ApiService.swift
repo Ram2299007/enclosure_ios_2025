@@ -3118,6 +3118,38 @@ class ApiService {
             }
     }
 
+    func createCashfreePremiumSubscription(uid: String, phone: String,
+                                           completion: @escaping (Bool, String, String) -> Void) {
+        let endpoint = Constant.baseURL + "create_cashfree_premium_subscription"
+        print("🔒 [createPremiumSubscription] uid=\(uid)")
+        AF.request(endpoint, method: .post,
+                   parameters: ["uid": uid, "customer_phone": phone],
+                   encoding: URLEncoding.default)
+            .responseData { [weak self] response in
+                guard let json = self?.parseStoryResponse(response.data),
+                      (json["success"] as? String) == "1",
+                      let subId    = json["subscription_id"] as? String,
+                      let authLink = json["auth_link"] as? String
+                else { completion(false, "", ""); return }
+                completion(true, subId, authLink)
+            }
+    }
+
+    func getCashfreeSubscriptionStatus(subscriptionId: String,
+                                       completion: @escaping (Bool, String) -> Void) {
+        let endpoint = Constant.baseURL + "get_cashfree_subscription_status"
+        AF.request(endpoint, method: .post,
+                   parameters: ["subscription_id": subscriptionId],
+                   encoding: URLEncoding.default)
+            .responseData { [weak self] response in
+                guard let json = self?.parseStoryResponse(response.data),
+                      (json["success"] as? String) == "1",
+                      let status = json["status"] as? String
+                else { completion(false, "UNKNOWN"); return }
+                completion(true, status)
+            }
+    }
+
     func toggleStoryLike(storyId: String, completion: @escaping (StoryLikeStatus) -> Void) {
         let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         guard !uid.isEmpty else { completion(StoryLikeStatus(liked: false, likesCount: 0)); return }

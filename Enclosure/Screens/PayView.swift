@@ -1,4 +1,33 @@
 import SwiftUI
+import SafariServices
+
+// MARK: - SFSafariViewController wrapper
+
+struct SubscriptionSafariView: UIViewControllerRepresentable {
+    let url: URL
+    let onDismiss: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onDismiss: onDismiss) }
+
+    func makeUIViewController(context: Context) -> SFSafariViewController {
+        let vc = SFSafariViewController(url: url)
+        vc.delegate = context.coordinator
+        vc.preferredControlTintColor = UIColor(named: "appThemeColor")
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
+
+    class Coordinator: NSObject, SFSafariViewControllerDelegate {
+        let onDismiss: () -> Void
+        init(onDismiss: @escaping () -> Void) { self.onDismiss = onDismiss }
+        func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
+            onDismiss()
+        }
+    }
+}
+
+// MARK: - PayView
 
 struct PayView: View {
     @Environment(\.dismiss) var dismiss
@@ -7,28 +36,25 @@ struct PayView: View {
     @State private var themeColorHex: String = Constant.themeColor
     @State private var mainvectorTintColor: Color = Color(hex: "#01253B")
 
-    // Payment states
-    @State private var isPaymentLoading = false
-    @State private var showPayment = false
-    @State private var cashfreeSessionId = ""
-    @State private var cashfreeOrderId = ""
-    @State private var isPremiumUnlocked = UserDefaults.standard.bool(forKey: "premiumUnlocked")
-    @State private var showUnlockedBanner = false
-    @State private var paymentErrorMessage: String? = nil
+    // Premium state
+    @State private var isPremiumUnlocked = false
+    @State private var isExpired = false
+    @State private var expiryDateString = ""
 
-    private let unlockAmount: Double = 99.0
-    private let unlockCurrency = "INR"
+    // Payment flow
+    @State private var isPaymentLoading = false
+    @State private var showSubscriptionAuth = false
+    @State private var subscriptionAuthURL: URL? = nil
+    @State private var pendingSubscriptionId = ""
+    @State private var isVerifying = false
+    @State private var paymentErrorMessage: String? = nil
 
     private var themeColor: Color {
         Color(hex: themeColorHex.isEmpty ? Constant.themeColor : themeColorHex)
     }
 
     private var backgroundTintColor: Color {
-        if colorScheme == .light {
-            return Color("appThemeColor")
-        } else {
-            return mainvectorTintColor
-        }
+        colorScheme == .light ? Color("appThemeColor") : mainvectorTintColor
     }
 
     private func hideKeyboard() {
@@ -43,169 +69,190 @@ struct PayView: View {
                 .onTapGesture { hideKeyboard() }
 
             VStack(spacing: 0) {
-                VStack(spacing: 0) {
-                    // Header banner
-                    ZStack {
-                        Image("pnglabel")
-                            .resizable()
-                            .renderingMode(.template)
-                            .foregroundColor(themeColor)
-                            .scaledToFill()
-                            .frame(height: 50)
-                            .clipped()
+                // Header banner
+                ZStack {
+                    Image("pnglabel")
+                        .resizable()
+                        .renderingMode(.template)
+                        .foregroundColor(themeColor)
+                        .scaledToFill()
+                        .frame(height: 50)
+                        .clipped()
+                    Text("Enclosure Exclusive Features")
+                        .font(.custom("Inter18pt-Medium", size: 17))
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                }
+                .frame(height: 50)
+                .padding(.top, 60)
+                .padding(.horizontal, 20)
 
-                        Text("Enclosure Exclusive Features")
-                            .font(.custom("Inter18pt-Medium", size: 17))
-                            .fontWeight(.bold)
+                // Features card
+                HStack(alignment: .top, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Sleep Lock")
+                            .font(.custom("Inter18pt-Medium", size: 14))
                             .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.leading, 25)
+                            .padding(.top, 23)
+                        Text("Themes")
+                            .font(.custom("Inter18pt-Medium", size: 14))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.leading, 25)
+                            .padding(.top, 16)
+                        Spacer()
                     }
-                    .frame(height: 50)
-                    .padding(.top, 60)
-                    .padding(.horizontal, 20)
+                    .frame(width: 223, height: 100, alignment: .leading)
+                    .background(backgroundTintColor)
+                    .cornerRadius(8)
 
-                    // Features card
-                    ZStack {
-                        HStack(alignment: .top, spacing: 0) {
-                            VStack(alignment: .leading, spacing: 0) {
-                                Text("Sleep Lock")
-                                    .font(.custom("Inter18pt-Medium", size: 14))
-                                    .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.leading, 25)
-                                    .padding(.top, 23)
-
-                                Text("Themes")
-                                    .font(.custom("Inter18pt-Medium", size: 14))
-                                    .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.leading, 25)
-                                    .padding(.top, 16)
-
-                                Spacer()
-                            }
-                            .frame(width: 223, height: 100, alignment: .leading)
-                            .background(backgroundTintColor)
-                            .cornerRadius(8)
-
-                            // Right side — checkbox or unlocked badge
-                            VStack {
-                                if isPremiumUnlocked {
-                                    Image(systemName: "checkmark.seal.fill")
-                                        .foregroundColor(.green)
-                                        .font(.system(size: 22))
-                                        .padding(.top, 8)
-                                    Text("Unlocked")
-                                        .font(.custom("Inter18pt-Medium", size: 11))
-                                        .foregroundColor(.green)
-                                } else {
-                                    Text("Free Now")
-                                        .font(.custom("Inter18pt-Medium", size: 16))
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(Color("TextColor"))
-                                        .padding(.bottom, 10)
-
-                                    Button(action: {
-                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                            isChecked.toggle()
-                                        }
-                                    }) {
-                                        ZStack {
-                                            RoundedRectangle(cornerRadius: 6)
-                                                .fill(isChecked ? Color("TextColor") : Color.clear)
-                                                .frame(width: 22, height: 22)
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: 6)
-                                                        .stroke(Color("TextColor"), lineWidth: 2)
-                                                )
-
-                                            if isChecked {
-                                                Image(systemName: "checkmark")
-                                                    .foregroundColor(colorScheme == .dark ? Color.black : Color(red: 0xF6/255, green: 0xF7/255, blue: 0xFF/255))
-                                                    .font(.system(size: 12, weight: .bold))
-                                                    .transition(.scale.combined(with: .opacity))
-                                            }
-                                        }
+                    VStack(spacing: 6) {
+                        if isPremiumUnlocked {
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundColor(.green)
+                                .font(.system(size: 22))
+                            Text("Active")
+                                .font(.custom("Inter18pt-Medium", size: 11))
+                                .foregroundColor(.green)
+                        } else {
+                            Text("₹99 / 3mo")
+                                .font(.custom("Inter18pt-Medium", size: 14))
+                                .fontWeight(.semibold)
+                                .foregroundColor(Color("TextColor"))
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.2)) { isChecked.toggle() }
+                            }) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(isChecked ? Color("TextColor") : Color.clear)
+                                        .frame(width: 22, height: 22)
+                                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color("TextColor"), lineWidth: 2))
+                                    if isChecked {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(colorScheme == .dark ? .black : Color(red: 0xF6/255, green: 0xF7/255, blue: 0xFF/255))
+                                            .font(.system(size: 12, weight: .bold))
+                                            .transition(.scale.combined(with: .opacity))
                                     }
-                                    .buttonStyle(.plain)
-                                    .padding(.leading, 14)
                                 }
                             }
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 100)
+                            .buttonStyle(.plain)
+                            .padding(.leading, 14)
                         }
-                        .padding(.horizontal, 20)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.clear)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 100)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
 
-                    // Subtitle
-                    Text("Make this app more valuable & premium*")
-                        .font(.custom("Inter18pt-Medium", size: 15))
-                        .foregroundColor(Color("TextColor"))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 30)
-                        .padding(.horizontal, 20)
-
-                    // Error message
-                    if let err = paymentErrorMessage {
-                        Text(err)
+                // Expiry / renewal info
+                if isPremiumUnlocked && !expiryDateString.isEmpty {
+                    HStack(spacing: 6) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 12))
+                            .foregroundColor(.green.opacity(0.8))
+                        Text("Auto-renews on \(expiryDateString)")
                             .font(.custom("Inter18pt-Medium", size: 13))
-                            .foregroundColor(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 20)
-                            .padding(.top, 8)
+                            .foregroundColor(.green.opacity(0.8))
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 10)
+                }
 
-                    Spacer(minLength: 30)
+                if isExpired {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(.orange)
+                        Text("Subscription expired. Please renew.")
+                            .font(.custom("Inter18pt-Medium", size: 13))
+                            .foregroundColor(.orange)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 10)
+                }
 
-                    // Pay / Unlocked button
-                    if isPremiumUnlocked {
-                        HStack(spacing: 8) {
-                            Image(systemName: "lock.open.fill")
-                                .foregroundColor(.green)
-                                .font(.system(size: 15, weight: .semibold))
-                            Text("Features Unlocked")
-                                .font(.custom("Inter18pt-Medium", size: 16))
-                                .fontWeight(.semibold)
-                                .foregroundColor(.green)
+                Text("Make this app more valuable & premium*")
+                    .font(.custom("Inter18pt-Medium", size: 15))
+                    .foregroundColor(Color("TextColor"))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 20)
+                    .padding(.horizontal, 20)
+
+                // Billing note
+                Text("Billed every 3 months via Cashfree AutoPay. Cancel anytime.")
+                    .font(.custom("Inter18pt-Medium", size: 12))
+                    .foregroundColor(Color("TextColor").opacity(0.5))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 6)
+                    .padding(.horizontal, 20)
+
+                if let err = paymentErrorMessage {
+                    Text(err)
+                        .font(.custom("Inter18pt-Medium", size: 13))
+                        .foregroundColor(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 8)
+                }
+
+                Spacer(minLength: 30)
+
+                // Action button
+                if isPremiumUnlocked {
+                    HStack(spacing: 8) {
+                        Image(systemName: "lock.open.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("Features Unlocked")
+                            .font(.custom("Inter18pt-Medium", size: 16))
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(.green)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(Color.green.opacity(0.12))
+                    .cornerRadius(14)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 30)
+                } else {
+                    Button(action: {
+                        guard !isPaymentLoading && !isVerifying else { return }
+                        paymentErrorMessage = nil
+                        startSubscription()
+                    }) {
+                        ZStack {
+                            if isPaymentLoading || isVerifying {
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    Text(isVerifying ? "Verifying…" : "Setting up…")
+                                        .font(.custom("Inter18pt-Medium", size: 15))
+                                        .foregroundColor(.white)
+                                }
+                            } else {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                        .font(.system(size: 14, weight: .semibold))
+                                    Text(isExpired ? "Renew ₹99 AutoPay" : "Subscribe ₹99 AutoPay")
+                                        .font(.custom("Inter18pt-Medium", size: 16))
+                                        .fontWeight(.semibold)
+                                }
+                                .foregroundColor(.white)
+                            }
                         }
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
-                        .background(Color.green.opacity(0.12))
+                        .background(themeColor)
                         .cornerRadius(14)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 30)
-                    } else {
-                        Button(action: {
-                            guard !isPaymentLoading else { return }
-                            paymentErrorMessage = nil
-                            initiatePremiumPayment()
-                        }) {
-                            ZStack {
-                                if isPaymentLoading {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                } else {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "lock.open.fill")
-                                            .font(.system(size: 14, weight: .semibold))
-                                        Text("Pay ₹99 & Unlock")
-                                            .font(.custom("Inter18pt-Medium", size: 16))
-                                            .fontWeight(.semibold)
-                                    }
-                                    .foregroundColor(.white)
-                                }
-                            }
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 52)
-                            .background(themeColor)
-                            .cornerRadius(14)
-                        }
-                        .disabled(isPaymentLoading)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 30)
                     }
+                    .disabled(isPaymentLoading || isVerifying)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 30)
                 }
             }
         }
@@ -213,20 +260,32 @@ struct PayView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .background(NavigationGestureEnabler())
-        .fullScreenCover(isPresented: $showPayment) {
-            CashfreePaymentScreen(
-                sessionId: cashfreeSessionId,
-                orderId: cashfreeOrderId,
-                totalAmount: unlockAmount,
-                currencySymbol: "₹"
-            ) { success in
-                handlePremiumPaymentResult(success)
+        // Open Cashfree mandate page in SFSafariViewController
+        .fullScreenCover(isPresented: $showSubscriptionAuth) {
+            if let url = subscriptionAuthURL {
+                SubscriptionSafariView(url: url) {
+                    // User dismissed Safari without completing — verify status anyway
+                    showSubscriptionAuth = false
+                    if !pendingSubscriptionId.isEmpty {
+                        verifySubscription(id: pendingSubscriptionId)
+                    }
+                }
+                .ignoresSafeArea()
+            }
+        }
+        // Cashfree redirects to enclosure://subscription-result after mandate
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("CashfreeSubscriptionResult"))) { _ in
+            showSubscriptionAuth = false
+            if !pendingSubscriptionId.isEmpty {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    verifySubscription(id: pendingSubscriptionId)
+                }
             }
         }
         .onAppear {
             themeColorHex = Constant.themeColor
             mainvectorTintColor = getMainvectorTintColor(for: Constant.themeColor)
-            isPremiumUnlocked = UserDefaults.standard.bool(forKey: "premiumUnlocked")
+            checkPremiumStatus()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ThemeColorUpdated"))) { _ in
             themeColorHex = Constant.themeColor
@@ -234,44 +293,75 @@ struct PayView: View {
         }
     }
 
-    private func initiatePremiumPayment() {
+    // MARK: - Premium status check
+
+    private func checkPremiumStatus() {
+        let expiry = UserDefaults.standard.double(forKey: "premiumExpiryTimestamp")
+        guard expiry > 0 else {
+            isPremiumUnlocked = false
+            isExpired = false
+            return
+        }
+        let expiryDate = Date(timeIntervalSince1970: expiry)
+        if Date() < expiryDate {
+            isPremiumUnlocked = true
+            isExpired = false
+            let fmt = DateFormatter()
+            fmt.dateStyle = .medium
+            expiryDateString = fmt.string(from: expiryDate)
+        } else {
+            isPremiumUnlocked = false
+            isExpired = true
+            UserDefaults.standard.set(false, forKey: "premiumUnlocked")
+        }
+    }
+
+    // MARK: - Subscription flow
+
+    private func startSubscription() {
         let uid   = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         let phone = UserDefaults.standard.string(forKey: Constant.PHONE_NUMBERKEY) ?? ""
         guard !uid.isEmpty else { paymentErrorMessage = "Not logged in."; return }
 
         isPaymentLoading = true
-        ApiService.shared.createCashfreeOrder(
-            uid: uid,
-            amount: unlockAmount,
-            currency: unlockCurrency,
-            customerPhone: phone
-        ) { success, sessionId, orderId in
+        ApiService.shared.createCashfreePremiumSubscription(uid: uid, phone: phone) { success, subId, authLink in
             DispatchQueue.main.async {
                 isPaymentLoading = false
-                if success && !sessionId.isEmpty {
-                    cashfreeSessionId = sessionId
-                    cashfreeOrderId   = orderId
-                    showPayment       = true
+                guard success, !authLink.isEmpty, let url = URL(string: authLink) else {
+                    paymentErrorMessage = "Could not start subscription. Please try again."
+                    return
+                }
+                pendingSubscriptionId = subId
+                subscriptionAuthURL   = url
+                showSubscriptionAuth  = true
+            }
+        }
+    }
+
+    private func verifySubscription(id: String) {
+        isVerifying = true
+        ApiService.shared.getCashfreeSubscriptionStatus(subscriptionId: id) { success, status in
+            DispatchQueue.main.async {
+                isVerifying = false
+                let active = status == "ACTIVE" || status == "BANK_APPROVAL_PENDING"
+                if active {
+                    let threeMonths = Calendar.current.date(byAdding: .month, value: 3, to: Date()) ?? Date()
+                    UserDefaults.standard.set(threeMonths.timeIntervalSince1970, forKey: "premiumExpiryTimestamp")
+                    UserDefaults.standard.set(true, forKey: "premiumUnlocked")
+                    UserDefaults.standard.set(id, forKey: "cashfreeSubscriptionId")
+                    NotificationCenter.default.post(name: NSNotification.Name("PremiumUnlocked"), object: nil)
+                    checkPremiumStatus()
                 } else {
-                    paymentErrorMessage = "Payment setup failed. Please try again."
+                    paymentErrorMessage = "Subscription not yet active (status: \(status)). Try again or check UPI mandate."
                 }
             }
         }
     }
 
-    private func handlePremiumPaymentResult(_ success: Bool) {
-        if success {
-            UserDefaults.standard.set(true, forKey: "premiumUnlocked")
-            isPremiumUnlocked = true
-            NotificationCenter.default.post(name: NSNotification.Name("PremiumUnlocked"), object: nil)
-        } else {
-            paymentErrorMessage = "Payment failed or cancelled. Please try again."
-        }
-    }
+    // MARK: - Theme helper
 
     private func getMainvectorTintColor(for themeColor: String) -> Color {
-        let colorKey = themeColor.lowercased()
-        switch colorKey {
+        switch themeColor.lowercased() {
         case "#ff0080": return Color(hex: "#4D0026")
         case "#00a3e9": return Color(hex: "#01253B")
         case "#7adf2a": return Color(hex: "#25430D")

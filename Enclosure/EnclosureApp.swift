@@ -433,6 +433,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         NSLog("📤 [AppDelegate] Options: \(options)")
         print("📤 [AppDelegate] Options: \(options)")
         
+        if url.scheme == "enclosure" && url.host == "subscription-result" {
+            NotificationCenter.default.post(name: NSNotification.Name("CashfreeSubscriptionResult"), object: url)
+            return true
+        }
+
         if url.scheme == "enclosure" && url.host == "share" {
             NSLog("📤 [AppDelegate] ✅ URL matches enclosure://share - posting notification")
             print("📤 [AppDelegate] ✅ URL matches enclosure://share - posting notification")
@@ -447,7 +452,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             }
             return true
         }
-        
+
         NSLog("📤 [AppDelegate] ⚠️ URL does not match enclosure://share")
         print("📤 [AppDelegate] ⚠️ URL does not match enclosure://share")
         return false
