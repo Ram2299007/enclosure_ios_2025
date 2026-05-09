@@ -88,7 +88,9 @@ struct PayView: View {
                 .padding(.top, 60)
                 .padding(.horizontal, 20)
 
-                // Features card
+                Spacer()
+
+                // Features card — centered on screen
                 HStack(alignment: .top, spacing: 0) {
                     VStack(alignment: .leading, spacing: 0) {
                         Text("Sleep Lock")
@@ -136,7 +138,6 @@ struct PayView: View {
                     .frame(height: 100)
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 20)
 
                 // Expiry / renewal info
                 if isPremiumUnlocked && !expiryDateString.isEmpty {
@@ -167,14 +168,15 @@ struct PayView: View {
                     .padding(.top, 10)
                 }
 
+                Spacer()
+
+                // Texts just above the button
                 Text("Make this app more valuable & premium*")
                     .font(.custom("Inter18pt-Medium", size: 15))
                     .foregroundColor(Color("TextColor"))
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 20)
                     .padding(.horizontal, 20)
 
-                // Billing note
                 Text("Billed every 3 months via Cashfree AutoPay. Cancel anytime.")
                     .font(.custom("Inter18pt-Medium", size: 12))
                     .foregroundColor(Color("TextColor").opacity(0.5))
@@ -191,7 +193,7 @@ struct PayView: View {
                         .padding(.top, 8)
                 }
 
-                Spacer(minLength: 30)
+                Spacer(minLength: 16)
 
                 // Action button
                 if isPremiumUnlocked {
