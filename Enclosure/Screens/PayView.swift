@@ -266,7 +266,8 @@ struct PayView: View {
         .onAppear {
             themeColorHex = Constant.themeColor
             mainvectorTintColor = getMainvectorTintColor(for: Constant.themeColor)
-            checkPremiumStatus()
+            checkPremiumStatus()       // immediate local display
+            syncPremiumFromServer()    // update from server (works across devices)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ThemeColorUpdated"))) { _ in
             themeColorHex = Constant.themeColor
@@ -295,6 +296,23 @@ struct PayView: View {
             isPremiumUnlocked = false
             isExpired = true
             UserDefaults.standard.set(false, forKey: "premiumUnlocked")
+        }
+    }
+
+    private func syncPremiumFromServer() {
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !uid.isEmpty else { return }
+        ApiService.shared.getPremiumStatus(uid: uid) { unlocked, expiryTimestamp in
+            DispatchQueue.main.async {
+                if unlocked && expiryTimestamp > 0 {
+                    UserDefaults.standard.set(expiryTimestamp, forKey: "premiumExpiryTimestamp")
+                    UserDefaults.standard.set(true, forKey: "premiumUnlocked")
+                } else if !unlocked && expiryTimestamp > 0 {
+                    // Server says expired
+                    UserDefaults.standard.set(false, forKey: "premiumUnlocked")
+                }
+                self.checkPremiumStatus()
+            }
         }
     }
 

@@ -3079,6 +3079,21 @@ class ApiService {
             }
     }
 
+    func getPremiumStatus(uid: String, completion: @escaping (_ unlocked: Bool, _ expiryTimestamp: Double) -> Void) {
+        let endpoint = Constant.baseURL + "get_premium_status"
+        AF.request(endpoint, method: .post, parameters: ["uid": uid], encoding: URLEncoding.default)
+            .responseData { [weak self] response in
+                guard let json = self?.parseStoryResponse(response.data),
+                      (json["success"] as? String) == "1" else {
+                    completion(false, 0)
+                    return
+                }
+                let unlocked = json["premium_unlocked"] as? Bool ?? false
+                let expiry   = json["expiry_timestamp"] as? Double ?? 0
+                completion(unlocked, expiry)
+            }
+    }
+
     func verifyCashfreePayment(orderId: String, completion: @escaping (Bool) -> Void) {
         // Route to IPG verify if order was created via IPG
         let isIPG = orderId.hasPrefix("ENCIPG_")
