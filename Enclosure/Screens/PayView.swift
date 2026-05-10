@@ -1,31 +1,4 @@
 import SwiftUI
-import SafariServices
-
-// MARK: - SFSafariViewController wrapper
-
-struct SubscriptionSafariView: UIViewControllerRepresentable {
-    let url: URL
-    let onDismiss: () -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator(onDismiss: onDismiss) }
-
-    func makeUIViewController(context: Context) -> SFSafariViewController {
-        let vc = SFSafariViewController(url: url)
-        vc.delegate = context.coordinator
-        vc.preferredControlTintColor = UIColor(named: "appThemeColor")
-        return vc
-    }
-
-    func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
-
-    class Coordinator: NSObject, SFSafariViewControllerDelegate {
-        let onDismiss: () -> Void
-        init(onDismiss: @escaping () -> Void) { self.onDismiss = onDismiss }
-        func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
-            onDismiss()
-        }
-    }
-}
 
 // MARK: - PayView
 
@@ -40,14 +13,26 @@ struct PayView: View {
     @State private var isPremiumUnlocked = false
     @State private var isExpired = false
     @State private var expiryDateString = ""
+    @State private var remainingDays: Int = 0
 
     // Payment flow
     @State private var isPaymentLoading = false
-    @State private var showSubscriptionAuth = false
-    @State private var subscriptionAuthURL: URL? = nil
-    @State private var pendingSubscriptionId = ""
-    @State private var isVerifying = false
+    @State private var showNativePayment = false
+    @State private var pendingSessionId = ""
+    @State private var pendingOrderId = ""
     @State private var paymentErrorMessage: String? = nil
+
+    // Locale-based gateway selection
+    private var localeCurrencyCode: String {
+        Locale.current.currency?.identifier ?? "INR"
+    }
+    private var isINRUser: Bool { localeCurrencyCode == "INR" }
+    private var priceLabel: String { isINRUser ? "₹99" : "$1.99" }
+    private var billingInfo: String {
+        isINRUser
+            ? "₹99 one-time. Unlocks premium for 3 months."
+            : "$1.99 one-time. Unlocks premium for 3 months."
+    }
 
     private var themeColor: Color {
         Color(hex: themeColorHex.isEmpty ? Constant.themeColor : themeColorHex)
@@ -141,13 +126,23 @@ struct PayView: View {
 
                 // Expiry / renewal info
                 if isPremiumUnlocked && !expiryDateString.isEmpty {
-                    HStack(spacing: 6) {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 12))
-                            .foregroundColor(.green.opacity(0.8))
-                        Text("Auto-renews on \(expiryDateString)")
-                            .font(.custom("Inter18pt-Medium", size: 13))
-                            .foregroundColor(.green.opacity(0.8))
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "calendar")
+                                .font(.system(size: 12))
+                                .foregroundColor(.green.opacity(0.8))
+                            Text("Premium active until \(expiryDateString)")
+                                .font(.custom("Inter18pt-Medium", size: 13))
+                                .foregroundColor(.green.opacity(0.8))
+                        }
+                        HStack(spacing: 6) {
+                            Image(systemName: "clock")
+                                .font(.system(size: 12))
+                                .foregroundColor(.green.opacity(0.6))
+                            Text("\(remainingDays) day\(remainingDays == 1 ? "" : "s") remaining")
+                                .font(.custom("Inter18pt-Medium", size: 12))
+                                .foregroundColor(.green.opacity(0.6))
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 20)
@@ -177,7 +172,7 @@ struct PayView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 20)
 
-                Text("Billed every 3 months via Cashfree AutoPay. Cancel anytime.")
+                Text(billingInfo)
                     .font(.custom("Inter18pt-Medium", size: 12))
                     .foregroundColor(Color("TextColor").opacity(0.5))
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -213,21 +208,21 @@ struct PayView: View {
                     .padding(.bottom, 30)
                 } else {
                     Button(action: {
-                        guard !isPaymentLoading && !isVerifying else { return }
+                        guard !isPaymentLoading else { return }
                         paymentErrorMessage = nil
-                        startSubscription()
+                        startPayment()
                     }) {
                         ZStack {
-                            if isPaymentLoading || isVerifying {
+                            if isPaymentLoading {
                                 HStack(spacing: 8) {
                                     ProgressView()
                                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                    Text(isVerifying ? "Verifying…" : "Setting up…")
+                                    Text("Setting up…")
                                         .font(.custom("Inter18pt-Medium", size: 15))
                                         .foregroundColor(.white)
                                 }
                             } else {
-                                Text(isExpired ? "Renew ₹99" : "Subscribe ₹99")
+                                Text(isExpired ? "Renew \(priceLabel)" : "Subscribe \(priceLabel)")
                                     .font(.custom("Inter18pt-Medium", size: 16))
                                     .fontWeight(.semibold)
                                     .foregroundColor(.white)
@@ -238,7 +233,7 @@ struct PayView: View {
                         .background(themeColor)
                         .cornerRadius(14)
                     }
-                    .disabled(isPaymentLoading || isVerifying)
+                    .disabled(isPaymentLoading)
                     .padding(.horizontal, 20)
                     .padding(.bottom, 30)
                 }
@@ -248,25 +243,23 @@ struct PayView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .background(NavigationGestureEnabler())
-        // Open Cashfree mandate page in SFSafariViewController
-        .fullScreenCover(isPresented: $showSubscriptionAuth) {
-            if let url = subscriptionAuthURL {
-                SubscriptionSafariView(url: url) {
-                    // User dismissed Safari without completing — verify status anyway
-                    showSubscriptionAuth = false
-                    if !pendingSubscriptionId.isEmpty {
-                        verifySubscription(id: pendingSubscriptionId)
-                    }
-                }
-                .ignoresSafeArea()
-            }
-        }
-        // Cashfree redirects to enclosure://subscription-result after mandate
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("CashfreeSubscriptionResult"))) { _ in
-            showSubscriptionAuth = false
-            if !pendingSubscriptionId.isEmpty {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    verifySubscription(id: pendingSubscriptionId)
+        // Native Cashfree payment sheet
+        .fullScreenCover(isPresented: $showNativePayment) {
+            CashfreePaymentScreen(
+                sessionId: pendingSessionId,
+                orderId: pendingOrderId,
+                totalAmount: isINRUser ? 99.0 : 1.99,
+                currencySymbol: isINRUser ? "₹" : "$"
+            ) { success in
+                if success {
+                    let threeMonths = Calendar.current.date(byAdding: .month, value: 3, to: Date()) ?? Date()
+                    UserDefaults.standard.set(threeMonths.timeIntervalSince1970, forKey: "premiumExpiryTimestamp")
+                    UserDefaults.standard.set(true, forKey: "premiumUnlocked")
+                    UserDefaults.standard.set(pendingOrderId, forKey: "cashfreeOrderId")
+                    NotificationCenter.default.post(name: NSNotification.Name("PremiumUnlocked"), object: nil)
+                    checkPremiumStatus()
+                } else {
+                    paymentErrorMessage = "Payment not confirmed. Please try again or contact support."
                 }
             }
         }
@@ -297,6 +290,7 @@ struct PayView: View {
             let fmt = DateFormatter()
             fmt.dateStyle = .medium
             expiryDateString = fmt.string(from: expiryDate)
+            remainingDays = Calendar.current.dateComponents([.day], from: Date(), to: expiryDate).day ?? 0
         } else {
             isPremiumUnlocked = false
             isExpired = true
@@ -304,45 +298,37 @@ struct PayView: View {
         }
     }
 
-    // MARK: - Subscription flow
+    // MARK: - Payment flow
 
-    private func startSubscription() {
+    private func startPayment() {
         let uid   = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         let phone = UserDefaults.standard.string(forKey: Constant.PHONE_NUMBERKEY) ?? ""
         guard !uid.isEmpty else { paymentErrorMessage = "Not logged in."; return }
 
         isPaymentLoading = true
-        ApiService.shared.createCashfreePremiumSubscription(uid: uid, phone: phone) { success, subId, authLink, errMsg in
+
+        let onResult: (Bool, String, String) -> Void = { success, sessionId, orderId in
             DispatchQueue.main.async {
-                isPaymentLoading = false
-                guard success, !authLink.isEmpty, let url = URL(string: authLink) else {
-                    paymentErrorMessage = errMsg.isEmpty ? "Could not start subscription. Please try again." : errMsg
+                self.isPaymentLoading = false
+                guard success, !sessionId.isEmpty else {
+                    self.paymentErrorMessage = "Could not start payment. Please try again."
                     return
                 }
-                pendingSubscriptionId = subId
-                subscriptionAuthURL   = url
-                showSubscriptionAuth  = true
+                self.pendingOrderId   = orderId
+                self.pendingSessionId = sessionId
+                self.showNativePayment = true
             }
         }
-    }
 
-    private func verifySubscription(id: String) {
-        isVerifying = true
-        ApiService.shared.getCashfreeSubscriptionStatus(subscriptionId: id) { success, status in
-            DispatchQueue.main.async {
-                isVerifying = false
-                let active = status == "ACTIVE" || status == "BANK_APPROVAL_PENDING"
-                if active {
-                    let threeMonths = Calendar.current.date(byAdding: .month, value: 3, to: Date()) ?? Date()
-                    UserDefaults.standard.set(threeMonths.timeIntervalSince1970, forKey: "premiumExpiryTimestamp")
-                    UserDefaults.standard.set(true, forKey: "premiumUnlocked")
-                    UserDefaults.standard.set(id, forKey: "cashfreeSubscriptionId")
-                    NotificationCenter.default.post(name: NSNotification.Name("PremiumUnlocked"), object: nil)
-                    checkPremiumStatus()
-                } else {
-                    paymentErrorMessage = "Subscription not yet active (status: \(status)). Try again or check UPI mandate."
-                }
-            }
+        if isINRUser {
+            ApiService.shared.createCashfreeOrder(
+                uid: uid, amount: 99.0, currency: "INR",
+                customerPhone: phone, completion: onResult)
+        } else {
+            let email = "\(uid)@enclosure.app"
+            ApiService.shared.createCashfreeIPGOrder(
+                uid: uid, amount: 1.99, currency: "USD",
+                customerPhone: phone, customerEmail: email, completion: onResult)
         }
     }
 
