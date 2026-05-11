@@ -3081,15 +3081,20 @@ class ApiService {
 
     func getPremiumStatus(uid: String, completion: @escaping (_ unlocked: Bool, _ expiryTimestamp: Double) -> Void) {
         let endpoint = Constant.baseURL + "get_premium_status"
+        print("🔵 [Premium API] Calling get_premium_status | uid=\(uid) | url=\(endpoint)")
         AF.request(endpoint, method: .post, parameters: ["uid": uid], encoding: URLEncoding.default)
             .responseData { [weak self] response in
+                let rawString = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "nil"
+                print("🟢 [Premium API] Raw response: \(rawString)")
                 guard let json = self?.parseStoryResponse(response.data),
                       (json["success"] as? String) == "1" else {
+                    print("🔴 [Premium API] Failed — success != 1 or parse error")
                     completion(false, 0)
                     return
                 }
                 let unlocked = json["premium_unlocked"] as? Bool ?? false
                 let expiry   = json["expiry_timestamp"] as? Double ?? 0
+                print("✅ [Premium API] unlocked=\(unlocked) | expiry_timestamp=\(expiry)")
                 completion(unlocked, expiry)
             }
     }

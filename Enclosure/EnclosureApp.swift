@@ -438,6 +438,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             return true
         }
 
+        if url.scheme == "enclosure" && url.host == "payment-result" {
+            NotificationCenter.default.post(name: NSNotification.Name("CashfreePaymentResult"), object: url)
+            return true
+        }
+
         if url.scheme == "enclosure" && url.host == "share" {
             NSLog("📤 [AppDelegate] ✅ URL matches enclosure://share - posting notification")
             print("📤 [AppDelegate] ✅ URL matches enclosure://share - posting notification")
