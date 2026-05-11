@@ -191,17 +191,38 @@ struct LockScreenView: View {
         }
         .onAppear {
             prepareHaptics()
-            let expiry = UserDefaults.standard.double(forKey: "premiumExpiryTimestamp")
-            isPremiumUnlocked = expiry > 0 && Date() < Date(timeIntervalSince1970: expiry)
+            checkPremiumStatus()       // instant local display
+            syncPremiumFromServer()    // verify with server (cross-device accurate)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PremiumUnlocked"))) { _ in
-            let expiry = UserDefaults.standard.double(forKey: "premiumExpiryTimestamp")
-            isPremiumUnlocked = expiry > 0 && Date() < Date(timeIntervalSince1970: expiry)
+            checkPremiumStatus()
         }
         .navigationBarBackButtonHidden(true)
         .background(NavigationGestureEnabler())
     }
     
+    private func checkPremiumStatus() {
+        let expiry = UserDefaults.standard.double(forKey: "premiumExpiryTimestamp")
+        isPremiumUnlocked = expiry > 0 && Date() < Date(timeIntervalSince1970: expiry)
+    }
+
+    private func syncPremiumFromServer() {
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !uid.isEmpty else { return }
+        ApiService.shared.getPremiumStatus(uid: uid) { unlocked, expiryTimestamp in
+            DispatchQueue.main.async {
+                if unlocked && expiryTimestamp > 0 {
+                    UserDefaults.standard.set(expiryTimestamp, forKey: "premiumExpiryTimestamp")
+                    UserDefaults.standard.set(true, forKey: "premiumUnlocked")
+                } else if !unlocked {
+                    UserDefaults.standard.set(0, forKey: "premiumExpiryTimestamp")
+                    UserDefaults.standard.set(false, forKey: "premiumUnlocked")
+                }
+                self.checkPremiumStatus()
+            }
+        }
+    }
+
     private func handleBackTap() {
         withAnimation {
             isPressed = true

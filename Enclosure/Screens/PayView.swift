@@ -5,7 +5,6 @@ import SwiftUI
 struct PayView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.colorScheme) var colorScheme
-    @State private var isChecked = true
     @State private var themeColorHex: String = Constant.themeColor
     @State private var mainvectorTintColor: Color = Color(hex: "#01253B")
 
@@ -252,12 +251,23 @@ struct PayView: View {
                 currencySymbol: isINRUser ? "₹" : "$"
             ) { success in
                 if success {
-                    let threeMonths = Calendar.current.date(byAdding: .month, value: 3, to: Date()) ?? Date()
-                    UserDefaults.standard.set(threeMonths.timeIntervalSince1970, forKey: "premiumExpiryTimestamp")
-                    UserDefaults.standard.set(true, forKey: "premiumUnlocked")
-                    UserDefaults.standard.set(pendingOrderId, forKey: "cashfreeOrderId")
-                    NotificationCenter.default.post(name: NSNotification.Name("PremiumUnlocked"), object: nil)
-                    checkPremiumStatus()
+                    let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+                    isPaymentLoading = true
+                    ApiService.shared.verifyPaymentAndSavePremium(uid: uid, orderId: pendingOrderId) { verified, expiryTimestamp in
+                        DispatchQueue.main.async {
+                            isPaymentLoading = false
+                            if verified {
+                                let expiry = expiryTimestamp > 0 ? expiryTimestamp : (Calendar.current.date(byAdding: .month, value: 3, to: Date()) ?? Date()).timeIntervalSince1970
+                                UserDefaults.standard.set(expiry, forKey: "premiumExpiryTimestamp")
+                                UserDefaults.standard.set(true, forKey: "premiumUnlocked")
+                                UserDefaults.standard.set(pendingOrderId, forKey: "cashfreeOrderId")
+                                NotificationCenter.default.post(name: NSNotification.Name("PremiumUnlocked"), object: nil)
+                                checkPremiumStatus()
+                            } else {
+                                paymentErrorMessage = "Payment not confirmed by server. Please contact support."
+                            }
+                        }
+                    }
                 } else {
                     paymentErrorMessage = "Payment not confirmed. Please try again or contact support."
                 }
@@ -291,7 +301,9 @@ struct PayView: View {
             let fmt = DateFormatter()
             fmt.dateStyle = .medium
             expiryDateString = fmt.string(from: expiryDate)
-            remainingDays = Calendar.current.dateComponents([.day], from: Date(), to: expiryDate).day ?? 0
+            let today     = Calendar.current.startOfDay(for: Date())
+            let expiryDay = Calendar.current.startOfDay(for: expiryDate)
+            remainingDays = Calendar.current.dateComponents([.day], from: today, to: expiryDay).day ?? 0
         } else {
             isPremiumUnlocked = false
             isExpired = true
@@ -307,8 +319,8 @@ struct PayView: View {
                 if unlocked && expiryTimestamp > 0 {
                     UserDefaults.standard.set(expiryTimestamp, forKey: "premiumExpiryTimestamp")
                     UserDefaults.standard.set(true, forKey: "premiumUnlocked")
-                } else if !unlocked && expiryTimestamp > 0 {
-                    // Server says expired
+                } else if !unlocked {
+                    UserDefaults.standard.set(0, forKey: "premiumExpiryTimestamp")
                     UserDefaults.standard.set(false, forKey: "premiumUnlocked")
                 }
                 self.checkPremiumStatus()

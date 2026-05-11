@@ -1050,7 +1050,17 @@ struct PostAdvertiseView: View {
 
     private func handlePaymentResult(_ success: Bool) {
         if success {
-            actuallyPost(images: pendingImages)
+            isPosting = true
+            ApiService.shared.verifyCashfreePayment(orderId: cashfreeOrderId) { verified in
+                DispatchQueue.main.async {
+                    if verified {
+                        actuallyPost(images: pendingImages)
+                    } else {
+                        isPosting = false
+                        errorMessage = "Payment not confirmed by server. Please contact support."
+                    }
+                }
+            }
         } else {
             errorMessage = "Payment failed or cancelled. Please try again."
         }

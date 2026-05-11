@@ -100,7 +100,8 @@ struct ThemeView: View {
         }
         .onAppear {
             selectedThemeColor = Constant.themeColor
-            checkPremiumStatus()
+            checkPremiumStatus()       // instant local display
+            syncPremiumFromServer()    // verify with server (cross-device accurate)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PremiumUnlocked"))) { _ in
             checkPremiumStatus()
@@ -287,29 +288,44 @@ struct ThemeView: View {
             // Horizontal scrollable theme colors
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 0) {
-                    ForEach(themeColors, id: \.color) { theme in
+                    ForEach(Array(themeColors.enumerated()), id: \.element.color) { index, theme in
+                        let isLocked = index > 0 && !isPremiumUnlocked
                         Button(action: {
-                            // Haptic feedback
                             let impactFeedback = UIImpactFeedbackGenerator(style: .light)
                             impactFeedback.impactOccurred()
-                            
+                            if isLocked {
+                                showPayView = true
+                                return
+                            }
                             selectedThemeColor = theme.color
                         }) {
-                            // Theme color image - using placeholder names matching Android
-                            Image(theme.name == "default" ? "mainthemesvg" : 
-                                  theme.name == "pink" ? "pinksvg" :
-                                  theme.name == "popati" ? "popati" :
-                                  theme.name == "red1" ? "redsvg" :
-                                  theme.name == "blue" ? "bluesvg" :
-                                  theme.name == "orange" ? "orngsvg" :
-                                  theme.name == "faintblack" ? "graysvg" :
-                                  theme.name == "yellow" ? "faintyellosvg" :
-                                  theme.name == "greensvg" ? "greensvgnew" :
-                                  theme.name == "darkpink" ? "voiletsvg" :
-                                  "red2svg")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(height: 60)
+                            ZStack(alignment: .bottomTrailing) {
+                                Image(theme.name == "default" ? "mainthemesvg" :
+                                      theme.name == "pink" ? "pinksvg" :
+                                      theme.name == "popati" ? "popati" :
+                                      theme.name == "red1" ? "redsvg" :
+                                      theme.name == "blue" ? "bluesvg" :
+                                      theme.name == "orange" ? "orngsvg" :
+                                      theme.name == "faintblack" ? "graysvg" :
+                                      theme.name == "yellow" ? "faintyellosvg" :
+                                      theme.name == "greensvg" ? "greensvgnew" :
+                                      theme.name == "darkpink" ? "voiletsvg" :
+                                      "red2svg")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(height: 60)
+                                    .opacity(isLocked ? 0.45 : 1.0)
+
+                                if isLocked {
+                                    Image(systemName: "lock.fill")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .padding(5)
+                                        .background(Color.black.opacity(0.55))
+                                        .clipShape(Circle())
+                                        .padding(4)
+                                }
+                            }
                         }
                         .buttonStyle(.plain)
                     }
@@ -403,6 +419,23 @@ struct ThemeView: View {
         let expiry = UserDefaults.standard.double(forKey: "premiumExpiryTimestamp")
         guard expiry > 0 else { isPremiumUnlocked = false; return }
         isPremiumUnlocked = Date() < Date(timeIntervalSince1970: expiry)
+    }
+
+    private func syncPremiumFromServer() {
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        guard !uid.isEmpty else { return }
+        ApiService.shared.getPremiumStatus(uid: uid) { unlocked, expiryTimestamp in
+            DispatchQueue.main.async {
+                if unlocked && expiryTimestamp > 0 {
+                    UserDefaults.standard.set(expiryTimestamp, forKey: "premiumExpiryTimestamp")
+                    UserDefaults.standard.set(true, forKey: "premiumUnlocked")
+                } else if !unlocked {
+                    UserDefaults.standard.set(0, forKey: "premiumExpiryTimestamp")
+                    UserDefaults.standard.set(false, forKey: "premiumUnlocked")
+                }
+                self.checkPremiumStatus()
+            }
+        }
     }
 
     private func handleSubmit() {

@@ -13,7 +13,6 @@ class ApiService {
     private init() {}
 
     func uploadUserContactList(uid: String, fileURL: URL?, fileName: String?, countryCodeKey: String?, completion: @escaping (Bool, String) -> Void) {
-        print("📡 Calling Sync Contacts API...")
         let endpoint = Constant.baseURL + "upload_user_contact_list"
         let headers: HTTPHeaders = [
             "Content-Type": "multipart/form-data"
@@ -31,7 +30,6 @@ class ApiService {
             headers: headers
         ).response { response in
             if let data = response.data, let rawResponse = String(data: data, encoding: .utf8) {
-                print("🔍 Raw Server Response: \(rawResponse)")
 
                 // JSON डेटा वेगळा करा
                 if let jsonStartIndex = rawResponse.range(of: "{") {
@@ -39,28 +37,22 @@ class ApiService {
                     if let jsonData = jsonString.data(using: .utf8) {
                         do {
                             if let jsonResponse = try JSONSerialization.jsonObject(with: jsonData, options: []) as? [String: Any] {
-                                print("✅ Extracted JSON Response: \(jsonResponse)")
 
                                 if let errorCode = jsonResponse["error_code"] as? String, errorCode == "200" {
-                                    print("🎉 Contact list uploaded successfully!")
                                     completion(true, "Contact list uploaded successfully.")
                                 } else {
                                     let message = jsonResponse["message"] as? String ?? "Unknown error"
-                                    print("⚠️ Error: \(message)")
                                     completion(false, message)
                                 }
                             }
                         } catch {
-                            print("❌ JSON Parsing Error: \(error.localizedDescription)")
                             completion(false, "JSON Parsing Error")
                         }
                     }
                 } else {
-                    print("❌ Invalid Response Format")
                     completion(false, "Invalid Response Format")
                 }
             } else {
-                print("❌ No Response Data")
                 completion(false, "No Response Data")
             }
         }
@@ -100,29 +92,23 @@ class ApiService {
             "lock_screen_pin": lockScreenPin
         ]
 
-        print("Request URL: \(url)")
-        print("Parameters: \(parameters)")
 
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate(statusCode: 200..<500)
             .responseJSON { response in
-                print("Response received: \(response)")
 
                 // Debug: Print raw response
                 if let data = response.data, let rawString = String(data: data, encoding: .utf8) {
-                    print("Raw Response String: \(rawString)")
                 }
 
                 switch response.result {
                 case .success(let value):
-                    print("Response Data: \(value)")
 
                     if let json = value as? [String: Any],
                        let errorCodeString = json["error_code"] as? String,
                        let errorCode = Int(errorCodeString),
                        let message = json["message"] as? String {
 
-                        print("Error Code: \(errorCode), Message: \(message)")
 
                         if errorCode == 200 {
                             DispatchQueue.main.async {
@@ -134,22 +120,17 @@ class ApiService {
                                     // Otherwise, clear sleepKeyCheckOFF (normal lock screen setup)
                                     let sleepKey = UserDefaults.standard.string(forKey: Constant.sleepKey) ?? ""
                                     let currentSleepKeyCheckOFF = UserDefaults.standard.string(forKey: Constant.sleepKeyCheckOFF) ?? ""
-                                    print("🔒 [ApiService] lockScreen == '1' - sleepKey: '\(sleepKey)', currentSleepKeyCheckOFF: '\(currentSleepKeyCheckOFF)'")
                                     
                                     if sleepKey == Constant.sleepKey {
                                         // Sleep mode - keep sleepKeyCheckOFF as "on" (already set in handleSleepSeekbarComplete)
-                                        print("🔒 [ApiService] ✅ Sleep mode detected - keeping sleepKeyCheckOFF as 'on'")
                                         UserDefaults.standard.set("on", forKey: Constant.sleepKeyCheckOFF)
                                     } else {
                                         // Normal lock screen setup - clear sleepKeyCheckOFF
-                                        print("🔒 [ApiService] ⚠️ Normal lock screen - clearing sleepKeyCheckOFF")
                                     UserDefaults.standard.set("", forKey: Constant.sleepKeyCheckOFF)
                                     }
                                     
                                     let finalSleepKeyCheckOFF = UserDefaults.standard.string(forKey: Constant.sleepKeyCheckOFF) ?? ""
-                                    print("🔒 [ApiService] Final sleepKeyCheckOFF after API response: '\(finalSleepKeyCheckOFF)'")
 
-                                    ///print("Lock screen set. lockScreenPin: \(lockScreenPin), sleepKeyCheckOFF: \(UserDefaults.standard.string(forKey: "sleepKeyCheckOFF") ?? "nil")")
 
                                     if lockScreenPin == "360" && UserDefaults.standard.string(forKey: Constant.sleepKey) == Constant.sleepKey {
                                         Constant.showToast(message: "Sleep mode activated !")
@@ -177,7 +158,6 @@ class ApiService {
 
 
 
-                                        print("Navigating to lock screen")
                                         completion(true, "Navigate to lock screen")
                                     } else if message == "Screen unlocked !" {
 
@@ -185,7 +165,6 @@ class ApiService {
                                         if let sleepKey = UserDefaults.standard.string(forKey: Constant.sleepKey), sleepKey == Constant.sleepKey {
                                             UserDefaults.standard.set("", forKey: Constant.sleepKey)
                                             UserDefaults.standard.set("", forKey: Constant.sleepKeyCheckOFF) // Clear sleepKeyCheckOFF (not set to constant name)
-                                            print("🔓 [ApiService] Cleared sleep mode - sleepKey and sleepKeyCheckOFF set to empty")
                                         }
 
                                         // TODO: MAIN ACTIVITY HERE NEED TO CALL pass data lockScreen to main activity use below commented android code
@@ -194,25 +173,20 @@ class ApiService {
                                         //          mContext.startActivity(intent);
                                         // Navigation is handled in lockScreen2.swift completion handler
 
-                                        print("🔓 [ApiService] Screen unlocked. sleepKey: \(UserDefaults.standard.string(forKey: "sleepKey") ?? "nil"), sleepKeyCheckOFF: \(UserDefaults.standard.string(forKey: Constant.sleepKeyCheckOFF) ?? "nil")")
 
                                         completion(true, message)
                                     } else {
-                                        print("Unlock failed: \(message)")
                                         completion(false, message)
                                     }
                                 }
                             }
                         } else {
-                            print("Error from server: \(message)")
                             completion(false, message)
                         }
                     } else {
-                        print("Invalid JSON response")
                         completion(false, "Invalid response format")
                     }
                 case .failure(let error):
-                    print("Request failed: \(error.localizedDescription)")
                     completion(false, error.localizedDescription)
                 }
             }
@@ -231,22 +205,17 @@ class ApiService {
             "mobile_no": mobile_no,
 
         ]
-        print("Request URL: \(url)")
-        print("Parameters: \(parameters)")
 
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseJSON { response in
-                print("Response received: \(response)")
 
                 // Debug: Print raw response
                 if let data = response.data, let rawString = String(data: data, encoding: .utf8) {
-                    print("Raw Response String: \(rawString)")
                 }
 
                 switch response.result {
                 case .success(let value):
-                    print("Response Data: \(value)")
 
                     if let json = value as? [String: Any],
                        let errorCodeString = json["error_code"] as? String, // String म्हणून घ्या
@@ -254,7 +223,6 @@ class ApiService {
 
                         let message = json["message"] as? String {
 
-                        print("Error Code: \(errorCode), Message: \(message)")
 
                         if errorCode == 200 {
                             completion(true, message)
@@ -264,16 +232,13 @@ class ApiService {
                             }
                         } else {
                             completion(false, message)
-                            print("Error from server: \(message)")
                             completion(false, message)
                             Constant.showToast(message: message)
                         }
                     } else {
-                        print("Invalid JSON response")
                         completion(false, "Invalid response format")
                     }
                 case .failure(let error):
-                    print("Request failed: \(error.localizedDescription)")
                     completion(false, error.localizedDescription)
                 }
             }
@@ -293,22 +258,17 @@ class ApiService {
 
         ]
 
-        print("Request URL: \(url)")
-        print("Parameters: \(parameters)")
 
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseJSON { response in
-                print("Response received: \(response)")
 
                 // Debug: Print raw response
                 if let data = response.data, let rawString = String(data: data, encoding: .utf8) {
-                    print("Raw Response String: \(rawString)")
                 }
 
                 switch response.result {
                 case .success(let value):
-                    print("Response Data: \(value)")
 
                     if let json = value as? [String: Any],
                        let errorCodeString = json["error_code"] as? String, // String म्हणून घ्या
@@ -316,7 +276,6 @@ class ApiService {
 
                         let message = json["message"] as? String {
 
-                        print("Error Code: \(errorCode), Message: \(message)")
 
                         if errorCode == 200 {
                             completion(true, message)
@@ -328,16 +287,13 @@ class ApiService {
                             }
                         } else {
                             completion(false, message)
-                            print("Error from server: \(message)")
                             completion(false, message)
 
                         }
                     } else {
-                        print("Invalid JSON response")
                         completion(false, "Invalid response format")
                     }
                 case .failure(let error):
-                    print("Request failed: \(error.localizedDescription)")
                     completion(false, error.localizedDescription)
                 }
             }
@@ -356,21 +312,16 @@ class ApiService {
             "mobile_no": mobile_no
         ]
 
-        print("Request URL: \(url)")
-        print("Parameters: \(parameters)")
 
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseJSON { response in
-                print("Response received: \(response)")
 
                 if let data = response.data, let rawString = String(data: data, encoding: .utf8) {
-                    print("Raw Response String: \(rawString)")
                 }
 
                 switch response.result {
                 case .success(let value):
-                    print("Response Data: \(value)")
 
                     if let json = value as? [String: Any],
                        let success = json["success"] as? String,
@@ -378,13 +329,11 @@ class ApiService {
                        let errorCode = Int(errorCodeString),
                        let message = json["message"] as? String {
 
-                        print("Success: \(success), Error Code: \(errorCode), Message: \(message)")
 
                         // "data" मधील सर्व व्हॅल्यू काढणे
                         var extractedData: [String: Any]? = nil
                         if let dataArray = json["data"] as? [[String: Any]], let firstItem = dataArray.first {
                             extractedData = firstItem
-                            print("Extracted Data: \(extractedData!)")
                         }
 
                         if errorCode == 200 {
@@ -393,11 +342,9 @@ class ApiService {
                             completion(false, message, extractedData)
                         }
                     } else {
-                        print("Invalid JSON response")
                         completion(false, "Invalid response format", nil)
                     }
                 case .failure(let error):
-                    print("Request failed: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, nil)
                 }
             }
@@ -411,24 +358,16 @@ class ApiService {
         let url = Constant.baseURL+"get_user_active_chat_list"
         let parameters: [String: Any] = ["uid": uid]
         
-        print("📤 [get_user_active_chat_list] REQUEST: POST \(url)")
-        print("📤 [get_user_active_chat_list] Parameters: uid=\(uid)")
-        print("🟢 [ApiService] get_user_active_chat_list - URL: \(url)")
-        print("🟢 [ApiService] get_user_active_chat_list - Parameters: \(parameters)")
 
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseData { response in
                 let statusCode = response.response?.statusCode ?? 0
                 let bodyString = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                print("📥 [get_user_active_chat_list] RESPONSE: Status=\(statusCode), Body=\(bodyString)")
-                print("🟢 [ApiService] Response received - Status: \(statusCode)")
                 
                 switch response.result {
                 case .success(let data):
-                    print("🟢 [ApiService] Response success - Data size: \(data.count) bytes")
                     if let rawString = String(data: data, encoding: .utf8) {
-                        print("🟢 [ApiService] Raw response: \(rawString)")
                     }
                     
                     do {
@@ -437,41 +376,22 @@ class ApiService {
                         let message = decoded.message.lowercased()
                         let myDeviceType = decoded.myDeviceType
                         
-                        print("🟢 [ApiService] Decoded - errorCode: '\(decoded.errorCode)', message: '\(decoded.message)', data count: \(chatList.count)")
                         if let dt = myDeviceType, !dt.isEmpty {
-                            print("🟢 [ApiService] my_device_type from get_user_active_chat_list: \(dt)")
                         }
                         
                         // Print detailed contact information including FCM tokens
-                        print("🟢 [ApiService] ===== CONTACT LIST DETAILS =====")
                         for (index, contact) in chatList.enumerated() {
-                            print("🟢 [ApiService] Contact #\(index + 1):")
-                            print("🟢 [ApiService]   - UID: \(contact.uid)")
-                            print("🟢 [ApiService]   - Full Name: \(contact.fullName)")
-                            print("🟢 [ApiService]   - Mobile No: \(contact.mobileNo)")
-                            print("🟢 [ApiService]   - FCM Token (fToken): \(contact.fToken.isEmpty ? "EMPTY" : "\(contact.fToken.prefix(50))...")")
-                            print("🟢 [ApiService]   - FCM Token Full: \(contact.fToken)")
-                            print("🟢 [ApiService]   - Device Type: \(contact.deviceType)")
-                            print("🟢 [ApiService]   - Notification: \(contact.notification)")
-                            print("🟢 [ApiService]   - Data Type: \(contact.dataType)")
-                            print("🟢 [ApiService]   - Message: \(contact.message)")
-                            print("🟢 [ApiService]   - Sent Time: \(contact.sentTime)")
                         }
-                        print("🟢 [ApiService] ===== END CONTACT LIST =====")
                         
                         // Treat "Data not found" as success with empty data, not an error
                         if decoded.errorCode == "200" || message.contains("data not found") || message.contains("no data") {
                             // Success case: return empty array if no data; pass my_device_type from API for sender in send_notification_api
-                            print("🟢 [ApiService] Treating as SUCCESS - calling completion(true, \"\", \(chatList.count) items)")
                             completion(true, "", chatList, myDeviceType)
                         } else {
                             // Actual error case
-                            print("🟢 [ApiService] Treating as ERROR - calling completion(false, '\(decoded.message)', \(chatList.count) items)")
                             completion(false, decoded.message, chatList, nil)
                         }
                     } catch {
-                        print("🔴 [ApiService] Decoding error: \(error.localizedDescription)")
-                        print("🔴 [ApiService] Decoding error details: \(error)")
                         
                         // Try to extract data from raw response if decoding fails
                         if let rawString = String(data: data, encoding: .utf8),
@@ -482,16 +402,13 @@ class ApiService {
                             let message = json["message"] as? String ?? ""
                             let lowerMessage = message.lowercased()
                             
-                            print("🟢 [ApiService] Extracted from raw response - errorCode: '\(errorCode)', message: '\(message)'")
                             
                             // If error_code is "200" and message is "Success", treat as success even if decoding failed
                             if errorCode == "200" && (lowerMessage == "success" || lowerMessage.contains("success")) {
-                                print("🟢 [ApiService] error_code is 200 and message is Success - treating as SUCCESS")
                                 
                                 // Try to manually parse the data array
                                 var parsedChatList: [UserActiveContactModel] = []
                                 if let dataArray = json["data"] as? [[String: Any]] {
-                                    print("🟢 [ApiService] Found data array with \(dataArray.count) items, attempting manual parsing")
                                     
                                     for (index, item) in dataArray.enumerated() {
                                         do {
@@ -500,47 +417,29 @@ class ApiService {
                                             parsedChatList.append(chatItem)
                                             
                                             // Print detailed contact information including FCM tokens
-                                            print("🟢 [ApiService] Parsed Contact #\(index + 1):")
-                                            print("🟢 [ApiService]   - UID: \(chatItem.uid)")
-                                            print("🟢 [ApiService]   - Full Name: \(chatItem.fullName)")
-                                            print("🟢 [ApiService]   - Mobile No: \(chatItem.mobileNo)")
-                                            print("🟢 [ApiService]   - FCM Token (fToken): \(chatItem.fToken.isEmpty ? "EMPTY" : "\(chatItem.fToken.prefix(50))...")")
-                                            print("🟢 [ApiService]   - FCM Token Full: \(chatItem.fToken)")
-                                            print("🟢 [ApiService]   - Device Type: \(chatItem.deviceType)")
-                                            print("🟢 [ApiService]   - Notification: \(chatItem.notification)")
                                         } catch {
-                                            print("🔴 [ApiService] Failed to parse individual item #\(index + 1): \(error)")
-                                            print("🔴 [ApiService] Item data: \(item)")
                                         }
                                     }
                                     
-                                    print("🟢 [ApiService] Successfully parsed \(parsedChatList.count) items")
-                                    print("🟢 [ApiService] ===== END CONTACT LIST (Manual Parse) =====")
                                     let myDeviceType = json["my_device_type"] as? String
                                     completion(true, "", parsedChatList, myDeviceType)
                                 } else {
-                                    print("🟢 [ApiService] No data array found or empty - treating as SUCCESS with empty array")
                                     let myDeviceType = json["my_device_type"] as? String
                                     completion(true, "", [], myDeviceType)
                                 }
                             } else if lowerMessage.contains("data not found") || lowerMessage.contains("no data") {
-                                print("🟢 [ApiService] Message contains 'data not found' - treating as SUCCESS")
                                 let myDeviceType = json["my_device_type"] as? String
                                 completion(true, "", [], myDeviceType)
                             } else {
-                                print("🟢 [ApiService] Treating as ERROR - errorCode: '\(errorCode)', message: '\(message)'")
                                 completion(false, message.isEmpty ? "Decoding failed: \(error.localizedDescription)" : message, nil, nil)
                             }
                         } else {
-                            print("🔴 [ApiService] Could not extract data from raw response")
                             completion(false, "Decoding failed: \(error.localizedDescription)", nil, nil)
                         }
                     }
 
                 case .failure(let error):
                     let failBody = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                    print("🔴 [get_user_active_chat_list] FAILED: \(error.localizedDescription), Body=\(failBody)")
-                    print("🔴 [ApiService] Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, nil, nil)
                 }
             }
@@ -555,18 +454,14 @@ class ApiService {
         let url = Constant.baseURL + "reset_notification_count"
         let parameters: [String: Any] = ["uid": uid, "friend_id": friendId]
         
-        print("🟢 [ApiService] get_individual_chatting - URL: \(url)")
-        print("🟢 [ApiService] get_individual_chatting - Parameters: \(parameters)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseJSON { response in
-                print("🟢 [ApiService] get_individual_chatting - Status: \(response.response?.statusCode ?? 0)")
                 
                 switch response.result {
                 case .success(let value):
                     guard let json = value as? [String: Any] else {
-                        print("🔴 [ApiService] get_individual_chatting - Invalid response format")
                         completion(false, "Invalid response format", "0", "0")
                         return
                     }
@@ -622,7 +517,6 @@ class ApiService {
                         .compactMap { stringValue($0) }
                         .first ?? "0"
                     
-                    print("🟢 [ApiService] get_individual_chatting - limitStatus: \(limitStatus), totalMsgLimit: \(totalMsgLimit)")
                     
                     if errorCode == 200 {
                         completion(true, message, limitStatus, totalMsgLimit)
@@ -631,7 +525,6 @@ class ApiService {
                     }
                     
                 case .failure(let error):
-                    print("🔴 [ApiService] get_individual_chatting - Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, "0", "0")
                 }
             }
@@ -642,37 +535,29 @@ class ApiService {
         let url = Constant.baseURL + "delete_individual_user_chatting"
         let parameters: [String: Any] = ["uid": uid, "friend_id": friendId]
         
-        print("🔴 [ApiService] delete_individual_user_chatting - URL: \(url)")
-        print("🔴 [ApiService] delete_individual_user_chatting - Parameters: \(parameters)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseJSON { response in
-                print("🔴 [ApiService] Response received - Status: \(response.response?.statusCode ?? 0)")
                 
                 switch response.result {
                 case .success(let value):
                     if let json = value as? [String: Any] {
-                        print("🔴 [ApiService] Response JSON: \(json)")
                         
                         if let errorCodeString = json["error_code"] as? String,
                            let errorCode = Int(errorCodeString),
                            errorCode == 200 {
                             let message = json["message"] as? String ?? "Chat deleted successfully"
-                            print("🔴 [ApiService] SUCCESS - calling completion(true, '\(message)')")
                             completion(true, message)
                         } else {
                             let message = json["message"] as? String ?? "Failed to delete chat"
-                            print("🔴 [ApiService] ERROR - calling completion(false, '\(message)')")
                             completion(false, message)
                         }
                     } else {
-                        print("🔴 [ApiService] Invalid response format")
                         completion(false, "Invalid response format")
                     }
                     
                 case .failure(let error):
-                    print("🔴 [ApiService] Request failed - error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription)
                 }
             }
@@ -687,27 +572,21 @@ class ApiService {
             "receiver_id": receiverId
         ]
         
-        print("🔴 [ApiService] delete_chatingindivisual - URL: \(url)")
-        print("🔴 [ApiService] delete_chatingindivisual - Parameters: \(parameters)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseJSON { response in
-                print("🔴 [ApiService] Response received - Status: \(response.response?.statusCode ?? 0)")
                 
                 switch response.result {
                 case .success(let value):
                     if let json = value as? [String: Any] {
-                        print("🔴 [ApiService] Response JSON: \(json)")
                         let message = json["message"] as? String ?? "Message deleted successfully"
                         completion(true, message)
                     } else {
-                        print("🔴 [ApiService] Invalid response format")
                         completion(false, "Invalid response format")
                     }
                     
                 case .failure(let error):
-                    print("🔴 [ApiService] Request failed - error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription)
                 }
             }
@@ -718,37 +597,29 @@ class ApiService {
         let url = Constant.baseURL + "delete_voice_call_log"
         let parameters: [String: Any] = ["uid": uid, "f_id": friendId, "call_type": callType]
         
-        print("🟢 [ApiService] delete_voice_call_log - URL: \(url)")
-        print("🟢 [ApiService] delete_voice_call_log - Parameters: \(parameters)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseJSON { response in
-                print("🟢 [ApiService] Response received - Status: \(response.response?.statusCode ?? 0)")
                 
                 switch response.result {
                 case .success(let value):
                     if let json = value as? [String: Any] {
-                        print("🟢 [ApiService] Response JSON: \(json)")
                         
                         if let errorCodeString = json["error_code"] as? String,
                            let errorCode = Int(errorCodeString),
                            errorCode == 200 {
                             let message = json["message"] as? String ?? "Call log deleted successfully"
-                            print("🟢 [ApiService] SUCCESS - calling completion(true, '\(message)')")
                             completion(true, message)
                         } else {
                             let message = json["message"] as? String ?? "Failed to delete call log"
-                            print("🟢 [ApiService] ERROR - calling completion(false, '\(message)')")
                             completion(false, message)
                         }
                     } else {
-                        print("🟢 [ApiService] Invalid response format")
                         completion(false, "Invalid response format")
                     }
                     
                 case .failure(let error):
-                    print("🟢 [ApiService] Request failed - error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription)
                 }
             }
@@ -759,36 +630,28 @@ class ApiService {
         let url = Constant.baseURL + "clear_voice_calling_list"
         let parameters: [String: Any] = ["uid": uid, "call_type": callType]
         
-        print("🟣 [ApiService] clear_voice_calling_list - URL: \(url)")
-        print("🟣 [ApiService] clear_voice_calling_list - Parameters: \(parameters)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseJSON { response in
-                print("🟣 [ApiService] Response received - Status: \(response.response?.statusCode ?? 0)")
                 
                 switch response.result {
                 case .success(let value):
                     if let json = value as? [String: Any] {
-                        print("🟣 [ApiService] Response JSON: \(json)")
                         
                         if let errorCode = json["error_code"] as? Int,
                            errorCode == 200 {
                             let message = json["message"] as? String ?? "All call logs cleared successfully"
-                            print("🟣 [ApiService] SUCCESS - calling completion(true, '\(message)')")
                             completion(true, message)
                         } else {
                             let message = json["message"] as? String ?? "Failed to clear call logs"
-                            print("🟣 [ApiService] ERROR - calling completion(false, '\(message)')")
                             completion(false, message)
                         }
                     } else {
-                        print("🟣 [ApiService] Invalid response format")
                         completion(false, "Invalid response format")
                     }
                     
                 case .failure(let error):
-                    print("🟣 [ApiService] Request failed - error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription)
                 }
             }
@@ -799,36 +662,28 @@ class ApiService {
         let url = Constant.baseURL + "clear_video_calling_list"
         let parameters: [String: Any] = ["uid": uid, "call_type": callType]
         
-        print("🔵 [ApiService] clear_video_calling_list - URL: \(url)")
-        print("🔵 [ApiService] clear_video_calling_list - Parameters: \(parameters)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseJSON { response in
-                print("🔵 [ApiService] Response received - Status: \(response.response?.statusCode ?? 0)")
                 
                 switch response.result {
                 case .success(let value):
                     if let json = value as? [String: Any] {
-                        print("🔵 [ApiService] Response JSON: \(json)")
                         
                         if let errorCode = json["error_code"] as? Int,
                            errorCode == 200 {
                             let message = json["message"] as? String ?? "All video call logs cleared successfully"
-                            print("🔵 [ApiService] SUCCESS - calling completion(true, '\(message)')")
                             completion(true, message)
                         } else {
                             let message = json["message"] as? String ?? "Failed to clear video call logs"
-                            print("🔵 [ApiService] ERROR - calling completion(false, '\(message)')")
                             completion(false, message)
                         }
                     } else {
-                        print("🔵 [ApiService] Invalid response format")
                         completion(false, "Invalid response format")
                     }
                     
                 case .failure(let error):
-                    print("🔵 [ApiService] Request failed - error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription)
                 }
             }
@@ -839,37 +694,29 @@ class ApiService {
         let url = Constant.baseURL + "delete_video_call_log"
         let parameters: [String: Any] = ["uid": uid, "f_id": friendId, "call_type": callType]
         
-        print("🔵 [ApiService] delete_video_call_log - URL: \(url)")
-        print("🔵 [ApiService] delete_video_call_log - Parameters: \(parameters)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseJSON { response in
-                print("🔵 [ApiService] Response received - Status: \(response.response?.statusCode ?? 0)")
                 
                 switch response.result {
                 case .success(let value):
                     if let json = value as? [String: Any] {
-                        print("🔵 [ApiService] Response JSON: \(json)")
                         
                         if let errorCodeString = json["error_code"] as? String,
                            let errorCode = Int(errorCodeString),
                            errorCode == 200 {
                             let message = json["message"] as? String ?? "Video call log deleted successfully"
-                            print("🔵 [ApiService] SUCCESS - calling completion(true, '\(message)')")
                             completion(true, message)
                         } else {
                             let message = json["message"] as? String ?? "Failed to delete video call log"
-                            print("🔵 [ApiService] ERROR - calling completion(false, '\(message)')")
                             completion(false, message)
                         }
                     } else {
-                        print("🔵 [ApiService] Invalid response format")
                         completion(false, "Invalid response format")
                     }
                     
                 case .failure(let error):
-                    print("🔵 [ApiService] Request failed - error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription)
                 }
             }
@@ -880,37 +727,29 @@ class ApiService {
         let url = Constant.baseURL + "delete_groupp"
         let parameters: [String: Any] = ["group_id": groupId]
         
-        print("👥 [ApiService] delete_groupp - URL: \(url)")
-        print("👥 [ApiService] delete_groupp - Parameters: \(parameters)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseJSON { response in
-                print("👥 [ApiService] Response received - Status: \(response.response?.statusCode ?? 0)")
                 
                 switch response.result {
                 case .success(let value):
                     if let json = value as? [String: Any] {
-                        print("👥 [ApiService] Response JSON: \(json)")
                         
                         if let errorCodeString = json["error_code"] as? String,
                            let errorCode = Int(errorCodeString),
                            errorCode == 200 {
                             let message = json["message"] as? String ?? "Group deleted successfully"
-                            print("👥 [ApiService] SUCCESS - calling completion(true, '\(message)')")
                             completion(true, message)
                         } else {
                             let message = json["message"] as? String ?? "Failed to delete group"
-                            print("👥 [ApiService] ERROR - calling completion(false, '\(message)')")
                             completion(false, message)
                         }
                     } else {
-                        print("👥 [ApiService] Invalid response format")
                         completion(false, "Invalid response format")
                     }
                     
                 case .failure(let error):
-                    print("👥 [ApiService] Request failed - error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription)
                 }
             }
@@ -936,12 +775,10 @@ class ApiService {
                             completion(false, nil, decoded.message)
                         }
                     } catch {
-                        print("Decoding error: \(error.localizedDescription)")
                         completion(false, nil, "Decoding failed")
                     }
 
                 case .failure(let error):
-                    print("Request error: \(error.localizedDescription)")
                     completion(false, nil, error.localizedDescription)
                 }
             }
@@ -969,12 +806,10 @@ class ApiService {
                             completion(false, "Invalid response format")
                         }
                     } catch {
-                        print("JSON parsing error: \(error.localizedDescription)")
                         completion(false, "Response parsing failed")
                     }
 
                 case .failure(let error):
-                    print("Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription)
                 }
             }
@@ -997,12 +832,10 @@ class ApiService {
                             completion(false, decoded.message, decoded.data)
                         }
                     } catch {
-                        print("Decoding error: \(error.localizedDescription)")
                         completion(false, "Decoding failed", nil)
                     }
 
                 case .failure(let error):
-                    print("Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, nil)
                 }
             }
@@ -1018,7 +851,6 @@ class ApiService {
                 switch response.result {
                 case .success(let data):
                     if let raw = String(data: data, encoding: .utf8) {
-                        print("[get_group_list] raw response -> \(raw)")
                     }
                     do {
                         let decoded = try JSONDecoder().decode(GroupListResponse.self, from: data)
@@ -1028,12 +860,10 @@ class ApiService {
                             completion(false, decoded.message, decoded.data ?? [])
                         }
                     } catch {
-                        print("Decoding error: \(error.localizedDescription)")
                         completion(false, "Decoding failed", [])
                     }
                     
                 case .failure(let error):
-                    print("Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, [])
                 }
             }
@@ -1062,7 +892,6 @@ class ApiService {
             switch response.result {
             case .success(let data):
                 if let raw = String(data: data, encoding: .utf8) {
-                    print("[create_group_for_chatting] raw response -> \(raw)")
                 }
                 do {
                     if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -1077,12 +906,10 @@ class ApiService {
                         completion(false, "Invalid response format")
                     }
                 } catch {
-                    print("Decoding error: \(error.localizedDescription)")
                     completion(false, "Decoding failed")
                 }
                 
             case .failure(let error):
-                print("Request error: \(error.localizedDescription)")
                 completion(false, error.localizedDescription)
             }
         }
@@ -1107,12 +934,10 @@ class ApiService {
                             completion(false, decoded.message, decoded.data)
                         }
                     } catch {
-                        print("Decoding error: \(error.localizedDescription)")
                         completion(false, "Decoding failed", nil)
                     }
 
                 case .failure(let error):
-                    print("Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, nil)
                 }
             }
@@ -1136,12 +961,10 @@ class ApiService {
                             completion(false, decoded.message, decoded.data)
                         }
                     } catch {
-                        print("Decoding error: \(error.localizedDescription)")
                         completion(false, "Decoding failed", nil)
                     }
 
                 case .failure(let error):
-                    print("Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, nil)
                 }
             }
@@ -1172,11 +995,9 @@ class ApiService {
                     let decoded = try JSONDecoder().decode(GlobalResponse.self, from: data)
                     completion(decoded.error_code == "200", decoded.message)
                 } catch {
-                    print("Decoding error:", error)
                     completion(false, "Decoding failed")
                 }
             case .failure(let error):
-                print("Request error:", error)
                 completion(false, error.localizedDescription)
             }
         }
@@ -1200,12 +1021,10 @@ class ApiService {
                             completion(false, decoded.message, decoded.data)
                         }
                     } catch {
-                        print("Decoding error: \(error.localizedDescription)")
                         completion(false, "Decoding failed", nil)
                     }
 
                 case .failure(let error):
-                    print("Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, nil)
                 }
             }
@@ -1232,11 +1051,9 @@ class ApiService {
                     let decoded = try JSONDecoder().decode(GlobalResponse.self, from: data)
                     completion(decoded.error_code == "200", decoded.message)
                 } catch {
-                    print("Decoding error:", error)
                     completion(false, "Decoding failed")
                 }
             case .failure(let error):
-                print("Request error:", error)
                 completion(false, error.localizedDescription)
             }
         }
@@ -1247,34 +1064,27 @@ class ApiService {
         let url = Constant.baseURL + "get_theme_color"
         let parameters: [String: Any] = ["uid": uid]
         
-        print("🎨 [ThemeColorAPI] 📤 Request started for UID: \(uid)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseData { response in
                 let statusCode = response.response?.statusCode ?? 0
-                print("🎨 [ThemeColorAPI] 📥 Response received. Status Code: \(statusCode)")
                 
                 switch response.result {
                 case .success(let data):
                     do {
                         let decoded = try JSONDecoder().decode(ThemeColorResponse.self, from: data)
-                        print("🎨 [ThemeColorAPI] ✅ Response - success: \(decoded.success), message: \(decoded.message)")
                         
                         if decoded.success == "1", let themeData = decoded.data {
                             let colorCode = themeData.themeColor
-                            print("🎨 [ThemeColorAPI] 🎨 User theme color fetched: \(colorCode)")
                             completion(true, decoded.message, colorCode)
                         } else {
-                            print("🎨 [ThemeColorAPI] ❌ API returned error: \(decoded.message)")
                             completion(false, decoded.message, nil)
                         }
                     } catch {
-                        print("🎨 [ThemeColorAPI] ❌ Decoding error: \(error.localizedDescription)")
                         completion(false, "Decoding failed", nil)
                     }
                 case .failure(let error):
-                    print("🎨 [ThemeColorAPI] 💥 API call failed: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, nil)
                 }
             }
@@ -1287,7 +1097,6 @@ class ApiService {
             "themeColor": themeColor
         ]
         
-        print("📡 Uploading theme - URL: \(url), Parameters: \(parameters)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
@@ -1296,14 +1105,11 @@ class ApiService {
                 case .success(let data):
                     do {
                         let decoded = try JSONDecoder().decode(GlobalResponse.self, from: data)
-                        print("✅ Theme upload response - error_code: \(decoded.error_code), message: \(decoded.message)")
                         completion(decoded.error_code == "200", decoded.message)
                     } catch {
-                        print("❌ Decoding error: \(error.localizedDescription)")
                         completion(false, "Decoding failed")
                     }
                 case .failure(let error):
-                    print("❌ Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription)
                 }
             }
@@ -1331,12 +1137,10 @@ class ApiService {
                             completion(false, decoded.message)
                         }
                     } catch {
-                        print("Decoding error: \(error.localizedDescription)")
                         completion(false, "Decoding failed")
                     }
 
                 case .failure(let error):
-                    print("Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription)
                 }
             }
@@ -1363,12 +1167,10 @@ class ApiService {
                             completion(false, decoded.message)
                         }
                     } catch {
-                        print("Decoding error: \(error.localizedDescription)")
                         completion(false, "Decoding failed")
                     }
 
                 case .failure(let error):
-                    print("Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription)
                 }
             }
@@ -1379,14 +1181,12 @@ class ApiService {
     static func get_user_active_chat_list_for_msgLmt(uid: String, completion: @escaping (Bool, String, [UserActiveContactModel]?, String?) -> Void) {
         let url = Constant.baseURL+"get_user_active_chat_list"
         let parameters: [String: Any] = ["uid": uid]
-        print("📤 [get_user_active_chat_list] REQUEST (msgLmt): POST \(url), uid=\(uid)")
 
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseData { response in
                 let statusCode = response.response?.statusCode ?? 0
                 let bodyString = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                print("📥 [get_user_active_chat_list] RESPONSE (msgLmt): Status=\(statusCode), Body=\(bodyString)")
                 switch response.result {
                 case .success(let data):
                     do {
@@ -1402,7 +1202,6 @@ class ApiService {
                             completion(false, decoded.message, chatList, nil)
                         }
                     } catch {
-                        print("Decoding error: \(error.localizedDescription)")
                         // Try to extract message from raw response if decoding fails
                         if let rawString = String(data: data, encoding: .utf8),
                            let jsonData = rawString.data(using: .utf8),
@@ -1421,7 +1220,6 @@ class ApiService {
                     }
 
                 case .failure(let error):
-                    print("Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, nil, nil)
                 }
             }
@@ -1445,12 +1243,10 @@ class ApiService {
                             completion(false, decoded.message, decoded.data)
                         }
                     } catch {
-                        print("Decoding error: \(error.localizedDescription)")
                         completion(false, "Decoding failed", nil)
                     }
 
                 case .failure(let error):
-                    print("Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, nil)
                 }
             }
@@ -1480,12 +1276,10 @@ class ApiService {
                             completion(false, "Invalid response format")
                         }
                     } catch {
-                        print("Decoding error: \(error.localizedDescription)")
                         completion(false, "Decoding failed")
                     }
 
                 case .failure(let error):
-                    print("Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription)
                 }
             }
@@ -1499,20 +1293,15 @@ class ApiService {
             "blocked_uid": blockedUid
         ]
         
-        print("🚫 [BLOCK API] Block user request - URL: \(url)")
-        print("🚫 [BLOCK API] Parameters: \(parameters)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseJSON { response in
-                print("🚫 [BLOCK API] Response status code: \(response.response?.statusCode ?? -1)")
                 switch response.result {
                 case .success(let value):
-                    print("🚫 [BLOCK API] Response JSON: \(value)")
                     if let json = value as? [String: Any],
                        let status = json["status"] as? String,
                        let message = json["message"] as? String {
-                        print("🚫 [BLOCK API] Status: \(status), Message: \(message)")
                         // Treat "info" status with "already blocked" message as success (matching Android)
                         if status.lowercased() == "success" || 
                            (status.lowercased() == "info" && message.lowercased().contains("already blocked")) {
@@ -1521,13 +1310,10 @@ class ApiService {
                             completion(false, message)
                         }
                     } else {
-                        print("🚫 [BLOCK API] ❌ Invalid response format")
                         completion(false, "Invalid response format")
                     }
                 case .failure(let error):
-                    print("🚫 [BLOCK API] ❌ Error: \(error.localizedDescription)")
                     if let data = response.data, let errorString = String(data: data, encoding: .utf8) {
-                        print("🚫 [BLOCK API] Error response data: \(errorString)")
                     }
                     completion(false, error.localizedDescription)
                 }
@@ -1542,32 +1328,24 @@ class ApiService {
             "receiver_id": receiverId
         ]
         
-        print("🚫 [BLOCK API] Check block status request - URL: \(url)")
-        print("🚫 [BLOCK API] Parameters: \(parameters)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseJSON { response in
-                print("🚫 [BLOCK API] Response status code: \(response.response?.statusCode ?? -1)")
                 switch response.result {
                 case .success:
                     // Status 200 means user is blocked
                     if response.response?.statusCode == 200 {
-                        print("🚫 [BLOCK API] ✅ User is blocked")
                         completion(true, "User is blocked")
                     } else {
-                        print("🚫 [BLOCK API] ❌ User is not blocked")
                         completion(false, "User is not blocked")
                     }
                 case .failure(let error):
                     // Status 401 means not blocked
                     if response.response?.statusCode == 401 {
-                        print("🚫 [BLOCK API] ❌ User is not blocked (401)")
                         completion(false, "User is not blocked")
                     } else {
-                        print("🚫 [BLOCK API] ❌ Error: \(error.localizedDescription)")
                         if let data = response.data, let errorString = String(data: data, encoding: .utf8) {
-                            print("🚫 [BLOCK API] Error response data: \(errorString)")
                         }
                         completion(false, error.localizedDescription)
                     }
@@ -1582,33 +1360,25 @@ class ApiService {
             "blocked_uid": blockedUid
         ]
         
-        print("🚫 [BLOCK API] Unblock user request - URL: \(url)")
-        print("🚫 [BLOCK API] Parameters: \(parameters)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
             .responseJSON { response in
-                print("🚫 [BLOCK API] Response status code: \(response.response?.statusCode ?? -1)")
                 switch response.result {
                 case .success(let value):
-                    print("🚫 [BLOCK API] Response JSON: \(value)")
                     if let json = value as? [String: Any],
                        let status = json["status"] as? String,
                        let message = json["message"] as? String {
-                        print("🚫 [BLOCK API] Status: \(status), Message: \(message)")
                         if status.lowercased() == "success" {
                             completion(true, message)
                         } else {
                             completion(false, message)
                         }
                     } else {
-                        print("🚫 [BLOCK API] ❌ Invalid response format")
                         completion(false, "Invalid response format")
                     }
                 case .failure(let error):
-                    print("🚫 [BLOCK API] ❌ Error: \(error.localizedDescription)")
                     if let data = response.data, let errorString = String(data: data, encoding: .utf8) {
-                        print("🚫 [BLOCK API] Error response data: \(errorString)")
                     }
                     completion(false, error.localizedDescription)
                 }
@@ -1637,12 +1407,10 @@ class ApiService {
                             completion(false, "Invalid response format")
                         }
                     } catch {
-                        print("Decoding error: \(error.localizedDescription)")
                         completion(false, "Decoding failed")
                     }
 
                 case .failure(let error):
-                    print("Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription)
                 }
             }
@@ -1656,17 +1424,14 @@ class ApiService {
         let url = Constant.baseURL + "get_voice_call_log"
         let parameters: [String: Any] = ["uid": uid]
         
-        print("📞 [ApiService] get_voice_call_log - URL: \(url), uid: \(uid)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate(statusCode: 200..<500)
             .responseData { response in
-                print("📞 [ApiService] Call log response status: \(response.response?.statusCode ?? 0)")
                 
                 switch response.result {
                 case .success(let data):
                     if let rawString = String(data: data, encoding: .utf8) {
-                        print("📞 [ApiService] Call log raw response: \(rawString)")
                     }
                     
                     do {
@@ -1683,7 +1448,6 @@ class ApiService {
                             completion(false, message, nil)
                         }
                     } catch {
-                        print("🔴 [ApiService] Call log decoding error: \(error.localizedDescription)")
                         
                         guard let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                             completion(false, "Decoding failed: \(error.localizedDescription)", nil)
@@ -1708,7 +1472,6 @@ class ApiService {
                                     let section = try JSONDecoder().decode(CallLogSection.self, from: itemData)
                                     parsedSections.append(section)
                                 } catch {
-                                    print("🔴 [ApiService] Failed to parse call log section: \(error.localizedDescription)")
                                 }
                             }
                         }
@@ -1723,7 +1486,6 @@ class ApiService {
                     }
                     
                 case .failure(let error):
-                    print("🔴 [ApiService] Call log request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, nil)
                 }
             }
@@ -1735,17 +1497,14 @@ class ApiService {
         let url = Constant.baseURL + "get_call_log_1"
         let parameters: [String: Any] = ["uid": uid]
         
-        print("📹 [ApiService] get_call_log_1 (video) - URL: \(url), uid: \(uid)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate(statusCode: 200..<500)
             .responseData { response in
-                print("📹 [ApiService] Video call log response status: \(response.response?.statusCode ?? 0)")
                 
                 switch response.result {
                 case .success(let data):
                     if let rawString = String(data: data, encoding: .utf8) {
-                        print("📹 [ApiService] Video call log raw response: \(rawString)")
                     }
                     
                     do {
@@ -1762,7 +1521,6 @@ class ApiService {
                             completion(false, message, nil)
                         }
                     } catch {
-                        print("🔴 [ApiService] Video call log decoding error: \(error.localizedDescription)")
                         
                         guard let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                             completion(false, "Decoding failed: \(error.localizedDescription)", nil)
@@ -1787,7 +1545,6 @@ class ApiService {
                                     let section = try JSONDecoder().decode(CallLogSection.self, from: itemData)
                                     parsedSections.append(section)
                                 } catch {
-                                    print("🔴 [ApiService] Failed to parse video call log section: \(error.localizedDescription)")
                                 }
                             }
                         }
@@ -1802,7 +1559,6 @@ class ApiService {
                     }
                     
                 case .failure(let error):
-                    print("🔴 [ApiService] Video call log request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, nil)
                 }
             }
@@ -1816,17 +1572,14 @@ class ApiService {
             "page_no": page
         ]
         
-        print("📇 [ApiService] get_users_all_contact - URL: \(url), params: \(parameters)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate(statusCode: 200..<500)
             .responseData { response in
-                print("📇 [ApiService] get_users_all_contact status: \(response.response?.statusCode ?? 0)")
                 
                 switch response.result {
                 case .success(let data):
                     if let rawString = String(data: data, encoding: .utf8) {
-                        print("📇 [ApiService] get_users_all_contact raw: \(rawString)")
                     }
                     
                     do {
@@ -1840,7 +1593,6 @@ class ApiService {
                         
                         completion(isSuccess, decoded.message, contacts)
                     } catch {
-                        print("🔴 [ApiService] get_users_all_contact decode error: \(error.localizedDescription)")
                         
                         guard
                             let rawString = String(data: data, encoding: .utf8),
@@ -1871,7 +1623,6 @@ class ApiService {
                                     let contact = try JSONDecoder().decode(InviteContactModel.self, from: itemData)
                                     parsedContacts.append(contact)
                                 } catch {
-                                    print("🔴 [ApiService] Failed to parse invite contact row: \(error.localizedDescription)")
                                 }
                             }
                         }
@@ -1885,7 +1636,6 @@ class ApiService {
                     }
                     
                 case .failure(let error):
-                    print("🔴 [ApiService] get_users_all_contact request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, nil)
                 }
             }
@@ -1899,17 +1649,14 @@ class ApiService {
             "srch_keyword": keyword
         ]
         
-        print("🔍 [ApiService] search_from_all_contact - URL: \(url), params: \(parameters)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate(statusCode: 200..<500)
             .responseData { response in
-                print("🔍 [ApiService] search_from_all_contact status: \(response.response?.statusCode ?? 0)")
                 
                 switch response.result {
                 case .success(let data):
                     if let rawString = String(data: data, encoding: .utf8) {
-                        print("🔍 [ApiService] search_from_all_contact raw: \(rawString)")
                     }
                     
                     do {
@@ -1923,7 +1670,6 @@ class ApiService {
                         
                         completion(isSuccess, decoded.message, contacts)
                     } catch {
-                        print("🔴 [ApiService] search_from_all_contact decode error: \(error.localizedDescription)")
                         
                         guard
                             let rawString = String(data: data, encoding: .utf8),
@@ -1954,7 +1700,6 @@ class ApiService {
                                     let contact = try JSONDecoder().decode(InviteContactModel.self, from: itemData)
                                     parsedContacts.append(contact)
                                 } catch {
-                                    print("🔴 [ApiService] Failed to parse invite contact search row: \(error.localizedDescription)")
                                 }
                             }
                         }
@@ -1968,7 +1713,6 @@ class ApiService {
                     }
                     
                 case .failure(let error):
-                    print("🔴 [ApiService] search_from_all_contact request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, nil)
                 }
             }
@@ -2000,7 +1744,6 @@ class ApiService {
             "call_type": callType
         ]
 
-        print("📞 [ApiService] create_group_calling - URL: \(url), params: \(parameters)")
 
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate()
@@ -2008,7 +1751,6 @@ class ApiService {
                 switch response.result {
                 case .success(let data):
                     if let raw = String(data: data, encoding: .utf8) {
-                        print("📞 [ApiService] create_group_calling response: \(raw)")
                     }
                     do {
                         if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
@@ -2024,7 +1766,6 @@ class ApiService {
                         completion(false, error.localizedDescription)
                     }
                 case .failure(let error):
-                    print("🔴 [ApiService] create_group_calling error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription)
                 }
             }
@@ -2034,18 +1775,14 @@ class ApiService {
         let url = Constant.baseURL + "get_calling_contact_list"
         let parameters: [String: Any] = ["uid": uid]
         
-        print("📞 [ApiService] get_calling_contact_list - URL: \(url), uid: \(uid)")
         
         AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
             .validate(statusCode: 200..<500)
             .responseData { response in
-                print("📞 [ApiService] Response received - Status: \(response.response?.statusCode ?? 0)")
                 
                 switch response.result {
                 case .success(let data):
-                    print("📞 [ApiService] Response success - Data size: \(data.count) bytes")
                     if let rawString = String(data: data, encoding: .utf8) {
-                        print("📞 [ApiService] Raw response: \(rawString)")
                     }
                     
                     do {
@@ -2053,27 +1790,20 @@ class ApiService {
                         let contactList = decoded.data ?? []
                         let message = decoded.message.lowercased()
                         
-                        print("📞 [ApiService] Decoded - success: '\(decoded.success ?? "nil")', errorCode: '\(decoded.errorCode)', message: '\(decoded.message)', data count: \(contactList.count)")
-                        print("📞 [ApiService] Contact list details: \(contactList)")
                         
                         // Check if we have data or if error code is 200
                         // Even if error_code is 404 but we have data, return it
                         if contactList.count > 0 {
-                            print("📞 [ApiService] Has data (\(contactList.count) items) - calling completion(true, \"\", \(contactList.count) items)")
                             completion(true, "", contactList)
                         } else if decoded.errorCode == "200" {
-                            print("📞 [ApiService] errorCode is 200 - calling completion(true, \"\", \(contactList.count) items)")
                             completion(true, "", contactList)
                         } else if message.contains("data not found") || message.contains("no data") || message.contains("no contacts found") {
-                            print("📞 [ApiService] No data message - calling completion(true, \"\", 0 items)")
                             completion(true, "", [])
                         } else {
-                            print("📞 [ApiService] Other error - calling completion(true, '\(decoded.message)', \(contactList.count) items)")
                             // Still return the data (even if empty) so UI can show empty state
                             completion(true, decoded.message, contactList)
                         }
                     } catch {
-                        print("🔴 [ApiService] Decoding error: \(error.localizedDescription)")
                         
                         if let rawString = String(data: data, encoding: .utf8),
                            let jsonData = rawString.data(using: .utf8),
@@ -2090,12 +1820,10 @@ class ApiService {
                             let message = json["message"] as? String ?? ""
                             let lowerMessage = message.lowercased()
                             
-                            print("📞 [ApiService] Extracted from raw response - errorCode: '\(errorCode)', message: '\(message)'")
                             
                             // Always try to parse data array if it exists
                             var parsedContactList: [CallingContactModel] = []
                             if let dataArray = json["data"] as? [[String: Any]] {
-                                print("📞 [ApiService] Found data array with \(dataArray.count) items, attempting manual parsing")
                                 
                                 for item in dataArray {
                                     do {
@@ -2103,36 +1831,27 @@ class ApiService {
                                         let contactItem = try JSONDecoder().decode(CallingContactModel.self, from: itemData)
                                         parsedContactList.append(contactItem)
                                     } catch {
-                                        print("🔴 [ApiService] Failed to parse individual item: \(error)")
-                                        print("🔴 [ApiService] Item data: \(item)")
                                     }
                                 }
                                 
-                                print("📞 [ApiService] Successfully parsed \(parsedContactList.count) items")
                             }
                             
                             // If we have data, always return it as success
                             if parsedContactList.count > 0 {
-                                print("📞 [ApiService] Has parsed data (\(parsedContactList.count) items) - returning as success")
                                 completion(true, "", parsedContactList)
                             } else if errorCode == "200" || (lowerMessage == "success" || lowerMessage.contains("success")) {
-                                print("📞 [ApiService] errorCode is 200 or success message - treating as SUCCESS with empty array")
                                 completion(true, "", [])
                             } else if lowerMessage.contains("data not found") || lowerMessage.contains("no data") || lowerMessage.contains("no contacts found") {
-                                print("📞 [ApiService] Message contains 'no data' - treating as SUCCESS with empty array")
                                 completion(true, "", [])
                             } else {
-                                print("📞 [ApiService] Other case - returning empty array as success")
                                 completion(true, message, [])
                             }
                         } else {
-                            print("🔴 [ApiService] Could not extract data from raw response")
                             completion(false, "Decoding failed: \(error.localizedDescription)", nil)
                         }
                     }
                     
                 case .failure(let error):
-                    print("🔴 [ApiService] Request error: \(error.localizedDescription)")
                     completion(false, error.localizedDescription, nil)
                 }
             }
@@ -2142,11 +1861,6 @@ class ApiService {
     func changeNumber(uid: String, oldPhoneNumber: String, newPhoneNumber: String, completion: @escaping (Result<ChangeNumberResponse, Error>) -> Void) {
         let endpoint = Constant.baseURL + "change_numberrold"
         
-        print("📱 [ApiService] Change Number API Call")
-        print("📱 [ApiService] Endpoint: \(endpoint)")
-        print("📱 [ApiService] UID: \(uid)")
-        print("📱 [ApiService] Old Phone: \(oldPhoneNumber)")
-        print("📱 [ApiService] New Phone: \(newPhoneNumber)")
         
         // Use multipart form data (matching Android MultipartBody.FORM)
         AF.upload(
@@ -2161,16 +1875,13 @@ class ApiService {
         )
         .responseData { response in
             let statusCode = response.response?.statusCode ?? 0
-            print("📱 [ApiService] Change Number Response Status: \(statusCode)")
             
             switch response.result {
             case .success(let data):
                 if let rawResponse = String(data: data, encoding: .utf8) {
-                    print("📱 [ApiService] Raw Response: \(rawResponse.prefix(500))") // Log first 500 chars
                     
                     // Check if response is HTML (error page)
                     if rawResponse.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("<") {
-                        print("🔴 [ApiService] Server returned HTML error page (likely 500 error)")
                         
                         // Try to extract error message from HTML
                         var errorMessage = "Server error occurred. Please try again later."
@@ -2218,10 +1929,8 @@ class ApiService {
                     // Try to decode JSON
                     do {
                         let changeNumberResponse = try JSONDecoder().decode(ChangeNumberResponse.self, from: cleanedData)
-                        print("📱 [ApiService] Decoded Response: \(changeNumberResponse)")
                         completion(.success(changeNumberResponse))
                     } catch {
-                        print("🔴 [ApiService] Decoding Error: \(error)")
                         // Try to parse raw response manually if JSON decoding fails
                         if let jsonData = rawResponse.data(using: .utf8),
                            let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
@@ -2247,7 +1956,6 @@ class ApiService {
                 }
                 
             case .failure(let error):
-                print("🔴 [ApiService] Network Error: \(error)")
                 // Convert network error to ChangeNumberResponse
                 let errorResponse = ChangeNumberResponse(errorCode: "NETWORK_ERROR", message: error.localizedDescription)
                 completion(.success(errorResponse))
@@ -2261,7 +1969,6 @@ class ApiService {
     func sendOtpForDelete(mobileNo: String, completion: @escaping (Result<SendOtpResponse, Error>) -> Void) {
         let endpoint = Constant.baseURL + "send_otp_common"
         
-        print("📱 [ApiService] Send OTP for Delete - Mobile: \(mobileNo)")
         
         AF.request(
             endpoint,
@@ -2271,12 +1978,10 @@ class ApiService {
         )
         .responseData { response in
             let statusCode = response.response?.statusCode ?? 0
-            print("📱 [ApiService] Send OTP for Delete Response Status: \(statusCode)")
             
             switch response.result {
             case .success(let data):
                 if let rawResponse = String(data: data, encoding: .utf8) {
-                    print("📱 [ApiService] Raw Response: \(rawResponse.prefix(500))")
                     
                     // Check if response is HTML (error page)
                     if rawResponse.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("<") {
@@ -2287,10 +1992,8 @@ class ApiService {
                     
                     do {
                         let sendOtpResponse = try JSONDecoder().decode(SendOtpResponse.self, from: data)
-                        print("📱 [ApiService] Decoded SendOtpResponse: \(sendOtpResponse)")
                         completion(.success(sendOtpResponse))
                     } catch {
-                        print("🔴 [ApiService] Decoding Error: \(error)")
                         // Try manual parsing
                         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                             var errorCode = ""
@@ -2313,7 +2016,6 @@ class ApiService {
                 }
                 
             case .failure(let error):
-                print("🔴 [ApiService] Network Error: \(error)")
                 completion(.failure(error))
             }
         }
@@ -2323,7 +2025,6 @@ class ApiService {
     func verifyOtpForDelete(uid: String, otp: String, completion: @escaping (Result<ChangeNumberResponse, Error>) -> Void) {
         let endpoint = Constant.baseURL + "verify_otp_common"
         
-        print("📱 [ApiService] Verify OTP for Delete - UID: \(uid)")
         
         AF.upload(
             multipartFormData: { multipartFormData in
@@ -2336,12 +2037,10 @@ class ApiService {
         )
         .responseData { response in
             let statusCode = response.response?.statusCode ?? 0
-            print("📱 [ApiService] Verify OTP for Delete Response Status: \(statusCode)")
             
             switch response.result {
             case .success(let data):
                 if let rawResponse = String(data: data, encoding: .utf8) {
-                    print("📱 [ApiService] Raw Response: \(rawResponse.prefix(500))")
                     
                     // Check if response is HTML (error page)
                     if rawResponse.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("<") {
@@ -2360,10 +2059,8 @@ class ApiService {
                     
                     do {
                         let verifyResponse = try JSONDecoder().decode(ChangeNumberResponse.self, from: cleanedData)
-                        print("📱 [ApiService] Decoded VerifyResponse: \(verifyResponse)")
                         completion(.success(verifyResponse))
                     } catch {
-                        print("🔴 [ApiService] Decoding Error: \(error)")
                         if let json = try? JSONSerialization.jsonObject(with: cleanedData) as? [String: Any] {
                             var errorCode = ""
                             if let errorCodeString = json["error_code"] as? String {
@@ -2385,7 +2082,6 @@ class ApiService {
                 }
                 
             case .failure(let error):
-                print("🔴 [ApiService] Network Error: \(error)")
                 completion(.failure(error))
             }
         }
@@ -2395,7 +2091,6 @@ class ApiService {
     func deleteMyAccount(uid: String, completion: @escaping (Result<ChangeNumberResponse, Error>) -> Void) {
         let endpoint = Constant.baseURL + "delete_my_account"
         
-        print("📱 [ApiService] Delete Account - UID: \(uid)")
         
         AF.upload(
             multipartFormData: { multipartFormData in
@@ -2407,12 +2102,10 @@ class ApiService {
         )
         .responseData { response in
             let statusCode = response.response?.statusCode ?? 0
-            print("📱 [ApiService] Delete Account Response Status: \(statusCode)")
             
             switch response.result {
             case .success(let data):
                 if let rawResponse = String(data: data, encoding: .utf8) {
-                    print("📱 [ApiService] Raw Response: \(rawResponse.prefix(500))")
                     
                     // Check if response is HTML (error page)
                     if rawResponse.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("<") {
@@ -2431,10 +2124,8 @@ class ApiService {
                     
                     do {
                         let deleteResponse = try JSONDecoder().decode(ChangeNumberResponse.self, from: cleanedData)
-                        print("📱 [ApiService] Decoded DeleteResponse: \(deleteResponse)")
                         completion(.success(deleteResponse))
                     } catch {
-                        print("🔴 [ApiService] Decoding Error: \(error)")
                         if let json = try? JSONSerialization.jsonObject(with: cleanedData) as? [String: Any] {
                             var errorCode = ""
                             if let errorCodeString = json["error_code"] as? String {
@@ -2456,7 +2147,6 @@ class ApiService {
                 }
                 
             case .failure(let error):
-                print("🔴 [ApiService] Network Error: \(error)")
                 completion(.failure(error))
             }
         }
@@ -2503,7 +2193,6 @@ class ApiService {
         }
 
         let endpoint = Constant.baseURL + "index.php/Api_Controller/create_story"
-        print("📡 [uploadTextStory] Posting text story, bg_type=\(bgType)")
 
         AF.request(endpoint, method: .post, parameters: params, encoding: URLEncoding.default)
             .responseData { [weak self] response in
@@ -2581,7 +2270,6 @@ class ApiService {
                         if exporter.status == .completed, let data = try? Data(contentsOf: exportURL) {
                             mediaItems[i] = (data, "video/mp4", "story_video_\(i).mp4")
                         } else {
-                            print("🔴 [uploadMediaStory] Video export failed: \(exporter.error?.localizedDescription ?? "unknown")")
                         }
                         inner.leave()
                     }
@@ -2609,7 +2297,6 @@ class ApiService {
             }
 
             let endpoint = Constant.baseURL + "index.php/Api_Controller/create_story"
-            print("📡 [uploadMediaStory] Uploading \(orderedMedia.count) file(s) to \(endpoint)")
 
             AF.upload(multipartFormData: { form in
                 form.append(Data(uid.utf8), withName: "uid")
@@ -2737,20 +2424,16 @@ class ApiService {
     func fetchStoryPrivacy(completion: @escaping (StoryPrivacySettings) -> Void) {
         let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         guard !uid.isEmpty else {
-            print("🔴 [fetchStoryPrivacy] uid is empty — returning defaults")
             completion(StoryPrivacySettings(visibilityType: "my_contacts", shareWithUids: [], neverShareUids: []))
             return
         }
         let endpoint = Constant.baseURL + "index.php/Api_Controller/get_story_privacy"
-        print("📤 [fetchStoryPrivacy] POST \(endpoint) uid=\(uid)")
         AF.request(endpoint, method: .post, parameters: ["uid": uid], encoding: URLEncoding.default)
             .responseData { [weak self] response in
                 let rawBody = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "(nil)"
-                print("📥 [fetchStoryPrivacy] status=\(response.response?.statusCode ?? -1) body=\(rawBody)")
                 guard let json = self?.parseStoryResponse(response.data),
                       (json["success"] as? String) == "1"
                 else {
-                    print("🔴 [fetchStoryPrivacy] parse/success guard failed — returning defaults")
                     completion(StoryPrivacySettings(visibilityType: "my_contacts", shareWithUids: [], neverShareUids: []))
                     return
                 }
@@ -2764,7 +2447,6 @@ class ApiService {
                 }
                 let shareWith  = toStringArray(json["share_with_uids"])
                 let neverShare = toStringArray(json["never_share_uids"])
-                print("✅ [fetchStoryPrivacy] visType=\(visType) shareWith=\(shareWith) neverShare=\(neverShare)")
                 completion(StoryPrivacySettings(visibilityType: visType,
                                                 shareWithUids: shareWith,
                                                 neverShareUids: neverShare))
@@ -2792,17 +2474,13 @@ class ApiService {
             "share_with_uids":  shareJSON,
             "never_share_uids": neverJSON,
         ]
-        print("📤 [saveStoryPrivacy] visType=\(visibilityType) shareWith=\(shareJSON) neverShare=\(neverJSON)")
         AF.request(endpoint, method: .post, parameters: params, encoding: URLEncoding.default)
             .responseData { [weak self] response in
                 let rawBody = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "(nil)"
-                print("📥 [saveStoryPrivacy] status=\(response.response?.statusCode ?? -1) body=\(rawBody)")
                 guard let json = self?.parseStoryResponse(response.data) else {
-                    print("🔴 [saveStoryPrivacy] parse failed")
                     completion(false); return
                 }
                 let ok = (json["success"] as? String) == "1"
-                print(ok ? "✅ [saveStoryPrivacy] saved OK" : "🔴 [saveStoryPrivacy] server returned failure: \(json["message"] ?? "")")
                 completion(ok)
             }
     }
@@ -2871,11 +2549,9 @@ class ApiService {
             .responseData { [weak self] response in
                 let status = response.response?.statusCode ?? -1
                 let raw = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "(nil)"
-                print("📥 [fetchStoryReplies] status=\(status) body=\(raw)")
                 guard let self, let json = self.parseStoryResponse(response.data),
                       (json["success"] as? String) == "1",
                       let data = json["data"] as? [[String: Any]] else {
-                    print("🔴 [fetchStoryReplies] parse/success guard failed")
                     completion([]); return
                 }
                 completion(data.compactMap { self.parseReply($0) })
@@ -2886,28 +2562,23 @@ class ApiService {
                         completion: @escaping (StoryReply?) -> Void) {
         let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         guard !uid.isEmpty else {
-            print("🔴 [postStoryReply] uid is empty, aborting")
             completion(nil); return
         }
         let endpoint = Constant.baseURL + "index.php/Api_Controller/post_story_reply"
         var params: [String: String] = ["uid": uid, "story_id": storyId, "message": message]
         if let pid = parentReplyId { params["parent_id"] = pid }
-        print("📤 [postStoryReply] POST uid=\(uid) story_id=\(storyId) parent=\(parentReplyId ?? "nil") message=\(message)")
         AF.request(endpoint, method: .post, parameters: params, encoding: URLEncoding.default)
             .responseData { [weak self] response in
                 let status = response.response?.statusCode ?? -1
                 let raw = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "(nil)"
-                print("📥 [postStoryReply] status=\(status) body=\(raw)")
                 if let err = response.error { print("🔴 [postStoryReply] network error: \(err)") }
                 guard let self,
                       let json = self.parseStoryResponse(response.data),
                       (json["success"] as? String) == "1",
                       let d = json["reply"] as? [String: Any],
                       let reply = self.parseReply(d) else {
-                    print("🔴 [postStoryReply] parse/success guard failed")
                     completion(nil); return
                 }
-                print("✅ [postStoryReply] saved reply id=\(reply.id) parent=\(reply.parentId ?? "nil")")
                 completion(reply)
             }
     }
@@ -2916,14 +2587,12 @@ class ApiService {
         let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         guard !uid.isEmpty else { return }
         let endpoint = Constant.baseURL + "index.php/Api_Controller/toggle_reply_like"
-        print("📤 [toggleReplyLike] uid=\(uid) reply_id=\(replyId)")
         AF.request(endpoint, method: .post,
                    parameters: ["uid": uid, "reply_id": replyId],
                    encoding: URLEncoding.default)
             .responseData { [weak self] response in
                 let status = response.response?.statusCode ?? -1
                 let raw = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "(nil)"
-                print("📥 [toggleReplyLike] status=\(status) body=\(raw)")
                 guard let json = self?.parseStoryResponse(response.data),
                       (json["success"] as? String) == "1" else { return }
                 let liked = json["liked"] as? Bool ?? false
@@ -2959,22 +2628,18 @@ class ApiService {
 
     func fetchStoryLikes(storyId: String, completion: @escaping ([[String: Any]]) -> Void) {
         let endpoint = Constant.baseURL + "index.php/Api_Controller/get_story_likes"
-        print("📤 [fetchStoryLikes] POST \(endpoint) story_id=\(storyId)")
         AF.request(endpoint, method: .post,
                    parameters: ["story_id": storyId],
                    encoding: URLEncoding.default)
             .responseData { [weak self] response in
                 let status = response.response?.statusCode ?? -1
                 let raw = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "(nil)"
-                print("📥 [fetchStoryLikes] storyId=\(storyId) status=\(status) body=\(raw)")
                 if let err = response.error { print("🔴 [fetchStoryLikes] network error: \(err)") }
                 guard let json = self?.parseStoryResponse(response.data),
                       (json["success"] as? String) == "1",
                       let data = json["data"] as? [[String: Any]] else {
-                    print("🔴 [fetchStoryLikes] parse/success guard failed")
                     completion([]); return
                 }
-                print("✅ [fetchStoryLikes] \(data.count) likers raw: \(data.map { $0["uid"] ?? "nil" })")
                 completion(data)
             }
     }
@@ -3064,12 +2729,10 @@ class ApiService {
             "currency": currency,
             "customer_phone": customerPhone
         ]
-        print("💳 [createCashfreeOrder] POST \(endpoint) params=\(params)")
         AF.request(endpoint, method: .post, parameters: params, encoding: URLEncoding.default)
             .responseData { [weak self] response in
                 let raw = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "(nil)"
                 let status = response.response?.statusCode ?? -1
-                print("💳 [createCashfreeOrder] status=\(status) body=\(raw)")
                 guard let json = self?.parseStoryResponse(response.data),
                       (json["success"] as? String) == "1",
                       let sessionId = json["payment_session_id"] as? String,
@@ -3081,21 +2744,32 @@ class ApiService {
 
     func getPremiumStatus(uid: String, completion: @escaping (_ unlocked: Bool, _ expiryTimestamp: Double) -> Void) {
         let endpoint = Constant.baseURL + "get_premium_status"
-        print("🔵 [Premium API] Calling get_premium_status | uid=\(uid) | url=\(endpoint)")
         AF.request(endpoint, method: .post, parameters: ["uid": uid], encoding: URLEncoding.default)
             .responseData { [weak self] response in
                 let rawString = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "nil"
-                print("🟢 [Premium API] Raw response: \(rawString)")
                 guard let json = self?.parseStoryResponse(response.data),
                       (json["success"] as? String) == "1" else {
-                    print("🔴 [Premium API] Failed — success != 1 or parse error")
                     completion(false, 0)
                     return
                 }
                 let unlocked = json["premium_unlocked"] as? Bool ?? false
                 let expiry   = json["expiry_timestamp"] as? Double ?? 0
-                print("✅ [Premium API] unlocked=\(unlocked) | expiry_timestamp=\(expiry)")
                 completion(unlocked, expiry)
+            }
+    }
+
+    func verifyPaymentAndSavePremium(uid: String, orderId: String, completion: @escaping (_ success: Bool, _ expiryTimestamp: Double) -> Void) {
+        let endpoint = Constant.baseURL + "verify_payment"
+        let params: [String: String] = ["uid": uid, "order_id": orderId]
+        AF.request(endpoint, method: .post, parameters: params, encoding: URLEncoding.default)
+            .responseData { [weak self] response in
+                guard let json = self?.parseStoryResponse(response.data),
+                      (json["success"] as? String) == "1" else {
+                    completion(false, 0)
+                    return
+                }
+                let expiry = json["expiry_timestamp"] as? Double ?? 0
+                completion(true, expiry)
             }
     }
 
@@ -3123,12 +2797,10 @@ class ApiService {
             "customer_phone": customerPhone,
             "customer_email": customerEmail
         ]
-        print("🌐 [createCashfreeIPGOrder] POST \(endpoint) params=\(params)")
         AF.request(endpoint, method: .post, parameters: params, encoding: URLEncoding.default)
             .responseData { [weak self] response in
                 let raw = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "(nil)"
                 let status = response.response?.statusCode ?? -1
-                print("🌐 [createCashfreeIPGOrder] status=\(status) body=\(raw)")
                 guard let json = self?.parseStoryResponse(response.data),
                       (json["success"] as? String) == "1",
                       let sessionId = json["payment_session_id"] as? String,
@@ -3141,13 +2813,11 @@ class ApiService {
     func createCashfreePremiumSubscription(uid: String, phone: String,
                                            completion: @escaping (Bool, String, String, String) -> Void) {
         let endpoint = Constant.baseURL + "create_cashfree_premium_subscription"
-        print("🔒 [createPremiumSubscription] uid=\(uid)")
         AF.request(endpoint, method: .post,
                    parameters: ["uid": uid, "customer_phone": phone],
                    encoding: URLEncoding.default)
             .responseData { [weak self] response in
                 let raw = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                print("🔒 [createPremiumSubscription] raw=\(raw)")
                 guard let json = self?.parseStoryResponse(response.data) else {
                     completion(false, "", "", "Server error. Please try again."); return
                 }
@@ -3182,21 +2852,18 @@ class ApiService {
         let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
         guard !uid.isEmpty else { completion(StoryLikeStatus(liked: false, likesCount: 0)); return }
         let endpoint = Constant.baseURL + "index.php/Api_Controller/toggle_story_like"
-        print("📤 [toggleStoryLike] POST uid=\(uid) story_id=\(storyId)")
         AF.request(endpoint, method: .post,
                    parameters: ["uid": uid, "story_id": storyId],
                    encoding: URLEncoding.default)
             .responseData { [weak self] response in
                 let status = response.response?.statusCode ?? -1
                 let raw = response.data.flatMap { String(data: $0, encoding: .utf8) } ?? "(nil)"
-                print("📥 [toggleStoryLike] status=\(status) body=\(raw)")
                 guard let json = self?.parseStoryResponse(response.data),
                       (json["success"] as? String) == "1" else {
                     completion(StoryLikeStatus(liked: false, likesCount: 0)); return
                 }
                 let liked = json["liked"] as? Bool ?? false
                 let count = json["likes_count"] as? Int ?? 0
-                print("✅ [toggleStoryLike] liked=\(liked) count=\(count)")
                 completion(StoryLikeStatus(liked: liked, likesCount: count))
             }
     }
