@@ -101,10 +101,10 @@ struct WebView: UIViewRepresentable {
         webView.scrollView.bounces = false
         
         
-        // Load the initial URL with cache policy
+        // Load the initial URL — always fetch fresh so server updates show immediately
         if let url = URL(string: url) {
             var request = URLRequest(url: url)
-            request.cachePolicy = .returnCacheDataElseLoad // Use cache if available
+            request.cachePolicy = .reloadIgnoringLocalCacheData
             request.timeoutInterval = 30.0
             print("🔵 Loading WebView URL: \(url)")
             webView.load(request)
@@ -136,7 +136,7 @@ struct WebView: UIViewRepresentable {
             // Load new URL only if it's different
             if let newURL = URL(string: url) {
                 var request = URLRequest(url: newURL)
-                request.cachePolicy = .returnCacheDataElseLoad // Use cache if available
+                request.cachePolicy = .reloadIgnoringLocalCacheData
                 request.timeoutInterval = 30.0
                 webView.load(request)
             }
