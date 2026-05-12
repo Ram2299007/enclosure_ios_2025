@@ -240,14 +240,16 @@ struct PayView: View {
                     HStack(spacing: 3) {
                         Text("By subscribing you agree to our")
                             .foregroundColor(Color("TextColor").opacity(0.45))
-                        Link("Terms", destination: URL(string: "https://enclosureapp.com/terms_and_conditions")!)
-                            .foregroundColor(themeColor)
+                        NavigationLink(destination: TermsAndConditionsView()) {
+                            Text("Terms")
+                                .foregroundColor(themeColor)
+                        }
                         Text("&")
                             .foregroundColor(Color("TextColor").opacity(0.45))
-                        Link("Privacy Policy", destination: URL(string: colorScheme == .dark
-                            ? "https://enclosureapp.com/black_policy"
-                            : "https://enclosureapp.com/white_policy")!)
-                            .foregroundColor(themeColor)
+                        NavigationLink(destination: PrivacyPolicyView()) {
+                            Text("Privacy Policy")
+                                .foregroundColor(themeColor)
+                        }
                     }
                     .font(.custom("Inter18pt-Medium", size: 11))
                     .frame(maxWidth: .infinity, alignment: .center)
