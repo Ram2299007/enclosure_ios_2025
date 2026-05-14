@@ -220,16 +220,13 @@ final class ContactSyncManager {
         }
 
         let countryDigits = countryCode.filter { "0123456789".contains($0) }
-        if !countryDigits.isEmpty && !cleaned.hasPrefix(countryDigits) {
-            let withCountry = countryDigits + cleaned
-            // Only prepend country code if result stays in valid E.164 range.
-            // If prepending makes it > 13 digits, the number likely already has a foreign country code.
-            if withCountry.count <= 13 {
-                cleaned = withCountry
-            }
+        // Only prepend country code for 10-digit local numbers (Indian format).
+        // 11+ digit numbers already carry a country code (own or foreign).
+        if !countryDigits.isEmpty && cleaned.count == 10 {
+            cleaned = countryDigits + cleaned
         }
 
-        // Filter short codes and toll-free/service numbers
+        // Filter short codes and oversized numbers
         guard cleaned.count >= 10 && cleaned.count <= 13 else { return nil }
         return "+" + cleaned
     }
