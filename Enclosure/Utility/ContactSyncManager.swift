@@ -60,7 +60,7 @@ final class ContactSyncManager {
             
             // Show consent dialog before uploading contacts
             DispatchQueue.main.async {
-                self.showContactUploadConsentDialog {
+                self.showContactUploadConsentDialog(onConsent: {
                     // User consented, proceed with upload
                     DispatchQueue.global(qos: .userInitiated).async {
                         do {
@@ -75,7 +75,7 @@ final class ContactSyncManager {
                                     completion(.failure(.uploadFailed(message)))
                                     return
                                 }
-                                
+
                                 ApiService.shared.saveContactFile(fileName: fileName) { saveSuccess, saveMessage in
                                     if saveSuccess {
                                         completion(.success(()))
@@ -90,31 +90,33 @@ final class ContactSyncManager {
                             completion(.failure(.underlying(error)))
                         }
                     }
-                }
+                }, onCancel: {
+                    completion(.failure(.permissionDenied))
+                })
             }
         }
     }
     
-    private func showContactUploadConsentDialog(onConsent: @escaping () -> Void) {
+    private func showContactUploadConsentDialog(onConsent: @escaping () -> Void, onCancel: @escaping () -> Void) {
         guard let topViewController = UIApplication.shared.topViewController() else {
             onConsent() // Fallback: proceed if can't show dialog
             return
         }
-        
+
         let alert = UIAlertController(
             title: "Contact Upload Consent",
             message: "Enclosure will upload your contacts to our secure server to help you find friends who are already using Enclosure. Your contacts will only be used to match you with other users and will never be shared with third parties. You can remove your contacts at any time from Settings.",
             preferredStyle: .alert
         )
-        
+
         alert.addAction(UIAlertAction(title: "Continue", style: .default) { _ in
             onConsent()
         })
-        
+
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
-            // User declined consent
+            onCancel()
         })
-        
+
         topViewController.present(alert, animated: true)
     }
     
@@ -169,8 +171,8 @@ final class ContactSyncManager {
                 contactsPayload.append([
                     "uid": uid,
                     "mobile_no": phoneNumber,
-                    "contact_name": displayName,
-                    "contact_number": normalized
+                    "name": displayName,
+                    "number": normalized
                 ])
                 
                 if contactsPayload.count >= 10_000 {
@@ -203,21 +205,33 @@ final class ContactSyncManager {
     }
     
     private func normalizeNumber(_ value: String, countryCode: String) -> String? {
-        let digits = value.replacingOccurrences(of: "[^0-9+]", with: "", options: .regularExpression)
-        guard !digits.isEmpty else { return nil }
-        
-        var cleaned = digits.filter { "0123456789".contains($0) }
+        let stripped = value.replacingOccurrences(of: "[^0-9+]", with: "", options: .regularExpression)
+        guard !stripped.isEmpty else { return nil }
+
+        // Preserve existing international format (e.g. +447459635044 stays as-is)
+        if stripped.hasPrefix("+") {
+            let digitsOnly = String(stripped.dropFirst()).filter { "0123456789".contains($0) }
+            return digitsOnly.isEmpty ? nil : "+" + digitsOnly
+        }
+
+        var cleaned = stripped.filter { "0123456789".contains($0) }
         while cleaned.hasPrefix("0") && cleaned.count > 1 {
             cleaned.removeFirst()
         }
-        
+
         let countryDigits = countryCode.filter { "0123456789".contains($0) }
         if !countryDigits.isEmpty && !cleaned.hasPrefix(countryDigits) {
-            cleaned = countryDigits + cleaned
+            let withCountry = countryDigits + cleaned
+            // Only prepend country code if result stays in valid E.164 range.
+            // If prepending makes it > 13 digits, the number likely already has a foreign country code.
+            if withCountry.count <= 13 {
+                cleaned = withCountry
+            }
         }
-        
-        // Return with leading + for international format (e.g. +911800407267864)
-        return cleaned.isEmpty ? nil : "+" + cleaned
+
+        // Filter short codes and toll-free/service numbers
+        guard cleaned.count >= 10 && cleaned.count <= 13 else { return nil }
+        return "+" + cleaned
     }
 }
 
