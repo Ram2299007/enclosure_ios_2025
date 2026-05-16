@@ -726,24 +726,26 @@ struct MainActivityOld: View {
                                 }
                                 .frame(width: 80, height: activeCallManager.hasActiveCall ? 50 : 55)
                                 if !hasSeenInviteHint {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "person.badge.plus")
-                                            .font(.system(size: 9, weight: .bold))
-                                            .foregroundColor(.black)
-                                        Text("Tap to Invite")
-                                            .font(.system(size: 10, weight: .bold))
-                                            .foregroundColor(.black)
+                                    VStack(spacing: 0) {
+                                        Image(systemName: "arrowtriangle.up.fill")
+                                            .font(.system(size: 8, weight: .bold))
+                                            .foregroundColor(.yellow)
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "person.badge.plus")
+                                                .font(.system(size: 9, weight: .bold))
+                                                .foregroundColor(.black)
+                                            Text("Tap to Invite")
+                                                .font(.system(size: 10, weight: .bold))
+                                                .foregroundColor(.black)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Capsule().fill(Color.yellow))
                                     }
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        Capsule()
-                                            .fill(Color.yellow)
-                                    )
                                     .shadow(color: Color.yellow.opacity(inviteGlow ? 0.95 : 0.3), radius: inviteGlow ? 12 : 4, x: 0, y: 0)
                                     .scaleEffect(inviteGlow ? 1.06 : 1.0)
                                     .animation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true), value: inviteGlow)
-                                    .padding(.top, 6)
+                                    .padding(.top, 2)
                                     .onAppear { inviteGlow = true }
                                 }
                             }
