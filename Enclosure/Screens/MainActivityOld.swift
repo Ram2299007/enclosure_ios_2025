@@ -637,7 +637,7 @@ struct MainActivityOld: View {
                     Image("story")
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 20, height: 20)
+                        .frame(width: 26, height: 26)
                 }
 
                 Button {
@@ -732,6 +732,8 @@ struct MainActivityOld: View {
                                         .padding(.vertical, 2)
                                         .background(Color.black.opacity(0.55))
                                         .cornerRadius(5)
+                                        .shadow(color: .white.opacity(0.85), radius: 6, x: 0, y: 0)
+                                        .shadow(color: .white.opacity(0.4), radius: 12, x: 0, y: 0)
                                 }
                             }
                             .padding(.leading, 16)
