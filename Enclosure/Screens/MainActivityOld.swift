@@ -73,6 +73,7 @@ struct MainActivityOld: View {
     @State private var logoImageName: String = "ec_modern" // Dynamic logo based on theme color
     @AppStorage("hasSeenInviteHint") private var hasSeenInviteHint: Bool = false
     @State private var logoFrame: CGRect = .zero
+    @State private var showSpotlight: Bool = false
     @State private var switchTrackImage: String = "blue_radio_btn" // Dynamic switch track based on theme color
     @State private var bgRectTintColor: Color = Color(hex: Constant.themeColor) // Dynamic bg_rect tint color
     @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic mainvector background tint color (darker theme color)
@@ -713,6 +714,7 @@ struct MainActivityOld: View {
                     HStack(spacing: 0) {
                         if !isSearchActive {
                             Button(action: {
+                                showSpotlight = false
                                 hasSeenInviteHint = true
                                 withAnimation {
                                     showInviteScreen = true
@@ -728,27 +730,11 @@ struct MainActivityOld: View {
                             .background(GeometryReader { geo in
                                 Color.clear.onAppear {
                                     logoFrame = geo.frame(in: .global)
+                                    if !hasSeenInviteHint {
+                                        showSpotlight = true
+                                    }
                                 }
                             })
-                            .overlay(alignment: .bottom) {
-                                if !hasSeenInviteHint {
-                                    VStack(spacing: 0) {
-                                        Image(systemName: "arrowtriangle.up.fill")
-                                            .font(.system(size: 7))
-                                            .foregroundColor(Color.black.opacity(0.82))
-                                        Text("Tap to Invite")
-                                            .font(.system(size: 11, weight: .semibold))
-                                            .foregroundColor(.white)
-                                            .padding(.horizontal, 9)
-                                            .padding(.vertical, 5)
-                                            .background(Color.black.opacity(0.82))
-                                            .cornerRadius(7)
-                                    }
-                                    .offset(y: 44)
-                                    .transition(.opacity.animation(.easeInOut(duration: 0.25)))
-                                    .allowsHitTesting(false)
-                                }
-                            }
                         }
                         
                         Spacer()
@@ -899,7 +885,7 @@ struct MainActivityOld: View {
                 AnyView(dialogOverlays)
 
                 // Spotlight hint overlay — dims everything except logo circle
-                if !hasSeenInviteHint && logoFrame != .zero {
+                if showSpotlight && !hasSeenInviteHint {
                     let spotlight = logoFrame.insetBy(dx: -16, dy: -16)
                     ZStack {
                         SpotlightOverlayShape(spotlight: spotlight)
@@ -907,6 +893,7 @@ struct MainActivityOld: View {
                             .ignoresSafeArea()
                             .onTapGesture {
                                 withAnimation(.easeInOut(duration: 0.25)) {
+                                    showSpotlight = false
                                     hasSeenInviteHint = true
                                 }
                             }
