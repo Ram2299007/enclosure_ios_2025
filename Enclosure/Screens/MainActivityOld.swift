@@ -755,7 +755,7 @@ struct MainActivityOld: View {
                             .background(GeometryReader { geo in
                                 Color.clear.preference(
                                     key: LogoFrameKey.self,
-                                    value: geo.frame(in: .named("enclosureScreen"))
+                                    value: geo.frame(in: .global)
                                 )
                             })
                         }
@@ -1499,7 +1499,6 @@ struct MainActivityOld: View {
             )
             NSLog("✅ [MainActivityOld] InitiateCallFromRecents: VOICE call initiated to \(fullName)")
         }
-        .coordinateSpace(name: "enclosureScreen")
         .onPreferenceChange(LogoFrameKey.self) { frame in
             logoFrame = frame
         }
