@@ -712,7 +712,7 @@ struct MainActivityOld: View {
                 if(isMainContentVisible){
                     HStack(spacing: 0) {
                         if !isSearchActive {
-                            VStack(spacing: 2) {
+                            VStack(spacing: 0) {
                                 Button(action: {
                                     hasSeenInviteHint = true
                                     withAnimation {
@@ -728,21 +728,22 @@ struct MainActivityOld: View {
                                 if !hasSeenInviteHint {
                                     HStack(spacing: 4) {
                                         Image(systemName: "person.badge.plus")
-                                            .font(.system(size: 9, weight: .semibold))
-                                            .foregroundColor(.white)
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundColor(.black)
                                         Text("Tap to Invite")
-                                            .font(.system(size: 10, weight: .semibold))
-                                            .foregroundColor(.white)
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(.black)
                                     }
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
                                     .background(
                                         Capsule()
-                                            .fill(Color(hex: Constant.themeColor).opacity(0.85))
+                                            .fill(Color.yellow)
                                     )
-                                    .shadow(color: Color(hex: Constant.themeColor).opacity(inviteGlow ? 0.9 : 0.2), radius: inviteGlow ? 10 : 4, x: 0, y: 0)
-                                    .scaleEffect(inviteGlow ? 1.05 : 1.0)
-                                    .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: inviteGlow)
+                                    .shadow(color: Color.yellow.opacity(inviteGlow ? 0.95 : 0.3), radius: inviteGlow ? 12 : 4, x: 0, y: 0)
+                                    .scaleEffect(inviteGlow ? 1.06 : 1.0)
+                                    .animation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true), value: inviteGlow)
+                                    .padding(.top, 6)
                                     .onAppear { inviteGlow = true }
                                 }
                             }
