@@ -72,6 +72,7 @@ struct MainActivityOld: View {
     @State private var navigateToThemeView = false
     @State private var logoImageName: String = "ec_modern" // Dynamic logo based on theme color
     @AppStorage("hasSeenInviteHint") private var hasSeenInviteHint: Bool = false
+    @State private var inviteGlow: Bool = false
     @State private var switchTrackImage: String = "blue_radio_btn" // Dynamic switch track based on theme color
     @State private var bgRectTintColor: Color = Color(hex: Constant.themeColor) // Dynamic bg_rect tint color
     @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic mainvector background tint color (darker theme color)
@@ -637,7 +638,7 @@ struct MainActivityOld: View {
                     Image("story")
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 26, height: 26)
+                        .frame(width: 22, height: 22)
                 }
 
                 Button {
@@ -725,15 +726,24 @@ struct MainActivityOld: View {
                                 }
                                 .frame(width: 80, height: activeCallManager.hasActiveCall ? 50 : 55)
                                 if !hasSeenInviteHint {
-                                    Text("Tap to Invite")
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Color.black.opacity(0.55))
-                                        .cornerRadius(5)
-                                        .shadow(color: .white.opacity(0.85), radius: 6, x: 0, y: 0)
-                                        .shadow(color: .white.opacity(0.4), radius: 12, x: 0, y: 0)
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "person.badge.plus")
+                                            .font(.system(size: 9, weight: .semibold))
+                                            .foregroundColor(.white)
+                                        Text("Tap to Invite")
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundColor(.white)
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        Capsule()
+                                            .fill(Color(hex: Constant.themeColor).opacity(0.85))
+                                    )
+                                    .shadow(color: Color(hex: Constant.themeColor).opacity(inviteGlow ? 0.9 : 0.2), radius: inviteGlow ? 10 : 4, x: 0, y: 0)
+                                    .scaleEffect(inviteGlow ? 1.05 : 1.0)
+                                    .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: inviteGlow)
+                                    .onAppear { inviteGlow = true }
                                 }
                             }
                             .padding(.leading, 16)
