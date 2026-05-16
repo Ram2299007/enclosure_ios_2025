@@ -730,9 +730,6 @@ struct MainActivityOld: View {
                             .background(GeometryReader { geo in
                                 Color.clear.onAppear {
                                     logoFrame = geo.frame(in: .global)
-                                    if !hasSeenInviteHint {
-                                        showSpotlight = true
-                                    }
                                 }
                             })
                         }
@@ -883,41 +880,6 @@ struct MainActivityOld: View {
                 // Logo is now a ToolbarItem — no overlay needed
 
                 AnyView(dialogOverlays)
-
-                // Spotlight hint overlay — dims everything except logo circle
-                if showSpotlight && !hasSeenInviteHint {
-                    let spotlight = logoFrame.insetBy(dx: -16, dy: -16)
-                    ZStack {
-                        SpotlightOverlayShape(spotlight: spotlight)
-                            .fill(Color.black.opacity(0.72), style: FillStyle(eoFill: true))
-                            .ignoresSafeArea()
-                            .onTapGesture {
-                                withAnimation(.easeInOut(duration: 0.25)) {
-                                    showSpotlight = false
-                                    hasSeenInviteHint = true
-                                }
-                            }
-                        // Label below the logo
-                        VStack(spacing: 0) {
-                            Image(systemName: "arrowtriangle.up.fill")
-                                .font(.system(size: 7))
-                                .foregroundColor(Color.white.opacity(0.9))
-                            Text("Tap to Invite")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(Color.white.opacity(0.18))
-                                .cornerRadius(8)
-                        }
-                        .position(
-                            x: spotlight.midX,
-                            y: spotlight.maxY + 28
-                        )
-                        .allowsHitTesting(false)
-                    }
-                    .transition(.opacity.animation(.easeInOut(duration: 0.25)))
-                }
             }
             .ignoresSafeArea(.keyboard)
             .opacity(initialFadeInOpacity)
@@ -1163,6 +1125,14 @@ struct MainActivityOld: View {
             withAnimation(.easeInOut(duration: 0.3)) {
                 initialFadeInOpacity = 1.0
             }
+            // Show invite spotlight after fade-in, only for new users
+            if !hasSeenInviteHint {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    withAnimation(.easeIn(duration: 0.25)) {
+                        showSpotlight = true
+                    }
+                }
+            }
             
             // Authenticate as anonymous user
             authenticateAnonymousUser()
@@ -1185,6 +1155,37 @@ struct MainActivityOld: View {
             
             // Fetch theme color from API (matching Android fetchThemeColor in Webservice.java)
             fetchThemeColorFromServer()
+        }
+        .overlay {
+            if showSpotlight && !hasSeenInviteHint && logoFrame != .zero {
+                let spotlight = logoFrame.insetBy(dx: -16, dy: -16)
+                ZStack {
+                    SpotlightOverlayShape(spotlight: spotlight)
+                        .fill(Color.black.opacity(0.72), style: FillStyle(eoFill: true))
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                showSpotlight = false
+                                hasSeenInviteHint = true
+                            }
+                        }
+                    VStack(spacing: 0) {
+                        Image(systemName: "arrowtriangle.up.fill")
+                            .font(.system(size: 7))
+                            .foregroundColor(.white.opacity(0.9))
+                        Text("Tap to Invite")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.white.opacity(0.2))
+                            .cornerRadius(8)
+                    }
+                    .position(x: spotlight.midX, y: spotlight.maxY + 30)
+                    .allowsHitTesting(false)
+                }
+                .transition(.opacity)
+            }
         }
         .onChange(of: showNameDialog) { isShowing in
             // When name dialog is dismissed, show pending theme dialog if ready
