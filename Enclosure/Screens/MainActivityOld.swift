@@ -71,6 +71,8 @@ struct MainActivityOld: View {
     @State private var navigateToSettings = false
     @State private var navigateToThemeView = false
     @State private var logoImageName: String = "ec_modern" // Dynamic logo based on theme color
+    @AppStorage("hasSeenInviteHint") private var hasSeenInviteHint: Bool = false
+    @State private var logoFrame: CGRect = .zero
     @State private var switchTrackImage: String = "blue_radio_btn" // Dynamic switch track based on theme color
     @State private var bgRectTintColor: Color = Color(hex: Constant.themeColor) // Dynamic bg_rect tint color
     @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic mainvector background tint color (darker theme color)
@@ -711,6 +713,7 @@ struct MainActivityOld: View {
                     HStack(spacing: 0) {
                         if !isSearchActive {
                             Button(action: {
+                                hasSeenInviteHint = true
                                 withAnimation {
                                     showInviteScreen = true
                                 }
@@ -722,6 +725,30 @@ struct MainActivityOld: View {
                             }
                             .frame(width: 80, height: activeCallManager.hasActiveCall ? 50 : 55)
                             .padding(.leading, 16)
+                            .background(GeometryReader { geo in
+                                Color.clear.onAppear {
+                                    logoFrame = geo.frame(in: .global)
+                                }
+                            })
+                            .overlay(alignment: .bottom) {
+                                if !hasSeenInviteHint {
+                                    VStack(spacing: 0) {
+                                        Image(systemName: "arrowtriangle.up.fill")
+                                            .font(.system(size: 7))
+                                            .foregroundColor(Color.black.opacity(0.82))
+                                        Text("Tap to Invite")
+                                            .font(.system(size: 11, weight: .semibold))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 9)
+                                            .padding(.vertical, 5)
+                                            .background(Color.black.opacity(0.82))
+                                            .cornerRadius(7)
+                                    }
+                                    .offset(y: 44)
+                                    .transition(.opacity.animation(.easeInOut(duration: 0.25)))
+                                    .allowsHitTesting(false)
+                                }
+                            }
                         }
                         
                         Spacer()
@@ -870,6 +897,40 @@ struct MainActivityOld: View {
                 // Logo is now a ToolbarItem — no overlay needed
 
                 AnyView(dialogOverlays)
+
+                // Spotlight hint overlay — dims everything except logo circle
+                if !hasSeenInviteHint && logoFrame != .zero {
+                    let spotlight = logoFrame.insetBy(dx: -16, dy: -16)
+                    ZStack {
+                        SpotlightOverlayShape(spotlight: spotlight)
+                            .fill(Color.black.opacity(0.72), style: FillStyle(eoFill: true))
+                            .ignoresSafeArea()
+                            .onTapGesture {
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    hasSeenInviteHint = true
+                                }
+                            }
+                        // Label below the logo
+                        VStack(spacing: 0) {
+                            Image(systemName: "arrowtriangle.up.fill")
+                                .font(.system(size: 7))
+                                .foregroundColor(Color.white.opacity(0.9))
+                            Text("Tap to Invite")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.white.opacity(0.18))
+                                .cornerRadius(8)
+                        }
+                        .position(
+                            x: spotlight.midX,
+                            y: spotlight.maxY + 28
+                        )
+                        .allowsHitTesting(false)
+                    }
+                    .transition(.opacity.animation(.easeInOut(duration: 0.25)))
+                }
             }
             .ignoresSafeArea(.keyboard)
             .opacity(initialFadeInOpacity)
@@ -2941,6 +3002,17 @@ struct NetworkLoaderBar: View {
             blue: Double(b) / 255,
             opacity: Double(a) / 255
         )
+    }
+}
+
+// Spotlight shape: full-screen rect with a circular hole over the logo area
+private struct SpotlightOverlayShape: Shape {
+    let spotlight: CGRect
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.addRect(rect)
+        p.addEllipse(in: spotlight)
+        return p
     }
 }
 
