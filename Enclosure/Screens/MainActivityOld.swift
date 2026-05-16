@@ -72,8 +72,6 @@ struct MainActivityOld: View {
     @State private var navigateToThemeView = false
     @State private var logoImageName: String = "ec_modern" // Dynamic logo based on theme color
     @AppStorage("hasSeenInviteHint") private var hasSeenInviteHint: Bool = false
-    @State private var logoFrame: CGRect = .zero
-    @State private var showSpotlight: Bool = false
     @State private var switchTrackImage: String = "blue_radio_btn" // Dynamic switch track based on theme color
     @State private var bgRectTintColor: Color = Color(hex: Constant.themeColor) // Dynamic bg_rect tint color
     @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic mainvector background tint color (darker theme color)
@@ -713,25 +711,30 @@ struct MainActivityOld: View {
                 if(isMainContentVisible){
                     HStack(spacing: 0) {
                         if !isSearchActive {
-                            Button(action: {
-                                showSpotlight = false
-                                hasSeenInviteHint = true
-                                withAnimation {
-                                    showInviteScreen = true
+                            VStack(spacing: 2) {
+                                Button(action: {
+                                    hasSeenInviteHint = true
+                                    withAnimation {
+                                        showInviteScreen = true
+                                    }
+                                }) {
+                                    Image(logoImageName)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 55, height: 55)
                                 }
-                            }) {
-                                Image(logoImageName)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 55, height: 55)
+                                .frame(width: 80, height: activeCallManager.hasActiveCall ? 50 : 55)
+                                if !hasSeenInviteHint {
+                                    Text("Tap to Invite")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.black.opacity(0.55))
+                                        .cornerRadius(5)
+                                }
                             }
-                            .frame(width: 80, height: activeCallManager.hasActiveCall ? 50 : 55)
                             .padding(.leading, 16)
-                            .background(GeometryReader { geo in
-                                Color.clear.onAppear {
-                                    logoFrame = geo.frame(in: .global)
-                                }
-                            })
                         }
                         
                         Spacer()
@@ -1125,15 +1128,6 @@ struct MainActivityOld: View {
             withAnimation(.easeInOut(duration: 0.3)) {
                 initialFadeInOpacity = 1.0
             }
-            // Show invite spotlight after fade-in, only for new users
-            if !hasSeenInviteHint {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    withAnimation(.easeIn(duration: 0.25)) {
-                        showSpotlight = true
-                    }
-                }
-            }
-            
             // Authenticate as anonymous user
             authenticateAnonymousUser()
             
@@ -1155,37 +1149,6 @@ struct MainActivityOld: View {
             
             // Fetch theme color from API (matching Android fetchThemeColor in Webservice.java)
             fetchThemeColorFromServer()
-        }
-        .overlay {
-            if showSpotlight && !hasSeenInviteHint && logoFrame != .zero {
-                let spotlight = logoFrame.insetBy(dx: -16, dy: -16)
-                ZStack {
-                    SpotlightOverlayShape(spotlight: spotlight)
-                        .fill(Color.black.opacity(0.72), style: FillStyle(eoFill: true))
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.easeInOut(duration: 0.25)) {
-                                showSpotlight = false
-                                hasSeenInviteHint = true
-                            }
-                        }
-                    VStack(spacing: 0) {
-                        Image(systemName: "arrowtriangle.up.fill")
-                            .font(.system(size: 7))
-                            .foregroundColor(.white.opacity(0.9))
-                        Text("Tap to Invite")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.white.opacity(0.2))
-                            .cornerRadius(8)
-                    }
-                    .position(x: spotlight.midX, y: spotlight.maxY + 30)
-                    .allowsHitTesting(false)
-                }
-                .transition(.opacity)
-            }
         }
         .onChange(of: showNameDialog) { isShowing in
             // When name dialog is dismissed, show pending theme dialog if ready
@@ -2993,14 +2956,4 @@ struct NetworkLoaderBar: View {
     }
 }
 
-// Spotlight shape: full-screen rect with a circular hole over the logo area
-private struct SpotlightOverlayShape: Shape {
-    let spotlight: CGRect
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        p.addRect(rect)
-        p.addEllipse(in: spotlight)
-        return p
-    }
-}
 
