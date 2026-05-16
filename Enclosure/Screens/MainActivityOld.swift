@@ -72,6 +72,7 @@ struct MainActivityOld: View {
     @State private var navigateToThemeView = false
     @State private var logoImageName: String = "ec_modern" // Dynamic logo based on theme color
     @AppStorage("hasSeenInviteHint") private var hasSeenInviteHint: Bool = false
+    @State private var hintPulse: Bool = false
     @State private var switchTrackImage: String = "blue_radio_btn" // Dynamic switch track based on theme color
     @State private var bgRectTintColor: Color = Color(hex: Constant.themeColor) // Dynamic bg_rect tint color
     @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic mainvector background tint color (darker theme color)
@@ -725,13 +726,28 @@ struct MainActivityOld: View {
                                 }
                                 .frame(width: 80, height: activeCallManager.hasActiveCall ? 50 : 55)
                                 if !hasSeenInviteHint {
-                                    Text("Tap to Invite")
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Color.black.opacity(0.55))
-                                        .cornerRadius(5)
+                                    Button(action: {
+                                        hasSeenInviteHint = true
+                                        withAnimation { showInviteScreen = true }
+                                    }) {
+                                        VStack(spacing: 1) {
+                                            Image(systemName: "arrowtriangle.up.fill")
+                                                .font(.system(size: 7))
+                                                .foregroundColor(.yellow)
+                                                .offset(y: hintPulse ? -2 : 2)
+                                                .animation(.easeInOut(duration: 0.55).repeatForever(autoreverses: true), value: hintPulse)
+                                            Text("Tap to Invite")
+                                                .font(.system(size: 10, weight: .bold))
+                                                .foregroundColor(.white)
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 3)
+                                                .background(Color.yellow.opacity(0.85))
+                                                .cornerRadius(6)
+                                        }
+                                    }
+                                    .scaleEffect(hintPulse ? 1.08 : 0.95)
+                                    .animation(.easeInOut(duration: 0.55).repeatForever(autoreverses: true), value: hintPulse)
+                                    .onAppear { hintPulse = true }
                                 }
                             }
                             .padding(.leading, 16)
