@@ -72,6 +72,7 @@ struct MainActivityOld: View {
     @State private var navigateToThemeView = false
     @State private var logoImageName: String = "ec_modern" // Dynamic logo based on theme color
     @AppStorage("hasSeenInviteHint") private var hasSeenInviteHint: Bool = false
+    @State private var logoFrame: CGRect = .zero
     @State private var hintPulse: Bool = false
     @State private var switchTrackImage: String = "blue_radio_btn" // Dynamic switch track based on theme color
     @State private var bgRectTintColor: Color = Color(hex: Constant.themeColor) // Dynamic bg_rect tint color
@@ -751,8 +752,14 @@ struct MainActivityOld: View {
                                 }
                             }
                             .padding(.leading, 16)
+                            .background(GeometryReader { geo in
+                                Color.clear.preference(
+                                    key: LogoFrameKey.self,
+                                    value: geo.frame(in: .named("enclosureScreen"))
+                                )
+                            })
                         }
-                        
+
                         Spacer()
 
                         if !isSearchActive {
@@ -1492,8 +1499,25 @@ struct MainActivityOld: View {
             )
             NSLog("✅ [MainActivityOld] InitiateCallFromRecents: VOICE call initiated to \(fullName)")
         }
+        .coordinateSpace(name: "enclosureScreen")
+        .onPreferenceChange(LogoFrameKey.self) { frame in
+            logoFrame = frame
+        }
+        .overlay {
+            if !hasSeenInviteHint && !logoFrame.isEmpty {
+                SpotlightOverlayShape(spotlight: logoFrame.insetBy(dx: -12, dy: -8))
+                    .fill(Color.black.opacity(0.72), style: FillStyle(eoFill: true))
+                    .ignoresSafeArea()
+                    .animation(.easeIn(duration: 0.25), value: hasSeenInviteHint)
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            hasSeenInviteHint = true
+                        }
+                    }
+            }
+        }
     }
-    
+
     // MARK: - Pending Call Check (Background / Lock Screen Fallback)
     /// Called when scenePhase becomes .active to pick up calls answered from background/lockscreen.
     /// PendingCallManager is the reliable source — NotificationCenter may have missed the notification.
@@ -2969,6 +2993,23 @@ struct NetworkLoaderBar: View {
             blue: Double(b) / 255,
             opacity: Double(a) / 255
         )
+    }
+}
+
+private struct LogoFrameKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
+private struct SpotlightOverlayShape: Shape {
+    let spotlight: CGRect
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.addRect(rect)
+        p.addRoundedRect(in: spotlight, cornerSize: CGSize(width: 16, height: 16))
+        return p
     }
 }
 
