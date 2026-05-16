@@ -1428,8 +1428,23 @@ struct MainActivityOld: View {
                 NSLog("📞 [MainActivityOld] IncomingCallCancelled - No active video call, safe to clear")
             }
         }
+        .onPreferenceChange(LogoFrameKey.self) { frame in
+            logoFrame = frame
+        }
+        .overlay {
+            if !hasSeenInviteHint && !logoFrame.isEmpty {
+                SpotlightOverlayShape(spotlight: logoFrame.insetBy(dx: -12, dy: -8))
+                    .fill(Color.black.opacity(0.72), style: FillStyle(eoFill: true))
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            hasSeenInviteHint = true
+                        }
+                    }
+            }
+        }
     }
-    
+
     // MARK: - Initiate Call From Phone App Recents
     /// Handles both voice and video calls initiated from iPhone's native Phone app Recents.
     private func initiateCallFromRecents(
@@ -1498,22 +1513,6 @@ struct MainActivityOld: View {
                 voipToken: voipToken
             )
             NSLog("✅ [MainActivityOld] InitiateCallFromRecents: VOICE call initiated to \(fullName)")
-        }
-        .onPreferenceChange(LogoFrameKey.self) { frame in
-            logoFrame = frame
-        }
-        .overlay {
-            if !hasSeenInviteHint && !logoFrame.isEmpty {
-                SpotlightOverlayShape(spotlight: logoFrame.insetBy(dx: -12, dy: -8))
-                    .fill(Color.black.opacity(0.72), style: FillStyle(eoFill: true))
-                    .ignoresSafeArea()
-                    .animation(.easeIn(duration: 0.25), value: hasSeenInviteHint)
-                    .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            hasSeenInviteHint = true
-                        }
-                    }
-            }
         }
     }
 
