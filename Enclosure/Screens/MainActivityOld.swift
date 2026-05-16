@@ -72,8 +72,6 @@ struct MainActivityOld: View {
     @State private var navigateToThemeView = false
     @State private var logoImageName: String = "ec_modern" // Dynamic logo based on theme color
     @AppStorage("hasSeenInviteHint") private var hasSeenInviteHint: Bool = false
-    @State private var logoFrame: CGRect = .zero
-    @State private var hintPulse: Bool = false
     @State private var switchTrackImage: String = "blue_radio_btn" // Dynamic switch track based on theme color
     @State private var bgRectTintColor: Color = Color(hex: Constant.themeColor) // Dynamic bg_rect tint color
     @State private var mainvectorTintColor: Color = Color(hex: "#01253B") // Dynamic mainvector background tint color (darker theme color)
@@ -727,37 +725,16 @@ struct MainActivityOld: View {
                                 }
                                 .frame(width: 80, height: activeCallManager.hasActiveCall ? 50 : 55)
                                 if !hasSeenInviteHint {
-                                    Button(action: {
-                                        hasSeenInviteHint = true
-                                        withAnimation { showInviteScreen = true }
-                                    }) {
-                                        VStack(spacing: 1) {
-                                            Image(systemName: "arrowtriangle.up.fill")
-                                                .font(.system(size: 7))
-                                                .foregroundColor(.yellow)
-                                                .offset(y: hintPulse ? -2 : 2)
-                                                .animation(.easeInOut(duration: 0.55).repeatForever(autoreverses: true), value: hintPulse)
-                                            Text("Tap to Invite")
-                                                .font(.system(size: 10, weight: .bold))
-                                                .foregroundColor(.white)
-                                                .padding(.horizontal, 8)
-                                                .padding(.vertical, 3)
-                                                .background(Color.yellow.opacity(0.85))
-                                                .cornerRadius(6)
-                                        }
-                                    }
-                                    .scaleEffect(hintPulse ? 1.08 : 0.95)
-                                    .animation(.easeInOut(duration: 0.55).repeatForever(autoreverses: true), value: hintPulse)
-                                    .onAppear { hintPulse = true }
+                                    Text("Tap to Invite")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.black.opacity(0.55))
+                                        .cornerRadius(5)
                                 }
                             }
                             .padding(.leading, 16)
-                            .background(GeometryReader { geo in
-                                Color.clear.preference(
-                                    key: LogoFrameKey.self,
-                                    value: geo.frame(in: .global)
-                                )
-                            })
                         }
 
                         Spacer()
@@ -1426,21 +1403,6 @@ struct MainActivityOld: View {
                 NSLog("📞 [MainActivityOld] IncomingCallCancelled - VideoCallScreen ACTIVE, not dismissing (session manages lifecycle)")
             } else {
                 NSLog("📞 [MainActivityOld] IncomingCallCancelled - No active video call, safe to clear")
-            }
-        }
-        .onPreferenceChange(LogoFrameKey.self) { frame in
-            logoFrame = frame
-        }
-        .overlay {
-            if !hasSeenInviteHint && !logoFrame.isEmpty {
-                SpotlightOverlayShape(spotlight: logoFrame.insetBy(dx: -12, dy: -8))
-                    .fill(Color.black.opacity(0.72), style: FillStyle(eoFill: true))
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            hasSeenInviteHint = true
-                        }
-                    }
             }
         }
     }
@@ -2994,21 +2956,5 @@ struct NetworkLoaderBar: View {
     }
 }
 
-private struct LogoFrameKey: PreferenceKey {
-    static var defaultValue: CGRect = .zero
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        value = nextValue()
-    }
-}
-
-private struct SpotlightOverlayShape: Shape {
-    let spotlight: CGRect
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        p.addRect(rect)
-        p.addRoundedRect(in: spotlight, cornerSize: CGSize(width: 16, height: 16))
-        return p
-    }
-}
 
 
