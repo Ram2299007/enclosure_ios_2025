@@ -181,9 +181,10 @@ struct StoryBottomSheetView: View {
                                 Button { showPhotoPicker = true } label: {
                                     Label("Add Story", systemImage: "plus.circle")
                                 }
-                                Button { showPostAd = true } label: {
-                                    Label("Promote Post", systemImage: "megaphone")
-                                }
+                                // TODO: Promote Post — re-enable when ad feature is ready
+                                // Button { showPostAd = true } label: {
+                                //     Label("Promote Post", systemImage: "megaphone")
+                                // }
                             } label: {
                                 ZStack(alignment: .bottomTrailing) {
                                     profileImage(size: 50)
@@ -240,9 +241,10 @@ struct StoryBottomSheetView: View {
                                 Button { showPhotoPicker = true } label: {
                                     Label("Add Story", systemImage: "plus.circle")
                                 }
-                                Button { showPostAd = true } label: {
-                                    Label("Promote Post", systemImage: "megaphone")
-                                }
+                                // TODO: Promote Post — re-enable when ad feature is ready
+                                // Button { showPostAd = true } label: {
+                                //     Label("Promote Post", systemImage: "megaphone")
+                                // }
                             } label: {
                                 ZStack {
                                     CachedAsyncImage(url: myProfileFullURL) { image in
@@ -250,7 +252,7 @@ struct StoryBottomSheetView: View {
                                     } placeholder: {
                                         Image("inviteimg").resizable().scaledToFill()
                                     }
-                                    .frame(width: 80, height: 120)
+                                    .frame(width: 100, height: 155)
                                     .clipped()
 
                                     Color.black.opacity(0.35)
@@ -264,7 +266,7 @@ struct StoryBottomSheetView: View {
                                             .foregroundColor(.white)
                                     }
                                 }
-                                .frame(width: 80, height: 120)
+                                .frame(width: 100, height: 155)
                                 .clipShape(RoundedRectangle(cornerRadius: 10))
                                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: Constant.themeColor), lineWidth: 1.5))
                             }
@@ -277,7 +279,7 @@ struct StoryBottomSheetView: View {
                                 HStack(spacing: 8) {
                                     ForEach(Array(uploadManager.myStories.enumerated()), id: \.element.id) { index, story in
                                         VStack(spacing: 6) {
-                                            storyCard(story, width: 80, height: 120)
+                                            storyCard(story, width: 100, height: 155)
                                                 .simultaneousGesture(TapGesture().onEnded {
                                                     queuePresentation = buildMyStoriesQueue(startingAt: index)
                                                 })
@@ -307,7 +309,7 @@ struct StoryBottomSheetView: View {
                                     // Own ad cards — shown after story cards with "AD" badge
                                     ForEach(myOwnAds) { ad in
                                         VStack(spacing: 6) {
-                                            adCard(ad, width: 80, height: 120)
+                                            adCard(ad, width: 100, height: 155)
                                                 .simultaneousGesture(TapGesture().onEnded {
                                                     openMyAdPreview(ad)
                                                 })
@@ -415,7 +417,7 @@ struct StoryBottomSheetView: View {
                                             ScrollView(.horizontal, showsIndicators: false) {
                                                 HStack(spacing: 8) {
                                                     ForEach(Array(group.stories.enumerated()), id: \.element.id) { index, story in
-                                                        storyCard(story, showDelete: false, isSeen: localSeenIds.contains(story.id), width: 80, height: 120)
+                                                        storyCard(story, showDelete: false, isSeen: localSeenIds.contains(story.id), width: 100, height: 155)
                                                             .simultaneousGesture(TapGesture().onEnded {
                                                                 storyViewerConfig = StoryViewerConfig(
                                                                     stories: group.stories,
@@ -464,7 +466,7 @@ struct StoryBottomSheetView: View {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 8) {
                                     ForEach(Array(group.stories.enumerated()), id: \.element.id) { index, story in
-                                        storyCard(story, showDelete: false, isSeen: localSeenIds.contains(story.id), width: 80, height: 120)
+                                        storyCard(story, showDelete: false, isSeen: localSeenIds.contains(story.id), width: 100, height: 155)
                                             .simultaneousGesture(TapGesture().onEnded {
                                                 openContactQueue(startingAt: group, storyIndex: index)
                                             })
@@ -781,7 +783,7 @@ struct StoryBottomSheetView: View {
             }
             .padding(.top, 10)
         }
-        .frame(width: 80, height: 120)
+        .frame(width: 100, height: 155)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: Constant.themeColor), lineWidth: 1.5))
     }
@@ -1008,7 +1010,7 @@ struct StoryBottomSheetView: View {
     // MARK: - Ad card (thumbnail for My Stories row)
 
     @ViewBuilder
-    private func adCard(_ ad: AdData, width: CGFloat = 80, height: CGFloat = 120) -> some View {
+    private func adCard(_ ad: AdData, width: CGFloat = 100, height: CGFloat = 155) -> some View {
         ZStack {
             if let url = ad.mediaURLs.first {
                 CachedAsyncImage(url: url) { img in
