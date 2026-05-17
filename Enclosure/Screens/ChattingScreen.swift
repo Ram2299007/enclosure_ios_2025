@@ -2404,7 +2404,7 @@ struct ChattingScreen: View {
                             }) {
                                 VStack(spacing: 6) {
                                     Image(systemName: "video.fill")
-                                        .font(.system(size: 22))
+                                        .font(.system(size: 20))
                                         .foregroundColor(Color(hex: Constant.themeColor))
                                     Text("Video Call")
                                         .font(.custom("Inter18pt-Medium", size: 11))
@@ -2416,8 +2416,6 @@ struct ChattingScreen: View {
                             }
                             .buttonStyle(CallSquareButtonStyle())
                         }
-                        Divider()
-                            .background(Color("TextColor").opacity(0.12))
                     }
 
                     // Search button
@@ -2438,14 +2436,11 @@ struct ChattingScreen: View {
                             Spacer()
                         }
                         .padding(.leading, 15)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 18)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(MenuItemRippleStyle())
-
-                    Divider()
-                        .background(Color("TextColor").opacity(0.12))
 
                     // For visible button (View Profile)
                     Button(action: {
@@ -2459,14 +2454,11 @@ struct ChattingScreen: View {
                             Spacer()
                         }
                         .padding(.leading, 15)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 18)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(MenuItemRippleStyle())
-
-                    Divider()
-                        .background(Color("TextColor").opacity(0.12))
 
                     // Clear All button
                     Button(action: {
@@ -2482,7 +2474,7 @@ struct ChattingScreen: View {
                             Spacer()
                         }
                         .padding(.leading, 15)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 18)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                     }
@@ -2490,8 +2482,6 @@ struct ChattingScreen: View {
 
                     // Block button (hidden if chatting with yourself - matching Android logic)
                     if Constant.SenderIdMy != contact.uid {
-                        Divider()
-                            .background(Color("TextColor").opacity(0.12))
                         Button(action: {
                             withAnimation { showMenu = false }
                             handleBlockUserClick()
@@ -2503,7 +2493,7 @@ struct ChattingScreen: View {
                                 Spacer()
                             }
                             .padding(.leading, 15)
-                            .padding(.vertical, 12)
+                            .padding(.vertical, 18)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
                         }
