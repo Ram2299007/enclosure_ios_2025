@@ -172,22 +172,15 @@ struct ContentView: View {
             print("🔍 [ContentView] Constant.loggedInKey: '\(Constant.loggedInKey)'")
             
             if loggedInKey == Constant.loggedInKey {
-                print("🔍 [ContentView] loggedInKey matches - Checking sleep mode status")
-                
-                // Also check lockKey to understand the full state
-                let lockKey = UserDefaults.standard.string(forKey: "lockKey") ?? "0"
-                print("🔍 [ContentView] lockKey: '\(lockKey)'")
-                
-                // DISABLED: LockScreen completely disabled - always go to MainActivityOld
-                // Clear any existing sleep mode settings
-                UserDefaults.standard.set("", forKey: Constant.sleepKeyCheckOFF)
-                UserDefaults.standard.set("", forKey: Constant.sleepKey)
-                
-                print("🔍 [ContentView] 🚫 LockScreen DISABLED - Always navigating to MainActivityOld")
-                print("🔍 [ContentView] Cleared sleepKeyCheckOFF and sleepKey")
-                print("🔍 [ContentView] Setting isNavigatingToMain = true")
-                isNavigatingToMain = true
-                print("🔍 [ContentView] isNavigatingToMain set to: \(isNavigatingToMain)")
+                if sleepKeyCheckOFF == "on" {
+                    // Sleep lock is enabled - show the lock screen so user must unlock
+                    print("🔍 [ContentView] sleepKeyCheckOFF is 'on' - Navigating to LockScreen2View")
+                    isNavigating = true
+                } else {
+                    // No lock active - go directly to main app
+                    print("🔍 [ContentView] sleepKeyCheckOFF is not 'on' - Navigating to MainActivityOld")
+                    isNavigatingToMain = true
+                }
             } else {
                 // User has UID but hasn't completed registration - go to onboarding
                 print("🔍 [ContentView] loggedInKey does NOT match - Navigating to OnboardingView")

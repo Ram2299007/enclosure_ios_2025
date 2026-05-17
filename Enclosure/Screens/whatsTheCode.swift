@@ -400,6 +400,11 @@ struct whatsTheCode: View {
 
     /// Returns contact_number with country code applied once and leading + (e.g. +911800407267864).
     private func normalizeContactNumber(countryCode: String, rawNumber: String) -> String {
+        // If number already has + prefix it carries its own international country code — preserve it
+        if rawNumber.hasPrefix("+") {
+            let digitsOnly = String(rawNumber.dropFirst()).replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
+            if !digitsOnly.isEmpty { return "+" + digitsOnly }
+        }
         let digitsOnly = rawNumber.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
         var numberDigits = digitsOnly
         while numberDigits.hasPrefix("0") && numberDigits.count > 1 {

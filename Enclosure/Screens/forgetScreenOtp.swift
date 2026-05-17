@@ -26,6 +26,7 @@ struct forgetScreenOtp: View {
 
     @State private var otp: [String] = Array(repeating: "", count: 6)
     @FocusState private var focusedField: Int?
+    @State private var isProcessingInput = false
     @State private var isPressed = false
     @StateObject private var viewModel = SendOTPViewModel()
     @Environment(\.dismiss) var dismiss
@@ -124,91 +125,31 @@ struct forgetScreenOtp: View {
                                 ForEach(0..<6, id: \.self) { index in
                                     let isFocused = focusedField == index
                                     TextField("", text: Binding(
-                                        get: { 
-                                            return otp[index] 
-                                        },
+                                        get: { return otp[index] },
                                         set: { newValue in
-                                            let oldValue = otp[index]
-                                            
-                                            // Extract only digits from input
-                                            let digits = newValue.filter { $0.isNumber }
-                                            
-                                            // Handle paste or multiple characters
-                                            if digits.count > 1 {
-                                                // Fill current and subsequent fields
-                                                var currentIndex = index
-                                                for digit in digits {
-                                                    if currentIndex < 6 {
-                                                        otp[currentIndex] = String(digit)
-                                                        currentIndex += 1
-                                                    }
-                                                }
-                                                
-                                                // Focus on the last filled field or next empty field with animation
-                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                                        if currentIndex < 6 {
-                                                            focusedField = currentIndex
-                                                        } else {
-                                                            focusedField = 5
-                                                        }
-                                                    }
-                                                }
-                                            } else if newValue.isEmpty {
-                                                // Backspace/Delete handling
-                                                otp[index] = ""
-                                                
-                                                // If field was already empty, move to previous field
-                                                if oldValue.isEmpty && index > 0 {
-                                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                                            focusedField = index - 1
-                                                        }
-                                                    }
-                                                }
-                                            } else {
-                                                // Single character entered - extract first digit if available
-                                                if let firstDigit = digits.first {
-                                                    let digit = String(firstDigit)
-                                                    otp[index] = digit
-                                                    
-                                                    // Move to next field smoothly with animation
-                                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                                    if index < 5 {
-                                                        focusedField = index + 1
-                                                    } else {
-                                                                // Last field - dismiss keyboard
-                                                        focusedField = nil
-                                                                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                                                            }
-                                                        }
-                                                    }
-                                                } else {
-                                                    // Non-digit character entered - keep old value
-                                                    otp[index] = oldValue
-                                                }
+                                            let filtered = newValue.filter { $0.isNumber }
+                                            if filtered != otp[index] {
+                                                handleOTPInput(filtered, at: index)
                                             }
                                         }
                                     ))
-                                    .frame(width: 45, height: 48) // width="45dp", height="48dp"
+                                    .frame(width: 45, height: 48)
                                     .background(
-                                        RoundedRectangle(cornerRadius: 20) // corners android:radius="20dp"
+                                        RoundedRectangle(cornerRadius: 20)
                                             .stroke(
-                                                Color(UIColor(red: 0.62, green: 0.65, blue: 0.73, alpha: 1.0)), // #9EA6B9 - works in both light and dark mode
-                                                lineWidth: isFocused ? 1.5 : 1.0 // 1.5dp when focused, 1dp when not
+                                                Color(UIColor(red: 0.62, green: 0.65, blue: 0.73, alpha: 1.0)),
+                                                lineWidth: isFocused ? 1.5 : 1.0
                                             )
-                                    ) // background="@drawable/button_color_hover_for_all" - transparent with stroke
-                                    .font(.custom("Inter18pt-Regular", size: 14)) // inter, 14sp
-                                    .foregroundColor(Color("TextColor")) // style="@style/TextColor" - adapts to dark/light mode
+                                    )
+                                    .font(.custom("Inter18pt-Regular", size: 14))
+                                    .foregroundColor(Color("TextColor"))
                                     .multilineTextAlignment(.center)
                                     .keyboardType(.numberPad)
+                                    .textContentType(.oneTimeCode)
                                     .focused($focusedField, equals: index)
-                                    .onTapGesture {
-                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                        focusedField = index
-                                        }
-                                    }
+                                    .submitLabel(.done)
+                                    .autocorrectionDisabled()
+                                    .textInputAutocapitalization(.never)
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .center)
@@ -424,8 +365,11 @@ struct forgetScreenOtp: View {
             .navigationBarHidden(true)
             .background(NavigationGestureEnabler())
             .onAppear {
-                print("UID: \(uid), Country Code: \(country_Code), Mobile No: \(mobile_no)")
-                
+                checkClipboardForOTP()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    focusedField = 0
+                }
+
                 // Get FCM token
                 FirebaseManager.shared.getFCMToken { token in
                     if let token = token {
@@ -433,7 +377,6 @@ struct forgetScreenOtp: View {
                             self.fcmToken = token
                         }
                     } else {
-                        // Fallback: try to get from UserDefaults if available
                         if let savedToken = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) {
                             DispatchQueue.main.async {
                                 self.fcmToken = savedToken
@@ -441,11 +384,110 @@ struct forgetScreenOtp: View {
                         }
                     }
                 }
-                
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    // requestPermissions()
+            }
+            .onChange(of: focusedField) { newValue in
+                if newValue == 0 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        checkClipboardForOTP()
+                    }
                 }
+            }
+        }
+    }
 
+    private func handleOTPInput(_ newValue: String, at index: Int) {
+        guard !isProcessingInput else { return }
+
+        let currentValue = otp[index]
+        if newValue == currentValue { return }
+
+        isProcessingInput = true
+        defer {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.isProcessingInput = false
+            }
+        }
+
+        let digits = newValue.filter { $0.isNumber }
+
+        if digits.count >= 6 {
+            let otpString = String(digits.prefix(6))
+            for i in 0..<min(6, otp.count) {
+                otp[i] = String(otpString[otpString.index(otpString.startIndex, offsetBy: i)])
+            }
+            DispatchQueue.main.async {
+                self.focusedField = 5
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+            }
+            return
+        }
+
+        if digits.count > 1 {
+            var currentIndex = index
+            for digit in digits {
+                guard currentIndex < otp.count else { break }
+                otp[currentIndex] = String(digit)
+                currentIndex += 1
+            }
+            let nextFocus = min(currentIndex, otp.count - 1)
+            DispatchQueue.main.async {
+                self.focusedField = nextFocus
+                if nextFocus >= self.otp.count - 1 && !self.otp[self.otp.count - 1].isEmpty {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                }
+            }
+            return
+        }
+
+        if newValue.isEmpty {
+            otp[index] = ""
+            if index > 0 {
+                DispatchQueue.main.async { self.focusedField = index - 1 }
+            } else {
+                DispatchQueue.main.async { self.focusedField = nil }
+            }
+            return
+        }
+
+        guard let firstDigit = digits.first else {
+            otp[index] = currentValue
+            return
+        }
+
+        otp[index] = String(firstDigit)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            if index < self.otp.count - 1 {
+                self.focusedField = index + 1
+            } else {
+                self.focusedField = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+            }
+        }
+    }
+
+    private func checkClipboardForOTP() {
+        let pasteboard = UIPasteboard.general
+        guard let clipboardText = pasteboard.string else { return }
+
+        let digits = clipboardText.filter { $0.isNumber }
+
+        if digits.count >= 6 {
+            let allFieldsEmpty = otp.allSatisfy { $0.isEmpty }
+            if allFieldsEmpty {
+                let otpString = String(digits.prefix(6))
+                for i in 0..<min(6, otp.count) {
+                    otp[i] = String(otpString[otpString.index(otpString.startIndex, offsetBy: i)])
+                }
+                focusedField = 5
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
             }
         }
     }
