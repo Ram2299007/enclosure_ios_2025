@@ -48,7 +48,8 @@ struct callView: View {
     @State private var wasTopHeaderVisibleBeforeHistory = false
     @State private var activeVoiceCallPayload: VoiceCallPayload?
     @State private var isScrollEnabled = false
-    
+    @State private var showBlockUserSheet = false
+
     enum CallTab {
         case log, contact
     }
@@ -84,12 +85,15 @@ struct callView: View {
                         
                         Spacer()
                         
-                        // Menu button (3 dots) — with material background for liquid glass look
-                        Button(action: {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                showClearLogDialog = true
+                        // Menu button (3 dots) — native iOS Menu (no dialog box)
+                        Menu {
+                            Button(action: { showClearLogDialog = true }) {
+                                Label("Clear Log", systemImage: "trash")
                             }
-                        }) {
+                            Button(action: { showBlockUserSheet = true }) {
+                                Label("Block User", systemImage: "person.fill.xmark")
+                            }
+                        } label: {
                             VStack(spacing: 3) {
                                 Circle()
                                     .fill(Color("menuPointColor"))
@@ -112,67 +116,6 @@ struct callView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
                 
-                // Search section (searchData) - matching MainActivityOld.swift pattern and Android spacing
-                // Search icon always visible when on contact tab, search bar slides in/out
-                if selectedTab == .contact && !isShowingCallHistory {
-                    VStack(spacing: 0) {
-                        HStack(spacing: 0) {
-                            // Search bar - slides in from trailing edge when visible (matching MainActivityOld.swift)
-                            if isSearchVisible {
-                                HStack {
-                                    Rectangle()
-                                        .fill(themeColor) // Dynamic theme color
-                                        .frame(width: 1, height: 19.24)
-                                        .padding(.leading, 13)
-                                    
-                                    TextField("Search Name or Number", text: $searchText)
-                                        .font(.custom("Inter18pt-Regular", size: 15))
-                                        .foregroundColor(Color("TextColor"))
-                                        .padding(.leading, 13)
-                                        .textFieldStyle(PlainTextFieldStyle())
-                                        .focused($isSearchFieldFocused)
-                                }
-                                .transition(.move(edge: .trailing).combined(with: .opacity))
-                            }
-                            
-                            Spacer() // Push search icon to end
-                            
-                            // Search icon button - always visible at end (matching MainActivityOld.swift)
-                            Button(action: {
-                                withAnimation {
-                                    isSearchVisible.toggle()
-                                    if !isSearchVisible {
-                                        searchText = ""
-                                    }
-                                    if isSearchVisible {
-                                        isMainContentVisible = false
-                                        isTopHeaderVisible = true
-                                        isBackLayoutVisible = true
-                                        isButtonVisible = true
-                                    }
-                                }
-
-                                if isSearchVisible {
-                                    DispatchQueue.main.async {
-                                        isSearchFieldFocused = true
-                                    }
-                                } else {
-                                    hideKeyboard()
-                                }
-                            }) {
-                                Image("search")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 20, height: 20)
-                            }
-                            .frame(width: 40, height: 40)
-                        }
-                        .padding(.top, 10) // marginTop="10dp" from Android searchData inner layout
-                    }
-                    .padding(.top, 2) // marginTop="2dp" from searchData layout
-                    .padding(.trailing, 18) // marginEnd="18dp" for search icon
-                }
-                
                 if isShowingCallHistory, let selectedHistoryContact {
                     CallHistoryHeaderView(
                         contact: selectedHistoryContact,
@@ -181,64 +124,107 @@ struct callView: View {
                     .padding(.top, 12)
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                
-                // Tabs section (label) - matching Android design with exact spacing
+
+                // ── Single toolbar row (mirrors inviteScreen.swift search pattern)
                 if !isShowingCallHistory {
                     HStack(spacing: 0) {
-                        // Last/Log tab - matching Android radius_black_6dp when selected, radius_6dp_transp when not
-                        VStack(spacing: 5) {
+
+                        if isSearchVisible {
+                            // ── Search active: [←]  [text field ────────────]  [✕]  [⋮]
                             Button(action: {
-                                handleLogTabClick()
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    isSearchVisible = false
+                                    searchText = ""
+                                }
+                                hideKeyboard()
                             }) {
+                                Image(systemName: "arrow.left")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(Color("TextColor"))
+                                    .frame(width: 36, height: 36)
+                            }
+
+                            TextField("Search name or number", text: $searchText)
+                                .font(.custom("Inter18pt-Medium", size: 15))
+                                .foregroundColor(Color("TextColor"))
+                                .focused($isSearchFieldFocused)
+                                .textInputAutocapitalization(.never)
+                                .disableAutocorrection(true)
+                                .padding(.leading, 6)
+
+                            if !searchText.isEmpty {
+                                Button(action: { searchText = "" }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(Color("gray3"))
+                                        .font(.system(size: 16))
+                                }
+                                .padding(.trailing, 4)
+                            }
+
+                        } else {
+                            // ── Normal: [Last]  [A-Z]  [Spacer]  [🔍]  [⋮]
+                            Button(action: { handleLogTabClick() }) {
                                 Text("Last")
                                     .font(.custom("Inter18pt-Medium", size: 12))
                                     .fontWeight(.bold)
-                                    .foregroundColor(selectedTab == .log ? .white : .black) // White when selected, black when not (matching Android)
+                                    .foregroundColor(selectedTab == .log ? .white : .black)
                                     .frame(width: 70, height: 30)
-                                    .background(
-                                        selectedTab == .log 
-                                            ? Color("buttonColorTheme") // radius_black_6dp equivalent
-                                            : Color("gray2") // radius_6dp_transp equivalent (atoz = gray2)
-                                    )
-                                    .cornerRadius(20) // 20dp corner radius as per Android
+                                    .background(selectedTab == .log ? Color("buttonColorTheme") : Color("gray2"))
+                                    .cornerRadius(20)
                             }
-                        }
-                        
-                        // A-Z/Contact tab - matching Android radius_black_6dp when selected, radius_6dp_transp when not
-                        VStack(spacing: 5) {
-                            Button(action: {
-                                handleContactTabClick()
-                            }) {
+
+                            Button(action: { handleContactTabClick() }) {
                                 Text("A - Z")
                                     .font(.custom("Inter18pt-Medium", size: 12))
                                     .fontWeight(.bold)
-                                    .foregroundColor(selectedTab == .contact ? .white : .black) // White when selected, black when not (matching Android)
+                                    .foregroundColor(selectedTab == .contact ? .white : .black)
                                     .frame(width: 70, height: 30)
-                                    .background(
-                                        selectedTab == .contact 
-                                            ? Color("buttonColorTheme") // radius_black_6dp equivalent
-                                            : Color("gray2") // radius_6dp_transp equivalent (atoz = gray2)
-                                    )
-                                    .cornerRadius(20) // 20dp corner radius as per Android
+                                    .background(selectedTab == .contact ? Color("buttonColorTheme") : Color("gray2"))
+                                    .cornerRadius(20)
+                            }
+                            .padding(.leading, 15)
+
+                            Spacer()
+
+                            // Search icon — only on A-Z tab
+                            if selectedTab == .contact {
+                                Button(action: {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        isSearchVisible = true
+                                        isMainContentVisible = false
+                                        isTopHeaderVisible = true
+                                        isBackLayoutVisible = true
+                                        isButtonVisible = true
+                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                        isSearchFieldFocused = true
+                                    }
+                                }) {
+                                    Image("search")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 20, height: 20)
+                                }
+                                .frame(width: 36, height: 36)
                             }
                         }
-                        .padding(.leading, 15) // marginStart="15dp" from Android
-                        
-                        Spacer()
-                        
-                        // Menu button (3 dots) - visible when on log tab — with material background for liquid glass look
-                        if selectedTab == .log && !isBackLayoutVisible {
-                            Button(action: {
-                                withAnimation(.easeOut(duration: 0.2)) {
-                                    showClearLogDialog = true
+
+                        // 3-dot menu — always visible (unless back-arrow header is active)
+                        if !isBackLayoutVisible {
+                            Menu {
+                                Button(action: { showClearLogDialog = true }) {
+                                    Label("Clear Log", systemImage: "trash")
                                 }
-                            }) {
+                                Button(action: { showBlockUserSheet = true }) {
+                                    Label("Block User", systemImage: "person.fill.xmark")
+                                }
+                            } label: {
                                 VStack(spacing: 3) {
                                     Circle()
                                         .fill(Color("menuPointColor"))
                                         .frame(width: 4, height: 4)
                                     Circle()
-                                        .fill(themeColor) // Dynamic theme color
+                                        .fill(themeColor)
                                         .frame(width: 4, height: 4)
                                     Circle()
                                         .fill(Color(red: 0x9E/255, green: 0xA6/255, blue: 0xB9/255))
@@ -248,11 +234,12 @@ struct callView: View {
                                 .background(.ultraThinMaterial, in: Circle())
                             }
                             .frame(width: 40, height: 40)
-                            .padding(.trailing, 15) // marginEnd="15dp" from Android
+                            .padding(.trailing, 10)
                         }
                     }
-                    .padding(.leading, 20) // marginStart="20dp" from Android label layout
-                    .padding(.top, 15) // marginTop="15dp" from Android
+                    .padding(.leading, 20)
+                    .padding(.top, 15)
+                    .animation(.easeInOut(duration: 0.2), value: isSearchVisible)
                 }
                 
                 // Content area - RecyclerViews
@@ -517,12 +504,47 @@ struct callView: View {
         .fullScreenCover(item: $activeVoiceCallPayload) { payload in
             VoiceCallScreen(payload: payload)
         }
+        .sheet(isPresented: $showBlockUserSheet) {
+            BlockUserSelectionView(
+                contacts: uniqueBlockableContacts,
+                isPresented: $showBlockUserSheet
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
         }
     }
 
-
 // MARK: - Tab handling helpers
 extension callView {
+    // Merged & deduplicated contacts from call log + A-Z list (excluding self), sorted A-Z
+    private var uniqueBlockableContacts: [BlockableContact] {
+        var seen = Set<String>()
+        var result: [BlockableContact] = []
+
+        // 1. Call log entries (Last tab)
+        for section in callLogViewModel.sections {
+            for entry in section.userInfo {
+                let fid = entry.friendId
+                if !fid.isEmpty && fid != Constant.SenderIdMy && !seen.contains(fid) {
+                    seen.insert(fid)
+                    result.append(BlockableContact(entry))
+                }
+            }
+        }
+
+        // 2. A-Z contacts (adds anyone not already in the log)
+        for contact in viewModel.contactList {
+            if !contact.uid.isEmpty && contact.uid != Constant.SenderIdMy && !seen.contains(contact.uid) {
+                seen.insert(contact.uid)
+                result.append(BlockableContact(contact))
+            }
+        }
+
+        // Sort alphabetically so the sheet feels like an address book
+        return result.sorted { $0.fullName.lowercased() < $1.fullName.lowercased() }
+    }
+
     private func hideKeyboard() {
         isSearchFieldFocused = false
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
@@ -1379,6 +1401,292 @@ extension callView {
                 }
             }
         }
+    }
+}
+
+// MARK: - Unified blockable contact (merges CallLogUserInfo + CallingContactModel)
+
+/// Lightweight model used in the Block User sheet.
+/// Built from either a call-log entry or an A-Z contact so one sheet covers both.
+struct BlockableContact: Identifiable {
+    let id: String          // friendId / uid
+    let photo: String
+    let fullName: String
+    let mobileNo: String
+    let themeColor: String
+
+    init(_ log: CallLogUserInfo) {
+        id         = log.friendId
+        photo      = log.photo
+        fullName   = log.fullName
+        mobileNo   = log.mobileNo
+        themeColor = log.themeColor
+    }
+
+    init(_ contact: CallingContactModel) {
+        id         = contact.uid
+        photo      = contact.photo
+        fullName   = contact.fullName
+        mobileNo   = contact.mobileNo
+        themeColor = contact.themeColor
+    }
+}
+
+// MARK: - Block User Selection Sheet (shared by callView & videoCallView)
+
+/// Native iOS bottom sheet.
+/// Shows ALL contacts — call log (Last tab) + A-Z (contact tab) — merged and sorted.
+/// User can search by name or number, select multiple contacts, and block them all at once.
+struct BlockUserSelectionView: View {
+    let contacts: [BlockableContact]
+    @Binding var isPresented: Bool
+
+    @State private var selectedIds: Set<String> = []
+    @State private var isBlocking = false
+    @State private var searchText: String = ""
+    @FocusState private var isSearchFocused: Bool
+
+    private var themeColor: Color { Color(hex: Constant.themeColor) }
+
+    /// Contacts visible in the list after applying the current search query
+    private var filteredContacts: [BlockableContact] {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return contacts }
+        return contacts.filter {
+            $0.fullName.lowercased().contains(q) ||
+            $0.mobileNo.contains(q)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // ── Header row: title + Select All
+            HStack {
+                Text("Block Users")
+                    .font(.custom("Inter18pt-SemiBold", size: 18))
+                    .foregroundColor(Color("TextColor"))
+                Spacer()
+                Button(action: toggleAll) {
+                    let allVisible = filteredContacts.map { $0.id }
+                    let allSelected = !allVisible.isEmpty && allVisible.allSatisfy { selectedIds.contains($0) }
+                    Text(allSelected ? "Deselect All" : "Select All")
+                        .font(.custom("Inter18pt-Medium", size: 13))
+                        .foregroundColor(themeColor)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 12)
+
+            // ── Search bar
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(Color("gray3"))
+                    .font(.system(size: 15))
+
+                TextField("Search name or number", text: $searchText)
+                    .font(.custom("Inter18pt-Regular", size: 15))
+                    .foregroundColor(Color("TextColor"))
+                    .focused($isSearchFocused)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+
+                if !searchText.isEmpty {
+                    Button(action: { searchText = "" }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(Color("gray3"))
+                            .font(.system(size: 15))
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color("gray2"))
+            .cornerRadius(12)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 10)
+
+            Divider()
+
+            if contacts.isEmpty {
+                // No contacts at all
+                Spacer()
+                Text("No contacts found")
+                    .font(.custom("Inter18pt-Medium", size: 14))
+                    .foregroundColor(Color("gray3"))
+                Spacer()
+            } else if filteredContacts.isEmpty {
+                // Contacts exist but none match the search
+                Spacer()
+                VStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 28))
+                        .foregroundColor(Color("gray3"))
+                    Text("No results for \"\(searchText.trimmingCharacters(in: .whitespacesAndNewlines))\"")
+                        .font(.custom("Inter18pt-Medium", size: 14))
+                        .foregroundColor(Color("gray3"))
+                        .multilineTextAlignment(.center)
+                }
+                Spacer()
+            } else {
+                // ── Contact list with checkboxes
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(filteredContacts) { contact in
+                            BlockUserRow(
+                                contact: contact,
+                                isSelected: selectedIds.contains(contact.id)
+                            ) {
+                                toggleSelection(contact.id)
+                            }
+                            Divider()
+                                .padding(.leading, 76)
+                        }
+                    }
+                }
+                // Dismiss keyboard when user scrolls the list
+                .onTapGesture { isSearchFocused = false }
+                .simultaneousGesture(
+                    DragGesture().onChanged { _ in isSearchFocused = false }
+                )
+            }
+
+            Divider()
+
+            // ── Bottom action buttons
+            HStack(spacing: 12) {
+                Button(action: { isPresented = false }) {
+                    Text("Cancel")
+                        .font(.custom("Inter18pt-SemiBold", size: 16))
+                        .foregroundColor(Color("TextColor"))
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(Color("gray2"))
+                        .cornerRadius(24)
+                }
+
+                Button(action: blockSelected) {
+                    HStack(spacing: 6) {
+                        if isBlocking {
+                            ProgressView()
+                                .tint(.white)
+                                .scaleEffect(0.8)
+                        }
+                        Text(selectedIds.isEmpty ? "Block User" : "Block (\(selectedIds.count))")
+                            .font(.custom("Inter18pt-SemiBold", size: 16))
+                            .foregroundColor(.white)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(selectedIds.isEmpty
+                                ? Color.red.opacity(0.35)
+                                : Color.red.opacity(0.85))
+                    .cornerRadius(24)
+                }
+                .disabled(selectedIds.isEmpty || isBlocking)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .padding(.bottom, 4)
+        }
+        .background(Color("background_color"))
+    }
+
+    // MARK: helpers
+    private func toggleSelection(_ id: String) {
+        if selectedIds.contains(id) { selectedIds.remove(id) }
+        else { selectedIds.insert(id) }
+    }
+
+    /// Select All / Deselect All acts on the currently visible (filtered) list
+    private func toggleAll() {
+        let visibleIds = filteredContacts.map { $0.id }
+        let allSelected = !visibleIds.isEmpty && visibleIds.allSatisfy { selectedIds.contains($0) }
+        if allSelected {
+            visibleIds.forEach { selectedIds.remove($0) }
+        } else {
+            visibleIds.forEach { selectedIds.insert($0) }
+        }
+    }
+
+    private func blockSelected() {
+        guard !selectedIds.isEmpty else { return }
+        isBlocking = true
+        let total = selectedIds.count
+        var done = 0
+        var success = 0
+        for uid in selectedIds {
+            ApiService.blockUser(uid: Constant.SenderIdMy, blockedUid: uid) { ok, _ in
+                DispatchQueue.main.async {
+                    done += 1
+                    if ok { success += 1 }
+                    if done == total {
+                        isBlocking = false
+                        let msg = success == total
+                            ? "\(success) user\(success == 1 ? "" : "s") blocked"
+                            : "\(success) of \(total) users blocked"
+                        Constant.showToast(message: msg)
+                        isPresented = false
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Block User Row
+
+struct BlockUserRow: View {
+    let contact: BlockableContact
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    private var themeColor: Color { Color(hex: Constant.themeColor) }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 0) {
+                // Profile avatar
+                CallingContactCardView(image: contact.photo, themeColor: contact.themeColor)
+                    .padding(.leading, 20)
+                    .padding(.trailing, 16)
+
+                // Name + number
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Constant.formatNameWithYou(uid: contact.id, fullName: contact.fullName))
+                        .font(.custom("Inter18pt-SemiBold", size: 16))
+                        .foregroundColor(Color("TextColor"))
+                        .lineLimit(1)
+
+                    if !contact.mobileNo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(contact.mobileNo)
+                            .font(.custom("Inter18pt-Regular", size: 13))
+                            .foregroundColor(Color("gray3"))
+                    }
+                }
+
+                Spacer()
+
+                // Circular checkbox
+                ZStack {
+                    Circle()
+                        .stroke(isSelected ? themeColor : Color("gray3"), lineWidth: 2)
+                        .frame(width: 24, height: 24)
+
+                    if isSelected {
+                        Circle()
+                            .fill(themeColor)
+                            .frame(width: 24, height: 24)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.15), value: isSelected)
+                .padding(.trailing, 20)
+            }
+            .padding(.vertical, 10)
+            .background(Color("background_color"))
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
