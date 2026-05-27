@@ -1385,6 +1385,46 @@ class ApiService {
             }
     }
     
+    // MARK: - Get Blocked Users Count
+    /// Calls get_blocked_users and returns the total count of blocked users.
+    static func getBlockedUsersCount(uid: String, completion: @escaping (Int) -> Void) {
+        let url = Constant.baseURL + "get_blocked_users"
+        let parameters: [String: Any] = ["uid": uid]
+
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .responseJSON { response in
+                if let json = try? response.result.get() as? [String: Any],
+                   let count = json["block_count"] as? Int {
+                    completion(count)
+                } else {
+                    completion(0)
+                }
+            }
+    }
+
+    // MARK: - Get Blocked Users List
+    /// Calls get_blocked_users and returns the full list of blocked user models.
+    static func getBlockedUsers(uid: String, completion: @escaping ([BlockedUserModel]) -> Void) {
+        let url = Constant.baseURL + "get_blocked_users"
+        let parameters: [String: Any] = ["uid": uid]
+
+        AF.request(url, method: .post, parameters: parameters, encoding: URLEncoding.default)
+            .responseJSON { response in
+                guard let json = try? response.result.get() as? [String: Any],
+                      let array = json["blocked_users"] as? [[String: Any]] else {
+                    completion([])
+                    return
+                }
+                let users: [BlockedUserModel] = array.compactMap { dict in
+                    guard let uid      = dict["uid"]       as? String,
+                          let name     = dict["full_name"] as? String,
+                          let photo    = dict["photo"]     as? String else { return nil }
+                    return BlockedUserModel(id: uid, fullName: name, photo: photo)
+                }
+                completion(users)
+            }
+    }
+
     static func set_message_limit_for_user_chat(uid: String, friend_id: String, msg_limit: String, completion: @escaping (Bool, String) -> Void) {
         let url = Constant.baseURL+"set_message_limit_for_user_chat"
         let parameters: [String: Any] = ["uid": uid, "friend_id": friend_id, "msg_limit": msg_limit]

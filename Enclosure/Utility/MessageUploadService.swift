@@ -664,26 +664,18 @@ class MessageUploadService {
         getAccessToken { [weak self] accessToken in
             guard let self = self else { return }
             
-            // Use access token if available, otherwise use FCM token as fallback (matching group notification behavior)
-            // Note: For production, implement proper OAuth2 JWT signing with RSA private key
-            // You may need to add SwiftJWT or similar library, or use a backend endpoint
-            let finalAccessToken: String
-            if let token = accessToken, !token.isEmpty {
-                finalAccessToken = token
-                print("✅ [SEND_NOTIFICATION_API] Using OAuth2 access token for modelId: \(model.id)")
-                print("🔑 [SEND_NOTIFICATION_API] Access token length: \(token.count) characters")
-                print("🔑 [SEND_NOTIFICATION_API] Access token prefix: \(token.prefix(20))...")
-                print("🔑 [SEND_NOTIFICATION_API] Access token format: \(token.hasPrefix("ya29.") ? "Valid Google OAuth2 token" : "Unexpected format")")
-            } else {
-                // Fallback to FCM token (matching group notification behavior)
-                finalAccessToken = myFcmToken
-                if myFcmToken.isEmpty {
-                    print("⚠️ [SEND_NOTIFICATION_API] Access token not available and FCM token is empty for modelId: \(model.id)")
-                    print("⚠️ [SEND_NOTIFICATION_API] Notification may fail - both access token and FCM token are missing")
-                } else {
-                    print("⚠️ [SEND_NOTIFICATION_API] Access token not available for modelId: \(model.id) - using FCM token as fallback")
-                }
+            // ✅ FIX: Only proceed when we have a real OAuth2 access token.
+            // NEVER use the FCM registration token as an OAuth2 bearer — FCM rejects it with
+            // UNAUTHENTICATED, which silently kills iOS → iOS chat notifications.
+            guard let token = accessToken, !token.isEmpty else {
+                print("🚫 [SEND_NOTIFICATION_API] OAuth2 access token unavailable for modelId: \(model.id) — skipping notification")
+                print("🚫 [SEND_NOTIFICATION_API] Ensure generateAccessTokenLocally() can sign the JWT (PKCS#1 extraction must succeed)")
+                return
             }
+            let finalAccessToken = token
+            print("✅ [SEND_NOTIFICATION_API] Using OAuth2 access token for modelId: \(model.id)")
+            print("🔑 [SEND_NOTIFICATION_API] Token length: \(token.count) chars, prefix: \(token.prefix(20))...")
+            print("🔑 [SEND_NOTIFICATION_API] Valid Google OAuth2 format: \(token.hasPrefix("ya29."))")
             
             // Build JSON request (matching backend PHP send_notification_api parameters)
             var requestJson: [String: Any] = [:]

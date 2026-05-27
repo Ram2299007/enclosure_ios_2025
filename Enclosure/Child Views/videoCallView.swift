@@ -920,73 +920,91 @@ extension videoCallView {
     }
     
     private func startVideoCall(for contact: CallingContactModel) {
-        // Persist contact info for callback from native Phone app Recents
-        RecentCallContactStore.shared.saveFromOutgoingCall(
-            friendId: contact.uid,
-            fullName: contact.fullName,
-            photo: contact.photo,
-            fToken: contact.fToken,
-            voipToken: contact.voipToken,
-            deviceType: contact.deviceType,
-            mobileNo: contact.mobileNo,
-            isVideoCall: true
-        )
-        
-        requestCameraAndMicrophonePermission { granted in
-            guard granted else {
-                Constant.showToast(message: "Camera and microphone permissions are required for video calls.")
-                return
+        // 🚫 Block check — do not call if receiver blocked me
+        let myUid = Constant.SenderIdMy
+        ApiService.checkIfBlocked(uid: myUid, receiverId: contact.uid) { isBlocked, _ in
+            DispatchQueue.main.async {
+                guard !isBlocked else {
+                    Constant.showToast(message: "You cannot call this user")
+                    return
+                }
+                // Persist contact info for callback from native Phone app Recents
+                RecentCallContactStore.shared.saveFromOutgoingCall(
+                    friendId: contact.uid,
+                    fullName: contact.fullName,
+                    photo: contact.photo,
+                    fToken: contact.fToken,
+                    voipToken: contact.voipToken,
+                    deviceType: contact.deviceType,
+                    mobileNo: contact.mobileNo,
+                    isVideoCall: true
+                )
+                requestCameraAndMicrophonePermission { granted in
+                    guard granted else {
+                        Constant.showToast(message: "Camera and microphone permissions are required for video calls.")
+                        return
+                    }
+                    let roomId = generateRoomId()
+                    activeVideoCallPayload = VideoCallPayload(
+                        receiverId: contact.uid,
+                        receiverName: contact.fullName,
+                        receiverPhoto: contact.photo,
+                        receiverToken: contact.fToken,
+                        receiverDeviceType: contact.deviceType,
+                        receiverPhone: contact.mobileNo,
+                        roomId: roomId,
+                        isSender: true
+                    )
+                    sendVideoCallNotificationIfNeeded(
+                        receiverToken: contact.fToken,
+                        receiverDeviceType: contact.deviceType,
+                        receiverId: contact.uid,
+                        receiverPhone: contact.mobileNo,
+                        roomId: roomId,
+                        voipToken: contact.voipToken  // 🆕 Pass VoIP token for iOS CallKit
+                    )
+                }
             }
-            let roomId = generateRoomId()
-            activeVideoCallPayload = VideoCallPayload(
-                receiverId: contact.uid,
-                receiverName: contact.fullName,
-                receiverPhoto: contact.photo,
-                receiverToken: contact.fToken,
-                receiverDeviceType: contact.deviceType,
-                receiverPhone: contact.mobileNo,
-                roomId: roomId,
-                isSender: true
-            )
-            sendVideoCallNotificationIfNeeded(
-                receiverToken: contact.fToken,
-                receiverDeviceType: contact.deviceType,
-                receiverId: contact.uid,
-                receiverPhone: contact.mobileNo,
-                roomId: roomId,
-                voipToken: contact.voipToken  // 🆕 Pass VoIP token for iOS CallKit
-            )
         }
     }
-    
+
     private func startVideoCall(for entry: CallLogUserInfo) {
-        // Persist contact info for callback from native Phone app Recents
-        RecentCallContactStore.shared.saveFromCallLogEntry(entry, isVideoCall: true)
-        
-        requestCameraAndMicrophonePermission { granted in
-            guard granted else {
-                Constant.showToast(message: "Camera and microphone permissions are required for video calls.")
-                return
+        // 🚫 Block check — do not call if receiver blocked me
+        let myUid = Constant.SenderIdMy
+        ApiService.checkIfBlocked(uid: myUid, receiverId: entry.friendId) { isBlocked, _ in
+            DispatchQueue.main.async {
+                guard !isBlocked else {
+                    Constant.showToast(message: "You cannot call this user")
+                    return
+                }
+                // Persist contact info for callback from native Phone app Recents
+                RecentCallContactStore.shared.saveFromCallLogEntry(entry, isVideoCall: true)
+                requestCameraAndMicrophonePermission { granted in
+                    guard granted else {
+                        Constant.showToast(message: "Camera and microphone permissions are required for video calls.")
+                        return
+                    }
+                    let roomId = generateRoomId()
+                    activeVideoCallPayload = VideoCallPayload(
+                        receiverId: entry.friendId,
+                        receiverName: entry.fullName,
+                        receiverPhoto: entry.photo,
+                        receiverToken: entry.fToken,
+                        receiverDeviceType: entry.deviceType,
+                        receiverPhone: entry.mobileNo,
+                        roomId: roomId,
+                        isSender: true
+                    )
+                    sendVideoCallNotificationIfNeeded(
+                        receiverToken: entry.fToken,
+                        receiverDeviceType: entry.deviceType,
+                        receiverId: entry.friendId,
+                        receiverPhone: entry.mobileNo,
+                        roomId: roomId,
+                        voipToken: entry.voipToken  // 🆕 Pass VoIP token for iOS CallKit
+                    )
+                }
             }
-            let roomId = generateRoomId()
-            activeVideoCallPayload = VideoCallPayload(
-                receiverId: entry.friendId,
-                receiverName: entry.fullName,
-                receiverPhoto: entry.photo,
-                receiverToken: entry.fToken,
-                receiverDeviceType: entry.deviceType,
-                receiverPhone: entry.mobileNo,
-                roomId: roomId,
-                isSender: true
-            )
-            sendVideoCallNotificationIfNeeded(
-                receiverToken: entry.fToken,
-                receiverDeviceType: entry.deviceType,
-                receiverId: entry.friendId,
-                receiverPhone: entry.mobileNo,
-                roomId: roomId,
-                voipToken: entry.voipToken  // 🆕 Pass VoIP token for iOS CallKit
-            )
         }
     }
     

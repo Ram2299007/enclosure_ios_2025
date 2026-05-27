@@ -10,6 +10,9 @@ struct SettingsView: View {
     @State private var navigateToContactUs = false
     @State private var navigateToAccount = false
     @State private var navigateToManageAccount = false
+    // Blocked contacts count (loaded from API on appear)
+    @State private var blockedCount: Int = 0
+    @State private var navigateToBlockedContacts = false
     
     // Helper function to hide keyboard
     private func hideKeyboard() {
@@ -47,6 +50,7 @@ struct SettingsView: View {
         }
         .onAppear {
             loadUserProfile()
+            loadBlockedCount()
         }
         .navigationDestination(isPresented: $navigateToPrivacyPolicy) {
             PrivacyPolicyView()
@@ -60,18 +64,23 @@ struct SettingsView: View {
         .navigationDestination(isPresented: $navigateToManageAccount) {
             ManageAccountView(newPhoneNumber: "")
         }
+        .navigationDestination(isPresented: $navigateToBlockedContacts) {
+            BlockedContactsView(onCountChanged: { newCount in
+                blockedCount = newCount
+            })
+        }
     }
     
     // MARK: - Settings Items List
     private var settingsItemsList: some View {
         VStack(spacing: 0) {
-            // Blocked contacts
+            // Blocked contacts — navigates to full list screen
             AndroidSettingsItem(
                 icon: "nosign",
                 title: "Blocked contacts",
-                subtitle: "0"
+                subtitle: "\(blockedCount)"
             ) {
-                handleBlockedContacts()
+                navigateToBlockedContacts = true
             }
             
             // Account — navigates directly to change number screen
@@ -135,10 +144,14 @@ struct SettingsView: View {
         }
     }
     
-    private func handleBlockedContacts() {
-        showAlert(title: "Blocked contacts", message: "No blocked contacts found.")
+    private func loadBlockedCount() {
+        ApiService.getBlockedUsersCount(uid: Constant.SenderIdMy) { count in
+            DispatchQueue.main.async {
+                blockedCount = count
+            }
+        }
     }
-    
+
     private func handleDeleteAccount() {
         navigateToManageAccount = true
     }

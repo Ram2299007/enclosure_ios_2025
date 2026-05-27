@@ -99,19 +99,21 @@ struct Constant{
             attributes: [.font: font],
             context: nil
         )
-        
+
+        // Use ceil() to avoid sub-pixel clipping
+        let textHeight = ceil(boundingRect.height)
+        let textWidth  = ceil(boundingRect.width)
+
         // Calculate toast dimensions with wrap content
-        // Height: wrap content based on text height
-        let toastHeight = max(50, boundingRect.height + (labelVerticalPadding * 2))
-        
+        // Height: wrap content based on text height + padding
+        let toastHeight = max(50, textHeight + (labelVerticalPadding * 2))
+
         // Width: wrap content - use text width for short messages, max width for long messages
-        // If text width is less than maxLabelWidth, use text width + padding (wrap content)
-        // If text wraps (width equals maxLabelWidth), use maxToastWidth
-        let textWidth = boundingRect.width
+        // Add 8 pts extra to prevent the last character being clipped due to sub-pixel rounding
         let toastWidth: CGFloat
         if textWidth < maxLabelWidth {
             // Short message - wrap content to text width
-            toastWidth = min(maxToastWidth, textWidth + (labelHorizontalPadding * 2))
+            toastWidth = min(maxToastWidth, textWidth + (labelHorizontalPadding * 2) + 8)
         } else {
             // Long message that wraps - use full available width
             toastWidth = maxToastWidth
@@ -149,12 +151,14 @@ struct Constant{
         window.addSubview(toastView)
 
         // Constraints for label inside toast - wrap content
+        // NOTE: Do NOT add centerYAnchor here — topAnchor + bottomAnchor together fully define
+        // both position and height. Adding centerYAnchor makes it over-constrained (3 equations,
+        // 2 unknowns) and Auto Layout breaks one silently, causing the label to be clipped.
         NSLayoutConstraint.activate([
             messageLabel.leadingAnchor.constraint(equalTo: toastView.leadingAnchor, constant: labelHorizontalPadding),
             messageLabel.trailingAnchor.constraint(equalTo: toastView.trailingAnchor, constant: -labelHorizontalPadding),
             messageLabel.topAnchor.constraint(equalTo: toastView.topAnchor, constant: labelVerticalPadding),
-            messageLabel.bottomAnchor.constraint(equalTo: toastView.bottomAnchor, constant: -labelVerticalPadding),
-            messageLabel.centerYAnchor.constraint(equalTo: toastView.centerYAnchor)
+            messageLabel.bottomAnchor.constraint(equalTo: toastView.bottomAnchor, constant: -labelVerticalPadding)
         ])
 
         // Animate fade-in

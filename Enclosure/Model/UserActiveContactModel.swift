@@ -19,6 +19,7 @@ struct UserActiveContactModel: Codable, Identifiable, Hashable {
     let dataType: String
     let message: String
     let fToken: String
+    let voipToken: String         // voip_token for iOS CallKit push (optional, empty for Android users)
     let notification: Int
     let msgLimit: Int
     let deviceType: String        // device_type is a string in the JSON
@@ -38,6 +39,7 @@ struct UserActiveContactModel: Codable, Identifiable, Hashable {
         case dataType
         case message
         case fToken = "f_token"
+        case voipToken = "voip_token"
         case notification
         case msgLimit = "msg_limit"
         case deviceType = "device_type"
@@ -60,6 +62,7 @@ struct UserActiveContactModel: Codable, Identifiable, Hashable {
         dataType = try container.decode(String.self, forKey: .dataType)
         message = try container.decode(String.self, forKey: .message)
         fToken = try container.decode(String.self, forKey: .fToken)
+        voipToken = (try? container.decode(String.self, forKey: .voipToken)) ?? ""   // optional — empty for Android / older records
         notification = (try? container.decode(Int.self, forKey: .notification)) ?? 0
         msgLimit = (try? container.decode(Int.self, forKey: .msgLimit)) ?? 0
         deviceType = try container.decode(String.self, forKey: .deviceType)
@@ -104,6 +107,7 @@ struct UserActiveContactModel: Codable, Identifiable, Hashable {
         dataType: String,
         message: String,
         fToken: String,
+        voipToken: String = "",
         notification: Int,
         msgLimit: Int,
         deviceType: String,
@@ -122,6 +126,7 @@ struct UserActiveContactModel: Codable, Identifiable, Hashable {
         self.dataType = dataType
         self.message = message
         self.fToken = fToken
+        self.voipToken = voipToken
         self.notification = notification
         self.msgLimit = msgLimit
         self.deviceType = deviceType

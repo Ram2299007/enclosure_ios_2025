@@ -2514,13 +2514,50 @@ struct ChattingScreen: View {
     }
     
     // MARK: - Call from Chat
+
+    /// Resolves the receiver's VoIP token.
+    /// Priority: contact.voipToken (from get_user_active_chat_list) →
+    ///            RecentCallContactStore (populated when Calls tab opens) →
+    ///            CallCacheManager SQLite cache.
+    private func resolveReceiverVoIPToken(uid: String) -> String {
+        // 1️⃣ Direct from contact model — populated once backend returns voip_token
+        if !contact.voipToken.isEmpty {
+            print("📞 [VOIP_RESOLVE] Using contact.voipToken for uid=\(uid)")
+            return contact.voipToken
+        }
+        // 2️⃣ RecentCallContactStore — fastest in-memory, populated when Calls tab is opened
+        if let cached = RecentCallContactStore.shared.getContact(for: uid),
+           !cached.voipToken.isEmpty {
+            print("📞 [VOIP_RESOLVE] Found VoIP token in RecentCallContactStore for uid=\(uid)")
+            return cached.voipToken
+        }
+        // 3️⃣ CallCacheManager SQLite — populated from get_calling_contact_list
+        var result = ""
+        let sema = DispatchSemaphore(value: 0)
+        CallCacheManager.shared.fetchContacts { contacts in
+            if let match = contacts.first(where: { $0.uid == uid }), !match.voipToken.isEmpty {
+                result = match.voipToken
+                print("📞 [VOIP_RESOLVE] Found VoIP token in CallCacheManager for uid=\(uid)")
+            }
+            sema.signal()
+        }
+        sema.wait()
+        if result.isEmpty {
+            print("⚠️ [VOIP_RESOLVE] No VoIP token found for uid=\(uid) — open Calls tab once to cache it")
+        }
+        return result
+    }
+
     private func startVoiceCallFromChat() {
+        // Resolve receiver's VoIP token (needed for iOS → iOS CallKit push)
+        let receiverVoipToken = resolveReceiverVoIPToken(uid: contact.uid)
+
         RecentCallContactStore.shared.saveFromOutgoingCall(
             friendId: contact.uid,
             fullName: contact.fullName,
             photo: contact.photo,
             fToken: contact.fToken,
-            voipToken: "",
+            voipToken: receiverVoipToken,   // ✅ store resolved token
             deviceType: contact.deviceType,
             mobileNo: contact.mobileNo
         )
@@ -2544,25 +2581,29 @@ struct ChattingScreen: View {
                 let sleepKey = UserDefaults.standard.string(forKey: Constant.sleepKey) ?? ""
                 guard sleepKey != Constant.sleepKey,
                       !contact.fToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                // ✅ Pass real VoIP token so APNs push reaches iOS receiver instantly via CallKit
                 MessageUploadService.shared.sendVoiceCallNotification(
                     receiverToken: contact.fToken,
                     receiverDeviceType: contact.deviceType,
                     receiverId: contact.uid,
                     receiverPhone: contact.mobileNo,
                     roomId: roomId,
-                    voipToken: nil
+                    voipToken: receiverVoipToken.isEmpty ? nil : receiverVoipToken
                 )
             }
         }
     }
 
     private func startVideoCallFromChat() {
+        // Resolve receiver's VoIP token (needed for iOS → iOS CallKit push)
+        let receiverVoipToken = resolveReceiverVoIPToken(uid: contact.uid)
+
         RecentCallContactStore.shared.saveFromOutgoingCall(
             friendId: contact.uid,
             fullName: contact.fullName,
             photo: contact.photo,
             fToken: contact.fToken,
-            voipToken: "",
+            voipToken: receiverVoipToken,   // ✅ store resolved token
             deviceType: contact.deviceType,
             mobileNo: contact.mobileNo,
             isVideoCall: true
@@ -2594,13 +2635,14 @@ struct ChattingScreen: View {
                     let sleepKey = UserDefaults.standard.string(forKey: Constant.sleepKey) ?? ""
                     guard sleepKey != Constant.sleepKey,
                           !contact.fToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                    // ✅ Pass real VoIP token so APNs push reaches iOS receiver instantly via CallKit
                     MessageUploadService.shared.sendVideoCallNotification(
                         receiverToken: contact.fToken,
                         receiverDeviceType: contact.deviceType,
                         receiverId: contact.uid,
                         receiverPhone: contact.mobileNo,
                         roomId: roomId,
-                        voipToken: nil
+                        voipToken: receiverVoipToken.isEmpty ? nil : receiverVoipToken
                     )
                 }
             }

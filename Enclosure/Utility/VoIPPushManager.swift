@@ -591,41 +591,51 @@ extension VoIPPushManager: PKPushRegistryDelegate {
 // MARK: - Backend Integration Helper
 extension VoIPPushManager {
     
-    /// Call this to send VoIP token to your backend
+    /// Send the current VoIP token to the backend so it can deliver APNs VoIP pushes for
+    /// incoming call notifications (iOS → iOS CallKit).
+    /// Called automatically whenever PushKit provides a new or refreshed token.
     func sendVoIPTokenToBackend() {
-        guard let token = voipToken else {
-            NSLog("⚠️ [VoIP] No VoIP token available to send")
+        guard let token = voipToken, !token.isEmpty else {
+            NSLog("⚠️ [VoIP] sendVoIPTokenToBackend: no token available yet")
             return
         }
-        
-        NSLog("📤 [VoIP] Sending VoIP token to backend...")
-        NSLog("📤 [VoIP] Token: \(token)")
-        
-        // TODO: Implement your backend API call here
-        // Example:
-        /*
-        let url = URL(string: "https://your-backend.com/api/register-voip-token")!
+
+        // Require a logged-in user
+        let uid = UserDefaults.standard.string(forKey: Constant.UID_KEY) ?? ""
+        let fToken = UserDefaults.standard.string(forKey: Constant.FCM_TOKEN) ?? ""
+        guard !uid.isEmpty else {
+            NSLog("⚠️ [VoIP] sendVoIPTokenToBackend: uid missing — will retry on next token refresh or login")
+            return
+        }
+
+        NSLog("📤 [VoIP] Sending VoIP token to backend for uid=\(uid)...")
+        NSLog("📤 [VoIP] Token prefix: \(token.prefix(20))...")
+
+        guard let url = URL(string: Constant.baseURL + "update_voip_token") else {
+            NSLog("❌ [VoIP] Invalid backend URL for update_voip_token")
+            return
+        }
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        let body: [String: Any] = [
-            "userId": "current_user_id",
-            "voipToken": token,
-            "deviceType": "iOS"
-        ]
-        
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+
+        // Form-encoded body matching backend verify_mobile_otp pattern
+        let bodyString = "uid=\(uid)&voip_token=\(token)&f_token=\(fToken)"
+        request.httpBody = bodyString.data(using: .utf8)
+
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                NSLog("❌ [VoIP] Failed to send token: \(error)")
+                NSLog("❌ [VoIP] Failed to send VoIP token: \(error.localizedDescription)")
                 return
             }
-            NSLog("✅ [VoIP] Token sent to backend successfully")
+            if let httpResponse = response as? HTTPURLResponse {
+                NSLog("📤 [VoIP] Backend response HTTP \(httpResponse.statusCode)")
+            }
+            if let data = data, let body = String(data: data, encoding: .utf8) {
+                NSLog("📤 [VoIP] Backend response body: \(body)")
+            }
+            NSLog("✅ [VoIP] VoIP token sent to backend successfully")
         }.resume()
-        */
-        
-        NSLog("⚠️ [VoIP] TODO: Implement sendVoIPTokenToBackend() in VoIPPushManager.swift")
     }
 }

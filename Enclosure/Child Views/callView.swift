@@ -758,71 +758,89 @@ extension callView {
     }
 
     private func startVoiceCall(for contact: CallingContactModel) {
-        // Persist contact info for callback from native Phone app Recents
-        RecentCallContactStore.shared.saveFromOutgoingCall(
-            friendId: contact.uid,
-            fullName: contact.fullName,
-            photo: contact.photo,
-            fToken: contact.fToken,
-            voipToken: contact.voipToken,
-            deviceType: contact.deviceType,
-            mobileNo: contact.mobileNo
-        )
-        
-        requestMicrophonePermission { granted in
-            guard granted else {
-                Constant.showToast(message: "Microphone permission is required for voice calls.")
-                return
+        // 🚫 Block check — do not call if receiver blocked me
+        let myUid = Constant.SenderIdMy
+        ApiService.checkIfBlocked(uid: myUid, receiverId: contact.uid) { isBlocked, _ in
+            DispatchQueue.main.async {
+                guard !isBlocked else {
+                    Constant.showToast(message: "You cannot call this user")
+                    return
+                }
+                // Persist contact info for callback from native Phone app Recents
+                RecentCallContactStore.shared.saveFromOutgoingCall(
+                    friendId: contact.uid,
+                    fullName: contact.fullName,
+                    photo: contact.photo,
+                    fToken: contact.fToken,
+                    voipToken: contact.voipToken,
+                    deviceType: contact.deviceType,
+                    mobileNo: contact.mobileNo
+                )
+                requestMicrophonePermission { granted in
+                    guard granted else {
+                        Constant.showToast(message: "Microphone permission is required for voice calls.")
+                        return
+                    }
+                    let roomId = generateRoomId()
+                    activeVoiceCallPayload = VoiceCallPayload(
+                        receiverId: contact.uid,
+                        receiverName: contact.fullName,
+                        receiverPhoto: contact.photo,
+                        receiverToken: contact.fToken,
+                        receiverDeviceType: contact.deviceType,
+                        receiverPhone: contact.mobileNo,
+                        roomId: roomId,
+                        isSender: true
+                    )
+                    sendVoiceCallNotificationIfNeeded(
+                        receiverToken: contact.fToken,
+                        receiverDeviceType: contact.deviceType,
+                        receiverId: contact.uid,
+                        receiverPhone: contact.mobileNo,
+                        roomId: roomId
+                    )
+                }
             }
-            let roomId = generateRoomId()
-            activeVoiceCallPayload = VoiceCallPayload(
-                receiverId: contact.uid,
-                receiverName: contact.fullName,
-                receiverPhoto: contact.photo,
-                receiverToken: contact.fToken,
-                receiverDeviceType: contact.deviceType,
-                receiverPhone: contact.mobileNo,
-                roomId: roomId,
-                isSender: true
-            )
-            sendVoiceCallNotificationIfNeeded(
-                receiverToken: contact.fToken,
-                receiverDeviceType: contact.deviceType,
-                receiverId: contact.uid,
-                receiverPhone: contact.mobileNo,
-                roomId: roomId
-            )
         }
     }
 
     private func startVoiceCall(for entry: CallLogUserInfo) {
-        // Persist contact info for callback from native Phone app Recents
-        RecentCallContactStore.shared.saveFromCallLogEntry(entry)
-        
-        requestMicrophonePermission { granted in
-            guard granted else {
-                Constant.showToast(message: "Microphone permission is required for voice calls.")
-                return
+        // 🚫 Block check — do not call if receiver blocked me
+        let myUid = Constant.SenderIdMy
+        ApiService.checkIfBlocked(uid: myUid, receiverId: entry.friendId) { isBlocked, _ in
+            DispatchQueue.main.async {
+                guard !isBlocked else {
+                    Constant.showToast(message: "You cannot call this user")
+                    return
+                }
+                // Persist contact info for callback from native Phone app Recents
+                RecentCallContactStore.shared.saveFromCallLogEntry(entry)
+                requestMicrophonePermission { granted in
+                    guard granted else {
+                        Constant.showToast(message: "Microphone permission is required for voice calls.")
+                        return
+                    }
+                    let roomId = generateRoomId()
+                    activeVoiceCallPayload = VoiceCallPayload(
+                        receiverId: entry.friendId,
+                        receiverName: entry.fullName,
+                        receiverPhoto: entry.photo,
+                        receiverToken: entry.fToken,
+                        receiverDeviceType: entry.deviceType,
+                        receiverPhone: entry.mobileNo,
+                        roomId: roomId,
+                        isSender: true
+                    )
+                    sendVoiceCallNotificationIfNeeded(
+                        receiverToken: entry.fToken,
+                        receiverDeviceType: entry.deviceType,
+                        receiverId: entry.friendId,
+                        receiverPhone: entry.mobileNo,
+                        roomId: roomId,
+                        voipToken: entry.voipToken  // 🆕 Pass VoIP token for iOS CallKit
+                    )
+                }
             }
-            let roomId = generateRoomId()
-            activeVoiceCallPayload = VoiceCallPayload(
-                receiverId: entry.friendId,
-                receiverName: entry.fullName,
-                receiverPhoto: entry.photo,
-                receiverToken: entry.fToken,
-                receiverDeviceType: entry.deviceType,
-                receiverPhone: entry.mobileNo,
-                roomId: roomId,
-                isSender: true
-            )
-            sendVoiceCallNotificationIfNeeded(
-                receiverToken: entry.fToken,
-                receiverDeviceType: entry.deviceType,
-                receiverId: entry.friendId,
-                receiverPhone: entry.mobileNo,
-                roomId: roomId,
-                voipToken: entry.voipToken  // 🆕 Pass VoIP token for iOS CallKit
-            )
         }
     }
 
@@ -1577,8 +1595,8 @@ struct BlockUserSelectionView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 48)
                     .background(selectedIds.isEmpty
-                                ? Color.red.opacity(0.35)
-                                : Color.red.opacity(0.85))
+                                ? themeColor.opacity(0.4)
+                                : themeColor)
                     .cornerRadius(24)
                 }
                 .disabled(selectedIds.isEmpty || isBlocking)
