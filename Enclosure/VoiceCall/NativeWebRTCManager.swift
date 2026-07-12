@@ -43,20 +43,17 @@ final class NativeWebRTCManager: NSObject {
     // TURN relay is fallback ONLY when direct/STUN fails (symmetric NAT, firewall, network blockage).
     // WebRTC ICE priority: host candidates > srflx (STUN) > relay (TURN)
     private let iceServers: [RTCIceServer] = [
-        // Primary: public Google STUN servers (free, reliable)
+        // Primary: our own STUN
         RTCIceServer(urlStrings: [
-            "stun:stun.l.google.com:19302",
-            "stun:stun1.l.google.com:19302",
-            "stun:stun2.l.google.com:19302",
-            "stun:stun3.l.google.com:19302",
-            "stun:stun4.l.google.com:19302"
+            "stun:turn.enclosuremessenger.com:3478"
         ]),
         // Fallback ONLY: TURN relay — used when direct P2P / STUN fails
         // (e.g. symmetric NAT, corporate firewall, carrier-grade NAT)
         RTCIceServer(
             urlStrings: [
-                "turn:relay1.expressturn.com:3478",       // UDP
-                "turn:relay1.expressturn.com:3478?transport=tcp" // TCP fallback
+                "turn:turn.enclosuremessenger.com:3478?transport=udp", // UDP
+                "turn:turn.enclosuremessenger.com:3478?transport=tcp", // TCP fallback
+                "turns:turn.enclosuremessenger.com:5349?transport=tcp" // TLS
             ],
             username: "efWBBHBEBKZEFW8XHM",
             credential: "7Dn4xMUvLCGCnMBL"
@@ -231,7 +228,10 @@ final class NativeWebRTCManager: NSObject {
         // Note: GoogleWebRTC 1.0.136171 defaults to Plan B; Android M137 uses Unified Plan
         config.iceTransportPolicy = .all  // Use STUN/host first; TURN relay only as fallback
         config.continualGatheringPolicy = .gatherContinually
-        config.iceCandidatePoolSize = 10
+        // 0 (the WebRTC default) means candidates — including TURN allocations — are only
+        // gathered when a call actually negotiates. A pool would open relay allocations
+        // on our TURN server speculatively, before any call needs them.
+        config.iceCandidatePoolSize = 0
         // Network resilience: allow ICE restart and use both IPv4/IPv6
         config.bundlePolicy = .maxBundle
         config.rtcpMuxPolicy = .require
