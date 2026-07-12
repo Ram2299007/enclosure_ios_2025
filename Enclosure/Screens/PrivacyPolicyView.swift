@@ -8,8 +8,8 @@ struct PrivacyPolicyView: View {
     private var privacyPolicyURL: String {
         // Dark mode: black_policy, Light mode: white_policy (same as Android)
         return colorScheme == .dark 
-            ? "https://enclosureapp.com/black_policy"
-            : "https://enclosureapp.com/white_policy"
+            ? "https://enclosuremessenger.com/black_policy"
+            : "https://enclosuremessenger.com/white_policy"
     }
     
     // Helper function to hide keyboard

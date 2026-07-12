@@ -325,7 +325,7 @@ func sendVoIPTokenToBackend() {
         return
     }
     
-    guard let url = URL(string: "https://confidential.enclosureapp.com/register_voip_token") else {
+    guard let url = URL(string: "https://confidential.enclosuremessenger.com/register_voip_token") else {
         return
     }
     

@@ -10,7 +10,7 @@ import SwiftUI
 
 struct Constant{
 
-    static let baseURL = "https://confidential.enclosureapp.com/"
+    static let baseURL = "https://confidential.enclosuremessenger.com/"
     static let PHONE_NUMBERKEY = "PHONE_NUMBER"
     static let UID_KEY = "UID_KEY"
     static let c_id = "c_id"

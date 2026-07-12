@@ -150,7 +150,7 @@ struct whatsYourNumber: View {
                         // Terms & Privacy Policy in a flexible container (layout_weight=1, center_vertical gravity)
                         HStack(spacing: 0) {
                             Button(action: {
-                                let urlString = "https://enclosureapp.com/terms_and_conditions"
+                                let urlString = "https://enclosuremessenger.com/terms_and_conditions"
                                 if let url = URL(string: urlString) {
                                     UIApplication.shared.open(url)
                                 }
@@ -166,8 +166,8 @@ struct whatsYourNumber: View {
 
                             Button(action: {
                                 let urlString = (colorScheme == .dark) ?
-                                "https://enclosureapp.com/black_policy" :
-                                "https://enclosureapp.com/white_policy"
+                                "https://enclosuremessenger.com/black_policy" :
+                                "https://enclosuremessenger.com/white_policy"
 
                                 if let url = URL(string: urlString) {
                                     UIApplication.shared.open(url)

@@ -166,7 +166,7 @@ System.out.println("📞 [FCM] NO notification banner - CallKit will show full-s
       "click_action": "OPEN_VOICE_CALL",
       "meetingId": "meetingId",
       "phone": "+918379887185",
-      "photo": "https://confidential.enclosureapp.com/...",
+      "photo": "https://confidential.enclosuremessenger.com/...",
       "token": "",
       "uid": "1",
       "receiverId": "2",

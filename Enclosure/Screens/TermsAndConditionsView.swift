@@ -6,7 +6,7 @@ struct TermsAndConditionsView: View {
             Color("BackgroundColor")
                 .ignoresSafeArea()
 
-            WebView(url: "https://enclosureapp.com/terms_and_conditions")
+            WebView(url: "https://enclosuremessenger.com/terms_and_conditions")
                 .padding(.top, 40)
         }
         .navigationTitle("Terms & Conditions")

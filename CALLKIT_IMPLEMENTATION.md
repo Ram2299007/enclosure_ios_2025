@@ -69,7 +69,7 @@ The Android app is already sending the correct payload:
     "token": "receiver_fcm_token",
     "data": {
       "name": "Priti Lohar",
-      "photo": "https://confidential.enclosureapp.com/...",
+      "photo": "https://confidential.enclosuremessenger.com/...",
       "roomId": "EnclosurePowerfulNext1770560730",
       "receiverId": "2",
       "phone": "+918379887185",

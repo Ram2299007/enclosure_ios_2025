@@ -26,7 +26,7 @@ databaseRef.child("rooms").child(roomId).child("signaling")
 ```javascript
 // PeerJS Configuration
 const PUBLIC_PEER_SERVER = '0.peerjs.com';
-const FALLBACK_PEER_SERVER = 'peer.enclosureapp.com';
+const FALLBACK_PEER_SERVER = 'peer.enclosuremessenger.com';
 
 // Firebase signaling via rooms/{roomId}/peers
 // Firebase signaling via rooms/{roomId}/signaling

@@ -288,7 +288,7 @@ struct InviteScreen: View {
         Inviting you to Download Enclosure !
         Your message will become more valuable here
         New messaging app -
-        for billion people https://enclosureapp.com
+        for billion people https://enclosuremessenger.com
         """
         
         var components = URLComponents()

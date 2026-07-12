@@ -67,7 +67,7 @@ const playSilentAudioToWakeIOS = async () => {
 // PeerJS server configuration constants
 // Use public PeerJS servers by default, fallback to custom server
 const PUBLIC_PEER_SERVER = '0.peerjs.com';
-const FALLBACK_PEER_SERVER = 'peer.enclosureapp.com';
+const FALLBACK_PEER_SERVER = 'peer.enclosuremessenger.com';
 const PEER_PORT = 443;
 const PEER_PATH = '/';
 const PEER_SECURE = true;

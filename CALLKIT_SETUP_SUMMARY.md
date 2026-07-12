@@ -149,7 +149,7 @@ The payload you showed in the logs is perfect:
 {
   "data": {
     "name": "Priti Lohar",
-    "photo": "https://confidential.enclosureapp.com/...",
+    "photo": "https://confidential.enclosuremessenger.com/...",
     "roomId": "EnclosurePowerfulNext1770560730",
     "bodyKey": "Incoming voice call",
     ...
